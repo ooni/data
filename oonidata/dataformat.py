@@ -1,5 +1,7 @@
 import ujson
 
+from base64 import b64decode
+
 from typing import Optional, Tuple, Union, List, Any
 from dataclasses import dataclass
 
@@ -18,10 +20,20 @@ MaybeBinaryData = Union[str, BinaryData, None]
 Failure = Optional[str]
 
 
+def maybe_binary_data_to_bytes(mbd: MaybeBinaryData) -> bytes:
+    if isinstance(mbd, BinaryData):
+        return b64decode(mbd.data)
+    elif isinstance(mbd, str):
+        return mbd.encode("utf-8")
+
+    raise Exception("Invalid type")
+
+
 @dataclass
 class Annotations:
-    network_type: Optional[str] = ""
+    network_type: Optional[str] = "unknown"
     platform: Optional[str] = "unknown"
+    origin: Optional[str] = "unknown"
 
 
 @dataclass
@@ -53,6 +65,7 @@ class BaseMeasurement:
 # List[Tuple[str, MaybeBinaryData]], yet this doesn't work because we don't have
 # tuples in JSON
 HeadersList = List[List[Union[str, MaybeBinaryData]]]
+HeadersListBytes = List[Tuple[str, bytes]]
 
 
 @dataclass
@@ -63,21 +76,43 @@ class TorInfo:
 
 
 @dataclass
-class HTTPRequest:
+class HTTPBase:
     body: MaybeBinaryData
+    body_bytes: Optional[bytes]
     body_is_truncated: Optional[bool]
+    headers: Optional[dict[str, str]]
     headers_list: Optional[HeadersList]
+    headers_list_bytes: Optional[HeadersListBytes]
+
+    def __post_init__(self):
+        if not self.headers_list and self.headers:
+            self.headers_list = []
+            for k, v in self.headers.items():
+                self.headers_list.append([k, v])
+
+        if self.headers_list:
+            self.headers_list_bytes = []
+            for header_pair in self.headers_list:
+                assert len(header_pair) == 2, "Inconsistent header"
+                self.headers_list_bytes.append(
+                    (header_pair[0], maybe_binary_data_to_bytes(header_pair[1]))
+                )
+
+        if self.body:
+            self.body_bytes = maybe_binary_data_to_bytes(self.body)
+
+
+@dataclass
+class HTTPRequest(HTTPBase):
+    url: str
     method: Optional[str]
     tor: TorInfo
     x_transport: Optional[str] = "tcp"
 
 
 @dataclass
-class HTTPResponse:
-    body: MaybeBinaryData
-    body_is_truncated: Optional[bool]
+class HTTPResponse(HTTPBase):
     code: int
-    headers_list: Optional[HeadersList]
 
 
 @dataclass
