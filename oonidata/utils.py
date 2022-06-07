@@ -45,7 +45,9 @@ fingerprints = {
         # https://github.com/ooni/pipeline/issues/155#issue-437678102
         # https://explorer.ooni.org/measurement/20171130T100203Z_AS38742_DmzL8KtUBadHNFU6wchlAgOy7MBwpDH75ZWdNzs0e55ArgFffx?input=http:%2F%2Fhowtogrowmarijuana.com
         {
-            "body_match": 'content="Access Denied - Afghan Wireless Communication Company',
+            "body_match": (
+                'content="Access Denied - Afghan Wireless Communication Company'
+            ),
             "locality": "isp",
         }
     ],
@@ -53,7 +55,9 @@ fingerprints = {
         # https://github.com/ooni/pipeline/issues/178
         # https://explorer.ooni.org/measurement/20170312T225529Z_AS0_hV7ESTIV4phKrhXxhO9NTxc5XrcXsgzPqZzEkYbrSjgPv9Xyor?input=http:%2F%2Fwww.erogeschichten.com
         {
-            "body_match": "<title>Notificación: política: filtrado de URL</title>",
+            "body_match": (
+                "<title>Notificación: política: filtrado de URL</title>"
+            ),
             # "header_full": "1.1 FC-WSA-FibertelZone3.int.fibercorp.com.ar:80 (Cisco-WSA/10.1.0-204)",
             # "header_name": "Via",
             "locality": "isp",
@@ -79,7 +83,9 @@ fingerprints = {
     ],
     "BE": [
         {
-            "body_match": "that is considered illegal according to Belgian legislation",
+            "body_match": (
+                "that is considered illegal according to Belgian legislation"
+            ),
             "locality": "country",
         },
         # https://github.com/ooni/pipeline/issues/168
@@ -94,7 +100,9 @@ fingerprints = {
         # https://github.com/ooni/pipeline/issues/180
         # https://explorer.ooni.org/measurement/20171206T160707Z_AS10429_4pfvLyNqYHpbLQI9tIpuQr7CPgvOOGaZbbnm7gMIZKdBE4oXJ9?input=http:%2F%2Fcrackspider.net
         {
-            "header_full": "1.1 wsa07.grupoamil.com.br:80 (Cisco-WSA/9.1.2-010)",
+            "header_full": (
+                "1.1 wsa07.grupoamil.com.br:80 (Cisco-WSA/9.1.2-010)"
+            ),
             "header_name": "Via",
             "locality": "local",
         },
@@ -149,11 +157,18 @@ fingerprints = {
             "locality": "local",
         },
         {
-            "body_match": "Access to this site has been blocked by an Order issued by the Federal Court of Canada",
+            "body_match": (
+                "Access to this site has been blocked by an Order issued by the"
+                " Federal Court of Canada"
+            ),
             "locality": "isp",
         },
         {
-            "body_match": "Access to the location you have attempted to reach has been disabled pursuant to an Order&nbsp;of the Federal Court (Canada)",
+            "body_match": (
+                "Access to the location you have attempted to reach has been"
+                " disabled pursuant to an Order&nbsp;of the Federal Court"
+                " (Canada)"
+            ),
             "locality": "isp",
         },
     ],
@@ -179,13 +194,18 @@ fingerprints = {
         # https://github.com/ooni/pipeline/issues/156
         # https://explorer.ooni.org/measurement/20190114T112310Z_AS262928_N3ChIPo5QSMMZ3qgA25G9QHE55suubZbPPkAfmNLkmOXuh9ZXJ?input=http:%2F%2Fwww.eurogrand.com%2F
         {
-            "body_match": "Esta página ha sido bloqueada por disposición del Ministerio de las TIC,",
+            "body_match": (
+                "Esta página ha sido bloqueada por disposición del Ministerio"
+                " de las TIC,"
+            ),
             "locality": "country",
         }
     ],
     "CY": [
         {
-            "body_match": "nba.com.cy/Eas/eas.nsf/All/6F7F17A7790A55C8C2257B130055C86F",
+            "body_match": (
+                "nba.com.cy/Eas/eas.nsf/All/6F7F17A7790A55C8C2257B130055C86F"
+            ),
             "locality": "country",
         }
     ],
@@ -228,7 +248,10 @@ fingerprints = {
         },
     ],
     "DK": [
-        {"body_match": "lagt at blokere for adgang til siden.", "locality": "country"},
+        {
+            "body_match": "lagt at blokere for adgang til siden.",
+            "locality": "country",
+        },
         # https://github.com/ooni/pipeline/issues/182
         # https://explorer.ooni.org/measurement/20171121T193103Z_AS41746_lcM0SY6VKKQ9SnL3SUrh6aiH2hgJUkCs1zGtWuEjYTgVHqW7Lz?input=http:%2F%2Fwww.wetplace.com
         {
@@ -262,7 +285,10 @@ fingerprints = {
         },
     ],
     "FR": [
-        {"body_match": 'xtpage = "page-blocage-terrorisme"', "locality": "country"},
+        {
+            "body_match": 'xtpage = "page-blocage-terrorisme"',
+            "locality": "country",
+        },
         # https://github.com/ooni/pipeline/issues/184
         # https://explorer.ooni.org/measurement/20170213T143932Z_AS57584_U1gMCvIFLNWIKnSrpWTLrN9oewaHiT0DdKjLaT3MiMqnBk3J3U?input=http:%2F%2Fwww.23.org
         {
@@ -272,7 +298,11 @@ fingerprints = {
             "locality": "local",
         },
         # https://explorer.ooni.org/measurement/20181013T160011Z_AS3215_IRIYlWDvBY8FTKrWmI3C6GrvGXVEeHwibS9J9AeorEPZbKp62j?input=http://gaytoday.com
-        {"header_name": "Server", "header_prefix": "Olfeo", "locality": "local"},
+        {
+            "header_name": "Server",
+            "header_prefix": "Olfeo",
+            "locality": "local",
+        },
     ],
     "GB": [
         # https://explorer.ooni.org/measurement/20190403T143637Z_AS29180_Rg2EoxvcDr0pcIYCywybM010BYCl8skvqZk7yAQbArxo2lHSJJ?input=http://www.bglad.com/
@@ -301,7 +331,9 @@ fingerprints = {
         },
         # https://explorer.ooni.org/measurement/20190523T171133Z_AS12513_H6Wc12khwbndgeJ9oKath0nvUZ4IeEcmNSCxmcTpYPe59MdSpV?input=http://www.grindr.com/
         {
-            "body_match": "Taunton School allow access to the following search engines",
+            "body_match": (
+                "Taunton School allow access to the following search engines"
+            ),
             "locality": "local",
         },
         # https://github.com/ooni/pipeline/issues/188
@@ -313,20 +345,26 @@ fingerprints = {
         },
         # https://explorer.ooni.org/measurement/20181118T215552Z_AS12576_LXCqBnsH90yHeMcE6LNDYwOl6IHnop0dTroWxA5NE7AhJ8vFn9?input=http:%2F%2Fwww.globalfire.tv
         {
-            "header_full": "http://ee.co.uk/help/my-account/corporate-content-lock",
+            "header_full": (
+                "http://ee.co.uk/help/my-account/corporate-content-lock"
+            ),
             "header_name": "Location",
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20181120T092944Z_AS199335_6V7Di7t3qUP7qVBYDlOHo9nxgle5NMQIDGHV50wtmCLuZTVPzU?input=http:%2F%2Fwww.microsofttranslator.com
         {
             "header_name": "Location",
-            "header_prefix": "http://Filter7external.schoolsbroadband.co.uk/access",
+            "header_prefix": (
+                "http://Filter7external.schoolsbroadband.co.uk/access"
+            ),
             "locality": "isp",
         },
         # http://localhost:3100/measurement/20170605T124503Z_AS0_eVo3z6wXAYDVrAZDsgqiM7pPlLuKR7l4zNF8oEUrGmZ62HWU4l?input=http:%2F%2Frockettube.com
         {
             "header_name": "Location",
-            "header_prefix": "https://account.nowtv.com/broadband-buddy/blocked-pages/",
+            "header_prefix": (
+                "https://account.nowtv.com/broadband-buddy/blocked-pages/"
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20180127T090022Z_AS5378_NK5M8lt6WbL1LOdiIooPX5PXla2DQDlAkGIK4HimIWbUpoMlj8?input=http:%2F%2Fwww.imageshack.us
@@ -343,11 +381,18 @@ fingerprints = {
         },
         # https://explorer.ooni.org/measurement/20170404T062436Z_AS60339_QJa9jOkZrduHeY2fH5oQmChKFtqwM1RzB3RG2AAjE1IMDMXp59?input=http:%2F%2Fwww.naughty.com
         {
-            "body_match": '<a href="https://smobile.three.co.uk/837/">Age Validation</a>',
+            "body_match": (
+                '<a href="https://smobile.three.co.uk/837/">Age Validation</a>'
+            ),
             "locality": "isp",
         },
     ],
-    "GF": [{"body_match": 'xtpage = "page-blocage-terrorisme"', "locality": "country"}],
+    "GF": [
+        {
+            "body_match": 'xtpage = "page-blocage-terrorisme"',
+            "locality": "country",
+        }
+    ],
     "GR": [
         {
             "body_match": "www.gamingcommission.gov.gr/index.php/forbidden-access-black-list/",
@@ -364,7 +409,10 @@ fingerprints = {
     "HU": [
         # https://github.com/ooni/pipeline/issues/223
         # https://explorer.ooni.org/measurement/20190905T104808Z_AS50261_Y03a7meiLbuSNLjxa55pvOAYug9r0yjsFjlmfe64MzbDuGJ2UM?input=http://www.realbeer.com/
-        {"body_match": "<title>Oops! Website blocked!</title>", "locality": "local"},
+        {
+            "body_match": "<title>Oops! Website blocked!</title>",
+            "locality": "local",
+        },
         # https://explorer.ooni.org/measurement/20190904T091911Z_AS1955_V5wcmlVrMPVZzi9sQcgAiopUjZr8umfv8XY3zHY8rOQvbTssHU?input=http://guardster.com/
         {"body_match": "<title>Web Page Blocked</title>", "locality": "local"},
     ],
@@ -389,29 +437,43 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20200213T053902Z_AS17974_igK3SmCYSdqnVjV2OxZ1VCUnsaECgo8Dh7S6CfU0AQgWg5nPQU?input=http://www.queernet.org/
         {"body_match": "http://block.uzone.id", "locality": "country"},
         # https://explorer.ooni.org/measurement/20170414T032645Z_AS17974_Qho7Y39z1oG2s1ylGbQvoFuQh8aDDnY2OwhXMVkqmyBPwQjmT5?input=http://www.bglad.com
-        {"body_match": ".uzone.id/assets/internetpositif", "locality": "country"},
+        {
+            "body_match": ".uzone.id/assets/internetpositif",
+            "locality": "country",
+        },
         # https://explorer.ooni.org/measurement/20171121T103829Z_AS17974_QgZkCjksBNucHe11XDLxKXIC3MTW32OamXngJCJrLaoouWNoEM?input=http://www.ifge.org
         {"body_match": "positif.uzone.id", "locality": "country"},
         # https://explorer.ooni.org/measurement/20190314T214950Z_AS17658_kybYxwcXIxWZYnX32z36B1ZprSLxFT3WpxY0g7sfuy0Uy7MLAo?input=http://www.samesexmarriage.ca/
         {
-            "body_match": "This page is blocked by <a href=http://trustpositif.kominfo.go.id",
+            "body_match": (
+                "This page is blocked by <a"
+                " href=http://trustpositif.kominfo.go.id"
+            ),
             "locality": "country",
         },
         # https://explorer.ooni.org/measurement/20170214T023529Z_AS17974_1hVbJGBPLdOsxQvNgIawwvABxfZuLNeVK5VaY1XWajguEt0yK3?input=http://www.lesbian.org
         {
-            "body_match": "tidak bisa diakses melalui jaringan ini sesuai peraturan perundang-undangan",
+            "body_match": (
+                "tidak bisa diakses melalui jaringan ini sesuai peraturan"
+                " perundang-undangan"
+            ),
             "locality": "country",
         },
         # https://explorer.ooni.org/measurement/20180727T095622Z_AS17670_ryQ3v3ZDI2X8YI7FKTxeG9L5PEmgc0Z5N3bDIU7uusFaaIcuql?input=http://www.bglad.com
         {"body_match": "internetpositif.mncplaymedia.com", "locality": "isp"},
         # https://explorer.ooni.org/measurement/20190420T092536Z_AS135478_mLOlXUu4n0QwTV10X6nqZYFwh9aQga4i4fPo9fMomwk2IMV6Le?input=http://transsexual.org/
         {
-            "body_match": "Maaf, akses Anda ke situs ini telah diblokir sesuai dengan <a",
+            "body_match": (
+                "Maaf, akses Anda ke situs ini telah diblokir sesuai dengan <a"
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20170213T013637Z_AS4832_Y8ct5af944VzPhrMoeoll3Ap7MtHL97R2JBO0lEHto45vPYwFQ?input=http://www.gayscape.com
         {
-            "body_match": "We are blocking this abusive site as stated by the Indonesia regulation in order to provide Internet Sehat.",
+            "body_match": (
+                "We are blocking this abusive site as stated by the Indonesia"
+                " regulation in order to provide Internet Sehat."
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20161031T235715Z_AS23700_3cxMXOKGRHBMQly8HBD4vFHM3qRsMKtzc5Yl8Dcm8LVeQasRLj?input=http://www.bglad.com
@@ -427,7 +489,10 @@ fingerprints = {
         {"body_match": "<title>Negatif Konten</title>", "locality": "isp"},
         # https://explorer.ooni.org/measurement/20190323T072437Z_AS0_pvl7biYGsLZDaHODVWbZ1PHC3iijtVfwM4a7BmBOd3YCg8705w?input=http://www.tsroadmap.com
         {
-            "body_match": "<a href=http://megavision.net.id>StarNet Project</a></strong> - DNS Filter Project.",
+            "body_match": (
+                "<a href=http://megavision.net.id>StarNet Project</a></strong>"
+                " - DNS Filter Project."
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20170920T165858Z_AS17974_3WOOOvd6aU5LlWGoP1mVIXMiXBDXaJpAwfkjP4IYR52V0nXvDF?input=http://transsexual.org
@@ -439,7 +504,10 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20171010T001639Z_AS17974_DRF1cmT5lEsJdMlrkJ6xtFk4FW4zwAJHmf0eYBmCzoNFFHSgua?input=http://www.bglad.com
         {"body_match": "<h2>INTERNET SEHAT CITRANET</h2>", "locality": "isp"},
         # https://explorer.ooni.org/measurement/20200213T135057Z_AS4761_0VqghBlufZfB6k68FBcGkeU9XAUcCmfXguHZJGBJhaQfurl2do?input=http://www.grindr.com/
-        {"body_match": "<title>Indosatooredoo Netsafe</title>", "locality": "isp"},
+        {
+            "body_match": "<title>Indosatooredoo Netsafe</title>",
+            "locality": "isp",
+        },
         # https://explorer.ooni.org/measurement/20170403T000118Z_AS4795_ZGyxgVEVzoRMZpL4QlHyPZtmJOwAO26NUv1Op3Vh6fCv7XIAW3?input=http://www.ifge.org
         {"body_match": "<title>Netsafe IndosatM2</title>", "locality": "isp"},
         # https://explorer.ooni.org/measurement/20200213T135057Z_AS4761_0VqghBlufZfB6k68FBcGkeU9XAUcCmfXguHZJGBJhaQfurl2do?input=http://www.grindr.com/
@@ -448,7 +516,10 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20170501T123218Z_AS17974_TQovh9GvtBR3FlRa5IfIH19tSRfiGUgUzEnGoh5sgdLI1m0OgY?input=http://www.ifge.org
         {"body_match": "argon_files/stop.jpg", "locality": "isp"},
         # https://explorer.ooni.org/measurement/20190905T165736Z_AS63859_PeIPMNtOMVuCacZ3pJmR3RySVKbNArcUTaKTPPLgPddZXwN2KC?input=http://www.queernet.org/
-        {"body_match": "https://myrepublic.co.id/internet-sehat/", "locality": "isp"},
+        {
+            "body_match": "https://myrepublic.co.id/internet-sehat/",
+            "locality": "isp",
+        },
         # https://explorer.ooni.org/measurement/20200130T135811Z_AS23693_d5uipVzMCxrQlnNCO4cB3ZxZYk4CyYZWr8ipsdgC8Qzp4K2Bl9?input=http://www.bglad.com/
         {"body_match": "internetbaik.telkomsel.com/", "locality": "isp"},
         # https://explorer.ooni.org/measurement/20170316T024318Z_AS23693_CQPxlyILeqGXlHzFqGSCPR6MgtCBfZtbs3h2l37MOyiU77N1xP?input=http://www.bglad.com
@@ -463,7 +534,10 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20190727T045744Z_AS17451_kC7sYnleU6DzAOhrgOf4LXXvtois6M4GnEpgvFCcFP0taBcuIU?input=http://www.gayhealth.com/
         {"body_match": "www.biznetnetworks.com/safesurf/", "locality": "isp"},
         # https://explorer.ooni.org/measurement/20190905T052510Z_AS24207_I540tCMJL3Wtb3cJ4oOCQaH7Fv44n2rn8kLkMubuSLLipSctue?input=http://www.gayegypt.com/
-        {"body_match": "VELO Networks :: Internet Sehat dan Aman", "locality": "isp"},
+        {
+            "body_match": "VELO Networks :: Internet Sehat dan Aman",
+            "locality": "isp",
+        },
         # https://explorer.ooni.org/measurement/20191005T031241Z_AS45727_93jXiGYrI1w8wHNC9FVzF5zuylmtgOToSGsA0mgYubk132ZKuV?input=http://www.nclrights.org/
         {"body_match": "restricted.tri.co.id/", "locality": "isp"},
         # https://explorer.ooni.org/measurement/20190605T140849Z_AS4800_bKVUk4pjoLXBQOUdWBLnQOPZfWfDPGCSoURwopRoEj0O4ZjOKG?input=http://www.tsroadmap.com/
@@ -614,7 +688,10 @@ fingerprints = {
     ],
     "IL": [
         # https://explorer.ooni.org/measurement/20190820T203403Z_AS199391_BKc62QxMlSz5esuRV2hHpMsUArF7fTeaeRAc8eN0Eb2uE4NVtV?input=http://www.ifge.org/
-        {"body_match": "http://mobile.netsparkmobile.com/?a=block", "locality": "isp"},
+        {
+            "body_match": "http://mobile.netsparkmobile.com/?a=block",
+            "locality": "isp",
+        },
     ],
     "IN": [
         # https://github.com/ooni/pipeline/issues/25#issue-154919607
@@ -653,7 +730,12 @@ fingerprints = {
         {"body_match": 'iframe src="http://10.10', "locality": "country"},
         # https://explorer.ooni.org/measurement/20180627T180515Z_AS44244_Z8V0i4Cr6PoJHByQQ89uN3meAmQbvdUrBli1NqYU8786BLquMk?input=http://alone-persian-man.blogspot.com
         {
-            "body_match": '</title></head><body><iframe src="http://[d0:0:0:0:0:0:0:11:80]" style="width: 100%; height: 100%" scrolling="no" marginwidth="0" marginheight="0" frameborder="0" vspace="0" hspace="0"></iframe></body></html>',
+            "body_match": (
+                "</title></head><body><iframe"
+                ' src="http://[d0:0:0:0:0:0:0:11:80]" style="width: 100%;'
+                ' height: 100%" scrolling="no" marginwidth="0" marginheight="0"'
+                ' frameborder="0" vspace="0" hspace="0"></iframe></body></html>'
+            ),
             "locality": "country",
         },
         # https://explorer.ooni.org/measurement/20180820T042050Z_AS61173_FPMTdrQeLtEbtLwBjDarQzBlhKVOLhwMbYXGvn9RRcazAFRzRM?input=http://www.wmmh.blogspot.com
@@ -693,7 +775,10 @@ fingerprints = {
     "KR": [
         # https://github.com/ooni/pipeline/issues/131
         # https://explorer.ooni.org/measurement/20181204T023538Z_AS4766_Q7tnDXKYbZxJAArIYzQwgd4y91BDuYsPZvA0MrYvUZzEVX6Olz?input=http:%2F%2Fwww.torproject.org
-        {"body_match": "cm/cheongshim/img/cheongshim_block.png", "locality": "local"},
+        {
+            "body_match": "cm/cheongshim/img/cheongshim_block.png",
+            "locality": "local",
+        },
         {"body_match": "http://warning.or.kr", "locality": "country"},
         {
             "header_full": "http://www.warning.or.kr",
@@ -705,7 +790,10 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20181011T032321Z_AS4766_I8APdOqg57wWTVKRvpZJ0uDaHbzHlcrmD3cpmrKuQrJXFsrcnU?input=http://www.gayegypt.com
         {"body_match": "cleanmobile02.nate.com", "locality": "isp"},
         {
-            "body_match": "<title>\uccad\uc18c\ub144 \uc720\ud574\ucc28\ub2e8\uc11c\ube44\uc2a4</title>",
+            "body_match": (
+                "<title>\uccad\uc18c\ub144"
+                " \uc720\ud574\ucc28\ub2e8\uc11c\ube44\uc2a4</title>"
+            ),
             "locality": "isp",
         },
         {
@@ -748,7 +836,10 @@ fingerprints = {
         },
         # https://explorer.ooni.org/measurement/20210208T105603Z_webconnectivity_MM_58952_n1_NEm53Iw0ysgcGt9J?input=http://www.facebook.com
         {
-            "body_match": '<li><a href="whatever.html" class="menupics"><img src="legaltext.png" alt="descriptivetext" /></a></li>',
+            "body_match": (
+                '<li><a href="whatever.html" class="menupics"><img'
+                ' src="legaltext.png" alt="descriptivetext" /></a></li>'
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20210208T105603Z_webconnectivity_MM_58952_n1_NEm53Iw0ysgcGt9J?input=http://www.facebook.com
@@ -798,11 +889,17 @@ fingerprints = {
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20191118T090209Z_AS17501_cqniUNeXAKeoabJN6Zr7EwpuebIM4f7g2fCAZqN0SfYOuMZMcD?input=http://www.newnownext.com/
-        {"body_match": "nta.gov.np/en/notice-regarding-site-block", "locality": "isp"},
+        {
+            "body_match": "nta.gov.np/en/notice-regarding-site-block",
+            "locality": "isp",
+        },
     ],
     "OM": [
         # https://explorer.ooni.org/measurement/20171008T164257Z_AS28885_x73TSE1uoiU8cTEo0NxxBkjRfV1tHOYoQplxDvNTGzxi9vkKIY?input=http://www.gayscape.com
-        {"body_match": "block.om/newrequestform.aspx?accessurl=", "locality": "isp"},
+        {
+            "body_match": "block.om/newrequestform.aspx?accessurl=",
+            "locality": "isp",
+        },
         # https://explorer.ooni.org/measurement/20170215T210727Z_AS50010_aOkarIhF1xmYR53lpC4iy45St2E0yB25zVr7rpqi39tNNHgKnL?input=http://www.scruff.com/
         {"body_match": "http://siteblocked.om/?accessurl=", "locality": "isp"},
     ],
@@ -824,7 +921,9 @@ fingerprints = {
         # TODO this is actually a captive portal like scenario
         # https://explorer.ooni.org/measurement/20171014T140144Z_AS10139_gQG3LIHnMZH3IsSJuPmMlLM8qDj3kKfHxJJGyPblDQ1AOFFyBX?input=http:%2F%2Fwww.bittorrent.com
         {
-            "header_full": "http://cube.sunbroadband.ph:8020/balanceToOffer/init",
+            "header_full": (
+                "http://cube.sunbroadband.ph:8020/balanceToOffer/init"
+            ),
             "header_name": "Location",
             "locality": "isp",
         },
@@ -843,7 +942,10 @@ fingerprints = {
         },
         # https://explorer.ooni.org/measurement/20200215T032555Z_AS23674_baOoSlSUE3rUC8Vtezp4K1QuLCGKasBKezHCHAmQvKnsOUDfel?input=http://www.globalgayz.com/
         {
-            "body_match": "As per your subscription of Nayatel Safeweb service, the website you are trying to access is blocked for your viewing",
+            "body_match": (
+                "As per your subscription of Nayatel Safeweb service, the"
+                " website you are trying to access is blocked for your viewing"
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20161025T235721Z_AS23674_Lldjua1VqHuWrRcILrD3wrfRXiOVP5P3e0wHwJV1MACuOzBFwY?input=http://www.queerty.com
@@ -890,7 +992,9 @@ fingerprints = {
         },
         # https://explorer.ooni.org/measurement/20180910T235247Z_AS3243_LpUldhcfbVGUIyfOxF6TFfLNT1wSAMwHy54LBz6owWe0cofJIK?input=http://www.luckynugget.com
         {
-            "body_match": "<title>Acesso bloqueado por entidade judici&aacute;ria</title>",
+            "body_match": (
+                "<title>Acesso bloqueado por entidade judici&aacute;ria</title>"
+            ),
             "locality": "isp",
         },
         {
@@ -914,7 +1018,10 @@ fingerprints = {
     ],
     "RO": [
         {
-            "body_match": "Accesul dumneavoastr\u0103 c\u0103tre acest site a fost restric\u021bionat",
+            "body_match": (
+                "Accesul dumneavoastr\u0103 c\u0103tre acest site a fost"
+                " restric\u021bionat"
+            ),
             "locality": "country",
         }
     ],
@@ -922,13 +1029,21 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/fDYllw7vRf71n2l4g2V2ahIlPxmd6nrpsjWemcJDWX1UDN0AT5Z5uBh4HhAdFdGB?input=http:%2F%2Fthepiratebay.se%2F
         # https://github.com/ooni/pipeline/issues/26
         {
-            "body_match": "Доступ к сайту ограничен в соответствии с Федеральными законами",
+            "body_match": (
+                "Доступ к сайту ограничен в соответствии с Федеральными"
+                " законами"
+            ),
             "locality": "country",
         },
         # https://github.com/ooni/pipeline/issues/115
         # https://explorer.ooni.org/measurement/20180315T230339Z_AS15378_1OT3ZGTyarLfiET0jYHJZigX2B1oQDdJKdrjkfzq5Zqr30Lvlp?input=http:%2F%2Fqha.com.ua%2F
         {
-            "body_match": "распространение которой в Российской Федерации запрещено! Данный ресурс включен в ЕДИНЫЙ РЕЕСТР доменных имен, указателей страниц сайтов в сети «Интернет» и сетевых адресов, позволяющих идентифицировать",
+            "body_match": (
+                "распространение которой в Российской Федерации запрещено!"
+                " Данный ресурс включен в ЕДИНЫЙ РЕЕСТР доменных имен,"
+                " указателей страниц сайтов в сети «Интернет» и сетевых"
+                " адресов, позволяющих идентифицировать"
+            ),
             "locality": "country",
         },
         # https://explorer.ooni.org/measurement/20180315T100250Z_AS6789_KYIQLsidOroJuPSP8DNkM8WFYOwNEAKebucOYOHhr9bwel8Yl3?input=http:%2F%2Fqha.com.ua%2F
@@ -938,7 +1053,10 @@ fingerprints = {
             "locality": "country",
         },
         # https://explorer.ooni.org/measurement/20180315T160455Z_AS8359_t1zebVigtFmS7kxCOCe3P77uClvciZHmKIwutI13x3Wcpe5t9V?input=http:%2F%2Futronews.org
-        {"body_match": '<iframe src="http://subblock.mts.ru/api', "locality": "isp"},
+        {
+            "body_match": '<iframe src="http://subblock.mts.ru/api',
+            "locality": "isp",
+        },
         # https://explorer.ooni.org/measurement/20181229T072204Z_AS39289_xlYTdPez910QvwBFCYyD3sgv0hQq1WBgbhW3lMjIs3MVMUdGtg?input=http:%2F%2Fblackberry.com
         {
             # Using the Location header is a possible alternative
@@ -1006,7 +1124,9 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20200215T065021Z_AS39289_MA6u7UK8b8tD6lDtpsUIEUnjFOcvvQp3QMRStQcJIC4snikqu2?input=http://bluesystem.ru/
         {
             "header_name": "Location",
-            "header_prefix": "http://89.185.75.227/451/1f50893f80d6830d62765ffad7721742.html",
+            "header_prefix": (
+                "http://89.185.75.227/451/1f50893f80d6830d62765ffad7721742.html"
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20200204T193749Z_AS25513_9Z7LP2duZHnf1I5bAjLF196Dl6aEzCaBwFXBegie524WzJ4rJj?input=http://www.deti-404.com/
@@ -1036,7 +1156,9 @@ fingerprints = {
         },
         # https://explorer.ooni.org/measurement/20180314T172713Z_AS25513_JKzji9R0aZ8eAUuEplDoPGOZgZS3VxCFlnbFcyfQjTDXefoL7g?input=http://bluesystem.ru/
         {
-            "body_match": "Доступ к запрашиваемому Вами Интернет-ресурсу ограничен в <br>",
+            "body_match": (
+                "Доступ к запрашиваемому Вами Интернет-ресурсу ограничен в <br>"
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20180317T143113Z_AS8331_FwDwX6bHEgagwbGdtlaTJABMU3WwQXJOAJxLRoyvMIVnD8BPve?input=http://bluesystem.ru/
@@ -1150,7 +1272,10 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20180318T190102Z_AS15582_AN3pN6fRfLwsONN4y0GEgnGLXlIGPv9QDysJwLhzVv3PZw4Ujz?input=http://bluesystem.ru/",
         {"body_match": "UA-2468561-43", "locality": "isp"},
         # https://explorer.ooni.org/measurement/20180318T035524Z_AS30868_YNRgacl7Q5HcThofYIOQRl0Z0T00uxv1TnvOXqhzsM7165fN8W?input=http://bluesystem.ru/
-        {"body_match": ".akado-ural.ru/web/rkn/site_blocked.css", "locality": "isp"},
+        {
+            "body_match": ".akado-ural.ru/web/rkn/site_blocked.css",
+            "locality": "isp",
+        },
         # https://explorer.ooni.org/measurement/20180317T130438Z_AS39087_UU6okQpeONhX0qrLfLdlKQeculY95MVSW1zY89UcbM4snfJPNN?input=http://bluesystem.ru/
         {
             "header_name": "Location",
@@ -1360,7 +1485,10 @@ fingerprints = {
             "locality": "country",
         },
         # https://explorer.ooni.org/measurement/20180711T082508Z_AS15505_oTsIWsdnymUNFDsNnrCRIBb7hKzhU2GzmYv04oZvlUwQ2TicqG?input=http://gaytoday.com
-        {"body_match": "://blocking-web-server.isu.net.sa/", "locality": "local"},
+        {
+            "body_match": "://blocking-web-server.isu.net.sa/",
+            "locality": "local",
+        },
     ],
     "SD": [
         {
@@ -1394,7 +1522,10 @@ fingerprints = {
     "TH": [
         # https://explorer.ooni.org/measurement/20190904T062730Z_AS7470_IqwbYni159FTGxsg003mQv3LKQZAW5MefvhKkBNcfvz9Ff5FBx?input=http://www.gboysiam.com/
         {
-            "body_match": "Sorry. Access to this website has been disabled because the Ministry of Digital Economic",
+            "body_match": (
+                "Sorry. Access to this website has been disabled because the"
+                " Ministry of Digital Economic"
+            ),
             "locality": "country",
         },
         # https://explorer.ooni.org/measurement/20190911T075509Z_AS9931_nxPKYSoZ3cDyjEkfs8kHGRW4DpctE8wJfgXMKoMOWFwER1YTD7?input=http://www.gboysiam.com/",
@@ -1431,7 +1562,9 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20190314T223836Z_AS45758_saZmEbyWARgKDPY5FS8JmbrexGQAUUAHO0naE3K4jqMrEPuVfD?input=http://instinctmagazine.com/
         {
             "header_name": "Location",
-            "header_prefix": "http://110.164.252.137/wpwarn/soft_bd/wpcbt_res.php",
+            "header_prefix": (
+                "http://110.164.252.137/wpwarn/soft_bd/wpcbt_res.php"
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20201228T234534Z_webconnectivity_TH_131445_n1_deRHboYpdtGToSqk?input=http://www.bbc.com/news/world-asia-38126928/
@@ -1439,34 +1572,54 @@ fingerprints = {
     ],
     "TR": [
         {
-            "body_match": "<title>Telekom\u00fcnikasyon \u0130leti\u015fim Ba\u015fkanl\u0131\u011f\u0131</title>",
+            "body_match": (
+                "<title>Telekom\u00fcnikasyon \u0130leti\u015fim"
+                " Ba\u015fkanl\u0131\u011f\u0131</title>"
+            ),
             "locality": "country",
         },
         # https://github.com/ooni/pipeline/issues/161
         # https://explorer.ooni.org/measurement/20170210T045710Z_AS201411_Xu0QrPJeKuNvYdTpTs3Uv9u4usmdcNACeLPi3wtiqxzBtpOLMf?input=http:%2F%2Fwww.365gay.com
         {
-            "body_match": '<p class="sub-message">Bu <a href="https://www.goknet.com.tr/iletisim.html">link</a>\'e tıklayarak bize ulaşabilir, daha detaylı bilgi alabilirsiniz.</p>',
+            "body_match": (
+                '<p class="sub-message">Bu <a'
+                ' href="https://www.goknet.com.tr/iletisim.html">link</a>\'e'
+                " tıklayarak bize ulaşabilir, daha detaylı bilgi"
+                " alabilirsiniz.</p>"
+            ),
             "locality": "isp",
         },
         # https://github.com/ooni/pipeline/issues/117
         # https://explorer.ooni.org/measurement/20180403T183403Z_AS9121_FfHjDmPkC0E5UoU3JMZoXJ2KRrMVyqdeTkHchmGEqAonEU64u4?input=http:%2F%2Fbeeg.com
         {
-            "body_match": 'class="yazi3_1">After technical analysis and legal consideration based on the law nr. 5651, administration measure has been taken for this website',
+            "body_match": (
+                'class="yazi3_1">After technical analysis and legal'
+                " consideration based on the law nr. 5651, administration"
+                " measure has been taken for this website"
+            ),
             "locality": "country",
         },
         # https://explorer.ooni.org/measurement/20200207T075356Z_AS20978_JJ3svMeHEnIrFcIceAHeqrbp6RyDtgBqTtnDmo3mRfMEGFGiXK?input=http://transsexual.org/
         {
             "header_name": "Location",
-            "header_prefix": "http://bilgi.turktelekom.com.tr/guvenli_internet_uyari",
+            "header_prefix": (
+                "http://bilgi.turktelekom.com.tr/guvenli_internet_uyari"
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20190724T152019Z_AS13280_5XchAx4T8ZNmgtqbFSgcjHFB9QKFqviPSJa88PQs4VXCdk1mBo?input=http://www.gayscape.com/
         {
-            "body_match": "To turn this off, you must verify your age - click below to log in to My3",
+            "body_match": (
+                "To turn this off, you must verify your age - click below to"
+                " log in to My3"
+            ),
             "locality": "isp",
         },
         # https://explorer.ooni.org/measurement/20200207T075356Z_AS20978_JJ3svMeHEnIrFcIceAHeqrbp6RyDtgBqTtnDmo3mRfMEGFGiXK?input=http://transsexual.org/
-        {"body_match": "<title>Güvenli İnternet Uyarı</title>", "locality": "isp"},
+        {
+            "body_match": "<title>Güvenli İnternet Uyarı</title>",
+            "locality": "isp",
+        },
         # https://explorer.ooni.org/measurement/20180403T183403Z_AS9121_FfHjDmPkC0E5UoU3JMZoXJ2KRrMVyqdeTkHchmGEqAonEU64u4?input=http:%2F%2Fbeeg.com
         {"dns_full": "195.175.254.2", "locality": "country"},
         {"dns_full": "193.192.98.41", "locality": "isp"},
@@ -1495,7 +1648,10 @@ fingerprints = {
     "UG": [
         # https://explorer.ooni.org/measurement/20190603T052310Z_AS12491_gPTKEWF0N9k2UpuLPVm6jl5q0ya6uTYge6iB2b0oXPcFejuhpc?input=http://www.gayhealth.com/
         {
-            "body_match": "According to UCC regulation, Pornography pages are restricted for browsing.",
+            "body_match": (
+                "According to UCC regulation, Pornography pages are restricted"
+                " for browsing."
+            ),
             "locality": "isp",
         }
     ],
@@ -1512,13 +1668,17 @@ fingerprints = {
         },
         {
             "header_name": "Location",
-            "header_prefix": "http://filter.esu9.org:8080/webadmin/deny/index.php",
+            "header_prefix": (
+                "http://filter.esu9.org:8080/webadmin/deny/index.php"
+            ),
             "locality": "country",
         },
         # https://explorer.ooni.org/measurement/20170411T170124Z_AS46491_ntYaNL2kdnuHFhOpkSgje3aadGsvRW8oadtjIC71DuiX06z4yy?input=http:%2F%2Fwww.exgay.com
         {
             "header_name": "Location",
-            "header_prefix": "http://reporter.dublinschools.net/block/restricted.html",
+            "header_prefix": (
+                "http://reporter.dublinschools.net/block/restricted.html"
+            ),
             "locality": "local",
         },
         # https://explorer.ooni.org/measurement/20170504T143706Z_AS16657_2LnvAcQgpCrjBG46Fb5EKr50PIL40W0ppwNcXp9WCCatbPboXK?input=http:%2F%2Fchinadaily.com.cn
@@ -1548,7 +1708,9 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20190205T191943Z_AS26638_QbFGhgqZ8sqXmCQrZNrNgB0RWB6EUfjFYPbKYOgaihiWLv5xNb?input=http:%2F%2Ftwitter.com%2F
         {
             "header_name": "Location",
-            "header_prefix": "https://mpswebfilterwashbu.mpls.k12.mn.us:6082/php/uid.php",
+            "header_prefix": (
+                "https://mpswebfilterwashbu.mpls.k12.mn.us:6082/php/uid.php"
+            ),
             "locality": "local",
         },
         # https://explorer.ooni.org/measurement/20180406T152727Z_AS39942_lquPnt0vjeXydfleOdSkxyjst6VTiUWb58f3x5qlFKTSlTIQLG?input=http:%2F%2Fflirtylingerie.com%2F
@@ -1560,7 +1722,10 @@ fingerprints = {
         # https://explorer.ooni.org/measurement/20171129T155619Z_AS11714_vJUMktHjy0cQGKqYqY3fgOQQLVNfnxb1V11fvP6jTXTbbTX60e?input=http:%2F%2Fwww.pandora.com
         # vendor: netsweeper
         {
-            "body_match": "It is a good idea to check to see if the NetSweeper restriction is coming from the cache of your web browser",
+            "body_match": (
+                "It is a good idea to check to see if the NetSweeper"
+                " restriction is coming from the cache of your web browser"
+            ),
             "locality": "local",
         },
         # https://explorer.ooni.org/measurement/20190205T194537Z_AS26638_xu2k6ZPnY9mHgeu3M6qgVGf1Q192E12OFtcpztNMDBleHkEJPM?input=http://www.grindr.com/
@@ -1569,7 +1734,10 @@ fingerprints = {
             "locality": "local",
         },
         # https://explorer.ooni.org/measurement/20190321T164529Z_AS26661_gKN3hndB81x3e95ICECH0M7NVbk89s4pelMSjXFE3m89oA2F7p?input=http://www.gayegypt.com/
-        {"body_match": "Jeffco Schools Internet Filtering Page", "locality": "local"},
+        {
+            "body_match": "Jeffco Schools Internet Filtering Page",
+            "locality": "local",
+        },
     ],
     "VN": [
         # https://github.com/ooni/pipeline/issues/186
@@ -1581,9 +1749,15 @@ fingerprints = {
         }
     ],
     "YE": [
-        {"body_match": "http://82.114.160.94/webadmin/deny/", "locality": "isp"},
+        {
+            "body_match": "http://82.114.160.94/webadmin/deny/",
+            "locality": "isp",
+        },
         # https://explorer.ooni.org/measurement/20190104T220611Z_AS30873_kt947qO6Y9Hl4z6vwpmVq7G4psKKkNjEhJffySOv7sDGYoRbgZ?input=http://amygoodloe.com/lesbian-dot-org/",
-        {"body_match": "http://deny.yemen.net.ye/webadmin/deny", "locality": "isp"},
+        {
+            "body_match": "http://deny.yemen.net.ye/webadmin/deny",
+            "locality": "isp",
+        },
     ],
     "ZZ": [
         {
@@ -1630,8 +1804,8 @@ fingerprints = {
         {"dns_full": "195.46.39.11", "locality": "general"},
     ],
     "UZ": [
-	# https://explorer.ooni.org/measurement/20211231T141146Z_webconnectivity_UZ_8193_n1_Ap5yFzrVoL671ahx?input=http%3A%2F%2Fwww.europacasino.com%2F
-	# https://explorer.ooni.org/measurement/20211231T172847Z_webconnectivity_UZ_8193_n1_kzei9uKT3oPETGzS?input=http%3A%2F%2Fikhwanonline.com%2F
+        # https://explorer.ooni.org/measurement/20211231T141146Z_webconnectivity_UZ_8193_n1_Ap5yFzrVoL671ahx?input=http%3A%2F%2Fwww.europacasino.com%2F
+        # https://explorer.ooni.org/measurement/20211231T172847Z_webconnectivity_UZ_8193_n1_kzei9uKT3oPETGzS?input=http%3A%2F%2Fikhwanonline.com%2F
         {
             "header_name": "Location",
             "header_prefix": "http://reestr.mitc.uz/",
@@ -1684,19 +1858,23 @@ def mock_out_long_strings(d, maxlen):  # noqa
                     if len(v) > maxlen:
                         d[k] = "..."
 
-
-def trivial_id(msm: dict) -> str:
+def trivial_id(raw: bytes, msm: dict) -> str:
     """Generate a trivial id of the measurement to allow upsert if needed
     This is used for legacy (before measurement_uid) measurements
-    - 32-bytes hexdigest
     - Deterministic / stateless with no DB interaction
     - Malicious/bugged msmts with collisions on report_id/input/test_name lead
     to different hash values avoiding the collision
     - Malicious/duplicated msmts that are semantically identical to the "real"
     one lead to harmless collisions
+    - Sortable by date
     """
-    # Same output with Python's json
-    VER = "00"
-    msm_jstr = ujson.dumps(msm, sort_keys=True, ensure_ascii=False).encode()
-    tid = VER + hashlib.shake_128(msm_jstr).hexdigest(15)
+    VER = "01"
+    h = hashlib.shake_128(raw).hexdigest(15)
+    try:
+        t = msm.get("measurement_start_time") or ""
+        t = datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+        ts = t.strftime("%Y%m%d")
+    except:
+        ts = "00000000"
+    tid = f"{VER}{ts}{h}"
     return tid

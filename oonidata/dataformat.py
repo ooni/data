@@ -1,0 +1,252 @@
+import ujson
+
+from typing import Optional, Tuple, Union, List, Any
+from dataclasses import dataclass
+
+from dacite import from_dict
+
+from oonidata.utils import trivial_id
+
+
+@dataclass
+class BinaryData:
+    format: str
+    data: str
+
+
+MaybeBinaryData = Union[str, BinaryData, None]
+Failure = Optional[str]
+
+
+@dataclass
+class Annotations:
+    network_type: Optional[str] = ""
+    platform: Optional[str] = "unknown"
+
+
+@dataclass
+class BaseMeasurement:
+    measurement_uid: Optional[str]
+
+    annotations: Annotations
+
+    input: Optional[str]
+
+    measurement_start_time: str
+
+    probe_asn: str
+    probe_network_name: Optional[str]
+    probe_cc: str
+
+    resolver_asn: Optional[str]
+    resolver_ip: Optional[str]
+    resolver_network_name: Optional[str]
+
+    test_name: str
+    test_runtime: float
+
+    software_name: str
+    software_version: str
+
+
+# This is not 100% accurate, ideally we would say
+# List[Tuple[str, MaybeBinaryData]], yet this doesn't work because we don't have
+# tuples in JSON
+HeadersList = List[List[Union[str, MaybeBinaryData]]]
+
+
+@dataclass
+class TorInfo:
+    is_tor: bool
+    exit_ip: Optional[str]
+    exit_name: Optional[str]
+
+
+@dataclass
+class HTTPRequest:
+    body: MaybeBinaryData
+    body_is_truncated: Optional[bool]
+    headers_list: Optional[HeadersList]
+    method: Optional[str]
+    tor: TorInfo
+    x_transport: Optional[str] = "tcp"
+
+
+@dataclass
+class HTTPResponse:
+    body: MaybeBinaryData
+    body_is_truncated: Optional[bool]
+    code: int
+    headers_list: Optional[HeadersList]
+
+
+@dataclass
+class HTTPTransaction:
+    failure: Failure
+    transaction_id: Optional[int]
+
+    request: HTTPRequest
+    response: HTTPResponse
+
+    t: Optional[float]
+
+
+@dataclass
+class DNSAnswer:
+    answer_type: str
+    asn: Optional[int]
+    as_org_name: Optional[str]
+    expiration_limit: Optional[str]
+    hostname: Optional[str]
+    ipv4: Optional[str]
+    ipv6: Optional[str]
+    minimum_ttl: Optional[str]
+    refresh_interval: Optional[str]
+    responsible_name: Optional[str]
+    retry_interval: Optional[str]
+    serial_number: Optional[str]
+    ttl: Optional[int]
+
+
+@dataclass
+class DNSQuery:
+    dial_id: Optional[int]
+    engine: Optional[str]
+    failure: Failure
+    hostname: Optional[str]
+    query_type: str
+
+    # XXX: Map resolver_hostname and resolver_port to this
+    resolver_address: Optional[str]
+    t: Optional[float]
+    transaction_id: Optional[int]
+
+    answers: List[DNSAnswer]
+
+
+@dataclass
+class TCPConnectStatus:
+    blocked: bool
+    success: bool
+    failure: Failure
+
+
+@dataclass
+class TCPConnect:
+    ip: str
+    port: int
+    status: TCPConnectStatus
+
+    t: Optional[float]
+
+
+@dataclass
+class TLSHandshake:
+    cipher_suite: Optional[str]
+    failure: Failure
+    negotiated_protocol: Optional[str]
+    no_tls_verify: Optional[bool]
+    peer_certificates: Optional[List[BinaryData]]
+    server_name: str
+    t: Optional[float]
+    tags: Optional[List[str]]
+    tls_version: Optional[str]
+    transaction_id: Optional[int]
+
+
+@dataclass
+class NetworkEvent:
+    address: Optional[str]
+    conn_id: Optional[int]
+    dial_id: Optional[int]
+    failure: Failure
+    num_bytes: Optional[int]
+    operation: str
+    proto: Optional[str]
+    t: float
+    tags: List[str]
+    transaction_id: Optional[str]
+
+
+@dataclass
+class BaseTestKeys:
+    control_resolver: Optional[str]
+
+
+@dataclass
+class WebConnectivityControlHTTPRequest:
+    body_length: Optional[int]
+    failure: Failure
+    title: Optional[str]
+    headers: Optional[dict[str, str]]
+    status_code: Optional[int]
+
+
+@dataclass
+class WebConnectivityControlDNS:
+    failure: Failure
+    addrs: Optional[List[str]]
+
+
+@dataclass
+class WebConnectivityControlTCPConnectStatus:
+    status: bool
+    failure: Failure
+
+
+@dataclass
+class WebConnectivityControl:
+    tcp_connect: dict[str, WebConnectivityControlTCPConnectStatus]
+    http_request: Optional[WebConnectivityControlHTTPRequest]
+    dns: WebConnectivityControlDNS
+
+
+@dataclass
+class WebConnectivityTestKeys(BaseTestKeys):
+    dns_experiment_failure: Failure
+    control_failure: Failure
+    http_experiment_failure: Failure
+
+    dns_consistency: Optional[str]
+
+    body_length_match: Optional[bool]
+    body_proportion: Optional[float]
+    status_code_match: Optional[bool]
+    headers_match: Optional[bool]
+    title_match: Optional[bool]
+    accessible: Optional[bool]
+    blocking: Union[str, bool, None]
+
+    x_status: Optional[int]
+    x_dns_runtime: Optional[int]
+    x_th_runtime: Optional[int]
+    x_tcptls_runtime: Optional[int]
+    x_http_runtime: Optional[int]
+
+    control: Optional[WebConnectivityControl]
+    tls_handshakes: Optional[List[TLSHandshake]]
+    network_events: Optional[List[NetworkEvent]]
+    queries: Optional[List[DNSQuery]]
+    tcp_connect: Optional[List[TCPConnect]]
+    requests: Optional[List[HTTPTransaction]]
+
+
+@dataclass
+class WebConnectivity(BaseMeasurement):
+    test_keys: WebConnectivityTestKeys
+
+
+nettest_dataformats = {"web_connectivity": WebConnectivity}
+
+
+def load_measurement(raw: bytes) -> Any:
+    data = ujson.loads(raw)
+    dc = nettest_dataformats.get(data["test_name"], BaseMeasurement)
+    msm = from_dict(data_class=dc, data=data)
+    if not msm.measurement_uid:
+        msm.measurement_uid = trivial_id(raw=raw.encode("utf-8"), msm=msm)
+    return msm
+
+
+def etl():
+    pass

@@ -128,7 +128,9 @@ test_categories = {
 
 regexps = dict(
     ipv4=r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
-    hostname=r"([a-zA-Z0-9](?:(?:[a-zA-Z0-9-]*|(?<!-)\.(?![-.]))*[a-zA-Z0-9]+)?)",
+    hostname=(
+        r"([a-zA-Z0-9](?:(?:[a-zA-Z0-9-]*|(?<!-)\.(?![-.]))*[a-zA-Z0-9]+)?)"
+    ),
 )
 
 
@@ -235,7 +237,9 @@ def normalize_httpt(entry):
 
     for session in entry["test_keys"].get("requests", []):
         if isinstance(session.get("response"), dict):
-            session["response"]["body"] = normalize_body(session["response"]["body"])
+            session["response"]["body"] = normalize_body(
+                session["response"]["body"]
+            )
             session["response"]["headers"] = normalize_headers(
                 session["response"]["headers"]
             )
@@ -243,7 +247,9 @@ def normalize_httpt(entry):
             session["response"] = {"body": None, "headers": {}}
 
         if isinstance(session.get("request"), dict):
-            session["request"]["body"] = normalize_body(session["request"]["body"])
+            session["request"]["body"] = normalize_body(
+                session["request"]["body"]
+            )
             session["request"]["headers"] = normalize_headers(
                 session["request"]["headers"]
             )
@@ -296,7 +302,9 @@ def normalize_httpt(entry):
     entry["test_keys"]["requests"] += experiment_requests
     entry["test_keys"]["requests"] += control_requests
     if entry["test_keys"].get("headers_diff", None) is not None:
-        entry["test_keys"]["headers_diff"] = list(entry["test_keys"]["headers_diff"])
+        entry["test_keys"]["headers_diff"] = list(
+            entry["test_keys"]["headers_diff"]
+        )
     return entry
 
 
@@ -339,9 +347,15 @@ def normalize_dnst(entry):
     errors = entry["test_keys"].pop("tampering", None)
     if errors:
         entry["test_keys"]["errors"] = errors
-        entry["test_keys"]["successful"] = [e[0] for e in errors if e[1] is False]
-        entry["test_keys"]["failed"] = [e[0] for e in errors if e[1] is not True]
-        entry["test_keys"]["inconsistent"] = [e[0] for e in errors if e[1] is True]
+        entry["test_keys"]["successful"] = [
+            e[0] for e in errors if e[1] is False
+        ]
+        entry["test_keys"]["failed"] = [
+            e[0] for e in errors if e[1] is not True
+        ]
+        entry["test_keys"]["inconsistent"] = [
+            e[0] for e in errors if e[1] is True
+        ]
     elif entry["test_name"] == "dns_consistency":
         entry["test_keys"]["errors"] = {}
         entry["test_keys"]["successful"] = []
@@ -356,7 +370,9 @@ def normalize_dnst(entry):
             query["hostname"] = None
 
         try:
-            query["resolver_hostname"], query["resolver_port"] = query.pop("resolver")
+            query["resolver_hostname"], query["resolver_port"] = query.pop(
+                "resolver"
+            )
         except:
             query["resolver_hostname"], query["resolver_port"] = [None, None]
 
