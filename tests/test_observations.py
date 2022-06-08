@@ -1,7 +1,7 @@
-from oonidata.observations import make_http_observations
+from oonidata.observations import make_http_observations, make_dns_observations
 from oonidata.apiclient import get_raw_measurement
 
-from oonidata.dataformat import load_measurement, HTTPTransaction
+from oonidata.dataformat import load_measurement
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
@@ -16,7 +16,7 @@ def test_http_observations():
     fingerprintdb = FingerprintDB()
     netinfodb = NetinfoDB()
 
-    all_obs = [
+    all_http_obs = [
         obs
         for obs in make_http_observations(
             msmt,
@@ -25,7 +25,20 @@ def test_http_observations():
             netinfodb=netinfodb,
         )
     ]
-    assert len(all_obs) == 2
-    assert all_obs[0].probe_cc == "AM"
-    assert all_obs[0].probe_asn == 49800
-    assert all_obs[0].request_url == "https://hahr.am/"
+    assert len(all_http_obs) == 2
+    assert all_http_obs[0].probe_cc == "AM"
+    assert all_http_obs[0].probe_asn == 49800
+    assert all_http_obs[0].request_url == "https://hahr.am/"
+
+    all_dns_obs = [
+        obs
+        for obs in make_dns_observations(
+            msmt,
+            msmt.test_keys.queries,
+            fingerprintdb=fingerprintdb,
+            netinfodb=netinfodb,
+        )
+    ]
+
+    assert len(all_dns_obs) == 1
+    all_dns_obs[0].answer == "46.19.96.204"

@@ -5,6 +5,7 @@ from typing import Generator, Optional, List
 
 from oonidata.dataformat import (
     BaseMeasurement,
+    DNSQuery,
     HeadersList,
     HTTPTransaction,
     Failure,
@@ -28,7 +29,7 @@ class Observation:
     measurement_uid: str
     timestamp: datetime
 
-    probe_asn: str
+    probe_asn: int
     probe_cc: str
 
     probe_as_org_name: Optional[str]
@@ -80,12 +81,12 @@ class DNSObservation(Observation):
     query_type: str
     answer_type: str
     answer: str
-    answer_asn: str
-    answer_as_org_name: str
+    answer_asn: Optional[str]
+    answer_as_org_name: Optional[str]
+    answer_as_cc: Optional[str]
+    answer_cc: Optional[str]
+
     domain: str
-    resolver_ip: str
-    resolver_asn: str
-    resolver_as_org_name: str
     failure: Failure
     fingerprint_id: str
 
@@ -114,8 +115,8 @@ class HTTPObservation(Observation):
     failure: Failure
 
     response_fingerprints: List[str]
-    response_matches_blockpage: bool
-    response_matches_false_positive: bool
+    response_matches_blockpage: bool = False
+    response_matches_false_positive: bool = False
     x_transport: Optional[str] = "tcp"
 
 
@@ -139,8 +140,6 @@ def make_http_observations(
 
         hrro.response_body_is_truncated = http_transaction.response.body_is_truncated
 
-        hrro.response_matches_false_positive = False
-        hrro.response_matches_blockpage = False
         hrro.response_fingerprints = []
         fp_matches = fingerprintdb.match_http(http_transaction.response)
         for fp in fp_matches:
@@ -188,5 +187,40 @@ def make_http_observations(
         yield hrro
 
 
-def make_dns_observations() -> Generator[DNSObservation, None, None]:
-    pass
+def make_dns_observations(
+    msmt: BaseMeasurement,
+    queries: List[DNSQuery],
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
+) -> Generator[DNSObservation, None, None]:
+    for query in queries:
+        if not query.answers:
+            dnso = DNSObservation(msmt, netinfodb)
+            dnso.query_type = query.query_type
+            dnso.domain = query.hostname
+            dnso.failure = normalize_failure(query.failure)
+            yield dnso
+            continue
+
+        for answer in query.answers:
+            dnso = DNSObservation(msmt, netinfodb)
+            dnso.query_type = query.query_type
+            dnso.domain = query.hostname
+            dnso.answer_type = answer.answer_type
+            if answer.ipv4:
+                dnso.answer = answer.ipv4
+            elif answer.ipv6:
+                dnso.answer = answer.ipv6
+            elif answer.hostname:
+                dnso.answer = answer.hostname
+
+            if answer.ipv4 or answer.ipv6:
+                answer_meta = netinfodb.lookup_ip(dnso.timestamp, dnso.answer)
+                if answer_meta:
+                    dnso.answer_asn = answer_meta.as_info.asn
+                    dnso.answer_as_cc = answer_meta.as_info.as_cc
+                    dnso.answer_as_org_name = answer_meta.as_info.as_org_name
+                    dnso.answer_cc = answer_meta.cc
+
+            dnso.fingerprint_id = fingerprintdb.match_dns(dnso.answer)
+            yield dnso
