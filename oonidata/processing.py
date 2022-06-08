@@ -5,6 +5,8 @@ from oonidata.observations import (
     Observation,
     make_http_observations,
     make_dns_observations,
+    make_tcp_observations,
+    make_tls_observations,
 )
 from oonidata.dataformat import BaseMeasurement
 from oonidata.fingerprints.matcher import FingerprintDB
@@ -47,13 +49,38 @@ def web_connectivity_processor(
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
 ) -> bool:
-    write_observations_to_db(
-        db,
-        make_http_observations(msmt, msmt.test_keys.requests, fingerprintdb, netinfodb),
+    http_observations = make_http_observations(
+        msmt, msmt.test_keys.requests, fingerprintdb, netinfodb
     )
     write_observations_to_db(
         db,
-        make_dns_observations(msmt, msmt.test_keys.queries, fingerprintdb, netinfodb),
+        http_observations,
+    )
+
+    dns_observations = make_dns_observations(
+        msmt, msmt.test_keys.queries, fingerprintdb, netinfodb
+    )
+    write_observations_to_db(
+        db,
+        dns_observations,
+    )
+
+    ip_to_domain = {obs.answer: obs.domain_name for obs in dns_observations}
+
+    tcp_observations = make_tcp_observations(
+        msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
+    )
+    write_observations_to_db(
+        db,
+        tcp_observations,
+    )
+
+    tls_observations = make_tls_observations(
+        msmt, msmt.test_keys.tls_handshakes, netinfodb, ip_to_domain
+    )
+    write_observations_to_db(
+        db,
+        tls_observations,
     )
 
 

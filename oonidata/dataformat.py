@@ -184,6 +184,7 @@ class TCPConnect:
 
 @dataclass
 class TLSHandshake:
+    address: Optional[str]
     cipher_suite: Optional[str]
     failure: Failure
     negotiated_protocol: Optional[str]

@@ -1,6 +1,16 @@
+from datetime import datetime
+from typing import List
+from dataclasses import dataclass
 import re
 import ipaddress
-from oonidata.dataformat import HeadersListBytes
+
+from base64 import b64decode
+
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+
+from oonidata.dataformat import HeadersListBytes, BinaryData
 
 META_TITLE_REGEXP = re.compile(
     b'<meta.*?property="og:title".*?content="(.*?)"', re.IGNORECASE | re.DOTALL
@@ -154,3 +164,56 @@ def is_ipv6_bogon(ip: str) -> bool:
     if any([ipv6addr in ip_range for ip_range in bogon_ipv4_ranges]):
         return True
     return False
+
+
+@dataclass
+class CertificateMeta:
+    cert: x509.Certificate
+    issuer: str
+    issuer_common_name: str
+    subject: str
+    subject_common_name: str
+    san_list: List[str]
+    extensions: str
+    not_valid_before: datetime
+    not_valid_after: datetime
+    fingerprint: str
+
+
+def get_common_name(cert_name: x509.Name) -> str:
+    try:
+        attributes = cert_name.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)
+        if attributes:
+            return str(attributes[0].value)
+    except x509.AttributeNotFound:
+        return ""
+    return ""
+
+
+def get_alternative_names(cert: x509.Certificate) -> List[str]:
+    try:
+        ext = cert.extensions.get_extension_for_oid(
+            x509.ExtensionOID.SUBJECT_ALTERNATIVE_NAME
+        )
+        san_ext: x509.SubjectAlternativeName = ext.value
+        return san_ext.get_values_for_type(x509.DNSName)
+    except x509.extensions.ExtensionNotFound:
+        return []
+
+
+def get_certificate_meta(peer_cert: BinaryData) -> CertificateMeta:
+    raw_cert = b64decode(peer_cert.data)
+    cert = x509.load_der_x509_certificate(raw_cert, default_backend())
+
+    return CertificateMeta(
+        cert=cert,
+        issuer=cert.issuer.rfc4514_string(),
+        issuer_common_name=get_common_name(cert.issuer),
+        subject=cert.subject.rfc4514_string(),
+        subject_common_name=get_common_name(cert.subject),
+        extensions=cert.extensions,
+        san_list=get_alternative_names(cert),
+        not_valid_before=cert.not_valid_before,
+        not_valid_after=cert.not_valid_after,
+        fingerprint=cert.fingerprint(hashes.SHA256()).hex(),
+    )

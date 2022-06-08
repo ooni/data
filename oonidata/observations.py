@@ -1,7 +1,7 @@
 import hashlib
-from datetime import datetime
-from dataclasses import dataclass, field
-from typing import Generator, Optional, List
+from urllib.parse import urlparse
+from datetime import datetime, timedelta
+from typing import Generator, Optional, List, Dict
 
 from oonidata.dataformat import (
     BaseMeasurement,
@@ -9,6 +9,9 @@ from oonidata.dataformat import (
     HeadersList,
     HTTPTransaction,
     Failure,
+    NetworkEvent,
+    TCPConnect,
+    TLSHandshake,
 )
 
 from oonidata.datautils import (
@@ -17,6 +20,7 @@ from oonidata.datautils import (
     get_html_title,
     is_ipv4_bogon,
     is_ipv6_bogon,
+    get_certificate_meta,
 )
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
@@ -82,6 +86,7 @@ class Observation:
 class HTTPObservation(Observation):
     db_table = "obs_http"
 
+    domain_name: str
     request_url: str
     request_is_encrypted: bool
 
@@ -113,15 +118,24 @@ class HTTPObservation(Observation):
 
 def make_http_observations(
     msmt: BaseMeasurement,
-    requests_list: List[HTTPTransaction],
+    requests_list: Optional[List[HTTPTransaction]],
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
 ) -> Generator[HTTPObservation, None, None]:
+    if not requests_list:
+        return
+
     for idx, http_transaction in enumerate(requests_list):
         hrro = HTTPObservation(msmt, netinfodb)
 
+        if http_transaction.t:
+            hrro.timestamp += timedelta(seconds=http_transaction.t)
+
+        parsed_url = urlparse(http_transaction.request.url)
+
         hrro.request_url = http_transaction.request.url
-        hrro.request_is_encrypted = http_transaction.request.url.startswith("https://")
+        hrro.domain_name = parsed_url.hostname
+        hrro.request_is_encrypted = parsed_url.scheme == "https"
         hrro.request_body_is_truncated = http_transaction.request.body_is_truncated
         hrro.request_headers_list = http_transaction.request.headers_list
         hrro.request_method = http_transaction.request.method
@@ -183,6 +197,8 @@ def make_http_observations(
 class DNSObservation(Observation):
     db_table = "obs_dns"
 
+    domain_name: str
+
     query_type: str
     answer_type: str
     answer: str
@@ -192,7 +208,6 @@ class DNSObservation(Observation):
     answer_cc: Optional[str]
     answer_is_bogon: Optional[str]
 
-    domain: str
     failure: Failure
     fingerprint_id: str
     fingerprint_country_consistent: Optional[bool]
@@ -200,23 +215,32 @@ class DNSObservation(Observation):
 
 def make_dns_observations(
     msmt: BaseMeasurement,
-    queries: List[DNSQuery],
+    queries: Optional[List[DNSQuery]],
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
 ) -> Generator[DNSObservation, None, None]:
+    if not queries:
+        return
+
     for query in queries:
         if not query.answers:
             dnso = DNSObservation(msmt, netinfodb)
+            if query.t:
+                dnso.timestamp += timedelta(seconds=query.t)
+
             dnso.query_type = query.query_type
-            dnso.domain = query.hostname
+            dnso.domain_name = query.hostname
             dnso.failure = normalize_failure(query.failure)
             yield dnso
             continue
 
         for answer in query.answers:
             dnso = DNSObservation(msmt, netinfodb)
+            if query.t:
+                dnso.timestamp += timedelta(seconds=query.t)
+
             dnso.query_type = query.query_type
-            dnso.domain = query.hostname
+            dnso.domain_name = query.hostname
             dnso.answer_type = answer.answer_type
             if answer.ipv4:
                 dnso.answer = answer.ipv4
@@ -243,3 +267,190 @@ def make_dns_observations(
                         msmt.probe_cc in matched_fingerprint.expected_countries
                     )
             yield dnso
+
+
+class TCPObservation(Observation):
+    db_table = "obs_tcp"
+
+    domain_name: str
+
+    ip: str
+    port: int
+
+    ip_asn: Optional[int]
+    ip_as_org_name: Optional[str]
+    ip_as_cc: Optional[str]
+    ip_cc: Optional[str]
+
+    failure: Failure
+
+
+def make_tcp_observations(
+    msmt: BaseMeasurement,
+    tcp_connect: Optional[List[TCPConnect]],
+    netinfodb: NetinfoDB,
+    ip_to_domain: Dict[str, str] = {},
+) -> Generator[TCPObservation, None, None]:
+    if not tcp_connect:
+        return
+
+    for res in tcp_connect:
+        tcpo = TCPObservation(msmt, netinfodb)
+        if res.t:
+            tcpo.timestamp += timedelta(seconds=res.t)
+
+        tcpo.ip = res.ip
+        tcpo.port = res.port
+        tcpo.failure = normalize_failure(res.status.failure)
+        tcpo.domain_name = ip_to_domain.get(res.ip, "")
+
+        ip_info = netinfodb.lookup_ip(tcpo.timestamp, res.ip)
+        if ip_info:
+            tcpo.ip_asn = ip_info.as_info.asn
+            tcpo.ip_as_org_name = ip_info.as_info.as_org_name
+            tcpo.ip_as_cc = ip_info.as_info.as_cc
+
+            tcpo.ip_cc = ip_info.cc
+
+        yield tcpo
+
+
+def network_events_until_connect(
+    network_events: List[NetworkEvent],
+) -> List[NetworkEvent]:
+    ne_list = []
+    for ne in network_events:
+        if ne.operation == "connect":
+            break
+        ne_list.append(ne)
+    return ne_list
+
+
+def find_tls_handshake_network_events(
+    tls_handshake: TLSHandshake, network_events: List[NetworkEvent]
+) -> List[NetworkEvent]:
+    current_event_window = []
+    for idx, ne in enumerate(network_events):
+        if ne.operation == "connect":
+            current_event_window = []
+        current_event_window.append(ne)
+        # We identify the network_event for the given TLS handshake based on the
+        # fact that the timestamp on tls_handshake_done event is the same as the
+        # tls_handshake time
+        if ne.operation == "tls_handshake_done" and ne.t == tls_handshake.t:
+            current_event_window += network_events_until_connect(network_events[idx:])
+            return current_event_window
+
+
+class TLSObservation(Observation):
+    db_table = "obs_tls"
+
+    domain_name: str
+
+    ip: Optional[str]
+    port: Optional[int]
+
+    ip_asn: Optional[int]
+    ip_as_org_name: Optional[str]
+    ip_as_cc: Optional[str]
+    ip_cc: Optional[str]
+
+    failure: Failure
+
+    server_name: str
+    tls_version: Optional[str]
+    cipher_suite: Optional[str]
+
+    is_certificate_valid: Optional[bool]
+
+    end_entity_certificate_fingerprint: Optional[str]
+    end_entity_certificate_subject: Optional[str]
+    end_entity_certificate_subject_common_name: Optional[str]
+    end_entity_certificate_issuer: Optional[str]
+    end_entity_certificate_issuer_common_name: Optional[str]
+    end_entity_certificate_san_list: Optional[List[str]]
+    end_entity_certificate_not_valid_after: Optional[str]
+    end_entity_certificate_not_valid_before: Optional[str]
+    certificate_chain_length: Optional[int]
+
+    tls_handshake_read_count: Optional[int]
+    tls_handshake_write_count: Optional[int]
+    tls_handshake_read_bytes: Optional[float]
+    tls_handshake_write_bytes: Optional[float]
+    tls_handshake_last_operation: Optional[str]
+    tls_handshake_time: Optional[float]
+
+
+def make_tls_observations(
+    msmt: BaseMeasurement,
+    tls_handshakes: Optional[List[TLSHandshake]],
+    network_events: Optional[List[NetworkEvent]],
+    netinfodb: NetinfoDB,
+    ip_to_domain: Dict[str, str] = {},
+) -> Generator[TLSObservation, None, None]:
+    if not tls_handshakes:
+        return
+
+    for tls_h in tls_handshakes:
+        tso = TLSObservation(msmt, netinfodb)
+        if tls_h.t:
+            tso.timestamp += timedelta(seconds=tls_h.t)
+
+        tso.server_name = tls_h.server_name
+        tso.domain_name = tls_h.server_name
+        tso.tls_version = tls_h.tls_version
+        tso.cipher_suite = tls_h.cipher_suite
+
+        tso.failure = normalize_failure(tls_h.failure)
+        if tls_h.no_tls_verify == False:
+            if tso.failure in (
+                "ssl_invalid_hostname",
+                "ssl_unknown_authority",
+                "ssl_invalid_certificate",
+            ):
+                tso.is_certificate_valid = False
+            elif not tso.failure:
+                tso.is_certificate_valid = True
+
+        tls_network_events = find_tls_handshake_network_events(tls_h, network_events)
+        if tls_network_events:
+            ip, port = tls_network_events[0].address.split(":")
+            tso.ip = ip
+            tso.port = port
+
+            tso.domain_name = ip_to_domain.get(tso.ip, "")
+
+            tso.tls_handshake_time = tls_network_events[-1].t - tls_network_events[0].t
+            tso.tls_handshake_read_count = 0
+            tso.tls_handshake_write_count = 0
+            tso.tls_handshake_read_bytes = 0
+            tso.tls_handshake_write_bytes = 0
+            for ne in tls_network_events:
+                if ne.operation == "write":
+                    tso.tls_handshake_write_count += 1
+                    tso.tls_handshake_write_bytes += ne.num_bytes
+                    tso.tls_handshake_last_operation = (
+                        f"write_{tso.tls_handshake_write_count}"
+                    )
+                elif ne.operation == "read":
+                    tso.tls_handshake_read_count += 1
+                    tso.tls_handshake_read_bytes += ne.num_bytes
+                    tso.tls_handshake_last_operation = (
+                        f"read_{tso.tls_handshake_read_count}"
+                    )
+
+        if tls_h.peer_certificates:
+            tso.certificate_chain_length = len(tls_h.peer_certificates)
+            cert_meta = get_certificate_meta(tls_h.peer_certificates[0])
+            tso.end_entity_certificate_fingerprint = cert_meta.fingerprint
+            tso.end_entity_certificate_subject = cert_meta.subject
+            tso.end_entity_certificate_subject_common_name = (
+                cert_meta.subject_common_name
+            )
+            tso.end_entity_certificate_issuer = cert_meta.issuer
+            tso.end_entity_certificate_issuer_common_name = cert_meta.issuer_common_name
+            tso.end_entity_certificate_not_valid_after = cert_meta.not_valid_after
+            tso.end_entity_certificate_not_valid_before = cert_meta.not_valid_before
+            tso.end_entity_certificate_san_list = cert_meta.san_list
+
+        yield tso

@@ -15,7 +15,6 @@ class ASInfo:
 class IPInfo:
     as_info: ASInfo
     cc: str
-    is_bogon: bool
 
 
 class NetinfoDB:
