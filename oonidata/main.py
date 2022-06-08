@@ -57,9 +57,7 @@ def _(json_list: list, max_string_size: int):
     return json_list
 
 
-def trim_container(
-    s3cachedir: pathlib.Path, fe: FileEntry, max_string_size: int
-):
+def trim_container(s3cachedir: pathlib.Path, fe: FileEntry, max_string_size: int):
     mc = fe.output_path(s3cachedir)
     temp_path = diskf.with_suffix(".tmp")
     try:
@@ -134,9 +132,7 @@ def main():
         type=_parse_date_flag,
         default=dt.date.today() - dt.timedelta(days=14),
     )
-    parser_sync.add_argument(
-        "--until", type=_parse_date_flag, default=dt.date.today()
-    )
+    parser_sync.add_argument("--until", type=_parse_date_flag, default=dt.date.today())
     parser_sync.add_argument(
         "--test-names", nargs="*", help="List of test_name values to filter by"
     )

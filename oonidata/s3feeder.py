@@ -44,9 +44,7 @@ metrics = setup_metrics(name="fastpath.s3feeder")
 
 
 def create_s3_client():
-    return boto3.client(
-        "s3", config=botoConfig(signature_version=botoSigUNSIGNED)
-    )
+    return boto3.client("s3", config=botoConfig(signature_version=botoSigUNSIGNED))
 
 
 s3 = create_s3_client()
@@ -162,9 +160,7 @@ def load_multiple(fn: str) -> Generator[MsmtTup, None, None]:
 
 
 def list_cans_on_s3_for_a_day(day: date) -> list:
-    return list(
-        map(lambda fe: (fe.s3path, fe.size), iter_cans_on_s3_for_a_day(day))
-    )
+    return list(map(lambda fe: (fe.s3path, fe.size), iter_cans_on_s3_for_a_day(day)))
 
 
 def iter_cans_on_s3_for_a_day(day: date):
@@ -186,9 +182,7 @@ def iter_cans_on_s3_for_a_day(day: date):
                 test_name = filename.split(".")[0].replace("_", "")
                 country_code = "XX"
                 ext = "tar.lz4"
-            elif filename.endswith(".json.lz4") or filename.endswith(
-                ".yaml.lz4"
-            ):
+            elif filename.endswith(".json.lz4") or filename.endswith(".yaml.lz4"):
                 parts = filename.split("-")
                 country_code = parts[1]
                 test_name = parts[3].replace("_", "")
@@ -274,9 +268,7 @@ def iter_file_entries(prefix: str) -> Generator[FileEntry, None, None]:
 def list_all_testnames() -> Set[str]:
     testnames = set()
     paginator = s3.get_paginator("list_objects_v2")
-    for r in paginator.paginate(
-        Bucket=MC_BUCKET_NAME, Prefix="jsonl/", Delimiter="/"
-    ):
+    for r in paginator.paginate(Bucket=MC_BUCKET_NAME, Prefix="jsonl/", Delimiter="/"):
         for f in r.get("CommonPrefixes", []):
             testnames.add(f["Prefix"].split("/")[-2])
     return testnames
@@ -316,15 +308,11 @@ def get_jsonl_prefixes(
     prefixes = []
     if start_day < date(2020, 10, 21):
         prefixes = get_search_prefixes(testnames, ccs)
-        combos = list(
-            itertools.product(prefixes, date_interval(start_day, end_day))
-        )
+        combos = list(itertools.product(prefixes, date_interval(start_day, end_day)))
         # This results in a faster listing in cases where we need only a small time
         # window or few testnames. For larger windows of time, we are better off
         # just listing everything.
-        if (
-            len(combos) > 1_000_000
-        ):  # XXX we might want to tweak this parameter a bit
+        if len(combos) > 1_000_000:  # XXX we might want to tweak this parameter a bit
             prefixes = [f"{p}{d:%Y%m%d}" for p, d in combos]
 
     return prefixes + legacy_prefixes
@@ -385,9 +373,7 @@ def iter_minicans_on_s3_for_a_day(
         yield file_entry
 
 
-def _calculate_etr(
-    t0, now, start_day, day, stop_day, can_num, can_tot_count
-) -> int:
+def _calculate_etr(t0, now, start_day, day, stop_day, can_num, can_tot_count) -> int:
     """Estimate total runtime in seconds.
     stop_day is not included, can_num starts from 0
     """
@@ -403,9 +389,7 @@ def _update_eta(t0, start_day, day, stop_day, can_num, can_tot_count):
     """Generate metric process_s3_measurements_eta expressed as epoch"""
     try:
         now = time.time()
-        etr = _calculate_etr(
-            t0, now, start_day, day, stop_day, can_num, can_tot_count
-        )
+        etr = _calculate_etr(t0, now, start_day, day, stop_day, can_num, can_tot_count)
         eta = t0 + etr
         metrics.gauge("process_s3_measurements_eta", eta)
     except:
@@ -442,9 +426,7 @@ def download_measurement_container(s3cachedir: Path, file_entry: FileEntry):
             return
         _cb.count += bytes_count
         _cb.total_count += bytes_count
-        metrics.gauge(
-            "s3_download_percentage", _cb.total_count / _cb.total_size * 100
-        )
+        metrics.gauge("s3_download_percentage", _cb.total_count / _cb.total_size * 100)
         try:
             speed = _cb.count / 131_072 / (time.time() - _cb.start_time)
             metrics.gauge("s3_download_speed_avg_Mbps", speed)
@@ -458,9 +440,7 @@ def download_measurement_container(s3cachedir: Path, file_entry: FileEntry):
     diskf.parent.mkdir(parents=True, exist_ok=True)
     tmpf = diskf.with_suffix(".s3tmp")
     with tmpf.open("wb") as f:
-        s3.download_fileobj(
-            file_entry.bucket_name, file_entry.s3path, f, Callback=_cb
-        )
+        s3.download_fileobj(file_entry.bucket_name, file_entry.s3path, f, Callback=_cb)
         f.flush()
         os.fsync(f.fileno())
     metrics.gauge("fetching", 0)
@@ -488,9 +468,7 @@ def stream_measurements(
             log.error(str(e), exc_info=True)
         processed_size += fe.size
         mbps = processed_size / (time.time() - t0) / 1_000_000
-        eta = timedelta(
-            seconds=(total_size - processed_size) / (mbps * 1_000_000)
-        )
+        eta = timedelta(seconds=(total_size - processed_size) / (mbps * 1_000_000))
         log.info(f"Speed: {mbps} MB/s")
         log.info(f"ETA: {eta}")
         if not keep_s3_cache:
@@ -500,9 +478,7 @@ def stream_measurements(
                 pass
 
 
-def stream_cans(
-    conf, start_day: date, end_day: date
-) -> Generator[MsmtTup, None, None]:
+def stream_cans(conf, start_day: date, end_day: date) -> Generator[MsmtTup, None, None]:
     """Stream cans from S3"""
     log.info("Fetching older cans from S3")
     t0 = time.time()

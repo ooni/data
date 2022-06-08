@@ -1,7 +1,7 @@
 import hashlib
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
-from typing import Generator, Optional, List, Dict
+from typing import Generator, Optional, List, Dict, Tuple
 
 from oonidata.dataformat import (
     BaseMeasurement,
@@ -93,7 +93,7 @@ class HTTPObservation(Observation):
     request_redirect_from: Optional[str]
     request_body_length: Optional[int]
     request_body_is_truncated: Optional[bool]
-    request_headers_list: Optional[HeadersList]
+    request_headers_list: Optional[List[Tuple[str, bytes]]]
     request_method: Optional[str]
 
     response_body_length: Optional[int]
@@ -103,7 +103,7 @@ class HTTPObservation(Observation):
     response_body_meta_title: Optional[str]
 
     response_status_code: Optional[int]
-    response_headers_list: Optional[HeadersList]
+    response_headers_list: Optional[List[Tuple[str, bytes]]]
     response_header_location: Optional[str]
     response_header_server: Optional[str]
 
@@ -137,7 +137,7 @@ def make_http_observations(
         hrro.domain_name = parsed_url.hostname
         hrro.request_is_encrypted = parsed_url.scheme == "https"
         hrro.request_body_is_truncated = http_transaction.request.body_is_truncated
-        hrro.request_headers_list = http_transaction.request.headers_list
+        hrro.request_headers_list = http_transaction.request.headers_list_bytes
         hrro.request_method = http_transaction.request.method
 
         if http_transaction.request.body_bytes:
@@ -171,7 +171,7 @@ def make_http_observations(
             )
 
         hrro.response_status_code = http_transaction.response.code
-        hrro.response_headers_list = http_transaction.response.headers_list
+        hrro.response_headers_list = http_transaction.response.headers_list_bytes
 
         hrro.response_header_location = get_first_http_header(
             "location", http_transaction.response.headers_list_bytes

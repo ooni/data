@@ -1,5 +1,7 @@
+import inspect
 from collections.abc import Iterable
-from typing import Optional, Union, Tuple, List
+from datetime import datetime
+from typing import Optional, Union, Tuple, List, Any
 
 from oonidata.observations import (
     Observation,
@@ -25,6 +27,49 @@ class DatabaseConnection:
         return
 
 
+def _annotation_to_db_type(t: Any) -> str:
+    if t == Optional[str] or t == str:
+        return "String"
+
+    if t == int or t == Optional[int]:
+        return "Int32"
+
+    if t == bool or t == Optional[bool]:
+        return "Int8"
+
+    if t == datetime or t == Optional[datetime]:
+        return "Datetime64(6)"
+
+    if t == float or t == Optional[float]:
+        return "Float64"
+
+    if t == List[str] or t == Optional[List[str]]:
+        return "Array(String)"
+
+    if t == Optional[List[Tuple[str, bytes]]]:
+        return "Array(Array(String))"
+
+    raise Exception(f"Unhandled type {t}")
+
+
+def create_query_for_observation(obs_class: Observation) -> str:
+    create_query = f"CREATE TABLE IF NOT EXISTS {obs_class.db_table} ("
+    for cls in inspect.getmro(obs_class):
+        for name, ants in inspect.get_annotations(cls).items():
+            if name == "db_table":
+                continue
+            type_str = _annotation_to_db_type(ants)
+            create_query += f"`{name}` {type_str}\n"
+
+    create_query += ")\n"
+    create_query += """
+    ENGINE = ReplacingMergeTree
+    ORDER BY ()
+    SETTINGS index_granularity = 8192;
+    """
+    return create_query
+
+
 def insert_query_for_observation(observation: Observation) -> Tuple[str, dict]:
     params = {}
     for attr in observation.__dict__:
@@ -37,7 +82,7 @@ def insert_query_for_observation(observation: Observation) -> Tuple[str, dict]:
 
 def write_observations_to_db(
     db: DatabaseConnection, observations: Iterable[Observation]
-):
+) -> None:
     for obs in observations:
         query, params = insert_query_for_observation(obs)
         db.execute(query, params)
@@ -48,7 +93,7 @@ def web_connectivity_processor(
     db: DatabaseConnection,
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
-) -> bool:
+) -> None:
     http_observations = make_http_observations(
         msmt, msmt.test_keys.requests, fingerprintdb, netinfodb
     )
