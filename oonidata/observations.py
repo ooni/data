@@ -15,6 +15,8 @@ from oonidata.datautils import (
     get_first_http_header,
     get_html_meta_title,
     get_html_title,
+    is_ipv4_bogon,
+    is_ipv6_bogon,
 )
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
@@ -78,6 +80,8 @@ class Observation:
 
 
 class HTTPObservation(Observation):
+    db_table = "obs_http"
+
     request_url: str
     request_is_encrypted: bool
 
@@ -177,6 +181,8 @@ def make_http_observations(
 
 
 class DNSObservation(Observation):
+    db_table = "obs_dns"
+
     query_type: str
     answer_type: str
     answer: str
@@ -184,6 +190,7 @@ class DNSObservation(Observation):
     answer_as_org_name: Optional[str]
     answer_as_cc: Optional[str]
     answer_cc: Optional[str]
+    answer_is_bogon: Optional[str]
 
     domain: str
     failure: Failure
@@ -213,8 +220,10 @@ def make_dns_observations(
             dnso.answer_type = answer.answer_type
             if answer.ipv4:
                 dnso.answer = answer.ipv4
+                dnso.answer_is_bogon = is_ipv4_bogon(answer.ipv4)
             elif answer.ipv6:
                 dnso.answer = answer.ipv6
+                dnso.answer_is_bogon = is_ipv6_bogon(answer.ipv6)
             elif answer.hostname:
                 dnso.answer = answer.hostname
 
