@@ -1,5 +1,7 @@
 import io
+import re
 import json
+import ast
 from typing import Optional, List
 from dataclasses import dataclass, field, fields, asdict
 import requests
@@ -9,8 +11,8 @@ from oonidata.utils import fingerprints as ooni_fingerprint
 
 CP_FINGERPRINTS_CP = "https://raw.githubusercontent.com/censoredplanet/censoredplanet-analysis/master/pipeline/metadata/data/blockpage_signatures.json"
 CP_FALSE_POSITIVE_CP = "https://raw.githubusercontent.com/censoredplanet/censoredplanet-analysis/master/pipeline/metadata/data/false_positive_signatures.json"
-CL_DNS = "https://raw.githubusercontent.com/citizenlab/filtering-annotations/blob/841940d6fcee5a794aeddb02eee43a7775cfeda3/data/v1/dns.csv"
-CL_HTTP = "https://raw.githubusercontent.com/citizenlab/filtering-annotations/blob/master/data/v1/http.csv"
+CL_DNS = "https://raw.githubusercontent.com/citizenlab/filtering-annotations/841940d6fcee5a794aeddb02eee43a7775cfeda3/data/v1/dns.csv"
+CL_HTTP = "https://raw.githubusercontent.com/citizenlab/filtering-annotations/master/data/v1/http.csv"
 
 
 @dataclass
@@ -25,6 +27,24 @@ class Fingerprint:
     scope: Optional[str] = ""
     notes: Optional[str] = ""
     expected_countries: Optional[List[str]] = field(default_factory=list)
+
+
+# Scope can be one of:
+# "nat" national level blockpage
+# "isp" ISP level blockpage
+# "prod" text pattern related to a middlebox product
+# "inst" text pattern related to a voluntary instition blockpage (school, office)
+# "vbw" vague blocking word
+
+# OONI scopes are:
+# blocking locality: global > country > isp > local
+
+ooni_scope_to_cl = {
+    "global": "vbw",
+    "country": "nat",
+    "isp": "isp",
+    "local": "inst",
+}
 
 
 def main():
@@ -55,17 +75,18 @@ def main():
 
     print(f"Fetching CL fingerprints from {CL_HTTP}")
     resp = requests.get(CL_HTTP)
+    assert resp.status_code == 200
     csv_reader = csv.DictReader(io.StringIO(resp.text))
     for row in csv_reader:
         fp = Fingerprint(
             name="cl." + row["name"],
             location_found=row["location_found"],
-            pattern=row["pattern"],
+            pattern=re.escape(row["pattern"]),
             confidence_no_fp=row["confidence_no_fp"],
             exp_url=row["exp_url"],
-            source=json.loads(row["source"]),
+            source=ast.literal_eval(row["source"]),
             scope=row["scope"],
-            expected_countries=json.loads[row["expected_countries"]],
+            expected_countries=ast.literal_eval(row["expected_countries"]),
             notes=row["notes"],
         )
         if fp.location_found == "header":
@@ -74,6 +95,7 @@ def main():
 
     print(f"Fetching CL fingerprints from {CL_DNS}")
     resp = requests.get(CL_DNS)
+    assert resp.status_code == 200
     csv_reader = csv.DictReader(io.StringIO(resp.text))
     for row in csv_reader:
         fp = Fingerprint(
@@ -82,9 +104,9 @@ def main():
             pattern=row["response"],
             confidence_no_fp=row["confidence_no_fp"],
             exp_url=row["exp_url"],
-            source=json.loads(row["source"]),
+            source=ast.literal_eval(row["source"]),
             scope=row["scope"],
-            expected_countries=json.loads[row["expected_countries"]],
+            expected_countries=ast.literal_eval(row["expected_countries"]),
             notes=row["notes"],
         )
         maybe_add_fingerprint(fp)
@@ -111,7 +133,7 @@ def main():
                     name=fp_name,
                     source=["censored planet"],
                     location_found="header.location",
-                    pattern=pattern,
+                    pattern="^" + pattern,
                 )
             )
             continue
@@ -122,7 +144,7 @@ def main():
                     name=fp_name,
                     source=["censored planet"],
                     location_found="header.location",
-                    pattern=pattern.lstrip("Location: "),
+                    pattern="^" + pattern.lstrip("Location: "),
                 )
             )
             continue
@@ -142,14 +164,14 @@ def main():
             location_found = ""
             if "body_match" in fp:
                 location_found = "body"
-                pattern = fp["body_match"]
+                pattern = re.escape(fp["body_match"])
             elif "header_name" in fp:
                 header_name = fp["header_name"].lower()
                 location_found = f"header.{header_name}"
                 if "header_prefix" in fp:
-                    pattern = fp["header_prefix"]
+                    pattern = "^" + re.escape(fp["header_prefix"])
                 elif "header_full" in fp:
-                    pattern = fp["header_full"]
+                    pattern = "^" + re.escape(fp["header_full"]) + "$"
                 else:
                     raise Exception("Unknown header position")
             elif "dns_full" in fp:
@@ -164,7 +186,7 @@ def main():
                     confidence_no_fp=5,
                     exp_url="",
                     source=["ooni"],
-                    scope=fp["locality"],
+                    scope=ooni_scope_to_cl.get(fp["locality"]),
                     expected_countries=[cc],
                     notes="",
                 )
