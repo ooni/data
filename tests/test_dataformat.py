@@ -7,15 +7,7 @@ from typing import Optional
 from dacite import from_dict
 
 from oonidata.dataformat import load_measurement, HTTPTransaction
-
-
-def get_raw_measurement(report_id: str, input: Optional[str] = None):
-    params = params = {"report_id": report_id, "full": True}
-    if input:
-        params["input"] = input
-    r = requests.get("https://api.ooni.io/api/v1/measurement_meta", params=params)
-    j = r.json()
-    return j["raw_measurement"]
+from oonidata.apiclient import get_raw_measurement
 
 
 def test_dataformat_web_connectivity():

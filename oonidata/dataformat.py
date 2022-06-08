@@ -37,6 +37,11 @@ class Annotations:
 
 
 @dataclass
+class BaseTestKeys:
+    client_resolver: Optional[str]
+
+
+@dataclass
 class BaseMeasurement:
     measurement_uid: Optional[str]
 
@@ -59,6 +64,8 @@ class BaseMeasurement:
 
     software_name: str
     software_version: str
+
+    test_keys: BaseTestKeys
 
 
 # This is not 100% accurate, ideally we would say
@@ -204,11 +211,6 @@ class NetworkEvent:
 
 
 @dataclass
-class BaseTestKeys:
-    control_resolver: Optional[str]
-
-
-@dataclass
 class WebConnectivityControlHTTPRequest:
     body_length: Optional[int]
     failure: Failure
@@ -274,14 +276,10 @@ class WebConnectivity(BaseMeasurement):
 nettest_dataformats = {"web_connectivity": WebConnectivity}
 
 
-def load_measurement(raw: bytes) -> Any:
+def load_measurement(raw: bytes) -> BaseMeasurement:
     data = ujson.loads(raw)
     dc = nettest_dataformats.get(data["test_name"], BaseMeasurement)
     msm = from_dict(data_class=dc, data=data)
     if not msm.measurement_uid:
         msm.measurement_uid = trivial_id(raw=raw.encode("utf-8"), msm=msm)
     return msm
-
-
-def etl():
-    pass
