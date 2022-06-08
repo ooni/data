@@ -42,3 +42,21 @@ def test_http_observations():
 
     assert len(all_dns_obs) == 1
     all_dns_obs[0].answer == "46.19.96.204"
+
+    http_blocked = load_measurement(
+        get_raw_measurement(
+            "20220608T120927Z_webconnectivity_RU_41668_n1_wuoaKW00hbGU12Yw",
+            "http://proxy.org/",
+        )
+    )
+    all_http_obs = [
+        obs
+        for obs in make_http_observations(
+            http_blocked,
+            http_blocked.test_keys.requests,
+            fingerprintdb=fingerprintdb,
+            netinfodb=netinfodb,
+        )
+    ]
+    assert all_http_obs[0].response_matches_blockpage == True
+    assert all_http_obs[0].fingerprint_country_consistent == True

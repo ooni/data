@@ -77,20 +77,6 @@ class Observation:
                 self.resolver_cc = resolver_as_info.cc
 
 
-class DNSObservation(Observation):
-    query_type: str
-    answer_type: str
-    answer: str
-    answer_asn: Optional[str]
-    answer_as_org_name: Optional[str]
-    answer_as_cc: Optional[str]
-    answer_cc: Optional[str]
-
-    domain: str
-    failure: Failure
-    fingerprint_id: str
-
-
 class HTTPObservation(Observation):
     request_url: str
     request_is_encrypted: bool
@@ -115,6 +101,7 @@ class HTTPObservation(Observation):
     failure: Failure
 
     response_fingerprints: List[str]
+    fingerprint_country_consistent: Optional[bool]
     response_matches_blockpage: bool = False
     response_matches_false_positive: bool = False
     x_transport: Optional[str] = "tcp"
@@ -147,6 +134,8 @@ def make_http_observations(
                 hrro.response_matches_false_positive = True
             else:
                 hrro.response_matches_blockpage = True
+            if fp.expected_countries and msmt.probe_cc in fp.expected_countries:
+                hrro.fingerprint_country_consistent = True
             hrro.response_fingerprints.append(fp.name)
 
         hrro.failure = normalize_failure(http_transaction.failure)
@@ -187,6 +176,21 @@ def make_http_observations(
         yield hrro
 
 
+class DNSObservation(Observation):
+    query_type: str
+    answer_type: str
+    answer: str
+    answer_asn: Optional[str]
+    answer_as_org_name: Optional[str]
+    answer_as_cc: Optional[str]
+    answer_cc: Optional[str]
+
+    domain: str
+    failure: Failure
+    fingerprint_id: str
+    fingerprint_country_consistent: Optional[bool]
+
+
 def make_dns_observations(
     msmt: BaseMeasurement,
     queries: List[DNSQuery],
@@ -222,5 +226,11 @@ def make_dns_observations(
                     dnso.answer_as_org_name = answer_meta.as_info.as_org_name
                     dnso.answer_cc = answer_meta.cc
 
-            dnso.fingerprint_id = fingerprintdb.match_dns(dnso.answer)
+            matched_fingerprint = fingerprintdb.match_dns(dnso.answer)
+            if matched_fingerprint:
+                dnso.fingerprint_id = matched_fingerprint.name
+                if matched_fingerprint.expected_countries:
+                    dnso.fingerprint_country_consistent = (
+                        msmt.probe_cc in matched_fingerprint.expected_countries
+                    )
             yield dnso
