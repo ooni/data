@@ -2,31 +2,18 @@ import io
 import re
 import json
 import ast
-from typing import Optional, List
-from dataclasses import dataclass, field, fields, asdict
+from dataclasses import fields, asdict
+from typing import Any, Dict
 import requests
 import csv
 
 from oonidata.utils import fingerprints as ooni_fingerprint
+from oonidata.fingerprints.matcher import Fingerprint
 
 CP_FINGERPRINTS_CP = "https://raw.githubusercontent.com/censoredplanet/censoredplanet-analysis/master/pipeline/metadata/data/blockpage_signatures.json"
 CP_FALSE_POSITIVE_CP = "https://raw.githubusercontent.com/censoredplanet/censoredplanet-analysis/master/pipeline/metadata/data/false_positive_signatures.json"
 CL_DNS = "https://raw.githubusercontent.com/citizenlab/filtering-annotations/841940d6fcee5a794aeddb02eee43a7775cfeda3/data/v1/dns.csv"
 CL_HTTP = "https://raw.githubusercontent.com/citizenlab/filtering-annotations/master/data/v1/http.csv"
-
-
-@dataclass
-class Fingerprint:
-    name: str
-    pattern: str
-    location_found: str
-    common_name: Optional[str] = ""
-    exp_url: Optional[str] = ""
-    confidence_no_fp: Optional[int] = 5
-    source: List[Optional[str]] = field(default_factory=list)
-    scope: Optional[str] = ""
-    notes: Optional[str] = ""
-    expected_countries: Optional[List[str]] = field(default_factory=list)
 
 
 # Scope can be one of:
@@ -35,6 +22,7 @@ class Fingerprint:
 # "prod" text pattern related to a middlebox product
 # "inst" text pattern related to a voluntary instition blockpage (school, office)
 # "vbw" vague blocking word
+# "fp" fingerprint for false positives
 
 # OONI scopes are:
 # blocking locality: global > country > isp > local
@@ -45,6 +33,25 @@ ooni_scope_to_cl = {
     "isp": "isp",
     "local": "inst",
 }
+
+csv_header_fields = [
+    "name",
+    "common_name",
+    "pattern",
+    "location_found",
+    "scope",
+    "confidence_no_fp",
+    "expected_countries",
+    "source",
+    "exp_url",
+    "notes",
+]
+
+
+def fp_to_dict(fp: Fingerprint) -> Dict[str, Any]:
+    d = asdict(fp)
+    d.pop("regexp")
+    return d
 
 
 def main():
@@ -72,6 +79,58 @@ def main():
             header_fp_strings.add(fp.pattern)
         if fp.location_found == "dns":
             dns_fp_responses.add(fp.pattern)
+
+    def load_cp_fingeprints(url: str, fp_prefix: str, scope=""):
+        resp = requests.get(url)
+        for line in resp.text.split("\n"):
+            if line == "":
+                continue
+            d = json.loads(line)
+            pattern = d["pattern"]
+            fp_name = fp_prefix + d["fingerprint"]
+            if pattern.startswith("http://") or pattern.startswith("https://"):
+                maybe_add_fingerprint(
+                    Fingerprint(
+                        name=fp_name,
+                        source=["censored planet"],
+                        location_found="body",
+                        pattern=pattern,
+                        scope=scope,
+                    )
+                )
+                maybe_add_fingerprint(
+                    Fingerprint(
+                        name=fp_name,
+                        source=["censored planet"],
+                        location_found="header.location",
+                        pattern="^" + pattern,
+                        scope=scope,
+                    )
+                )
+                continue
+
+            if pattern.lower().startswith("Location: "):
+                maybe_add_fingerprint(
+                    Fingerprint(
+                        name=fp_name,
+                        source=["censored planet"],
+                        location_found="header.location",
+                        pattern="^" + pattern.lstrip("Location: "),
+                        scope=scope,
+                    )
+                )
+                continue
+
+            maybe_add_fingerprint(
+                Fingerprint(
+                    name=fp_name,
+                    source=["censored planet"],
+                    location_found="body",
+                    pattern=pattern,
+                    scope=scope,
+                )
+            )
+        pass
 
     print(f"Fetching CL fingerprints from {CL_HTTP}")
     resp = requests.get(CL_HTTP)
@@ -112,51 +171,9 @@ def main():
         maybe_add_fingerprint(fp)
 
     print(f"Fetching CP fingerprints from {CP_FINGERPRINTS_CP}")
-    resp = requests.get(CP_FINGERPRINTS_CP)
-    for line in resp.text.split("\n"):
-        if line == "":
-            continue
-        d = json.loads(line)
-        pattern = d["pattern"]
-        fp_name = "cp." + d["fingerprint"]
-        if pattern.startswith("http://") or pattern.startswith("https://"):
-            maybe_add_fingerprint(
-                Fingerprint(
-                    name=fp_name,
-                    source=["censored planet"],
-                    location_found="body",
-                    pattern=pattern,
-                )
-            )
-            maybe_add_fingerprint(
-                Fingerprint(
-                    name=fp_name,
-                    source=["censored planet"],
-                    location_found="header.location",
-                    pattern="^" + pattern,
-                )
-            )
-            continue
-
-        if pattern.lower().startswith("Location: "):
-            maybe_add_fingerprint(
-                Fingerprint(
-                    name=fp_name,
-                    source=["censored planet"],
-                    location_found="header.location",
-                    pattern="^" + pattern.lstrip("Location: "),
-                )
-            )
-            continue
-
-        maybe_add_fingerprint(
-            Fingerprint(
-                name=fp_name,
-                source=["censored planet"],
-                location_found="body",
-                pattern=pattern,
-            )
-        )
+    load_cp_fingeprints(url=CP_FINGERPRINTS_CP, fp_prefix="cp.")
+    print(f"Fetching CP false positicve fingerprints from {CP_FALSE_POSITIVE_CP}")
+    load_cp_fingeprints(url=CP_FALSE_POSITIVE_CP, fp_prefix="cp.fp_", scope="fp")
 
     for cc, fingerprint_list in ooni_fingerprint.items():
         for idx, fp in enumerate(fingerprint_list):
@@ -192,26 +209,26 @@ def main():
                 )
             )
 
-    fieldnames = [f.name for f in fields(Fingerprint)]
     with open("fingerprints_http.csv", "w") as out_file:
-        writer = csv.DictWriter(out_file, fieldnames=fieldnames)
+        writer = csv.DictWriter(out_file, fieldnames=csv_header_fields)
         writer.writeheader()
         writer.writerows(
             map(
-                lambda fp: asdict(fp),
+                fp_to_dict,
                 filter(lambda fp: fp.location_found != "dns", fingerprints),
             )
         )
 
     with open("fingerprints_dns.csv", "w") as out_file:
-        writer = csv.DictWriter(out_file, fieldnames=fieldnames)
+        writer = csv.DictWriter(out_file, fieldnames=csv_header_fields)
         writer.writeheader()
         writer.writerows(
             map(
-                lambda fp: asdict(fp),
+                fp_to_dict,
                 filter(lambda fp: fp.location_found == "dns", fingerprints),
             )
         )
 
 
-main()
+if __name__ == "__main__":
+    main()
