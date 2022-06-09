@@ -32,6 +32,8 @@ def normalize_failure(failure: Failure):
 
 class Observation:
     measurement_uid: str
+    observation_id: str
+
     session_id: Optional[str]
 
     timestamp: datetime
@@ -131,6 +133,8 @@ def make_http_observations(
 
         if http_transaction.t:
             hrro.timestamp += timedelta(seconds=http_transaction.t)
+
+        hrro.observation_id = f"{hrro.measurement_uid}{idx}"
 
         hrro.failure = normalize_failure(http_transaction.failure)
 
@@ -241,16 +245,20 @@ def make_dns_observations(
             if query.t:
                 dnso.timestamp += timedelta(seconds=query.t)
 
+            dnso.observation_id = f"{dnso.measurement_uid}0"
+
             dnso.query_type = query.query_type
             dnso.domain_name = query.hostname
             dnso.failure = normalize_failure(query.failure)
             yield dnso
             continue
 
-        for answer in query.answers:
+        for idx, answer in enumerate(query.answers):
             dnso = DNSObservation(msmt, netinfodb)
             if query.t:
                 dnso.timestamp += timedelta(seconds=query.t)
+
+            dnso.observation_id = f"{dnso.measurement_uid}{idx}"
 
             dnso.query_type = query.query_type
             dnso.domain_name = query.hostname
@@ -307,10 +315,12 @@ def make_tcp_observations(
     if not tcp_connect:
         return
 
-    for res in tcp_connect:
+    for idx, res in enumerate(tcp_connect):
         tcpo = TCPObservation(msmt, netinfodb)
         if res.t:
             tcpo.timestamp += timedelta(seconds=res.t)
+
+        tcpo.observation_id = f"{tcpo.measurement_uid}{idx}"
 
         tcpo.ip = res.ip
         tcpo.port = res.port
@@ -404,8 +414,11 @@ def make_tls_observations(
     if not tls_handshakes:
         return
 
-    for tls_h in tls_handshakes:
+    for idx, tls_h in enumerate(tls_handshakes):
         tso = TLSObservation(msmt, netinfodb)
+
+        tso.observation_id = f"{tso.measurement_uid}{idx}"
+
         if tls_h.t:
             tso.timestamp += timedelta(seconds=tls_h.t)
 

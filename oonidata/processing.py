@@ -1,9 +1,10 @@
 import json
 import csv
 import inspect
+import argparse
 from tqdm import tqdm
 from pprint import pprint
-from datetime import date, timedelta
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from functools import cache
 
@@ -121,7 +122,11 @@ def web_connectivity_processor(
     dns_observations = make_dns_observations(
         msmt, msmt.test_keys.queries, fingerprintdb, netinfodb
     )
-    ip_to_domain = {obs.answer: obs.domain_name for obs in dns_observations}
+    ip_to_domain = {
+        obs.answer: obs.domain_name
+        # XXX this is a bit sketchy, it should be tidied up in the datamodel
+        for obs in filter(lambda o: hasattr(o, "answer"), dns_observations)
+    }
 
     tcp_observations = make_tcp_observations(
         msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
@@ -190,5 +195,36 @@ def process_day(db: DatabaseConnection, day: date, start_at_idx=0):
 
 if __name__ == "__main__":
     # XXX this is just for temporary testing
-    db = CSVConnection(Path("../outputs"))
-    process_day(db, date(2022, 1, 1), 31469)
+    def _parse_date_flag(date_str: str) -> date:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--csv-dir",
+        type=str,
+    )
+    parser.add_argument(
+        "--clickhouse",
+        type=str,
+    )
+    parser.add_argument(
+        "--day",
+        type=_parse_date_flag,
+        default=date(2022, 1, 1),
+    )
+    parser.add_argument(
+        "--start-at-idx",
+        type=int,
+        default=0,
+    )
+    args = parser.parse_args()
+
+    if args.clickhouse:
+        db = ClickhouseConnection(args.clickhouse)
+    elif args.csv_dir:
+        db = CSVConnection(Path(args.csv_dir))
+    else:
+        raise Exception("Missing --csv-dir or --clickhouse")
+
+    # 31469
+    process_day(db, args.day, args.start_at_idx)
