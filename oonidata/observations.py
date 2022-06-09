@@ -94,9 +94,9 @@ class HTTPObservation(Observation):
     request_is_encrypted: bool
 
     request_redirect_from: Optional[str]
-    request_body_length: Optional[int]
+    request_body_length: int
     request_body_is_truncated: Optional[bool]
-    request_headers_list: Optional[List[Tuple[str, bytes]]]
+    # request_headers_list: Optional[List[Tuple[str, bytes]]]
     request_method: Optional[str]
 
     response_body_length: Optional[int]
@@ -106,7 +106,7 @@ class HTTPObservation(Observation):
     response_body_meta_title: Optional[str]
 
     response_status_code: Optional[int]
-    response_headers_list: Optional[List[Tuple[str, bytes]]]
+    # response_headers_list: Optional[List[Tuple[str, bytes]]]
     response_header_location: Optional[str]
     response_header_server: Optional[str]
 
@@ -136,6 +136,7 @@ def make_http_observations(
 
         hrro.observation_id = f"{hrro.measurement_uid}{idx}"
 
+        hrro.response_fingerprints = []
         hrro.failure = normalize_failure(http_transaction.failure)
 
         if not http_transaction.request:
@@ -150,10 +151,11 @@ def make_http_observations(
         hrro.domain_name = parsed_url.hostname
         hrro.request_is_encrypted = parsed_url.scheme == "https"
         hrro.request_body_is_truncated = http_transaction.request.body_is_truncated
-        hrro.request_headers_list = http_transaction.request.headers_list_bytes
+        # hrro.request_headers_list = http_transaction.request.headers_list_bytes
         hrro.request_method = http_transaction.request.method
 
         hrro.x_transport = http_transaction.request.x_transport
+        hrro.request_body_length = 0
         if http_transaction.request.body_bytes:
             hrro.request_body_length = len(http_transaction.request.body_bytes)
 
@@ -163,7 +165,6 @@ def make_http_observations(
 
         hrro.response_body_is_truncated = http_transaction.response.body_is_truncated
 
-        hrro.response_fingerprints = []
         fp_matches = fingerprintdb.match_http(http_transaction.response)
         for fp in fp_matches:
             if fp.scope == "fp":
@@ -187,7 +188,7 @@ def make_http_observations(
             )
 
         hrro.response_status_code = http_transaction.response.code
-        hrro.response_headers_list = http_transaction.response.headers_list_bytes
+        # hrro.response_headers_list = http_transaction.response.headers_list_bytes
 
         hrro.response_header_location = get_first_http_header(
             "location", http_transaction.response.headers_list_bytes
@@ -217,7 +218,7 @@ class DNSObservation(Observation):
     query_type: str
     answer_type: str
     answer: str
-    answer_asn: Optional[str]
+    answer_asn: Optional[int]
     answer_as_org_name: Optional[str]
     answer_as_cc: Optional[str]
     answer_cc: Optional[str]
@@ -391,9 +392,9 @@ class TLSObservation(Observation):
     end_entity_certificate_subject_common_name: Optional[str]
     end_entity_certificate_issuer: Optional[str]
     end_entity_certificate_issuer_common_name: Optional[str]
-    end_entity_certificate_san_list: Optional[List[str]]
-    end_entity_certificate_not_valid_after: Optional[str]
-    end_entity_certificate_not_valid_before: Optional[str]
+    end_entity_certificate_san_list: List[str]
+    end_entity_certificate_not_valid_after: Optional[datetime]
+    end_entity_certificate_not_valid_before: Optional[datetime]
     certificate_chain_length: Optional[int]
 
     tls_handshake_read_count: Optional[int]
@@ -426,6 +427,8 @@ def make_tls_observations(
         tso.domain_name = tls_h.server_name
         tso.tls_version = tls_h.tls_version
         tso.cipher_suite = tls_h.cipher_suite
+
+        tso.end_entity_certificate_san_list = []
 
         tso.failure = normalize_failure(tls_h.failure)
         if tls_h.no_tls_verify == False:

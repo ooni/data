@@ -71,20 +71,25 @@ class CSVConnection(DatabaseConnection):
 
 
 @cache
-def observation_attrs(obs_class: Observation) -> List[str]:
+def observation_attrs(obs_class: Observation) -> List[Tuple[str, Any]]:
     obs_attrs = []
     for cls in reversed(inspect.getmro(obs_class)):
-        for name in inspect.get_annotations(cls).keys():
+        ann = cls.__dict__.get("__annotations__")
+        if not ann:
+            continue
+        for name, t in ann.items():
             if name == "db_table":
                 continue
-            obs_attrs.append(name)
+            obs_attrs.append((name, t))
     return obs_attrs
 
 
 def make_observation_row(observation: Observation) -> dict:
     row = {}
-    for name in observation_attrs(observation.__class__):
+    for name, t in observation_attrs(observation.__class__):
         row[name] = getattr(observation, name, None)
+        if t in (Optional[str], str) and row[name] is None:
+            row[name] = ""
     return row
 
 
@@ -111,16 +116,13 @@ def web_connectivity_processor(
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
 ) -> None:
-    http_observations = make_http_observations(
-        msmt, msmt.test_keys.requests, fingerprintdb, netinfodb
-    )
     write_observations_to_db(
         db,
-        http_observations,
+        make_http_observations(msmt, msmt.test_keys.requests, fingerprintdb, netinfodb),
     )
 
-    dns_observations = make_dns_observations(
-        msmt, msmt.test_keys.queries, fingerprintdb, netinfodb
+    dns_observations = list(
+        make_dns_observations(msmt, msmt.test_keys.queries, fingerprintdb, netinfodb)
     )
     ip_to_domain = {
         obs.answer: obs.domain_name
@@ -128,20 +130,21 @@ def web_connectivity_processor(
         for obs in filter(lambda o: hasattr(o, "answer"), dns_observations)
     }
 
-    tcp_observations = make_tcp_observations(
-        msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
-    )
     write_observations_to_db(
         db,
-        tcp_observations,
+        make_tcp_observations(
+            msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
+        ),
     )
 
-    tls_observations = make_tls_observations(
-        msmt,
-        msmt.test_keys.tls_handshakes,
-        msmt.test_keys.network_events,
-        netinfodb,
-        ip_to_domain,
+    tls_observations = list(
+        make_tls_observations(
+            msmt,
+            msmt.test_keys.tls_handshakes,
+            msmt.test_keys.network_events,
+            netinfodb,
+            ip_to_domain,
+        )
     )
     write_observations_to_db(
         db,
@@ -149,11 +152,16 @@ def web_connectivity_processor(
     )
 
     tls_valid_domain_to_ip = {
-        obs.domain: obs.is_certificate_valid for obs in tls_observations
+        obs.domain: obs.is_certificate_valid
+        for obs in filter(
+            lambda o: hasattr(o, "domain") and hasattr(o, "is_certificate_valid"),
+            tls_observations,
+        )
     }
     enriched_dns_observations = []
     for dns_obs in dns_observations:
-        dns_obs.is_tls_consistent = tls_valid_domain_to_ip.get(dns_obs.answer, None)
+        if hasattr(dns_obs, "answer"):
+            dns_obs.is_tls_consistent = tls_valid_domain_to_ip.get(dns_obs.answer, None)
         enriched_dns_observations.append(dns_obs)
 
     write_observations_to_db(
