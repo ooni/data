@@ -1,8 +1,17 @@
+import json
+import csv
 import inspect
+from tqdm import tqdm
+from pprint import pprint
+from datetime import date, timedelta
+from pathlib import Path
+from functools import cache
+
 from collections.abc import Iterable
-from datetime import datetime
+from re import S
 from typing import Optional, Union, Tuple, List, Any
 
+from oonidata.dataformat import load_measurement
 from oonidata.observations import (
     Observation,
     make_http_observations,
@@ -13,6 +22,8 @@ from oonidata.observations import (
 from oonidata.dataformat import BaseMeasurement
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
+
+from oonidata.dataclient import iter_raw_measurements
 
 
 class DatabaseConnection:
@@ -26,66 +37,71 @@ class DatabaseConnection:
         print(params)
         return
 
-
-def _annotation_to_db_type(t: Any) -> str:
-    if t == Optional[str] or t == str:
-        return "String"
-
-    if t == int or t == Optional[int]:
-        return "Int32"
-
-    if t == bool or t == Optional[bool]:
-        return "Int8"
-
-    if t == datetime or t == Optional[datetime]:
-        return "Datetime64(6)"
-
-    if t == float or t == Optional[float]:
-        return "Float64"
-
-    if t == List[str] or t == Optional[List[str]]:
-        return "Array(String)"
-
-    if t == Optional[List[Tuple[str, bytes]]]:
-        return "Array(Array(String))"
-
-    raise Exception(f"Unhandled type {t}")
+    def write_row(self, table_name, row):
+        print(f"Writing to {table_name}")
+        pprint(row)
 
 
-def create_query_for_observation(obs_class: Observation) -> str:
-    create_query = f"CREATE TABLE IF NOT EXISTS {obs_class.db_table} ("
-    for cls in inspect.getmro(obs_class):
-        for name, ants in inspect.get_annotations(cls).items():
+class ClickhouseConnection(DatabaseConnection):
+    def __init__(self, conn_url):
+        from clickhouse_driver import Client
+
+        self.client = Client.from_url(conn_url)
+
+    def write_row(self, table_name, row):
+        fields = ", ".join(row.keys())
+        query_str = f"INSERT INTO {table_name} ({fields}) VALUES"
+        self.client.execute(query_str, [row])
+
+
+class CSVConnection(DatabaseConnection):
+    def __init__(self, output_dir):
+        self.output_dir = output_dir
+        self.open_writers = {}
+
+    def write_row(self, table_name, row):
+        if table_name not in self.open_writers:
+            out_path = (self.output_dir / f"{table_name}.csv").open("w")
+            csv_writer = csv.DictWriter(out_path, fieldnames=list(row.keys()))
+            csv_writer.writeheader()
+            self.open_writers[table_name] = csv_writer
+
+        self.open_writers[table_name].writerow(row)
+
+
+@cache
+def observation_attrs(obs_class: Observation) -> List[str]:
+    obs_attrs = []
+    for cls in reversed(inspect.getmro(obs_class)):
+        for name in inspect.get_annotations(cls).keys():
             if name == "db_table":
                 continue
-            type_str = _annotation_to_db_type(ants)
-            create_query += f"`{name}` {type_str}\n"
-
-    create_query += ")\n"
-    create_query += """
-    ENGINE = ReplacingMergeTree
-    ORDER BY ()
-    SETTINGS index_granularity = 8192;
-    """
-    return create_query
+            obs_attrs.append(name)
+    return obs_attrs
 
 
-def insert_query_for_observation(observation: Observation) -> Tuple[str, dict]:
-    params = {}
-    for attr in observation.__dict__:
-        params[attr] = getattr(observation, attr)
-    fields = ", ".join(params.keys())
-    query_str = f"INSERT INTO {observation.db_table} ({fields}) VALUES"
-
-    return (query_str, params)
+def make_observation_row(observation: Observation) -> dict:
+    row = {}
+    for name in observation_attrs(observation.__class__):
+        row[name] = getattr(observation, name, None)
+    return row
 
 
 def write_observations_to_db(
     db: DatabaseConnection, observations: Iterable[Observation]
 ) -> None:
     for obs in observations:
-        query, params = insert_query_for_observation(obs)
-        db.execute(query, params)
+        row = make_observation_row(obs)
+        db.write_row(obs.db_table, row)
+
+
+def default_processor(
+    msmt: BaseMeasurement,
+    db: DatabaseConnection,
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
+) -> None:
+    print(f"Ignoring {msmt}")
 
 
 def web_connectivity_processor(
@@ -105,11 +121,6 @@ def web_connectivity_processor(
     dns_observations = make_dns_observations(
         msmt, msmt.test_keys.queries, fingerprintdb, netinfodb
     )
-    write_observations_to_db(
-        db,
-        dns_observations,
-    )
-
     ip_to_domain = {obs.answer: obs.domain_name for obs in dns_observations}
 
     tcp_observations = make_tcp_observations(
@@ -121,12 +132,63 @@ def web_connectivity_processor(
     )
 
     tls_observations = make_tls_observations(
-        msmt, msmt.test_keys.tls_handshakes, netinfodb, ip_to_domain
+        msmt,
+        msmt.test_keys.tls_handshakes,
+        msmt.test_keys.network_events,
+        netinfodb,
+        ip_to_domain,
     )
     write_observations_to_db(
         db,
         tls_observations,
     )
 
+    tls_valid_domain_to_ip = {
+        obs.domain: obs.is_certificate_valid for obs in tls_observations
+    }
+    enriched_dns_observations = []
+    for dns_obs in dns_observations:
+        dns_obs.is_tls_consistent = tls_valid_domain_to_ip.get(dns_obs.answer, None)
+        enriched_dns_observations.append(dns_obs)
+
+    write_observations_to_db(
+        db,
+        enriched_dns_observations,
+    )
+
 
 nettest_processors = {"web_connectivity": web_connectivity_processor}
+
+
+def process_day(db: DatabaseConnection, day: date, start_at_idx=0):
+    fingerprintdb = FingerprintDB()
+    netinfodb = NetinfoDB()
+
+    with tqdm(unit="B", unit_scale=True) as pbar:
+        for idx, raw_msmt in enumerate(
+            iter_raw_measurements(
+                ccs=[], testnames=[], start_day=day, end_day=day + timedelta(days=1)
+            )
+        ):
+            pbar.set_description(f"idx {idx}")
+            pbar.update(len(raw_msmt))
+            if idx < start_at_idx:
+                continue
+            try:
+                msmt = load_measurement(raw_msmt)
+                processor = nettest_processors.get(msmt.test_name, default_processor)
+                processor(
+                    msmt,
+                    db,
+                    fingerprintdb,
+                    netinfodb,
+                )
+            except Exception as exc:
+                pprint(json.loads(raw_msmt))
+                raise exc
+
+
+if __name__ == "__main__":
+    # XXX this is just for temporary testing
+    db = CSVConnection(Path("../outputs"))
+    process_day(db, date(2022, 1, 1), 31469)

@@ -2,6 +2,7 @@ import pkgutil
 import re
 import io
 import csv
+from collections import OrderedDict
 from typing import Optional, List
 from dataclasses import dataclass, field
 
@@ -46,8 +47,8 @@ class Fingerprint:
         return False
 
 
-def _load_fingerprints(fn: str) -> List[Fingerprint]:
-    fingerprints = []
+def _load_fingerprints(fn: str) -> OrderedDict[Fingerprint]:
+    fingerprints = OrderedDict()
     data = pkgutil.get_data(__name__, fn)
     if not data:
         raise FileNotFoundError(f"Could not find {fn}")
@@ -57,7 +58,7 @@ def _load_fingerprints(fn: str) -> List[Fingerprint]:
         fp = Fingerprint(**row)
         if fp.location_found != "dns":
             fp.regexp = re.compile(fp.pattern, re.DOTALL)
-        fingerprints.append(fp)
+        fingerprints[fp.name] = fp
     return fingerprints
 
 
@@ -68,13 +69,19 @@ class FingerprintDB:
 
     def match_http(self, http_response: HTTPResponse) -> List[Fingerprint]:
         matches = []
-        for fp in self.http_fp:
+        for fp in self.http_fp.values():
             if fp.matches_http(http_response):
                 matches.append(fp)
         return matches
 
     def match_dns(self, address: str) -> Optional[Fingerprint]:
-        for fp in self.dns_fp:
+        for fp in self.dns_fp.values():
             if fp.pattern == address:
                 return fp
         return None
+
+    def get_fp(self, name: str) -> Fingerprint:
+        try:
+            return self.dns_fp[name]
+        except KeyError:
+            return self.http_fp[name]

@@ -2,7 +2,7 @@ import ujson
 
 from base64 import b64decode
 
-from typing import Optional, Tuple, Union, List, Any
+from typing import Optional, Tuple, Union, List, Any, Union
 from dataclasses import dataclass
 
 from dacite import from_dict
@@ -47,7 +47,7 @@ class BaseMeasurement:
 
     annotations: Annotations
 
-    input: Optional[str]
+    input: Union[str, List[str], None]
 
     measurement_start_time: str
 
@@ -65,7 +65,8 @@ class BaseMeasurement:
     software_name: str
     software_version: str
 
-    test_keys: BaseTestKeys
+    # XXX do we in fact want this to be so lax?
+    test_keys: Optional[BaseTestKeys]
 
 
 # This is not 100% accurate, ideally we would say
@@ -127,8 +128,8 @@ class HTTPTransaction:
     failure: Failure
     transaction_id: Optional[int]
 
-    request: HTTPRequest
-    response: HTTPResponse
+    request: Optional[HTTPRequest]
+    response: Optional[HTTPResponse]
 
     t: Optional[float]
 
@@ -163,12 +164,12 @@ class DNSQuery:
     t: Optional[float]
     transaction_id: Optional[int]
 
-    answers: List[DNSAnswer]
+    answers: Optional[List[DNSAnswer]]
 
 
 @dataclass
 class TCPConnectStatus:
-    blocked: bool
+    blocked: Optional[bool]
     success: bool
     failure: Failure
 
@@ -228,15 +229,15 @@ class WebConnectivityControlDNS:
 
 @dataclass
 class WebConnectivityControlTCPConnectStatus:
-    status: bool
+    status: Optional[bool]
     failure: Failure
 
 
 @dataclass
 class WebConnectivityControl:
-    tcp_connect: dict[str, WebConnectivityControlTCPConnectStatus]
+    tcp_connect: Optional[dict[str, WebConnectivityControlTCPConnectStatus]]
     http_request: Optional[WebConnectivityControlHTTPRequest]
-    dns: WebConnectivityControlDNS
+    dns: Optional[WebConnectivityControlDNS]
 
 
 @dataclass
@@ -282,5 +283,5 @@ def load_measurement(raw: bytes) -> BaseMeasurement:
     dc = nettest_dataformats.get(data["test_name"], BaseMeasurement)
     msm = from_dict(data_class=dc, data=data)
     if not msm.measurement_uid:
-        msm.measurement_uid = trivial_id(raw=raw.encode("utf-8"), msm=msm)
+        msm.measurement_uid = trivial_id(raw=raw, msm=msm)
     return msm

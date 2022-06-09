@@ -37,6 +37,9 @@ def get_html_title(body: bytes) -> bytes:
 def get_first_http_header(
     header_name: str, header_list: HeadersListBytes, case_sensitive: bool = False
 ) -> bytes:
+    if not header_list:
+        return b""
+
     if case_sensitive == False:
         header_name = header_name.lower()
 

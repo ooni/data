@@ -1,12 +1,11 @@
 import hashlib
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
 from typing import Generator, Optional, List, Dict, Tuple
 
 from oonidata.dataformat import (
     BaseMeasurement,
     DNSQuery,
-    HeadersList,
     HTTPTransaction,
     Failure,
     NetworkEvent,
@@ -33,6 +32,8 @@ def normalize_failure(failure: Failure):
 
 class Observation:
     measurement_uid: str
+    session_id: Optional[str]
+
     timestamp: datetime
 
     probe_asn: int
@@ -131,6 +132,14 @@ def make_http_observations(
         if http_transaction.t:
             hrro.timestamp += timedelta(seconds=http_transaction.t)
 
+        hrro.failure = normalize_failure(http_transaction.failure)
+
+        if not http_transaction.request:
+            # XXX this is a very malformed request, does it even count as an
+            # observation?
+            yield hrro
+            continue
+
         parsed_url = urlparse(http_transaction.request.url)
 
         hrro.request_url = http_transaction.request.url
@@ -140,8 +149,13 @@ def make_http_observations(
         hrro.request_headers_list = http_transaction.request.headers_list_bytes
         hrro.request_method = http_transaction.request.method
 
+        hrro.x_transport = http_transaction.request.x_transport
         if http_transaction.request.body_bytes:
             hrro.request_body_length = len(http_transaction.request.body_bytes)
+
+        if not http_transaction.response:
+            yield hrro
+            continue
 
         hrro.response_body_is_truncated = http_transaction.response.body_is_truncated
 
@@ -155,8 +169,6 @@ def make_http_observations(
             if fp.expected_countries and msmt.probe_cc in fp.expected_countries:
                 hrro.fingerprint_country_consistent = True
             hrro.response_fingerprints.append(fp.name)
-
-        hrro.failure = normalize_failure(http_transaction.failure)
 
         if http_transaction.response.body_bytes:
             hrro.response_body_length = len(http_transaction.response.body_bytes)
@@ -179,7 +191,6 @@ def make_http_observations(
         hrro.response_header_server = get_first_http_header(
             "server", http_transaction.response.headers_list_bytes
         )
-        hrro.x_transport = http_transaction.request.x_transport
 
         try:
             prev_request = requests_list[idx + 1]
@@ -188,7 +199,7 @@ def make_http_observations(
             ).decode("utf-8")
             if prev_location == hrro.request_url:
                 hrro.request_redirect_from = prev_request.request.url
-        except (IndexError, UnicodeDecodeError):
+        except (IndexError, UnicodeDecodeError, AttributeError):
             pass
 
         yield hrro
@@ -211,6 +222,8 @@ class DNSObservation(Observation):
     failure: Failure
     fingerprint_id: str
     fingerprint_country_consistent: Optional[bool]
+
+    is_tls_consistent: Optional[bool]
 
 
 def make_dns_observations(
@@ -414,9 +427,9 @@ def make_tls_observations(
 
         tls_network_events = find_tls_handshake_network_events(tls_h, network_events)
         if tls_network_events:
-            ip, port = tls_network_events[0].address.split(":")
-            tso.ip = ip
-            tso.port = port
+            p = urlsplit("//" + tls_network_events[0].address)
+            tso.ip = p.hostname
+            tso.port = p.port
 
             tso.domain_name = ip_to_domain.get(tso.ip, "")
 
@@ -427,14 +440,16 @@ def make_tls_observations(
             tso.tls_handshake_write_bytes = 0
             for ne in tls_network_events:
                 if ne.operation == "write":
-                    tso.tls_handshake_write_count += 1
-                    tso.tls_handshake_write_bytes += ne.num_bytes
+                    if ne.num_bytes:
+                        tso.tls_handshake_write_count += 1
+                        tso.tls_handshake_write_bytes += ne.num_bytes
                     tso.tls_handshake_last_operation = (
                         f"write_{tso.tls_handshake_write_count}"
                     )
-                elif ne.operation == "read":
-                    tso.tls_handshake_read_count += 1
-                    tso.tls_handshake_read_bytes += ne.num_bytes
+                elif ne.operation == "read" and ne.num_bytes:
+                    if ne.num_bytes:
+                        tso.tls_handshake_read_count += 1
+                        tso.tls_handshake_read_bytes += ne.num_bytes
                     tso.tls_handshake_last_operation = (
                         f"read_{tso.tls_handshake_read_count}"
                     )
