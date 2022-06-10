@@ -63,6 +63,7 @@ class Observation:
         )
         self.probe_asn = int(msmt.probe_asn.lstrip("AS"))
         self.probe_cc = msmt.probe_cc
+        self.session_id = msmt.report_id
 
         self.software_name = msmt.software_name
         self.software_version = msmt.software_version

@@ -48,6 +48,7 @@ class BaseMeasurement:
     annotations: Annotations
 
     input: Union[str, List[str], None]
+    report_id: str
 
     measurement_start_time: str
 
@@ -120,7 +121,7 @@ class HTTPRequest(HTTPBase):
 
 @dataclass
 class HTTPResponse(HTTPBase):
-    code: int
+    code: Optional[int]
 
 
 @dataclass
