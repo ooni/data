@@ -89,7 +89,7 @@ class HTTPBase:
     body: MaybeBinaryData
     body_bytes: Optional[bytes]
     body_is_truncated: Optional[bool]
-    headers: Optional[dict[str, str]]
+    headers: Optional[dict[str, MaybeBinaryData]]
     headers_list: Optional[HeadersList]
     headers_list_bytes: Optional[HeadersListBytes]
 
