@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from re import S
 from typing import Optional, Union, Tuple, List, Any
 
+from oonidata.datautils import trim_measurement
 from oonidata.dataformat import load_measurement
 from oonidata.observations import (
     Observation,
@@ -52,7 +53,11 @@ class ClickhouseConnection(DatabaseConnection):
     def write_row(self, table_name, row):
         fields = ", ".join(row.keys())
         query_str = f"INSERT INTO {table_name} ({fields}) VALUES"
-        self.client.execute(query_str, [row])
+        try:
+            self.client.execute(query_str, [row])
+        except Exception as exc:
+            print(f"Failed to write row {row}")
+            raise exc
 
 
 class CSVConnection(DatabaseConnection):
@@ -197,7 +202,7 @@ def process_day(db: DatabaseConnection, day: date, start_at_idx=0):
                     netinfodb,
                 )
             except Exception as exc:
-                pprint(json.loads(raw_msmt))
+                pprint(trim_measurement(json.loads(raw_msmt), 30))
                 raise exc
 
 

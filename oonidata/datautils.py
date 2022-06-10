@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import List
 from dataclasses import dataclass
+from functools import singledispatch
 import re
 import ipaddress
 
@@ -220,3 +221,30 @@ def get_certificate_meta(peer_cert: BinaryData) -> CertificateMeta:
         not_valid_after=cert.not_valid_after,
         fingerprint=cert.fingerprint(hashes.SHA256()).hex(),
     )
+
+
+# Taken from:
+# https://github.com/Jigsaw-Code/net-analysis/blob/master/netanalysis/ooni/data/sync_measurements.py#L33
+@singledispatch
+def trim_measurement(json_obj, max_string_size: int):
+    return json_obj
+
+
+@trim_measurement.register(dict)
+def _(json_dict: dict, max_string_size: int):
+    keys_to_delete: List[str] = []
+    for key, value in json_dict.items():
+        if type(value) == str and len(value) > max_string_size:
+            keys_to_delete.append(key)
+        else:
+            trim_measurement(value, max_string_size)
+    for key in keys_to_delete:
+        del json_dict[key]
+    return json_dict
+
+
+@trim_measurement.register(list)
+def _(json_list: list, max_string_size: int):
+    for item in json_list:
+        trim_measurement(item, max_string_size)
+    return json_list
