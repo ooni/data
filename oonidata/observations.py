@@ -222,7 +222,7 @@ class DNSObservation(Observation):
     answer_as_org_name: Optional[str]
     answer_as_cc: Optional[str]
     answer_cc: Optional[str]
-    answer_is_bogon: Optional[str]
+    answer_is_bogon: Optional[bool]
 
     failure: Failure
     fingerprint_id: str

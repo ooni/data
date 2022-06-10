@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS obs_dns (
     `answer_as_org_name` String,
     `answer_as_cc` String,
     `answer_cc` String,
-    `answer_is_bogon` String,
+    `answer_is_bogon` Nullable(bool),
     `failure` String,
     `fingerprint_id` String,
     `fingerprint_country_consistent` Nullable(bool),
