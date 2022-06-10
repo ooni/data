@@ -30,32 +30,6 @@ from .s3feeder import jsonl_in_range
 log = logging.getLogger("oonidata")
 logging.basicConfig(level=logging.INFO)
 
-# Taken from:
-# https://github.com/Jigsaw-Code/net-analysis/blob/master/netanalysis/ooni/data/sync_measurements.py#L33
-@singledispatch
-def trim_measurement(json_obj, max_string_size: int):
-    return json_obj
-
-
-@trim_measurement.register(dict)
-def _(json_dict: dict, max_string_size: int):
-    keys_to_delete: List[str] = []
-    for key, value in json_dict.items():
-        if type(value) == str and len(value) > max_string_size:
-            keys_to_delete.append(key)
-        else:
-            trim_measurement(value, max_string_size)
-    for key in keys_to_delete:
-        del json_dict[key]
-    return json_dict
-
-
-@trim_measurement.register(list)
-def _(json_list: list, max_string_size: int):
-    for item in json_list:
-        trim_measurement(item, max_string_size)
-    return json_list
-
 
 def trim_container(s3cachedir: pathlib.Path, fe: FileEntry, max_string_size: int):
     mc = fe.output_path(s3cachedir)

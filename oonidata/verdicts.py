@@ -2,7 +2,7 @@ import ipaddress
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, List, Tuple, Generator
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
@@ -13,6 +13,7 @@ from oonidata.observations import (
     TCPObservation,
     TLSObservation,
 )
+from oonidata.db.connections import ClickhouseConnection
 
 
 class Outcome(Enum):
@@ -55,6 +56,7 @@ def fp_scope_to_outcome(scope: str) -> Outcome:
 @dataclass
 class Verdict:
     measurement_uid: str
+    verdict_uid: str
     timestamp: datetime
 
     probe_asn: int
@@ -95,6 +97,7 @@ def make_verdict_from_obs(
 ) -> Verdict:
     return Verdict(
         measurement_uid=obs.measurement_uid,
+        verdict_uid=obs.observation_id,
         timestamp=obs.timestamp,
         probe_asn=obs.probe_asn,
         probe_cc=obs.probe_cc,
@@ -122,12 +125,34 @@ class TCPBaseline:
     unreachable_cc_asn: List[Tuple(str, int)]
 
 
-class DNSBaseline:
-    domain: str
-    nxdomain_cc_asn: List[Tuple(str, int)]
-    failure_cc_asn: List[Tuple(str, int)]
-    ok_cc_asn: List[Tuple(str, int)]
-    tls_consistent_answers: List[str]
+def make_tcp_baseline_map(
+    day: date, domain_name: str, db: ClickhouseConnection
+) -> dict[str, TCPBaseline]:
+    tcp_baseline_map = {}
+
+    q_params = (
+        {
+            "domain_name": domain_name,
+            "start_day": day,
+            "end_day": day + timedelta(days=1),
+        },
+    )
+
+    q = """SELECT probe_cc, probe_asn, ip, failure FROM obs_tcp
+    WHERE domain_name = %(domain_name)s 
+    AND timestamp >= %(start_day)s
+    AND timestamp <= %(end_day)s
+    GROUP BY probe_cc, probe_asn, ip, failure;
+    """
+    res = db.execute(q, q_params)
+    if len(res) > 0:
+        for probe_cc, probe_asn, ip, failure in res:
+            tcp_baseline_map[ip] = tcp_baseline_map.get(ip, TCPBaseline())
+            if not failure:
+                tcp_baseline_map[ip].reachable_cc_asn.append((probe_cc, probe_asn))
+            else:
+                tcp_baseline_map[ip].unreachbale_cc_asn.append((probe_cc, probe_asn))
+    return tcp_baseline_map
 
 
 class HTTPBaseline:
@@ -141,6 +166,124 @@ class HTTPBaseline:
     response_body_meta_title: str
 
     response_status_code: int
+
+
+def make_http_baseline_map(
+    day: date, domain_name: str, db: ClickhouseConnection
+) -> dict[str, HTTPBaseline]:
+    http_baseline_map = {}
+
+    q_params = (
+        {
+            "domain_name": domain_name,
+            "start_day": day,
+            "end_day": day + timedelta(days=1),
+        },
+    )
+
+    q = """SELECT probe_cc, probe_asn, request_url, failure FROM obs_http
+    WHERE domain_name = %(domain_name)s 
+    AND timestamp >= %(start_day)s
+    AND timestamp <= %(end_day)s
+    GROUP BY probe_cc, probe_asn, ip, failure;
+    """
+    res = db.execute(q, q_params)
+    if len(res) > 0:
+        for probe_cc, probe_asn, request_url, failure in res:
+            http_baseline_map[request_url] = http_baseline_map.get(ip, HTTPBaseline())
+            if not failure:
+                http_baseline_map[request_url].failure_cc_asn.append(
+                    (probe_cc, probe_asn)
+                )
+            else:
+                http_baseline_map[request_url].ok_cc_asn.append((probe_cc, probe_asn))
+
+    q = """SELECT request_url,
+    topK(1)(response_body_sha1),
+    topK(1)(response_body_length),
+    topK(1)(response_body_title),
+    topK(1)(response_body_meta_title),
+    topK(1)(response_status_code)
+    FROM obs_http
+    WHERE failure = ''
+    AND domain_name = %(domain_name)s 
+    AND timestamp >= %(start_day)s
+    AND timestamp <= %(end_day)s
+    GROUP BY request_url;
+    """
+    res = db.execute(q, q_params)
+    if len(res) > 0:
+        for (
+            request_url,
+            response_body_sha1,
+            response_body_length,
+            response_body_title,
+            response_body_meta_title,
+            response_status_code,
+        ) in res:
+            http_baseline_map[request_url] = http_baseline_map.get(ip, HTTPBaseline())
+            http_baseline_map[request_url].response_body_sha1 = response_body_sha1
+            http_baseline_map[request_url].response_body_length = response_body_length
+            http_baseline_map[request_url].response_body_title = response_body_title
+            http_baseline_map[
+                request_url
+            ].response_body_meta_title = response_body_meta_title
+            http_baseline_map[request_url].response_status_code = response_status_code
+
+    return http_baseline_map
+
+
+class DNSBaseline:
+    domain: str
+    nxdomain_cc_asn: List[Tuple(str, int)]
+    failure_cc_asn: List[Tuple(str, int)]
+    ok_cc_asn: List[Tuple(str, int)]
+    tls_consistent_answers: List[str]
+
+
+def make_dns_baseline(
+    day: date, domain_name: str, db: ClickhouseConnection
+) -> DNSBaseline:
+    dns_baseline = DNSBaseline()
+    dns_baseline.tls_consistent_answers = []
+    dns_baseline.ok_cc_asn = []
+    dns_baseline.failure_cc_asn = []
+    dns_baseline.nxdomain_cc_asn = []
+
+    q_params = (
+        {
+            "domain_name": domain_name,
+            "start_day": day,
+            "end_day": day + timedelta(days=1),
+        },
+    )
+
+    q = """SELECT DISTINCT(ip) FROM obs_tls
+    WHERE is_certificate_valid = 1 
+    AND domain_name = %(domain_name)s 
+    AND timestamp >= %(start_day)s
+    AND timestamp <= %(end_day)s;
+    """
+    res = db.execute(q, q_params)
+    if len(res) > 0:
+        dns_baseline.tls_consistent_answers = res[0][0]
+
+    q = """SELECT DISTINCT(probe_cc, probe_asn, failure) FROM obs_dns
+    WHERE domain_name = %(domain_name)s 
+    AND timestamp >= %(start_day)s
+    AND timestamp <= %(end_day)s;
+    """
+    res = db.execute(q, q_params)
+    if len(res) > 0:
+        for probe_cc, probe_asn, failure in res:
+            if not failure:
+                dns_baseline.ok_cc_asn.append((probe_cc, probe_asn))
+            else:
+                dns_baseline.failure_cc_asn.append((probe_cc, probe_asn))
+                if failure == "dns_nxdomain_error":
+                    dns_baseline.nxdomain_cc_asn.append((probe_cc, probe_asn))
+
+    return dns_baseline
 
 
 def is_dns_consistent(
@@ -583,3 +726,19 @@ def make_website_verdicts(
             http_b = http_b_map.get(http_o.request_url)
             http_v = make_website_http_verdict(http_o, http_b, verdicts, fingerprintdb)
             verdicts.append(http_v)
+
+    if len(verdicts) == 0:
+        # We didn't generate any verdicts up to now, so it's reasonable to say
+        # there is no interference happening for the given domain_name
+        ok_verdict = make_verdict_from_obs(
+            dns_o_list[0],
+            confidence=0.9,
+            subject=domain_name,
+            subject_detail="",
+            subject_category="website",
+            outcome=Outcome.OK,
+            outcome_detail="",
+        )
+        yield ok_verdict
+        verdicts.append(ok_verdict)
+    return verdicts
