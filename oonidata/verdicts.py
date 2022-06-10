@@ -121,8 +121,8 @@ def make_verdict_from_obs(
 class TCPBaseline:
     ip: str
     port: int
-    reachable_cc_asn: List[Tuple(str, int)]
-    unreachable_cc_asn: List[Tuple(str, int)]
+    reachable_cc_asn: List[Tuple[str, int]]
+    unreachable_cc_asn: List[Tuple[str, int]]
 
 
 def make_tcp_baseline_map(
@@ -157,8 +157,8 @@ def make_tcp_baseline_map(
 
 class HTTPBaseline:
     url: str
-    failure_cc_asn: List[Tuple(str, int)]
-    ok_cc_asn: List[Tuple(str, int)]
+    failure_cc_asn: List[Tuple[str, int]]
+    ok_cc_asn: List[Tuple[str, int]]
 
     response_body_length: int
     response_body_sha1: str
@@ -235,9 +235,9 @@ def make_http_baseline_map(
 
 class DNSBaseline:
     domain: str
-    nxdomain_cc_asn: List[Tuple(str, int)]
-    failure_cc_asn: List[Tuple(str, int)]
-    ok_cc_asn: List[Tuple(str, int)]
+    nxdomain_cc_asn: List[Tuple[str, int]]
+    failure_cc_asn: List[Tuple[str, int]]
+    ok_cc_asn: List[Tuple[str, int]]
     tls_consistent_answers: List[str]
 
 

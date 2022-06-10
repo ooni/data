@@ -1,4 +1,3 @@
-from email.generator import Generator
 import json
 import csv
 import inspect
@@ -10,8 +9,7 @@ from pathlib import Path
 from functools import cache
 
 from collections.abc import Iterable
-from re import S
-from typing import Optional, Tuple, List, Any
+from typing import Optional, Tuple, List, Any, Generator
 
 from oonidata.datautils import trim_measurement
 from oonidata.dataformat import load_measurement
@@ -161,7 +159,7 @@ def domains_in_a_day(day: date, db: ClickhouseConnection) -> Generator[str, None
 
 def dns_observations_by_session(
     day: date, domain_name: str, db: ClickhouseConnection
-) -> Generator[List[DNSObservation, None, None]]:
+) -> Generator[List[DNSObservation], None, None]:
     # I wish I had an ORM...
     field_names = map(lambda x: x[0], observation_attrs(DNSObservation))
     q = "SELECT ("
