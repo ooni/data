@@ -56,35 +56,37 @@ class Observation:
     resolver_as_org_name: Optional[str]
     resolver_as_cc: Optional[str]
 
-    def __init__(self, msmt: BaseMeasurement, netinfodb: NetinfoDB):
-        self.measurement_uid = msmt.measurement_uid
-        self.timestamp = datetime.strptime(
+    @classmethod
+    def from_measurement(cls, msmt: BaseMeasurement, netinfodb: NetinfoDB):
+        obs = cls()
+        obs.measurement_uid = msmt.measurement_uid
+        obs.timestamp = datetime.strptime(
             msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S"
         )
-        self.probe_asn = int(msmt.probe_asn.lstrip("AS"))
-        self.probe_cc = msmt.probe_cc
-        self.session_id = msmt.report_id
+        obs.probe_asn = int(msmt.probe_asn.lstrip("AS"))
+        obs.probe_cc = msmt.probe_cc
+        obs.session_id = msmt.report_id
 
-        self.software_name = msmt.software_name
-        self.software_version = msmt.software_version
-        self.network_type = msmt.annotations.network_type
-        self.platform = msmt.annotations.platform
-        self.origin = msmt.annotations.origin
+        obs.software_name = msmt.software_name
+        obs.software_version = msmt.software_version
+        obs.network_type = msmt.annotations.network_type
+        obs.platform = msmt.annotations.platform
+        obs.origin = msmt.annotations.origin
 
-        probe_as_info = netinfodb.lookup_asn(self.timestamp, self.probe_asn)
+        probe_as_info = netinfodb.lookup_asn(obs.timestamp, obs.probe_asn)
         if probe_as_info:
-            self.probe_as_org_name = probe_as_info.as_org_name
-            self.probe_as_cc = probe_as_info.as_cc
+            obs.probe_as_org_name = probe_as_info.as_org_name
+            obs.probe_as_cc = probe_as_info.as_cc
 
         resolver_ip = msmt.resolver_ip or msmt.test_keys.client_resolver
         if resolver_ip:
-            resolver_as_info = netinfodb.lookup_ip(self.timestamp, resolver_ip)
+            resolver_as_info = netinfodb.lookup_ip(obs.timestamp, resolver_ip)
             if resolver_as_info:
-                self.resolver_ip = resolver_ip
-                self.resolver_asn = resolver_as_info.as_info.asn
-                self.resolver_as_org_name = resolver_as_info.as_info.as_org_name
-                self.resolver_as_cc = resolver_as_info.as_info.as_cc
-                self.resolver_cc = resolver_as_info.cc
+                obs.resolver_ip = resolver_ip
+                obs.resolver_asn = resolver_as_info.as_info.asn
+                obs.resolver_as_org_name = resolver_as_info.as_info.as_org_name
+                obs.resolver_as_cc = resolver_as_info.as_info.as_cc
+                obs.resolver_cc = resolver_as_info.cc
 
 
 class HTTPObservation(Observation):
@@ -130,7 +132,7 @@ def make_http_observations(
         return
 
     for idx, http_transaction in enumerate(requests_list):
-        hrro = HTTPObservation(msmt, netinfodb)
+        hrro = HTTPObservation.from_measurement(msmt, netinfodb)
 
         if http_transaction.t:
             hrro.timestamp += timedelta(seconds=http_transaction.t)
@@ -243,7 +245,7 @@ def make_dns_observations(
 
     for query in queries:
         if not query.answers:
-            dnso = DNSObservation(msmt, netinfodb)
+            dnso = DNSObservation.from_measurement(msmt, netinfodb)
             if query.t:
                 dnso.timestamp += timedelta(seconds=query.t)
 
@@ -256,7 +258,7 @@ def make_dns_observations(
             continue
 
         for idx, answer in enumerate(query.answers):
-            dnso = DNSObservation(msmt, netinfodb)
+            dnso = DNSObservation.from_measurement(msmt, netinfodb)
             if query.t:
                 dnso.timestamp += timedelta(seconds=query.t)
 
@@ -417,7 +419,7 @@ def make_tls_observations(
         return
 
     for idx, tls_h in enumerate(tls_handshakes):
-        tso = TLSObservation(msmt, netinfodb)
+        tso = TLSObservation.from_measurement(msmt, netinfodb)
 
         tso.observation_id = f"{tso.measurement_uid}{idx}"
 

@@ -1,3 +1,4 @@
+from email.generator import Generator
 import json
 import csv
 import inspect
@@ -15,7 +16,11 @@ from typing import Optional, Tuple, List, Any
 from oonidata.datautils import trim_measurement
 from oonidata.dataformat import load_measurement
 from oonidata.observations import (
+    DNSObservation,
+    HTTPObservation,
     Observation,
+    TCPObservation,
+    TLSObservation,
     make_http_observations,
     make_dns_observations,
     make_tcp_observations,
@@ -24,6 +29,12 @@ from oonidata.observations import (
 from oonidata.dataformat import BaseMeasurement
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
+from oonidata.verdicts import (
+    make_dns_baseline,
+    make_http_baseline_map,
+    make_tcp_baseline_map,
+    make_website_verdicts,
+)
 
 from oonidata.dataclient import iter_raw_measurements
 from oonidata.db.connections import (
@@ -132,6 +143,161 @@ def web_connectivity_processor(
         enriched_dns_observations,
     )
 
+
+def domains_in_a_day(day: date, db: ClickhouseConnection) -> Generator[str, None, None]:
+    q = """SELECT DISTINCT(domain_name) FROM obs_dns
+    WHERE timestamp >= %(start_day)s
+    AND timestamp <= %(end_day)s;
+    """
+    q_params = (
+        {
+            "start_day": day,
+            "end_day": day + timedelta(days=1),
+        },
+    )
+    for res in db.execute(q, q_params):
+        yield res[0]
+
+
+def dns_observations_by_session(
+    day: date, domain_name: str, db: ClickhouseConnection
+) -> Generator[List[DNSObservation, None, None]]:
+    # I wish I had an ORM...
+    field_names = map(lambda x: x[0], observation_attrs(DNSObservation))
+    q = "SELECT ("
+    q += ",\n".join(field_names)
+    q += """
+    )
+    FROM obs_dns
+    WHERE domain_name = %(domain_name)s
+    AND timestamp >= %(start_day)s
+    AND timestamp <= %(end_day)s
+    ORDER BY session_id;
+    """
+    q_params = (
+        {
+            "start_day": day,
+            "end_day": day + timedelta(days=1),
+            "domain_name": domain_name,
+        },
+    )
+    dns_obs_session = []
+    last_obs_session_id = None
+    for res in db.execute(q, q_params):
+        dns_obs = DNSObservation()
+        for idx, val in enumerate(res):
+            setattr(dns_obs, field_names[idx], val)
+        if last_obs_session_id and last_obs_session_id != dns_obs.session_id:
+            yield dns_obs_session
+            dns_obs_session = [dns_obs]
+            last_obs_session_id = dns_obs.session_id
+    yield dns_obs_session
+
+
+def observations_in_session(
+    day: date,
+    domain_name: str,
+    obs_class: Observation,
+    session_id: str,
+    db: ClickhouseConnection,
+) -> List[Observation]:
+    observation_list = []
+    field_names = map(lambda x: x[0], observation_attrs(obs_class))
+    q = "SELECT ("
+    q += ",\n".join(field_names)
+    q += ") FROM " + obs_class.db_table
+    q += """
+    WHERE domain_name = %(domain_name)s
+    AND timestamp >= %(start_day)s
+    AND timestamp <= %(end_day)s
+    AND session_id = %(session_id)s
+    ORDER BY session_id;
+    """
+    q_params = (
+        {
+            "start_day": day,
+            "end_day": day + timedelta(days=1),
+            "domain_name": domain_name,
+            "session_id": session_id,
+        },
+    )
+    for res in db.execute(q, q_params):
+        obs = obs_class()
+        for idx, val in enumerate(res):
+            setattr(obs_class, field_names[idx], val)
+        observation_list.append(obs)
+    return observation_list
+
+
+def websites_observation_group(
+    day: date, domain_name: str, db: ClickhouseConnection
+) -> Generator[
+    Tuple[
+        List[DNSObservation],
+        List[TCPObservation],
+        List[TLSObservation],
+        List[HTTPObservation],
+    ],
+    None,
+    None,
+]:
+    for dns_obs_list in dns_observations_by_session(day, domain_name, db):
+        session_id = dns_obs_list[0].session_id
+        tcp_o_list = observations_in_session(
+            day,
+            domain_name,
+            TCPObservation,
+            session_id,
+            db,
+        )
+        tls_o_list = observations_in_session(
+            day,
+            domain_name,
+            TLSObservation,
+            session_id,
+            db,
+        )
+        http_o_list = observations_in_session(
+            day,
+            domain_name,
+            HTTPObservation,
+            session_id,
+            db,
+        )
+        yield dns_obs_list, tcp_o_list, tls_o_list, http_o_list
+
+
+def generate_website_verdicts(
+    day: date,
+    db: ClickhouseConnection,
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
+):
+    for domain_name in domains_in_a_day(day, db):
+        dns_baseline = make_dns_baseline(day, domain_name, db)
+        http_baseline_map = make_http_baseline_map(day, domain_name, db)
+        tcp_baseline_map = make_tcp_baseline_map(day, domain_name, db)
+
+        for (
+            dns_o_list,
+            tcp_o_list,
+            tls_o_list,
+            http_o_list,
+        ) in websites_observation_group(day, domain_name, db):
+            yield from make_website_verdicts(
+                dns_o_list,
+                dns_baseline,
+                fingerprintdb,
+                netinfodb,
+                tcp_o_list,
+                tcp_baseline_map,
+                tls_o_list,
+                http_o_list,
+                http_baseline_map,
+            )
+
+
+verdict_generators = [generate_website_verdicts]
 
 nettest_processors = {"web_connectivity": web_connectivity_processor}
 
