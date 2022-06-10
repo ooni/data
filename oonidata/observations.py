@@ -140,9 +140,9 @@ def make_http_observations(
         hrro.failure = normalize_failure(http_transaction.failure)
 
         if not http_transaction.request:
-            # XXX this is a very malformed request, does it even count as an
-            # observation?
-            yield hrro
+            # This is a very malformed request, we don't consider it a valid
+            # observation as we don't know what it's referring to.
+            # XXX maybe log this somewhere
             continue
 
         parsed_url = urlparse(http_transaction.request.url)
