@@ -1,7 +1,7 @@
 from oonidata.apiclient import get_raw_measurement
 from oonidata.dataformat import load_measurement
 from oonidata.observations import make_http_observations
-from oonidata.processing import insert_query_for_observation
+from oonidata.processing import make_observation_row
 
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
@@ -30,9 +30,7 @@ def test_insert_query_for_observation():
     assert all_http_obs[0].response_matches_blockpage == True
     assert all_http_obs[0].fingerprint_country_consistent == True
 
-    query_str, params = insert_query_for_observation(all_http_obs[0])
-    assert "timestamp" in query_str
+    params = make_observation_row(all_http_obs[0])
     assert "timestamp" in params
 
-    assert "request_url" in query_str
     assert "request_url" in params

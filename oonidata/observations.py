@@ -87,6 +87,7 @@ class Observation:
                 obs.resolver_as_org_name = resolver_as_info.as_info.as_org_name
                 obs.resolver_as_cc = resolver_as_info.as_info.as_cc
                 obs.resolver_cc = resolver_as_info.cc
+        return obs
 
 
 class HTTPObservation(Observation):
@@ -320,7 +321,7 @@ def make_tcp_observations(
         return
 
     for idx, res in enumerate(tcp_connect):
-        tcpo = TCPObservation(msmt, netinfodb)
+        tcpo = TCPObservation.from_measurement(msmt, netinfodb)
         if res.t:
             tcpo.timestamp += timedelta(seconds=res.t)
 
