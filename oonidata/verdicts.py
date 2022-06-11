@@ -291,7 +291,6 @@ def make_dns_baseline(
     """
     res = db.execute(q, q_params)
     if len(res) > 0:
-        log.debug(res)
         for row in res:
             probe_cc, probe_asn, failure = row[0]
             if not failure:
