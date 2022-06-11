@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS obs_http (
 `resolver_cc` String,
 `resolver_as_org_name` String,
 `resolver_as_cc` String,
+
 `domain_name` String,
 `request_url` String,
 `request_is_encrypted` bool,
@@ -164,3 +165,33 @@ CREATE TABLE IF NOT EXISTS obs_http (
 
     ENGINE = ReplacingMergeTree
     ORDER BY (timestamp, measurement_uid, observation_id);
+
+
+
+CREATE TABLE verdict (
+`measurement_uid` String,
+`verdict_uid` String,
+
+`timestamp` Datetime64(6),
+`probe_asn` Int32,
+`probe_cc` String,
+`probe_as_org_name` String,
+`probe_as_cc` String,
+`network_type` String,
+`resolver_asn` String,
+`resolver_ip` String,
+`resolver_cc` String,
+`resolver_as_org_name` String,
+`resolver_as_cc` String,
+
+`confidence` Float64,
+`subject` String,
+`subject_category` String,
+`subject_detail` String,
+
+`outcome` String,
+`outcome_detail` String
+)
+
+ENGINE = ReplacingMergeTree
+ORDER BY (timestamp, measurement_uid, verdict_uid);

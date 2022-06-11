@@ -29,6 +29,7 @@ from oonidata.dataformat import BaseMeasurement
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 from oonidata.verdicts import (
+    Verdict,
     make_dns_baseline,
     make_http_baseline_map,
     make_tcp_baseline_map,
@@ -70,12 +71,27 @@ def make_observation_row(observation: Observation) -> dict:
     return row
 
 
+def make_verdict_row(v: Verdict) -> dict:
+    row = {}
+    for name, t in observation_attrs(Verdict):
+        row[name] = getattr(v, name, None)
+        if t in (Optional[str], str) and row[name] is None:
+            row[name] = ""
+    return row
+
+
 def write_observations_to_db(
     db: DatabaseConnection, observations: Iterable[Observation]
 ) -> None:
     for obs in observations:
         row = make_observation_row(obs)
         db.write_row(obs.db_table, row)
+
+
+def write_verdicts_to_db(db: DatabaseConnection, verdicts: Iterable[Verdict]) -> None:
+    for v in verdicts:
+        row = make_verdict_row(v)
+        db.write_row("verdicts", row)
 
 
 def default_processor(
@@ -323,13 +339,15 @@ def process_day(db: DatabaseConnection, day: date, start_at_idx=0):
                 pprint(trim_measurement(json.loads(raw_msmt), 30))
                 raise exc
 
-    for verdict in generate_website_verdicts(
-        day,
+    write_verdicts_to_db(
         db,
-        fingerprintdb,
-        netinfodb,
-    ):
-        log.debug(verdict)
+        generate_website_verdicts(
+            day,
+            db,
+            fingerprintdb,
+            netinfodb,
+        ),
+    )
 
 
 if __name__ == "__main__":
