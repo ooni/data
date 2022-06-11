@@ -388,13 +388,15 @@ if __name__ == "__main__":
     if args.only_verdicts:
         fingerprintdb = FingerprintDB()
         netinfodb = NetinfoDB()
-        for verdict in generate_website_verdicts(
-            args.day,
+        write_verdicts_to_db(
             db,
-            fingerprintdb,
-            netinfodb,
-        ):
-            print(verdict)
+            generate_website_verdicts(
+                args.day,
+                db,
+                fingerprintdb,
+                netinfodb,
+            ),
+        )
         sys.exit(0)
 
     # 31469
