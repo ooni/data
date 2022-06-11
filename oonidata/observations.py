@@ -435,7 +435,7 @@ class TLSObservation(Observation):
 
     failure: Failure
 
-    server_name: str
+    server_name: Optional[str]
     tls_version: Optional[str]
     cipher_suite: Optional[str]
 
@@ -476,6 +476,11 @@ class TLSObservation(Observation):
 
         tso.server_name = tls_h.server_name
         tso.domain_name = tls_h.server_name
+        if tls_h.address:
+            p = urlsplit("//" + tls_h.address)
+            tso.ip = tls_h.ip
+            tso.port = tls_h.port
+
         tso.tls_version = tls_h.tls_version
         tso.cipher_suite = tls_h.cipher_suite
 

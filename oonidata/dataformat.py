@@ -192,7 +192,7 @@ class TLSHandshake:
     negotiated_protocol: Optional[str]
     no_tls_verify: Optional[bool]
     peer_certificates: Optional[List[BinaryData]]
-    server_name: str
+    server_name: Optional[str]
     t: Optional[float]
     tags: Optional[List[str]]
     tls_version: Optional[str]
