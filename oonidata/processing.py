@@ -90,6 +90,7 @@ def write_observations_to_db(
 
 def write_verdicts_to_db(db: DatabaseConnection, verdicts: Iterable[Verdict]) -> None:
     for v in verdicts:
+        log.debug(v)
         row = make_verdict_row(v)
         db.write_row("verdicts", row)
 
