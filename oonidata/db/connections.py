@@ -7,13 +7,6 @@ class DatabaseConnection:
     def __init__(self):
         self.client = None
 
-    def execute(
-        self, query: str, params: Optional[dict]
-    ) -> Union[List[Tuple], int, None]:
-        print(query)
-        print(params)
-        return
-
     def write_row(self, table_name, row):
         print(f"Writing to {table_name}")
         pprint(row)
@@ -24,6 +17,9 @@ class ClickhouseConnection(DatabaseConnection):
         from clickhouse_driver import Client
 
         self.client = Client.from_url(conn_url)
+
+    def execute(self, *args, **kwargs):
+        self.client.execute(*args, **kwargs)
 
     def write_row(self, table_name, row):
         fields = ", ".join(row.keys())
