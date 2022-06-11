@@ -2,6 +2,7 @@ import json
 import sys
 import inspect
 import argparse
+import logging
 from tqdm import tqdm
 from pprint import pprint
 from datetime import datetime, date, timedelta
@@ -11,7 +12,7 @@ from functools import cache
 from collections.abc import Iterable
 from typing import Optional, Tuple, List, Any, Generator
 
-from oonidata.datautils import trim_measurement
+from oonidata.datautils import trim_measurement, one_day_dict
 from oonidata.dataformat import load_measurement
 from oonidata.observations import (
     DNSObservation,
@@ -40,6 +41,10 @@ from oonidata.db.connections import (
     ClickhouseConnection,
     CSVConnection,
 )
+
+log = logging.getLogger("oonidata.processing")
+log.addHandler(logging.StreamHandler())
+log.setLevel(logging.DEBUG)
 
 
 @cache
@@ -140,12 +145,6 @@ def web_connectivity_processor(
         db,
         enriched_dns_observations,
     )
-
-
-def one_day_dict(day: date) -> dict[str, datetime]:
-    start_day = datetime(year=day.year, month=day.month, day=day.day)
-    end_day = start_day + timedelta(days=1)
-    return {"start_day": start_day, "end_day": end_day}
 
 
 def domains_in_a_day(day: date, db: ClickhouseConnection) -> Generator[str, None, None]:
@@ -264,6 +263,7 @@ def generate_website_verdicts(
     netinfodb: NetinfoDB,
 ):
     for domain_name in domains_in_a_day(day, db):
+        log.debug(f"Generating verdicts for {domain_name}")
         dns_baseline = make_dns_baseline(day, domain_name, db)
         http_baseline_map = make_http_baseline_map(day, domain_name, db)
         tcp_baseline_map = make_tcp_baseline_map(day, domain_name, db)
@@ -325,7 +325,7 @@ def process_day(db: DatabaseConnection, day: date, start_at_idx=0):
         fingerprintdb,
         netinfodb,
     ):
-        print(verdict)
+        log.debug(verdict)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ from datetime import datetime, date, timedelta
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
+from oonidata.datautils import one_day_dict
+
 from oonidata.observations import (
     DNSObservation,
     HTTPObservation,
@@ -129,14 +131,8 @@ def make_tcp_baseline_map(
     day: date, domain_name: str, db: ClickhouseConnection
 ) -> dict[str, TCPBaseline]:
     tcp_baseline_map = {}
-
-    q_params = (
-        {
-            "domain_name": domain_name,
-            "start_day": day,
-            "end_day": day + timedelta(days=1),
-        },
-    )
+    q_params = one_day_dict(day)
+    q_params["domain_name"] = domain_name
 
     q = """SELECT probe_cc, probe_asn, ip, failure FROM obs_tcp
     WHERE domain_name = %(domain_name)s 
@@ -173,13 +169,8 @@ def make_http_baseline_map(
 ) -> dict[str, HTTPBaseline]:
     http_baseline_map = {}
 
-    q_params = (
-        {
-            "domain_name": domain_name,
-            "start_day": day,
-            "end_day": day + timedelta(days=1),
-        },
-    )
+    q_params = one_day_dict(day)
+    q_params["domain_name"] = domain_name
 
     q = """SELECT probe_cc, probe_asn, request_url, failure FROM obs_http
     WHERE domain_name = %(domain_name)s 
@@ -250,13 +241,8 @@ def make_dns_baseline(
     dns_baseline.failure_cc_asn = []
     dns_baseline.nxdomain_cc_asn = []
 
-    q_params = (
-        {
-            "domain_name": domain_name,
-            "start_day": day,
-            "end_day": day + timedelta(days=1),
-        },
-    )
+    q_params = one_day_dict(day)
+    q_params["domain_name"] = domain_name
 
     q = """SELECT DISTINCT(ip) FROM obs_tls
     WHERE is_certificate_valid = 1 

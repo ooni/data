@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import List
 from dataclasses import dataclass
 from functools import singledispatch
@@ -248,3 +248,9 @@ def _(json_list: list, max_string_size: int):
     for item in json_list:
         trim_measurement(item, max_string_size)
     return json_list
+
+
+def one_day_dict(day: date) -> dict[str, datetime]:
+    start_day = datetime(year=day.year, month=day.month, day=day.day)
+    end_day = start_day + timedelta(days=1)
+    return {"start_day": start_day, "end_day": end_day}
