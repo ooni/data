@@ -160,31 +160,36 @@ def dns_observations_by_session(
     day: date, domain_name: str, db: ClickhouseConnection
 ) -> Generator[List[DNSObservation], None, None]:
     # I wish I had an ORM...
-    field_names = map(lambda x: x[0], observation_attrs(DNSObservation))
-    q = "SELECT ("
+    field_names = list(map(lambda x: x[0], observation_attrs(DNSObservation)))
+    q = "SELECT "
     q += ",\n".join(field_names)
     q += """
-    )
     FROM obs_dns
     WHERE domain_name = %(domain_name)s
     AND timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
-    ORDER BY session_id;
+    ORDER BY session_id, measurement_uid;
     """
     q_params = one_day_dict(day)
     q_params["domain_name"] = domain_name
 
     dns_obs_session = []
     last_obs_session_id = None
-    for res in db.execute(q, q_params):
+    for row in db.execute(q, q_params):
         dns_obs = DNSObservation()
-        for idx, val in enumerate(res):
+        for idx, val in enumerate(row):
             setattr(dns_obs, field_names[idx], val)
+
+        # XXX remove this once the DB is re-updated
+        dns_obs.session_id = dns_obs.session_id or dns_obs.measurement_uid
         if last_obs_session_id and last_obs_session_id != dns_obs.session_id:
             yield dns_obs_session
             dns_obs_session = [dns_obs]
             last_obs_session_id = dns_obs.session_id
-    yield dns_obs_session
+        else:
+            dns_obs_session.append(dns_obs)
+    if len(dns_obs_session) > 0:
+        yield dns_obs_session
 
 
 def observations_in_session(
@@ -195,16 +200,15 @@ def observations_in_session(
     db: ClickhouseConnection,
 ) -> List[Observation]:
     observation_list = []
-    field_names = map(lambda x: x[0], observation_attrs(obs_class))
-    q = "SELECT ("
+    field_names = list(map(lambda x: x[0], observation_attrs(obs_class)))
+    q = "SELECT "
     q += ",\n".join(field_names)
-    q += ") FROM " + obs_class.db_table
+    q += " FROM " + obs_class.db_table
     q += """
     WHERE domain_name = %(domain_name)s
     AND timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
-    AND session_id = %(session_id)s
-    ORDER BY session_id;
+    AND (session_id = %(session_id)s OR measurement_uid = %(session_id)s);
     """
     q_params = one_day_dict(day)
     q_params["domain_name"] = domain_name

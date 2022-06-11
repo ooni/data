@@ -1,8 +1,10 @@
 import ipaddress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, List, Tuple, Generator
+from typing import Optional, List, Tuple, Generator, Any
 from datetime import datetime, date, timedelta
+
+from requests import request
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
@@ -16,6 +18,12 @@ from oonidata.observations import (
     TLSObservation,
 )
 from oonidata.db.connections import ClickhouseConnection
+
+import logging
+
+log = logging.getLogger("oonidata.processing")
+log.addHandler(logging.StreamHandler())
+log.setLevel(logging.DEBUG)
 
 
 class Outcome(Enum):
@@ -120,11 +128,11 @@ def make_verdict_from_obs(
     )
 
 
+@dataclass
 class TCPBaseline:
-    ip: str
-    port: int
-    reachable_cc_asn: List[Tuple[str, int]]
-    unreachable_cc_asn: List[Tuple[str, int]]
+    address: str
+    reachable_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
+    unreachable_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
 
 
 def make_tcp_baseline_map(
@@ -134,34 +142,47 @@ def make_tcp_baseline_map(
     q_params = one_day_dict(day)
     q_params["domain_name"] = domain_name
 
-    q = """SELECT probe_cc, probe_asn, ip, failure FROM obs_tcp
+    q = """SELECT probe_cc, probe_asn, ip, port, failure FROM obs_tcp
     WHERE domain_name = %(domain_name)s 
     AND timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
-    GROUP BY probe_cc, probe_asn, ip, failure;
+    GROUP BY probe_cc, probe_asn, ip, port, failure;
     """
     res = db.execute(q, q_params)
     if len(res) > 0:
-        for probe_cc, probe_asn, ip, failure in res:
-            tcp_baseline_map[ip] = tcp_baseline_map.get(ip, TCPBaseline())
+        for probe_cc, probe_asn, ip, port, failure in res:
+            address = f"{ip}:{port}"
+            tcp_baseline_map[address] = tcp_baseline_map.get(
+                address, TCPBaseline(address)
+            )
             if not failure:
-                tcp_baseline_map[ip].reachable_cc_asn.append((probe_cc, probe_asn))
+                tcp_baseline_map[address].reachable_cc_asn.append((probe_cc, probe_asn))
             else:
-                tcp_baseline_map[ip].unreachbale_cc_asn.append((probe_cc, probe_asn))
+                tcp_baseline_map[address].unreachable_cc_asn.append(
+                    (probe_cc, probe_asn)
+                )
     return tcp_baseline_map
 
 
+@dataclass
 class HTTPBaseline:
     url: str
-    failure_cc_asn: List[Tuple[str, int]]
-    ok_cc_asn: List[Tuple[str, int]]
+    failure_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
+    ok_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
 
-    response_body_length: int
-    response_body_sha1: str
-    response_body_title: str
-    response_body_meta_title: str
+    response_body_length: int = 0
+    response_body_sha1: str = ""
+    response_body_title: str = ""
+    response_body_meta_title: str = ""
 
-    response_status_code: int
+    response_status_code: int = 0
+
+
+def maybe_get_first(l: list, default_value: Any = None) -> Optional[Any]:
+    try:
+        return l[0]
+    except IndexError:
+        return default_value
 
 
 def make_http_baseline_map(
@@ -176,12 +197,14 @@ def make_http_baseline_map(
     WHERE domain_name = %(domain_name)s 
     AND timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
-    GROUP BY probe_cc, probe_asn, ip, failure;
+    GROUP BY probe_cc, probe_asn, request_url, failure;
     """
     res = db.execute(q, q_params)
     if len(res) > 0:
         for probe_cc, probe_asn, request_url, failure in res:
-            http_baseline_map[request_url] = http_baseline_map.get(ip, HTTPBaseline())
+            http_baseline_map[request_url] = http_baseline_map.get(
+                request_url, HTTPBaseline(request_url)
+            )
             if not failure:
                 http_baseline_map[request_url].failure_cc_asn.append(
                     (probe_cc, probe_asn)
@@ -212,34 +235,41 @@ def make_http_baseline_map(
             response_body_meta_title,
             response_status_code,
         ) in res:
-            http_baseline_map[request_url] = http_baseline_map.get(ip, HTTPBaseline())
-            http_baseline_map[request_url].response_body_sha1 = response_body_sha1
-            http_baseline_map[request_url].response_body_length = response_body_length
-            http_baseline_map[request_url].response_body_title = response_body_title
-            http_baseline_map[
-                request_url
-            ].response_body_meta_title = response_body_meta_title
-            http_baseline_map[request_url].response_status_code = response_status_code
+            http_baseline_map[request_url] = http_baseline_map.get(
+                request_url, HTTPBaseline(request_url)
+            )
+            http_baseline_map[request_url].response_body_sha1 = maybe_get_first(
+                response_body_sha1, ""
+            )
+            http_baseline_map[request_url].response_body_length = maybe_get_first(
+                response_body_length, ""
+            )
+            http_baseline_map[request_url].response_body_title = maybe_get_first(
+                response_body_title, ""
+            )
+            http_baseline_map[request_url].response_body_meta_title = maybe_get_first(
+                response_body_meta_title, ""
+            )
+            http_baseline_map[request_url].response_status_code = maybe_get_first(
+                response_status_code, ""
+            )
 
     return http_baseline_map
 
 
+@dataclass
 class DNSBaseline:
     domain: str
-    nxdomain_cc_asn: List[Tuple[str, int]]
-    failure_cc_asn: List[Tuple[str, int]]
-    ok_cc_asn: List[Tuple[str, int]]
-    tls_consistent_answers: List[str]
+    nxdomain_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
+    failure_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
+    ok_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
+    tls_consistent_answers: List[str] = field(default_factory=list)
 
 
 def make_dns_baseline(
     day: date, domain_name: str, db: ClickhouseConnection
 ) -> DNSBaseline:
-    dns_baseline = DNSBaseline()
-    dns_baseline.tls_consistent_answers = []
-    dns_baseline.ok_cc_asn = []
-    dns_baseline.failure_cc_asn = []
-    dns_baseline.nxdomain_cc_asn = []
+    dns_baseline = DNSBaseline(domain_name)
 
     q_params = one_day_dict(day)
     q_params["domain_name"] = domain_name
@@ -252,7 +282,7 @@ def make_dns_baseline(
     """
     res = db.execute(q, q_params)
     if len(res) > 0:
-        dns_baseline.tls_consistent_answers = res[0][0]
+        dns_baseline.tls_consistent_answers = [row[0] for row in res]
 
     q = """SELECT DISTINCT(probe_cc, probe_asn, failure) FROM obs_dns
     WHERE domain_name = %(domain_name)s 
@@ -261,7 +291,9 @@ def make_dns_baseline(
     """
     res = db.execute(q, q_params)
     if len(res) > 0:
-        for probe_cc, probe_asn, failure in res:
+        log.debug(res)
+        for row in res:
+            probe_cc, probe_asn, failure = row[0]
             if not failure:
                 dns_baseline.ok_cc_asn.append((probe_cc, probe_asn))
             else:
@@ -288,8 +320,9 @@ def is_dns_consistent(
 
     for ip in dns_b.tls_consistent_answers:
         ip_info = netinfodb.lookup_ip(dns_o.timestamp, ip)
-        baseline_asns.add(ip_info.as_info.asn)
-        baseline_as_org_names.add(ip_info.as_info.as_org_name.lower())
+        if ip_info:
+            baseline_asns.add(ip_info.as_info.asn)
+            baseline_as_org_names.add(ip_info.as_info.as_org_name.lower())
 
     if dns_o.answer_asn in baseline_asns:
         return 0.9
@@ -303,11 +336,14 @@ def is_dns_consistent(
 def make_website_tcp_verdicts(
     tcp_o: TCPObservation, tcp_b: TCPBaseline
 ) -> Generator[Verdict, None, List[str]]:
-    outcome_detail_list = []
+    outcome = Outcome.OK
+    confidence = 1
+    outcome_detail = ""
+
     if tcp_o.failure:
         unreachable_cc_asn = list(tcp_b.unreachable_cc_asn)
         unreachable_cc_asn.remove((tcp_o.probe_cc, tcp_o.probe_asn))
-        reachable_count = len(tcp_o.reachable_cc_asn)
+        reachable_count = len(tcp_b.reachable_cc_asn)
         unreachable_count = len(unreachable_cc_asn)
         if reachable_count > unreachable_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
@@ -320,18 +356,16 @@ def make_website_tcp_verdicts(
             outcome = Outcome.DOWN
 
         outcome_detail = f"tcp.{tcp_o.failure}"
-        yield make_verdict_from_obs(
-            tcp_o,
-            confidence=confidence,
-            subject=tcp_o.domain_name,
-            subject_detail=f"{tcp_o.ip}:{tcp_o.port}",
-            subject_category="website",
-            outcome=outcome,
-            outcome_detail=outcome_detail,
-        )
-        outcome_detail_list.append(outcome_detail)
 
-    return outcome_detail_list
+    return make_verdict_from_obs(
+        tcp_o,
+        confidence=confidence,
+        subject=tcp_o.domain_name,
+        subject_detail=f"{tcp_o.ip}:{tcp_o.port}",
+        subject_category="website",
+        outcome=outcome,
+        outcome_detail=outcome_detail,
+    )
 
 
 def make_website_dns_verdict(
@@ -340,7 +374,6 @@ def make_website_dns_verdict(
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
 ) -> Verdict:
-    outcome_detail_list = []
     if dns_o.fingerprint_id:
         fp = fingerprintdb.get_fp(dns_o.fingerprint_id)
         outcome = fp_scope_to_outcome(fp.scope)
@@ -375,19 +408,19 @@ def make_website_dns_verdict(
             outcome=Outcome.BLOCKED,
             outcome_detail="dns.bogon",
         )
-        outcome_detail_list.append(outcome_detail)
 
     elif dns_o.failure:
         failure_cc_asn = list(dns_b.failure_cc_asn)
         failure_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
-        nxdomain_cc_asn = list(dns_b.nxdomain_cc_asn)
-        nxdomain_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
 
-        nxdomain_count = len(nxdomain_cc_asn)
         failure_count = len(failure_cc_asn)
         ok_count = len(dns_b.ok_cc_asn)
 
         if dns_o.failure == "dns_nxdomain_error":
+            nxdomain_cc_asn = list(dns_b.nxdomain_cc_asn)
+            nxdomain_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
+
+            nxdomain_count = len(nxdomain_cc_asn)
             if ok_count > nxdomain_count:
                 # We give a bit extra weight to an NXDOMAIN compared to other failures
                 confidence = ok_count / (ok_count + nxdomain_count + 1) * 1.5
@@ -405,7 +438,7 @@ def make_website_dns_verdict(
             confidence = (failure_count + 1) / (ok_count + failure_count + 1)
             outcome = Outcome.DOWN
             outcome_detail = f"dns.{dns_o.failure}"
-        yield make_verdict_from_obs(
+        return make_verdict_from_obs(
             dns_o,
             confidence=confidence,
             subject=dns_o.domain_name,
@@ -414,7 +447,6 @@ def make_website_dns_verdict(
             outcome=outcome,
             outcome_detail=outcome_detail,
         )
-        outcome_detail_list.append(outcome_detail)
 
     elif dns_o.is_tls_consistent == False:
         outcome_detail = "dns.inconsistent"
@@ -427,7 +459,6 @@ def make_website_dns_verdict(
             outcome=Outcome.BLOCKED,
             outcome_detail=outcome_detail,
         )
-        outcome_detail_list.append(outcome_detail)
 
     elif dns_o.is_tls_consistent == None:
         # If we are in this case, it means we weren't able to determine the
@@ -455,6 +486,17 @@ def make_website_dns_verdict(
                 outcome_detail=outcome_detail,
             )
 
+    # No blocking detected
+    return make_verdict_from_obs(
+        dns_o,
+        confidence=1,
+        subject=dns_o.domain_name,
+        subject_detail=f"{dns_o.answer}",
+        subject_category="website",
+        outcome=Outcome.OK,
+        outcome_detail="",
+    )
+
 
 def make_website_tls_verdict(
     tls_o: TLSObservation, prev_verdicts: List[Verdict]
@@ -464,11 +506,13 @@ def make_website_tls_verdict(
         # certificate mismatch, but there was no DNS inconsistency.
         # If the DNS was inconsistent, we will just count the DNS verdict
         if (
-            list(
-                filter(
-                    lambda v: v.outcome_detail.startswith("dns.")
-                    and v.subject_detail == tls_o.ip,
-                    prev_verdicts,
+            len(
+                list(
+                    filter(
+                        lambda v: v.outcome_detail.startswith("dns.")
+                        and v.subject_detail == tls_o.ip,
+                        prev_verdicts,
+                    )
                 )
             )
             > 0
@@ -487,11 +531,13 @@ def make_website_tls_verdict(
         )
     elif tls_o.failure:
         if (
-            list(
-                filter(
-                    lambda v: v.outcome_detail.startswith("tcp.")
-                    and v.subject_detail == f"{tls_o.ip}:443",
-                    prev_verdicts,
+            len(
+                list(
+                    filter(
+                        lambda v: v.outcome_detail.startswith("tcp.")
+                        and v.subject_detail == f"{tls_o.ip}:443",
+                        prev_verdicts,
+                    )
                 )
             )
             > 0
@@ -519,7 +565,16 @@ def make_website_tls_verdict(
             outcome=Outcome.BLOCKED,
             outcome_detail=outcome_detail,
         )
-    return None
+
+    return make_verdict_from_obs(
+        tls_o,
+        confidence=0.9,
+        subject=tls_o.domain_name,
+        subject_detail=f"{tls_o.ip}:{tls_o.port}",
+        subject_category="website",
+        outcome=Outcome.OK,
+        outcome_detail="",
+    )
 
 
 def make_website_http_verdict(
@@ -532,14 +587,16 @@ def make_website_http_verdict(
         # For HTTP requests we ignore cases in which we detected the blocking
         # already to be happening via DNS or TCP.
         if not http_o.request_is_encrypted and (
-            list(
-                filter(
-                    lambda v: v.outcome_detail.startswith("dns.")
-                    or (
-                        v.outcome_detail.startswith("tcp.")
-                        and v.subject_details.endswith(":80")
-                    ),
-                    prev_verdicts,
+            len(
+                list(
+                    filter(
+                        lambda v: v.outcome_detail.startswith("dns.")
+                        or (
+                            v.outcome_detail.startswith("tcp.")
+                            and v.subject_detail.endswith(":80")
+                        ),
+                        prev_verdicts,
+                    )
                 )
             )
             > 0
@@ -548,15 +605,17 @@ def make_website_http_verdict(
 
         # Similarly for HTTPS we ignore cases when the block is done via TLS or TCP
         if http_o.request_is_encrypted and (
-            list(
-                filter(
-                    lambda v: v.outcome_detail.startswith("dns.")
-                    or (
-                        v.outcome_detail.startswith("tcp.")
-                        and v.subject_details.endswith(":443")
+            len(
+                list(
+                    filter(
+                        lambda v: v.outcome_detail.startswith("dns.")
+                        or (
+                            v.outcome_detail.startswith("tcp.")
+                            and v.subject_detail.endswith(":443")
+                        )
+                        or v.outcome_detail.startswith("tls."),
+                        prev_verdicts,
                     )
-                    or v.outcome_detail.startswith("tls."),
-                    prev_verdicts,
                 )
             )
             > 0
@@ -583,7 +642,7 @@ def make_website_http_verdict(
             http_o,
             confidence=confidence,
             subject=http_o.domain_name,
-            subject_detail=http_o,
+            subject_detail="",
             subject_category="website",
             outcome=outcome,
             outcome_detail=outcome_detail,
@@ -606,7 +665,7 @@ def make_website_http_verdict(
             http_o,
             confidence=confidence,
             subject=http_o.domain_name,
-            subject_detail=http_o,
+            subject_detail="",
             subject_category="website",
             outcome=outcome,
             outcome_detail="http.blockpage",
@@ -622,14 +681,20 @@ def make_website_http_verdict(
         if http_o.response_body_sha1 == http_b.response_body_sha1:
             return
 
-        if (http_o.response_body_length + 1.0) / (
-            http_b.response_body_length + 1.0
-        ) < 0.7:
+        if (
+            http_o.response_body_length
+            and http_b.response_body_length
+            and (
+                (http_o.response_body_length + 1.0)
+                / (http_b.response_body_length + 1.0)
+                < 0.7
+            )
+        ):
             return make_verdict_from_obs(
                 http_o,
                 confidence=0.6,
                 subject=http_o.domain_name,
-                subject_detail=http_o,
+                subject_detail="",
                 subject_category="website",
                 outcome=Outcome.BLOCKED,
                 outcome_detail="http.bodydiff",
@@ -686,8 +751,9 @@ def make_website_verdicts(
             domain_name == dns_o.domain_name
         ), f"Inconsistent domain_name in dns_o {dns_o.domain_name}"
         dns_v = make_website_dns_verdict(dns_o, dns_b, fingerprintdb, netinfodb)
-        verdicts.append(dns_v)
-        yield dns_v
+        if dns_v:
+            verdicts.append(dns_v)
+            yield dns_v
 
     if tcp_o_list:
         for tcp_o in tcp_o_list:
@@ -696,8 +762,9 @@ def make_website_verdicts(
             ), f"Inconsistent domain_name in tcp_o {tcp_o.domain_name}"
             tcp_b = tcp_b_map.get(f"{tcp_o.ip}:{tcp_o.port}")
             tcp_v = make_website_tcp_verdicts(tcp_o, tcp_b)
-            verdicts.append(tcp_v)
-            yield tcp_v
+            if tcp_v:
+                verdicts.append(tcp_v)
+                yield tcp_v
 
     if tls_o_list:
         for tls_o in tls_o_list:
@@ -705,17 +772,20 @@ def make_website_verdicts(
                 domain_name == tls_o.domain_name
             ), f"Inconsistent domain_name in tls_o {tls_o.domain_name}"
             tls_v = make_website_tls_verdict(tls_o, verdicts)
-            verdicts.append(tls_v)
-            yield tls_v
+            if tls_v:
+                verdicts.append(tls_v)
+                yield tls_v
 
-    if http_o:
+    if http_o_list:
         for http_o in http_o_list:
             assert (
                 domain_name == http_o.domain_name
             ), f"Inconsistent domain_name in http_o {http_o.domain_name}"
             http_b = http_b_map.get(http_o.request_url)
             http_v = make_website_http_verdict(http_o, http_b, verdicts, fingerprintdb)
-            verdicts.append(http_v)
+            if http_v:
+                verdicts.append(http_v)
+                yield http_v
 
     if len(verdicts) == 0:
         # We didn't generate any verdicts up to now, so it's reasonable to say
@@ -727,7 +797,7 @@ def make_website_verdicts(
             subject_detail="",
             subject_category="website",
             outcome=Outcome.OK,
-            outcome_detail="",
+            outcome_detail="all",
         )
         yield ok_verdict
         verdicts.append(ok_verdict)

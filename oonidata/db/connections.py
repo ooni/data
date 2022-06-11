@@ -1,6 +1,10 @@
 import csv
 from pprint import pprint
-from typing import Optional, Union, Tuple, List, Any
+import logging
+
+log = logging.getLogger("oonidata.processing")
+log.addHandler(logging.StreamHandler())
+log.setLevel(logging.DEBUG)
 
 
 class DatabaseConnection:
@@ -19,6 +23,7 @@ class ClickhouseConnection(DatabaseConnection):
         self.client = Client.from_url(conn_url)
 
     def execute(self, *args, **kwargs):
+        log.debug(f"execute {args} {kwargs}")
         return self.client.execute(*args, **kwargs)
 
     def write_row(self, table_name, row):

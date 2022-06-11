@@ -38,7 +38,7 @@ class Observation:
     measurement_uid: str
     observation_id: str
 
-    session_id: Optional[str]
+    session_id: str
 
     timestamp: datetime
 
