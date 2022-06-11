@@ -1,10 +1,13 @@
 import hashlib
 from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
-from typing import Generator, Optional, List, Dict, Tuple
+from typing import Generator, Optional, List, Dict
+
+from requests import request
 
 from oonidata.dataformat import (
     BaseMeasurement,
+    DNSAnswer,
     DNSQuery,
     HTTPTransaction,
     Failure,
@@ -57,7 +60,9 @@ class Observation:
     resolver_as_cc: Optional[str]
 
     @classmethod
-    def from_measurement(cls, msmt: BaseMeasurement, netinfodb: NetinfoDB):
+    def from_measurement(
+        cls, msmt: BaseMeasurement, netinfodb: NetinfoDB
+    ) -> "Observation":
         obs = cls()
         obs.measurement_uid = msmt.measurement_uid
         obs.timestamp = datetime.strptime(
@@ -78,7 +83,9 @@ class Observation:
             obs.probe_as_org_name = probe_as_info.as_org_name
             obs.probe_as_cc = probe_as_info.as_cc
 
-        resolver_ip = msmt.resolver_ip or msmt.test_keys.client_resolver
+        resolver_ip = msmt.resolver_ip
+        if not resolver_ip and msmt.test_keys and msmt.test_keys.client_resolver:
+            resolver_ip = msmt.test_keys.client_resolver
         if resolver_ip:
             resolver_as_info = netinfodb.lookup_ip(obs.timestamp, resolver_ip)
             if resolver_as_info:
@@ -122,18 +129,17 @@ class HTTPObservation(Observation):
     response_matches_false_positive: bool = False
     x_transport: Optional[str] = "tcp"
 
-
-def make_http_observations(
-    msmt: BaseMeasurement,
-    requests_list: Optional[List[HTTPTransaction]],
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
-) -> Generator[HTTPObservation, None, None]:
-    if not requests_list:
-        return
-
-    for idx, http_transaction in enumerate(requests_list):
-        hrro = HTTPObservation.from_measurement(msmt, netinfodb)
+    @classmethod
+    def from_measurement(
+        cls,
+        msmt: BaseMeasurement,
+        netinfodb: NetinfoDB,
+        idx: int,
+        requests_list: Optional[List[HTTPTransaction]],
+        http_transaction: HTTPTransaction,
+        fingerprintdb: FingerprintDB,
+    ) -> Optional["HTTPObservation"]:
+        hrro = super().from_measurement(msmt, netinfodb)
 
         if http_transaction.t:
             hrro.timestamp += timedelta(seconds=http_transaction.t)
@@ -147,7 +153,7 @@ def make_http_observations(
             # This is a very malformed request, we don't consider it a valid
             # observation as we don't know what it's referring to.
             # XXX maybe log this somewhere
-            continue
+            return None
 
         parsed_url = urlparse(http_transaction.request.url)
 
@@ -164,8 +170,7 @@ def make_http_observations(
             hrro.request_body_length = len(http_transaction.request.body_bytes)
 
         if not http_transaction.response:
-            yield hrro
-            continue
+            return hrro
 
         hrro.response_body_is_truncated = http_transaction.response.body_is_truncated
 
@@ -210,8 +215,24 @@ def make_http_observations(
                 hrro.request_redirect_from = prev_request.request.url
         except (IndexError, UnicodeDecodeError, AttributeError):
             pass
+        return hrro
 
-        yield hrro
+
+def make_http_observations(
+    msmt: BaseMeasurement,
+    requests_list: Optional[List[HTTPTransaction]],
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
+) -> Generator[HTTPObservation, None, None]:
+    if not requests_list:
+        return
+
+    for idx, http_transaction in enumerate(requests_list):
+        httpo = HTTPObservation.from_measurement(
+            msmt, netinfodb, idx, requests_list, http_transaction, fingerprintdb
+        )
+        if httpo:
+            yield httpo
 
 
 class DNSObservation(Observation):
@@ -234,6 +255,55 @@ class DNSObservation(Observation):
 
     is_tls_consistent: Optional[bool]
 
+    @classmethod
+    def from_measurement(
+        cls,
+        msmt: BaseMeasurement,
+        query: DNSQuery,
+        answer: Optional[DNSAnswer],
+        idx: int,
+        fingerprintdb: FingerprintDB,
+        netinfodb: NetinfoDB,
+    ) -> "DNSObservation":
+        dnso = super().from_measurement(msmt, netinfodb)
+        if query.t:
+            dnso.timestamp += timedelta(seconds=query.t)
+
+        dnso.observation_id = f"{dnso.measurement_uid}{idx}"
+
+        dnso.query_type = query.query_type
+        dnso.domain_name = query.hostname
+        dnso.failure = normalize_failure(query.failure)
+        if not answer:
+            return dnso
+
+        dnso.answer_type = answer.answer_type
+        if answer.ipv4:
+            dnso.answer = answer.ipv4
+            dnso.answer_is_bogon = is_ipv4_bogon(answer.ipv4)
+        elif answer.ipv6:
+            dnso.answer = answer.ipv6
+            dnso.answer_is_bogon = is_ipv6_bogon(answer.ipv6)
+        elif answer.hostname:
+            dnso.answer = answer.hostname
+
+        if answer.ipv4 or answer.ipv6:
+            answer_meta = netinfodb.lookup_ip(dnso.timestamp, dnso.answer)
+            if answer_meta:
+                dnso.answer_asn = answer_meta.as_info.asn
+                dnso.answer_as_cc = answer_meta.as_info.as_cc
+                dnso.answer_as_org_name = answer_meta.as_info.as_org_name
+                dnso.answer_cc = answer_meta.cc
+
+        matched_fingerprint = fingerprintdb.match_dns(dnso.answer)
+        if matched_fingerprint:
+            dnso.fingerprint_id = matched_fingerprint.name
+            if matched_fingerprint.expected_countries:
+                dnso.fingerprint_country_consistent = (
+                    msmt.probe_cc in matched_fingerprint.expected_countries
+                )
+        return dnso
+
 
 def make_dns_observations(
     msmt: BaseMeasurement,
@@ -245,54 +315,13 @@ def make_dns_observations(
         return
 
     for query in queries:
-        if not query.answers:
-            dnso = DNSObservation.from_measurement(msmt, netinfodb)
-            if query.t:
-                dnso.timestamp += timedelta(seconds=query.t)
-
-            dnso.observation_id = f"{dnso.measurement_uid}0"
-
-            dnso.query_type = query.query_type
-            dnso.domain_name = query.hostname
-            dnso.failure = normalize_failure(query.failure)
-            yield dnso
-            continue
-
-        for idx, answer in enumerate(query.answers):
-            dnso = DNSObservation.from_measurement(msmt, netinfodb)
-            if query.t:
-                dnso.timestamp += timedelta(seconds=query.t)
-
-            dnso.observation_id = f"{dnso.measurement_uid}{idx}"
-
-            dnso.query_type = query.query_type
-            dnso.domain_name = query.hostname
-            dnso.answer_type = answer.answer_type
-            if answer.ipv4:
-                dnso.answer = answer.ipv4
-                dnso.answer_is_bogon = is_ipv4_bogon(answer.ipv4)
-            elif answer.ipv6:
-                dnso.answer = answer.ipv6
-                dnso.answer_is_bogon = is_ipv6_bogon(answer.ipv6)
-            elif answer.hostname:
-                dnso.answer = answer.hostname
-
-            if answer.ipv4 or answer.ipv6:
-                answer_meta = netinfodb.lookup_ip(dnso.timestamp, dnso.answer)
-                if answer_meta:
-                    dnso.answer_asn = answer_meta.as_info.asn
-                    dnso.answer_as_cc = answer_meta.as_info.as_cc
-                    dnso.answer_as_org_name = answer_meta.as_info.as_org_name
-                    dnso.answer_cc = answer_meta.cc
-
-            matched_fingerprint = fingerprintdb.match_dns(dnso.answer)
-            if matched_fingerprint:
-                dnso.fingerprint_id = matched_fingerprint.name
-                if matched_fingerprint.expected_countries:
-                    dnso.fingerprint_country_consistent = (
-                        msmt.probe_cc in matched_fingerprint.expected_countries
-                    )
-            yield dnso
+        answer_list = query.answers
+        if not answer_list:
+            answer_list = [None]
+        for idx, answer in enumerate(answer_list):
+            yield DNSObservation.from_measurement(
+                msmt, query, answer, idx, fingerprintdb, netinfodb
+            )
 
 
 class TCPObservation(Observation):
@@ -310,18 +339,16 @@ class TCPObservation(Observation):
 
     failure: Failure
 
-
-def make_tcp_observations(
-    msmt: BaseMeasurement,
-    tcp_connect: Optional[List[TCPConnect]],
-    netinfodb: NetinfoDB,
-    ip_to_domain: Dict[str, str] = {},
-) -> Generator[TCPObservation, None, None]:
-    if not tcp_connect:
-        return
-
-    for idx, res in enumerate(tcp_connect):
-        tcpo = TCPObservation.from_measurement(msmt, netinfodb)
+    @classmethod
+    def from_measurement(
+        cls,
+        msmt: BaseMeasurement,
+        res: TCPConnect,
+        idx: int,
+        ip_to_domain: Dict[str, str],
+        netinfodb: NetinfoDB,
+    ) -> "TCPObservation":
+        tcpo = super().from_measurement(msmt, netinfodb)
         if res.t:
             tcpo.timestamp += timedelta(seconds=res.t)
 
@@ -340,7 +367,20 @@ def make_tcp_observations(
 
             tcpo.ip_cc = ip_info.cc
 
-        yield tcpo
+        return tcpo
+
+
+def make_tcp_observations(
+    msmt: BaseMeasurement,
+    tcp_connect: Optional[List[TCPConnect]],
+    netinfodb: NetinfoDB,
+    ip_to_domain: Dict[str, str] = {},
+) -> Generator[TCPObservation, None, None]:
+    if not tcp_connect:
+        return
+
+    for idx, res in enumerate(tcp_connect):
+        yield TCPObservation.from_measurement(msmt, res, idx, ip_to_domain, netinfodb)
 
 
 def network_events_until_connect(
@@ -408,20 +448,17 @@ class TLSObservation(Observation):
     tls_handshake_last_operation: Optional[str]
     tls_handshake_time: Optional[float]
 
-
-def make_tls_observations(
-    msmt: BaseMeasurement,
-    tls_handshakes: Optional[List[TLSHandshake]],
-    network_events: Optional[List[NetworkEvent]],
-    netinfodb: NetinfoDB,
-    ip_to_domain: Dict[str, str] = {},
-) -> Generator[TLSObservation, None, None]:
-    if not tls_handshakes:
-        return
-
-    for idx, tls_h in enumerate(tls_handshakes):
-        tso = TLSObservation.from_measurement(msmt, netinfodb)
-
+    @classmethod
+    def from_measurement(
+        cls,
+        msmt: BaseMeasurement,
+        tls_h: TLSHandshake,
+        network_events: Optional[List[NetworkEvent]],
+        idx: int,
+        ip_to_domain: Dict[str, str],
+        netinfodb: NetinfoDB,
+    ) -> "TLSObservation":
+        tso = super().from_measurement(msmt, netinfodb)
         tso.observation_id = f"{tso.measurement_uid}{idx}"
 
         if tls_h.t:
@@ -488,4 +525,20 @@ def make_tls_observations(
             tso.end_entity_certificate_not_valid_before = cert_meta.not_valid_before
             tso.end_entity_certificate_san_list = cert_meta.san_list
 
-        yield tso
+        return tso
+
+
+def make_tls_observations(
+    msmt: BaseMeasurement,
+    tls_handshakes: Optional[List[TLSHandshake]],
+    network_events: Optional[List[NetworkEvent]],
+    netinfodb: NetinfoDB,
+    ip_to_domain: Dict[str, str] = {},
+) -> Generator[TLSObservation, None, None]:
+    if not tls_handshakes:
+        return
+
+    for idx, tls_h in enumerate(tls_handshakes):
+        yield TLSObservation.from_measurement(
+            msmt, tls_h, network_events, idx, ip_to_domain, netinfodb
+        )
