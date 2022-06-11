@@ -142,18 +142,18 @@ def web_connectivity_processor(
     )
 
 
+def one_day_dict(day: date) -> dict[str, datetime]:
+    start_day = datetime(year=day.year, month=day.month, day=day.day)
+    end_day = start_day + timedelta(days=1)
+    return {"start_day": start_day, "end_day": end_day}
+
+
 def domains_in_a_day(day: date, db: ClickhouseConnection) -> Generator[str, None, None]:
     q = """SELECT DISTINCT(domain_name) FROM obs_dns
     WHERE timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s;
     """
-    q_params = (
-        {
-            "start_day": day,
-            "end_day": day + timedelta(days=1),
-        },
-    )
-    for res in db.execute(q, q_params):
+    for res in db.execute(q, one_day_dict(day)):
         yield res[0]
 
 
@@ -172,13 +172,9 @@ def dns_observations_by_session(
     AND timestamp <= %(end_day)s
     ORDER BY session_id;
     """
-    q_params = (
-        {
-            "start_day": day,
-            "end_day": day + timedelta(days=1),
-            "domain_name": domain_name,
-        },
-    )
+    q_params = one_day_dict(day)
+    q_params["domain_name"] = domain_name
+
     dns_obs_session = []
     last_obs_session_id = None
     for res in db.execute(q, q_params):
@@ -211,14 +207,10 @@ def observations_in_session(
     AND session_id = %(session_id)s
     ORDER BY session_id;
     """
-    q_params = (
-        {
-            "start_day": day,
-            "end_day": day + timedelta(days=1),
-            "domain_name": domain_name,
-            "session_id": session_id,
-        },
-    )
+    q_params = one_day_dict(day)
+    q_params["domain_name"] = domain_name
+    q_params["session_id"] = session_id
+
     for res in db.execute(q, q_params):
         obs = obs_class()
         for idx, val in enumerate(res):
