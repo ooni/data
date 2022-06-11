@@ -29,6 +29,7 @@ from oonidata.dataformat import BaseMeasurement
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 from oonidata.verdicts import (
+    Outcome,
     Verdict,
     make_dns_baseline,
     make_http_baseline_map,
@@ -75,6 +76,8 @@ def make_verdict_row(v: Verdict) -> dict:
     row = {}
     for name, t in observation_attrs(Verdict):
         row[name] = getattr(v, name, None)
+        if t == Outcome:
+            row[name] = str(row[name])
         if t in (Optional[str], str) and row[name] is None:
             row[name] = ""
     return row
