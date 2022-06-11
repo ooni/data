@@ -1,5 +1,5 @@
 import json
-import csv
+import sys
 import inspect
 import argparse
 from tqdm import tqdm
@@ -327,6 +327,14 @@ def process_day(db: DatabaseConnection, day: date, start_at_idx=0):
                 pprint(trim_measurement(json.loads(raw_msmt), 30))
                 raise exc
 
+    for verdict in generate_website_verdicts(
+        day,
+        db,
+        fingerprintdb,
+        netinfodb,
+    ):
+        print(verdict)
+
 
 if __name__ == "__main__":
     # XXX this is just for temporary testing
@@ -352,6 +360,7 @@ if __name__ == "__main__":
         type=int,
         default=0,
     )
+    parser.add_argument("--only-verdicts", action="store_true")
     args = parser.parse_args()
 
     if args.clickhouse:
@@ -360,6 +369,18 @@ if __name__ == "__main__":
         db = CSVConnection(Path(args.csv_dir))
     else:
         raise Exception("Missing --csv-dir or --clickhouse")
+
+    if args.only_verdicts:
+        fingerprintdb = FingerprintDB()
+        netinfodb = NetinfoDB()
+        for verdict in generate_website_verdicts(
+            args.day,
+            db,
+            fingerprintdb,
+            netinfodb,
+        ):
+            print(verdict)
+        sys.exit(0)
 
     # 31469
     process_day(db, args.day, args.start_at_idx)
