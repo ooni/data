@@ -319,9 +319,10 @@ def make_website_tcp_verdicts(
 ) -> Generator[Verdict, None, List[str]]:
     outcome_detail_list = []
     if tcp_o.failure:
-        tcp_b.unreachable_cc_asn.remove((tcp_o.probe_cc, tcp_o.probe_asn))
-        reachable_count = len(tcp_b.reachable_cc_asn)
-        unreachable_count = len(tcp_o.unreachable_cc_asn)
+        unreachable_cc_asn = list(tcp_b.unreachable_cc_asn)
+        unreachable_cc_asn.remove((tcp_o.probe_cc, tcp_o.probe_asn))
+        reachable_count = len(tcp_o.reachable_cc_asn)
+        unreachable_count = len(unreachable_cc_asn)
         if reachable_count > unreachable_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
             confidence = reachable_count / (reachable_count + unreachable_count + 1)
@@ -391,11 +392,13 @@ def make_website_dns_verdict(
         outcome_detail_list.append(outcome_detail)
 
     elif dns_o.failure:
-        dns_b.failure_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
-        dns_b.nxdomain_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
+        failure_cc_asn = list(dns_b.failure_cc_asn)
+        failure_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
+        nxdomain_cc_asn = list(dns_b.nxdomain_cc_asn)
+        nxdomain_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
 
-        nxdomain_count = len(dns_b.nxdomain_cc_asn)
-        failure_count = len(dns_b.failure_cc_asn)
+        nxdomain_count = len(nxdomain_cc_asn)
+        failure_count = len(failure_cc_asn)
         ok_count = len(dns_b.ok_cc_asn)
 
         if dns_o.failure == "dns_nxdomain_error":
@@ -574,8 +577,9 @@ def make_website_http_verdict(
         ):
             return
 
-        http_b.failure_cc_asn.remove((http_o.probe_cc, http_o.probe_asn))
-        failure_count = len(http_b.failure_cc_asn)
+        failure_cc_asn = list(http_b.failure_cc_asn)
+        failure_cc_asn.remove((http_o.probe_cc, http_o.probe_asn))
+        failure_count = len(failure_cc_asn)
         ok_count = len(http_b.ok_cc_asn)
         if failure_count > ok_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
