@@ -273,10 +273,34 @@ class WebConnectivityTestKeys(BaseTestKeys):
 
 @dataclass
 class WebConnectivity(BaseMeasurement):
-    test_keys: WebConnectivityTestKeys
+    test_keys: Optional[WebConnectivityTestKeys]
 
 
-nettest_dataformats = {"web_connectivity": WebConnectivity}
+@dataclass
+class TorTestTarget:
+    failure: Failure
+    network_events: Optional[List[NetworkEvent]]
+    queries: Optional[List[DNSQuery]]
+    requests: Optional[List[HTTPTransaction]]
+    tls_handshakes: Optional[List[TLSHandshake]]
+    tcp_connect: Optional[List[TCPConnect]]
+
+    target_address: str
+    target_name: str
+    target_protocol: str
+
+
+@dataclass
+class TorTestKeys:
+    targets: dict[str, TorTestTarget]
+
+
+@dataclass
+class Tor(BaseMeasurement):
+    test_keys: Optional[TorTestKeys]
+
+
+nettest_dataformats = {"web_connectivity": WebConnectivity, "tor": Tor}
 
 
 def load_measurement(raw: bytes) -> BaseMeasurement:

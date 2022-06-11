@@ -107,6 +107,49 @@ def default_processor(
     print(f"Ignoring {msmt}")
 
 
+def tor_processor(
+    msmt: BaseMeasurement,
+    db: DatabaseConnection,
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
+) -> None:
+
+    ip_to_domain = {}
+    for target_id, target_msmt in msmt.test_keys.targets:
+        write_observations_to_db(
+            db,
+            make_http_observations(
+                msmt, target_msmt.requests, fingerprintdb, netinfodb, target=target_id
+            ),
+        )
+
+        write_observations_to_db(
+            db,
+            make_dns_observations(
+                msmt, target_msmt.queries, fingerprintdb, netinfodb, target=target_id
+            ),
+        )
+
+        write_observations_to_db(
+            db,
+            make_tcp_observations(
+                msmt, target_msmt.tcp_connect, netinfodb, ip_to_domain, target=target_id
+            ),
+        )
+
+        write_observations_to_db(
+            db,
+            make_tls_observations(
+                msmt,
+                target_msmt.tls_handshakes,
+                target_msmt.network_events,
+                netinfodb,
+                ip_to_domain,
+                target=target_id,
+            ),
+        )
+
+
 def web_connectivity_processor(
     msmt: BaseMeasurement,
     db: DatabaseConnection,
@@ -313,17 +356,23 @@ def generate_website_verdicts(
 
 verdict_generators = [generate_website_verdicts]
 
-nettest_processors = {"web_connectivity": web_connectivity_processor}
+nettest_processors = {
+    "web_connectivity": web_connectivity_processor,
+    "tor": tor_processor,
+}
 
 
-def process_day(db: DatabaseConnection, day: date, start_at_idx=0):
+def process_day(db: DatabaseConnection, day: date, testnames=[], start_at_idx=0):
     fingerprintdb = FingerprintDB()
     netinfodb = NetinfoDB()
 
     with tqdm(unit="B", unit_scale=True) as pbar:
         for idx, raw_msmt in enumerate(
             iter_raw_measurements(
-                ccs=[], testnames=[], start_day=day, end_day=day + timedelta(days=1)
+                ccs=[],
+                testnames=testnames,
+                start_day=day,
+                end_day=day + timedelta(days=1),
             )
         ):
             pbar.set_description(f"idx {idx}")
@@ -369,6 +418,10 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
+        "--testname",
+        type=str,
+    )
+    parser.add_argument(
         "--day",
         type=_parse_date_flag,
         default=date(2022, 1, 1),
@@ -403,4 +456,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # 31469
-    process_day(db, args.day, args.start_at_idx)
+    testnames = []
+    if args.testname:
+        testnames = [args.testname]
+    process_day(db, args.day, testnames=testnames, start_at_idx=args.start_at_idx)

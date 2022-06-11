@@ -42,6 +42,8 @@ class Observation:
 
     timestamp: datetime
 
+    target: str
+
     probe_asn: int
     probe_cc: str
 
@@ -76,6 +78,7 @@ def set_base_observation_meta(
     obs.network_type = msmt.annotations.network_type
     obs.platform = msmt.annotations.platform
     obs.origin = msmt.annotations.origin
+    obs.target = ""
 
     probe_as_info = netinfodb.lookup_asn(obs.timestamp, obs.probe_asn)
     if probe_as_info:
@@ -222,6 +225,7 @@ def make_http_observations(
     requests_list: Optional[List[HTTPTransaction]],
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
+    target: str = "",
 ) -> Generator[HTTPObservation, None, None]:
     if not requests_list:
         return
@@ -230,6 +234,7 @@ def make_http_observations(
         httpo = HTTPObservation.from_measurement(
             msmt, netinfodb, idx, requests_list, http_transaction, fingerprintdb
         )
+        httpo.target = target
         if httpo:
             yield httpo
 
@@ -309,6 +314,7 @@ def make_dns_observations(
     queries: Optional[List[DNSQuery]],
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
+    target: str = "",
 ) -> Generator[DNSObservation, None, None]:
     if not queries:
         return
@@ -318,9 +324,11 @@ def make_dns_observations(
         if not answer_list:
             answer_list = [None]
         for idx, answer in enumerate(answer_list):
-            yield DNSObservation.from_measurement(
+            dnso = DNSObservation.from_measurement(
                 msmt, query, answer, idx, fingerprintdb, netinfodb
             )
+            dnso.target = target
+            yield dnso
 
 
 class TCPObservation(Observation):
@@ -374,12 +382,15 @@ def make_tcp_observations(
     tcp_connect: Optional[List[TCPConnect]],
     netinfodb: NetinfoDB,
     ip_to_domain: Dict[str, str] = {},
+    target: str = "",
 ) -> Generator[TCPObservation, None, None]:
     if not tcp_connect:
         return
 
     for idx, res in enumerate(tcp_connect):
-        yield TCPObservation.from_measurement(msmt, res, idx, ip_to_domain, netinfodb)
+        tcpo = TCPObservation.from_measurement(msmt, res, idx, ip_to_domain, netinfodb)
+        tcpo.target = target
+        yield tcpo
 
 
 def network_events_until_connect(
@@ -533,11 +544,14 @@ def make_tls_observations(
     network_events: Optional[List[NetworkEvent]],
     netinfodb: NetinfoDB,
     ip_to_domain: Dict[str, str] = {},
+    target: str = "",
 ) -> Generator[TLSObservation, None, None]:
     if not tls_handshakes:
         return
 
     for idx, tls_h in enumerate(tls_handshakes):
-        yield TLSObservation.from_measurement(
+        tso = TLSObservation.from_measurement(
             msmt, tls_h, network_events, idx, ip_to_domain, netinfodb
         )
+        tso.target = target
+        yield tso

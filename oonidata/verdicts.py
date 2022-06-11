@@ -206,11 +206,11 @@ def make_http_baseline_map(
                 request_url, HTTPBaseline(request_url)
             )
             if not failure:
+                http_baseline_map[request_url].ok_cc_asn.append((probe_cc, probe_asn))
+            else:
                 http_baseline_map[request_url].failure_cc_asn.append(
                     (probe_cc, probe_asn)
                 )
-            else:
-                http_baseline_map[request_url].ok_cc_asn.append((probe_cc, probe_asn))
 
     q = """SELECT request_url,
     topK(1)(response_body_sha1),
