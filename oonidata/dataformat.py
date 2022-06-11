@@ -286,7 +286,7 @@ class TorTestTarget:
     tcp_connect: Optional[List[TCPConnect]]
 
     target_address: str
-    target_name: str
+    target_name: Optional[str]
     target_protocol: str
 
 
