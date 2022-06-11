@@ -115,7 +115,7 @@ def tor_processor(
 ) -> None:
 
     ip_to_domain = {}
-    for target_id, target_msmt in msmt.test_keys.targets:
+    for target_id, target_msmt in msmt.test_keys.targets.items():
         write_observations_to_db(
             db,
             make_http_observations(
