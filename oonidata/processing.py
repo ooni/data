@@ -3,7 +3,6 @@ import sys
 import inspect
 import argparse
 import logging
-from enum import Enum
 from tqdm import tqdm
 from pprint import pprint
 from datetime import datetime, date, timedelta
@@ -77,9 +76,9 @@ def make_verdict_row(v: Verdict) -> dict:
     row = {}
     for name, t in observation_attrs(Verdict):
         row[name] = getattr(v, name, None)
-        if issubclass(t, Enum):
+        if t == Outcome:
             row[name] = row[name].value
-        elif t in (Optional[str], str) and row[name] is None:
+        if t in (Optional[str], str) and row[name] is None:
             row[name] = ""
     return row
 
