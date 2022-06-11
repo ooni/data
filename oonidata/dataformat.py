@@ -209,7 +209,7 @@ class NetworkEvent:
     operation: str
     proto: Optional[str]
     t: float
-    tags: List[str]
+    tags: Optional[List[str]]
     transaction_id: Optional[str]
 
 
