@@ -1,6 +1,14 @@
 ## OONI Data
 
-## Data pipeline flow
+## Using this repo
+
+To get yourself started with using this repo, run the following:
+```
+poetry install
+mkdir output/
+poetry run python oonidata/processing.py --csv-dir output/
+```
+## Architecture overview
 
 This data pipeline works by dealing with the data in two different stages:
 * Observation generation
@@ -35,6 +43,9 @@ graph TD
     MsmtProcessor --> HTTPObservations
 ```
 
+The `measurement_processor` stage can also be run in a streaming fashion as
+measurements are uploaded to the collector.
+
 ### Verdict generation
 
 A verdict is the result of interpreting one or more network observations
@@ -48,7 +59,7 @@ being the result of blocking.
 The data flow of the verdict generation pipeline looks as follows:
 ```mermaid
 graph TD
-    IPInfoDB[(IPInfoDB)] --> MsmtProcessor
+    IPInfoDB[(IPInfoDB)] --> VerdictGenerator
     FingerprintDB[(FingerprintDB)] --> VerdictGenerator
 
     Observations --> GrouperTimeTarget[/"GROUP BY time_interval, target"/]
@@ -60,11 +71,44 @@ graph TD
     VerdictGenerator --> Verdicts
 ```
 
-## Using this repo
+Some precautions need to be taken when running the `verdict_generator()` in
+batch compared to running it in streaming mode.
 
-To get yourself started with using this repo, run the following:
-```
-poetry install
-mkdir output/
-poetry run python oonidata/processing.py --csv-dir output/
-```
+The challenge is that you don't want to have to regenerate baselines that often
+because it's an expensive process.
+
+Let us first discuss the usage of the Verdict generation in the context of a
+batch workflow. When in batch we will take all the Observations in the desired
+`time_interval` and `target`. In practice what we would do is process the data
+in daily batches and apply the `GROUP BY` clause to a particular target.
+It is possible to parallelise these task across multiple cores (and possibly
+even across multiple nodes).
+
+A baseline is some ground truth information about the target on that given day,
+we generate this once and then apply it to all the observations for that target
+from every testing session to establish the outcome of the verdict.
+
+It's reasonable to do this over a time window of a day, because that will mean
+that the baseline will be pertaining to at most 24h from the observation.
+
+The challenge is when you want to do something similar for data as it comes in,
+the problem there is that if you use data from the last day, you will end up
+with a delta from the observation that can be up to 48h, which might be to much.
+OTOH if you use data from the current day, you may not have enough data.
+Moreover, it means that the result of the `verdict_generator` in batch mode
+will differ from a run in streaming, which can lead to inconsistent results.
+
+I think we would like to have the property of having results be as close as
+possible to the batch run, while in streaming and have some way of getting
+eventual consistency.
+
+The proposed solution is to generate baselines for all the targets (which is a
+small set and can even be kept in memory) on a rolling 1h basis. This way
+verdicts can be calculated based on a basline that will be from a delta of at
+most 24h.
+
+Once the day is finished, we can re-run the verdict generation using the batch
+workflow and mark for deletion all the verdicts generated in streaming, leading
+to an eventual consistency.
+
+
