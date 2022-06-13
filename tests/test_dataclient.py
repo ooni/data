@@ -1,12 +1,8 @@
-import pytest
-import time
-
-from pathlib import Path
 from datetime import date
 
-from oonidata.s3feeder import iter_file_entries, create_s3_client, get_jsonl_prefixes
-from oonidata.s3feeder import iter_cans_on_s3_for_a_day, jsonl_in_range, list_file_entries
-from oonidata.s3feeder import stream_measurements
+from oonidata.dataclient import iter_file_entries, get_jsonl_prefixes
+from oonidata.dataclient import jsonl_in_range, list_file_entries
+from oonidata.s3feeder import stream_measurements, iter_cans_on_s3_for_a_day
 
 
 def test_iter_file_entries_new_jsonl():
