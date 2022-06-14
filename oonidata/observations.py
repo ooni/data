@@ -1,5 +1,7 @@
 import hashlib
-from unittest.mock import Base
+import abc
+
+from dataclasses import dataclass
 from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
 from typing import Generator, Optional, List, Dict
@@ -34,7 +36,8 @@ def normalize_failure(failure: Failure):
     return failure
 
 
-class Observation:
+@dataclass
+class Observation(abc.ABC):
     measurement_uid: str
     observation_id: str
 
@@ -47,8 +50,8 @@ class Observation:
     probe_asn: int
     probe_cc: str
 
-    probe_as_org_name: Optional[str]
-    probe_as_cc: Optional[str]
+    probe_as_org_name: str
+    probe_as_cc: str
 
     software_name: str
     software_version: str
@@ -56,51 +59,51 @@ class Observation:
     platform: str
     origin: str
 
-    resolver_asn: Optional[int]
-    resolver_ip: Optional[str]
-    resolver_cc: Optional[str]
-    resolver_as_org_name: Optional[str]
-    resolver_as_cc: Optional[str]
+    resolver_asn: int
+    resolver_ip: str
+    resolver_cc: str
+    resolver_as_org_name: str
+    resolver_as_cc: str
 
 
-def set_base_observation_meta(
-    obs: Observation, msmt: BaseMeasurement, netinfodb: NetinfoDB
-) -> "Observation":
+def make_base_observation_meta(
+    msmt: BaseMeasurement, netinfodb: NetinfoDB
+) -> dict:
     assert msmt.measurement_uid is not None
-    obs.measurement_uid = msmt.measurement_uid
-    obs.timestamp = datetime.strptime(msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S")
-    obs.probe_asn = int(msmt.probe_asn.lstrip("AS"))
-    obs.probe_cc = msmt.probe_cc
-    obs.session_id = msmt.report_id
-
-    obs.software_name = msmt.software_name
-    obs.software_version = msmt.software_version
-    obs.network_type = msmt.annotations.network_type
-    obs.platform = msmt.annotations.platform
-    obs.origin = msmt.annotations.origin
-    obs.target = ""
-
-    probe_as_info = netinfodb.lookup_asn(obs.timestamp, obs.probe_asn)
-    if probe_as_info:
-        obs.probe_as_org_name = probe_as_info.as_org_name
-        obs.probe_as_cc = probe_as_info.as_cc
+    timestamp = datetime.strptime(msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S")
+    probe_as_info = netinfodb.lookup_asn(timestamp, msmt.probe_asn)
 
     resolver_ip = msmt.resolver_ip
     if not resolver_ip and msmt.test_keys and msmt.test_keys.client_resolver:
         resolver_ip = msmt.test_keys.client_resolver
     if resolver_ip:
-        resolver_as_info = netinfodb.lookup_ip(obs.timestamp, resolver_ip)
-        if resolver_as_info:
-            obs.resolver_ip = resolver_ip
-            obs.resolver_asn = resolver_as_info.as_info.asn
-            obs.resolver_as_org_name = resolver_as_info.as_info.as_org_name
-            obs.resolver_as_cc = resolver_as_info.as_info.as_cc
-            obs.resolver_cc = resolver_as_info.cc
-    return obs
+        resolver_as_info = netinfodb.lookup_ip(timestamp, resolver_ip)
+
+    return dict(
+        measurement_uid=msmt.measurement_uid,
+        timestamp=timestamp,
+        probe_asn=int(msmt.probe_asn.lstrip("AS")),
+        probe_cc = msmt.probe_cc,
+        probe_as_org_name=probe_as_info.as_org_name if probe_as_info else "",
+        probe_as_cc=probe_as_info.probe_as_cc if probe_as_info else "",
+        session_id = msmt.report_id,
+        software_name = msmt.software_name,
+        software_version = msmt.software_version,
+        network_type = msmt.annotations.network_type,
+        platform = msmt.annotations.platform,
+        origin = msmt.annotations.origin,
+        target="",
+        resolver_ip=resolver_ip,
+        resolver_cc=resolver_as_info.cc if resolver_as_info else "",
+        resolver_asn=resolver_as_info.as_info.asn if resolver_as_info else "",
+        resolver_as_org_name=resolver_as_info.as_info.as_org_name if resolver_as_info else "",
+        resolver_as_cc=resolver_as_info.as_info.as_cc if resolver_as_info else "",
+    )
 
 
+@dataclass
 class HTTPObservation(Observation):
-    db_table = "obs_http"
+    __table_name__ = "obs_http"
 
     domain_name: str
     request_url: str
@@ -140,8 +143,10 @@ class HTTPObservation(Observation):
         http_transaction: HTTPTransaction,
         fingerprintdb: FingerprintDB,
     ) -> Optional["HTTPObservation"]:
-        hrro = HTTPObservation()
-        hrro = set_base_observation_meta(hrro, msmt, netinfodb)
+        
+        hrro = HTTPObservation(
+            **make_base_observation_meta(msmt, netinfodb)
+        )
 
         if http_transaction.t:
             hrro.timestamp += timedelta(seconds=http_transaction.t)
@@ -239,8 +244,9 @@ def make_http_observations(
             yield httpo
 
 
+@dataclass
 class DNSObservation(Observation):
-    db_table = "obs_dns"
+    __table_name__ = "obs_dns"
 
     domain_name: str
 
@@ -331,8 +337,9 @@ def make_dns_observations(
             yield dnso
 
 
+@dataclass
 class TCPObservation(Observation):
-    db_table = "obs_tcp"
+    __table_name__ = "obs_tcp"
 
     domain_name: str
 
@@ -420,8 +427,9 @@ def find_tls_handshake_network_events(
             return current_event_window
 
 
+@dataclass
 class TLSObservation(Observation):
-    db_table = "obs_tls"
+    __table_name__ = "obs_tls"
 
     domain_name: str
 

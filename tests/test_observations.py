@@ -1,3 +1,5 @@
+import pytest
+
 from oonidata.observations import (
     make_http_observations,
     make_dns_observations,
@@ -10,11 +12,15 @@ from oonidata.dataformat import load_measurement
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
+@pytest.fixture
+def fingerprintdb():
+    return FingerprintDB()
 
-def test_http_observations():
-    fingerprintdb = FingerprintDB()
-    netinfodb = NetinfoDB()
+@pytest.fixture
+def netinfodb ():
+    return NetinfoDB()
 
+def test_http_observations(fingerprintdb, netinfodb):
     msmt = load_measurement(
         get_raw_measurement(
             "20220608T131504Z_webconnectivity_AM_49800_n1_AqEZWsh35AuSmwMv",
