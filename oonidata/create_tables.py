@@ -27,10 +27,10 @@ def typing_to_clickhouse(t: Any) -> str:
         return "Nullable(Int32)"
 
     if t == bool:
-        return "Nullable(Int8)"
+        return "Int8"
 
     if t == Optional[bool]:
-        return "Int8"
+        return "Nullable(Int8)"
 
     if t == datetime:
         return "Datetime64(6)"
