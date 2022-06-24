@@ -94,7 +94,7 @@ def make_base_observation_meta(
         target="",
         resolver_ip=resolver_ip,
         resolver_cc=resolver_as_info.cc if resolver_as_info else "",
-        resolver_asn=resolver_as_info.as_info.asn if resolver_as_info else "",
+        resolver_asn=resolver_as_info.as_info.asn if resolver_as_info else 0,
         resolver_as_org_name=resolver_as_info.as_info.as_org_name if resolver_as_info else "",
         resolver_as_cc=resolver_as_info.as_info.as_cc if resolver_as_info else "",
     )
