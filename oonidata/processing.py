@@ -50,19 +50,6 @@ log.addHandler(logging.StreamHandler())
 log.setLevel(logging.DEBUG)
 
 
-@cache
-def observation_attrs(obs_class: Observation) -> List[Tuple[str, Any]]:
-    obs_attrs = []
-    for cls in reversed(inspect.getmro(obs_class)):
-        ann = cls.__dict__.get("__annotations__")
-        if not ann:
-            continue
-        for name, t in ann.items():
-            if name == "db_table":
-                continue
-            obs_attrs.append((name, t))
-    return obs_attrs
-
 def observation_field_names(obs_class: Observation) -> List[str]:
     return list(lambda dc: dc.name, fields(obs_class))
 
@@ -77,7 +64,7 @@ def write_observations_to_db(
 ) -> None:
     for obs in observations:
         row = make_observation_row(obs)
-        db.write_row(obs.db_table, row)
+        db.write_row(obs.__table, row)
 
 
 def write_verdicts_to_db(db: DatabaseConnection, verdicts: Iterable[Verdict]) -> None:
@@ -255,7 +242,7 @@ def observations_in_session(
     field_names = observation_field_names(obs_class)
     q = "SELECT "
     q += ",\n".join(field_names)
-    q += " FROM " + obs_class.db_table
+    q += " FROM " + obs_class.__table_name__
     q += """
     WHERE domain_name = %(domain_name)s
     AND timestamp >= %(start_day)s

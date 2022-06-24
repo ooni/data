@@ -3,6 +3,7 @@ import inspect
 from datetime import datetime
 
 from typing import Optional, Union, Tuple, List, Any
+from dataclasses import fields
 from oonidata.observations import (
     Observation,
     DNSObservation,
@@ -12,48 +13,65 @@ from oonidata.observations import (
 )
 
 
-def _annotation_to_db_type(t: Any) -> str:
-    if t == Optional[str] or t == str:
+def typing_to_clickhouse(t: Any) -> str:
+    if t == str:
         return "String"
 
-    if t == int or t == Optional[int]:
+    if t == Optional[str]:
+        return "Nullable(String)"
+
+    if t == int:
         return "Int32"
 
-    if t == bool or t == Optional[bool]:
+    if t == Optional[int]:
+        return "Nullable(Int32)"
+
+    if t == bool:
+        return "Nullable(Int8)"
+
+    if t == Optional[bool]:
         return "Int8"
 
-    if t == datetime or t == Optional[datetime]:
+    if t == datetime:
         return "Datetime64(6)"
 
-    if t == float or t == Optional[float]:
+    if t == Optional[datetime]:
+        return "Nullable(Datetime64(6))"
+
+    if t == float:
         return "Float64"
 
-    if t == List[str] or t == Optional[List[str]]:
+    if t == Optional[float]:
+        return "Nullable(Float64)"
+
+    if t == List[str]:
         return "Array(String)"
+    if t == Optional[List[str]]:
+        return "Nullable(Array(String))"
 
     if t == Optional[List[Tuple[str, bytes]]]:
-        return "Array(Array(String))"
+        return "Nullable(Array(Array(String)))"
 
     raise Exception(f"Unhandled type {t}")
 
 
 def create_query_for_observation(obs_class: Observation) -> str:
-    create_query = f"CREATE TABLE IF NOT EXISTS {obs_class.db_table} (\n"
-    for cls in reversed(inspect.getmro(obs_class)):
-        for name, ants in inspect.get_annotations(cls).items():
-            if name == "db_table":
-                continue
-            type_str = _annotation_to_db_type(ants)
-            create_query += f"`{name}` {type_str},\n"
+    columns = []
+    for f in fields(obs_class):
+        type_str = typing_to_clickhouse(f.type)
+        columns.append(f"     `{f.name}` {type_str}")
 
-    create_query += ")\n"
-    create_query += """
+    columns_str = ",\n".join(columns)
+
+    return f"""
+    CREATE TABLE {obs_class.__table_name__} (
+{columns_str}
+    )
     ENGINE = ReplacingMergeTree
-    ORDER BY ()
+    ORDER BY (timestamp, observation_id, measurement_uid)
     SETTINGS index_granularity = 8192;
+    )
     """
-    return create_query
-
 
 def main():
     print(create_query_for_observation(DNSObservation))

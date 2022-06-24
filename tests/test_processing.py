@@ -30,9 +30,11 @@ def test_insert_query_for_observation():
     assert all_http_obs[0].response_matches_blockpage == True
     assert all_http_obs[0].fingerprint_country_consistent == True
 
+    assert all_http_obs.__table_name__ == "obs_http"
+
     params = make_observation_row(all_http_obs[0])
     print(params)
     assert "timestamp" in params
-    assert "__db_table__" not in params
+    assert "__table_name__" not in params
 
     assert "request_url" in params
