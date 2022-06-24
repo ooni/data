@@ -8,6 +8,7 @@ from pprint import pprint
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from functools import cache
+from dataclasses import asdict, fields
 
 from collections.abc import Iterable
 from typing import Optional, Tuple, List, Any, Generator
@@ -62,26 +63,14 @@ def observation_attrs(obs_class: Observation) -> List[Tuple[str, Any]]:
             obs_attrs.append((name, t))
     return obs_attrs
 
+def observation_field_names(obs_class: Observation) -> List[str]:
+    return list(lambda dc: dc.name, fields(obs_class))
 
 def make_observation_row(observation: Observation) -> dict:
-    row = {}
-    for name, t in observation_attrs(observation.__class__):
-        row[name] = getattr(observation, name, None)
-        if t in (Optional[str], str) and row[name] is None:
-            row[name] = ""
-    return row
-
+    return asdict(observation)
 
 def make_verdict_row(v: Verdict) -> dict:
-    row = {}
-    for name, t in observation_attrs(Verdict):
-        row[name] = getattr(v, name, None)
-        if t == Outcome:
-            row[name] = row[name].value
-        if t in (Optional[str], str) and row[name] is None:
-            row[name] = ""
-    return row
-
+    return asdict(v)
 
 def write_observations_to_db(
     db: DatabaseConnection, observations: Iterable[Observation]
@@ -223,7 +212,7 @@ def dns_observations_by_session(
     day: date, domain_name: str, db: ClickhouseConnection
 ) -> Generator[List[DNSObservation], None, None]:
     # I wish I had an ORM...
-    field_names = list(map(lambda x: x[0], observation_attrs(DNSObservation)))
+    field_names = observation_field_names(DNSObservation)
     q = "SELECT "
     q += ",\n".join(field_names)
     q += """
@@ -238,13 +227,13 @@ def dns_observations_by_session(
 
     dns_obs_session = []
     last_obs_session_id = None
-    for row in db.execute(q, q_params):
-        dns_obs = DNSObservation()
-        for idx, val in enumerate(row):
-            setattr(dns_obs, field_names[idx], val)
+    for res in db.execute(q, q_params):
+        obs_dict = {field_names[idx]: val for idx, val in enumerate(res)}
+        dns_obs = DNSObservation(**obs_dict)
 
         # XXX remove this once the DB is re-updated
         dns_obs.session_id = dns_obs.session_id or dns_obs.measurement_uid
+
         if last_obs_session_id and last_obs_session_id != dns_obs.session_id:
             yield dns_obs_session
             dns_obs_session = [dns_obs]
@@ -263,7 +252,7 @@ def observations_in_session(
     db: ClickhouseConnection,
 ) -> List[Observation]:
     observation_list = []
-    field_names = list(map(lambda x: x[0], observation_attrs(obs_class)))
+    field_names = observation_field_names(obs_class)
     q = "SELECT "
     q += ",\n".join(field_names)
     q += " FROM " + obs_class.db_table
@@ -278,10 +267,8 @@ def observations_in_session(
     q_params["session_id"] = session_id
 
     for res in db.execute(q, q_params):
-        obs = obs_class()
-        for idx, val in enumerate(res):
-            setattr(obs_class, field_names[idx], val)
-        observation_list.append(obs)
+        obs_dict = {field_names[idx]: val for idx, val in enumerate(res)}
+        observation_list.append(obs_class(**obs_dict))
     return observation_list
 
 

@@ -31,6 +31,8 @@ def test_insert_query_for_observation():
     assert all_http_obs[0].fingerprint_country_consistent == True
 
     params = make_observation_row(all_http_obs[0])
+    print(params)
     assert "timestamp" in params
+    assert "__db_table__" not in params
 
     assert "request_url" in params
