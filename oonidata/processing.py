@@ -64,7 +64,7 @@ def write_observations_to_db(
 ) -> None:
     for obs in observations:
         row = make_observation_row(obs)
-        db.write_row(obs.__table, row)
+        db.write_row(obs.__table_name__, row)
 
 
 def write_verdicts_to_db(db: DatabaseConnection, verdicts: Iterable[Verdict]) -> None:

@@ -70,7 +70,6 @@ def create_query_for_observation(obs_class: Observation) -> str:
     ENGINE = ReplacingMergeTree
     ORDER BY (timestamp, observation_id, measurement_uid)
     SETTINGS index_granularity = 8192;
-    )
     """
 
 def main():
