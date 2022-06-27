@@ -1,5 +1,5 @@
 import csv
-from pprint import pprint
+from pprint import pformat
 import logging
 
 log = logging.getLogger("oonidata.processing")
@@ -12,8 +12,8 @@ class DatabaseConnection:
         self.client = None
 
     def write_row(self, table_name, row):
-        print(f"Writing to {table_name}")
-        pprint(row)
+        log.info(f"Writing to {table_name}")
+        log.info(pformat(row))
 
 
 class ClickhouseConnection(DatabaseConnection):
@@ -32,7 +32,8 @@ class ClickhouseConnection(DatabaseConnection):
         try:
             self.client.execute(query_str, [row])
         except Exception as exc:
-            print(f"Failed to write row {row}")
+            log.error(f"Failed to write row")
+            log.error(pformat(row))
             raise exc
 
 

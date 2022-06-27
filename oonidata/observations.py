@@ -93,7 +93,7 @@ def make_base_observation_meta(
         platform = msmt.annotations.platform,
         origin = msmt.annotations.origin,
         target="",
-        resolver_ip=resolver_ip,
+        resolver_ip=resolver_ip if resolver_ip else "",
         resolver_cc=resolver_as_info.cc if resolver_as_info else "",
         resolver_asn=resolver_as_info.as_info.asn if resolver_as_info else 0,
         resolver_as_org_name=resolver_as_info.as_info.as_org_name if resolver_as_info else "",
@@ -238,8 +238,8 @@ def make_http_observations(
         httpo = HTTPObservation.from_measurement(
             msmt, netinfodb, idx, requests_list, http_transaction, fingerprintdb
         )
-        httpo.target = target
         if httpo:
+            httpo.target = target
             yield httpo
 
 

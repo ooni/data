@@ -363,7 +363,7 @@ def process_day(db: DatabaseConnection, day: date, testnames=[], start_at_idx=0)
                 )
             except Exception as exc:
                 with open("bad_msmts.jsonl", "a+") as out_file:
-                    out_file.write(raw_msmt.encode("utf-8"))
+                    out_file.write(raw_msmt.decode("utf-8"))
                     out_file.write("\n")
                 log.error(f"Wrote bad msmt to: ./bad_msmts.jsonl")
                 raise exc
