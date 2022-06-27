@@ -1,6 +1,7 @@
 import ipaddress
 from dataclasses import dataclass, field
 from enum import Enum
+from re import L
 from typing import Optional, List, Tuple, Generator, Any
 from datetime import datetime, date, timedelta
 
@@ -36,7 +37,7 @@ class Outcome(Enum):
     # i: isp level blocking
     ISP_BLOCK = "i"
     # l: local blocking (school, office, home network)
-    LOCAL_BLOCK = "n"
+    LOCAL_BLOCK = "l"
     # s: server-side blocking
     SERVER_SIDE_BLOCK = "s"
     # d: the subject is down
@@ -219,7 +220,7 @@ def make_http_baseline_map(
     topK(1)(response_body_meta_title),
     topK(1)(response_status_code)
     FROM obs_http
-    WHERE failure = ''
+    WHERE failure IS NULL
     AND domain_name = %(domain_name)s 
     AND timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
@@ -325,7 +326,7 @@ def is_dns_consistent(
 
     if dns_o.answer_asn in baseline_asns:
         return 0.9
-    if dns_o.answer_as_org_name.lower() in baseline_as_org_names:
+    if dns_o.answer_as_org_name and dns_o.answer_as_org_name.lower() in baseline_as_org_names:
         return 0.9
     # XXX maybe with the org_name we can also do something like levenshtein
     # distance to get more similarities
@@ -334,7 +335,7 @@ def is_dns_consistent(
 
 def make_website_tcp_verdicts(
     tcp_o: TCPObservation, tcp_b: TCPBaseline
-) -> Generator[Verdict, None, List[str]]:
+) -> Optional[Verdict]:
     outcome = Outcome.OK
     confidence = 1
     outcome_detail = ""
@@ -356,15 +357,16 @@ def make_website_tcp_verdicts(
 
         outcome_detail = f"tcp.{tcp_o.failure}"
 
-    return make_verdict_from_obs(
-        tcp_o,
-        confidence=confidence,
-        subject=tcp_o.domain_name,
-        subject_detail=f"{tcp_o.ip}:{tcp_o.port}",
-        subject_category="website",
-        outcome=outcome,
-        outcome_detail=outcome_detail,
-    )
+    if outcome != Outcome.OK:
+        return make_verdict_from_obs(
+            tcp_o,
+            confidence=confidence,
+            subject=tcp_o.domain_name,
+            subject_detail=f"{tcp_o.ip}:{tcp_o.port}",
+            subject_category="website",
+            outcome=outcome,
+            outcome_detail=outcome_detail,
+        )
 
 
 def make_website_dns_verdict(
@@ -383,7 +385,8 @@ def make_website_dns_verdict(
             len(fp.expected_countries) > 0
             and dns_o.probe_cc not in fp.expected_countries
         ):
-            confidence /= 2
+            log.debug(f"Inconsistent probe_cc vs expected_countries {dns_o.probe_cc} != {fp.expected_countries}")
+            confidence *= 0.7
 
         outcome_detail = "dns.blockpage"
         return make_verdict_from_obs(
@@ -477,25 +480,14 @@ def make_website_dns_verdict(
             outcome_detail = "dns.inconsistent"
             return make_verdict_from_obs(
                 dns_o,
-                confidence=0.8,
+                confidence=confidence,
                 subject=dns_o.domain_name,
                 subject_detail=f"{dns_o.answer}",
                 subject_category="website",
                 outcome=Outcome.BLOCKED,
                 outcome_detail=outcome_detail,
             )
-
     # No blocking detected
-    return make_verdict_from_obs(
-        dns_o,
-        confidence=1,
-        subject=dns_o.domain_name,
-        subject_detail=f"{dns_o.answer}",
-        subject_category="website",
-        outcome=Outcome.OK,
-        outcome_detail="",
-    )
-
 
 def make_website_tls_verdict(
     tls_o: TLSObservation, prev_verdicts: List[Verdict]
@@ -564,17 +556,6 @@ def make_website_tls_verdict(
             outcome=Outcome.BLOCKED,
             outcome_detail=outcome_detail,
         )
-
-    return make_verdict_from_obs(
-        tls_o,
-        confidence=0.9,
-        subject=tls_o.domain_name,
-        subject_detail=f"{tls_o.ip}:{tls_o.port}",
-        subject_category="website",
-        outcome=Outcome.OK,
-        outcome_detail="",
-    )
-
 
 def make_website_http_verdict(
     http_o: HTTPObservation,
@@ -745,14 +726,25 @@ def make_website_verdicts(
     verdicts = []
 
     domain_name = dns_o_list[0].domain_name
+    dns_verdicts = []
     for dns_o in dns_o_list:
         assert (
             domain_name == dns_o.domain_name
         ), f"Inconsistent domain_name in dns_o {dns_o.domain_name}"
         dns_v = make_website_dns_verdict(dns_o, dns_b, fingerprintdb, netinfodb)
         if dns_v:
-            verdicts.append(dns_v)
-            yield dns_v
+            dns_verdicts.append(dns_v)
+        else:
+            # If we didn't get a DNS verdict from an observation, it means that
+            # observation was a sign of everything being OK, hence we should
+            # ignore all the previous DNS verdicts as likely false positives and
+            # just consider no DNS level censorship to be happening.
+            dns_verdicts = []
+            break
+
+    for dns_v in dns_verdicts:
+        verdicts(dns_v)
+        yield dns_v
 
     if tcp_o_list:
         for tcp_o in tcp_o_list:

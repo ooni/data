@@ -73,6 +73,7 @@ def make_base_observation_meta(
     measurement_start_time = datetime.strptime(msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S")
     probe_as_info = netinfodb.lookup_asn(measurement_start_time, msmt.probe_asn)
 
+    resolver_as_info = None
     resolver_ip = msmt.resolver_ip
     if not resolver_ip and msmt.test_keys and msmt.test_keys.client_resolver:
         resolver_ip = msmt.test_keys.client_resolver

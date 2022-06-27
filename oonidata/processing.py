@@ -1,8 +1,8 @@
 import json
 import sys
-import inspect
 import argparse
 import logging
+import tempfile
 from tqdm import tqdm
 from pprint import pprint
 from datetime import datetime, date, timedelta
@@ -11,7 +11,7 @@ from functools import cache
 from dataclasses import asdict, fields
 
 from collections.abc import Iterable
-from typing import Optional, Tuple, List, Any, Generator
+from typing import Tuple, List, Generator
 
 from oonidata.datautils import trim_measurement, one_day_dict
 from oonidata.dataformat import load_measurement
@@ -142,8 +142,7 @@ def web_connectivity_processor(
     )
     ip_to_domain = {
         obs.answer: obs.domain_name
-        # XXX this is a bit sketchy, it should be tidied up in the datamodel
-        for obs in filter(lambda o: hasattr(o, "answer"), dns_observations)
+        for obs in filter(lambda o: o.answer, dns_observations)
     }
 
     write_observations_to_db(
@@ -167,17 +166,20 @@ def web_connectivity_processor(
         tls_observations,
     )
 
-    tls_valid_domain_to_ip = {
-        obs.domain_name: obs.is_certificate_valid
-        for obs in filter(
-            lambda o: hasattr(o, "domain_name") and hasattr(o, "is_certificate_valid"),
-            tls_observations,
-        )
-    }
+    # Here we take dns measurements and compare them to what we see in the tls
+    # data and check for TLS consistency.
+    tls_valid_ip_to_domain = {}
+    for obs in filter(
+        lambda o: o.ip and o.domain_name,
+        tls_observations,
+    ):
+        tls_valid_ip_to_domain[obs.ip] = tls_valid_ip_to_domain.get(obs.ip, {})
+        tls_valid_ip_to_domain[obs.ip][obs.domain_name] = obs.is_certificate_valid
     enriched_dns_observations = []
     for dns_obs in dns_observations:
-        if hasattr(dns_obs, "answer"):
-            dns_obs.is_tls_consistent = tls_valid_domain_to_ip.get(dns_obs.answer, None)
+        if dns_obs.answer:
+            valid_domains = tls_valid_ip_to_domain.get(dns_obs.answer, {})
+            dns_obs.is_tls_consistent = valid_domains.get(dns_obs.domain_name, None)
         enriched_dns_observations.append(dns_obs)
 
     write_observations_to_db(
@@ -217,9 +219,6 @@ def dns_observations_by_session(
     for res in db.execute(q, q_params):
         obs_dict = {field_names[idx]: val for idx, val in enumerate(res)}
         dns_obs = DNSObservation(**obs_dict)
-
-        # XXX remove this once the DB is re-updated
-        dns_obs.session_id = dns_obs.session_id or dns_obs.measurement_uid
 
         if last_obs_session_id and last_obs_session_id != dns_obs.session_id:
             yield dns_obs_session
@@ -363,7 +362,10 @@ def process_day(db: DatabaseConnection, day: date, testnames=[], start_at_idx=0)
                     netinfodb,
                 )
             except Exception as exc:
-                pprint(trim_measurement(json.loads(raw_msmt), 30))
+                with open("bad_msmts.jsonl", "a+") as out_file:
+                    out_file.write(raw_msmt)
+                    out_file.write("\n")
+                print(f"Wrote bad msmt to: ./bad_msmts.jsonl")
                 raise exc
 
     write_verdicts_to_db(
@@ -429,7 +431,6 @@ if __name__ == "__main__":
         )
         sys.exit(0)
 
-    # 31469
     testnames = []
     if args.testname:
         testnames = [args.testname]

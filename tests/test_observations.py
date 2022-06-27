@@ -9,16 +9,6 @@ from oonidata.observations import (
 from oonidata.apiclient import get_raw_measurement
 
 from oonidata.dataformat import load_measurement
-from oonidata.fingerprints.matcher import FingerprintDB
-from oonidata.netinfo import NetinfoDB
-
-@pytest.fixture
-def fingerprintdb():
-    return FingerprintDB()
-
-@pytest.fixture
-def netinfodb ():
-    return NetinfoDB()
 
 def test_http_observations(fingerprintdb, netinfodb):
     msmt = load_measurement(
@@ -85,6 +75,11 @@ def test_http_observations(fingerprintdb, netinfodb):
     assert len(all_tls_obs) == 2
     assert all_tls_obs[0].tls_handshake_time > 0
     assert all_tls_obs[0].tls_handshake_last_operation.startswith("write_")
+    all_tls_obs[0].ip == "172.67.187.120"
+    all_tls_obs[0].port == 443 
+
+    all_tls_obs[1].ip == "104.21.32.206"
+    all_tls_obs[1].port == 443 
 
     http_blocked = load_measurement(
         get_raw_measurement(
