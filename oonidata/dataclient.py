@@ -3,11 +3,10 @@ import gzip
 import itertools
 
 from datetime import date, timedelta, datetime
-from multiprocessing import Pool
 
 from dataclasses import dataclass
 
-from typing import Generator, Set, NamedTuple, Any, List
+from typing import Generator, Set, List
 from pathlib import Path
 
 import boto3  # debdeps: python3-boto3

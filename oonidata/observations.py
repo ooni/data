@@ -6,8 +6,6 @@ from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
 from typing import Generator, Optional, List, Dict
 
-from requests import request
-
 from oonidata.dataformat import (
     BaseMeasurement,
     DNSAnswer,
@@ -106,6 +104,7 @@ def make_timestamp(msmt: BaseMeasurement, t: Optional[float] = None):
     if t:
         timestamp += timedelta(seconds=t)
     return timestamp
+
 
 @dataclass
 class HTTPObservation(Observation):

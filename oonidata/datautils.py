@@ -53,6 +53,9 @@ def get_first_http_header(
     return b""
 
 
+# TODO(hellais): document where this list comes from. For reference, for
+# probe-cli we use https://ipinfo.io/bogon to populate a similar list.
+
 bogon_ipv4_ranges = [
     ipaddress.ip_network("0.0.0.0/8"),  # "This" network
     ipaddress.ip_network("10.0.0.0/8"),  # Private-use networks
@@ -226,7 +229,7 @@ def get_certificate_meta(peer_cert: BinaryData) -> CertificateMeta:
 # Taken from:
 # https://github.com/Jigsaw-Code/net-analysis/blob/master/netanalysis/ooni/data/sync_measurements.py#L33
 @singledispatch
-def trim_measurement(json_obj, max_string_size: int):
+def trim_measurement(json_obj, _: int):
     return json_obj
 
 

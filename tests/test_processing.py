@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from oonidata.apiclient import get_raw_measurement
 from oonidata.dataformat import load_measurement

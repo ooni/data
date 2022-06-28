@@ -1,8 +1,6 @@
-from base64 import b64encode
-from copy import deepcopy
 from oonidata.apiclient import get_raw_measurement
 
-from oonidata.dataformat import load_measurement, HTTPTransaction
+from oonidata.dataformat import load_measurement
 from oonidata.fingerprints.matcher import FingerprintDB
 
 

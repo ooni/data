@@ -1,11 +1,21 @@
+"""
+OONI data format.
+
+See:
+
+- https://github.com/ooni/spec/tree/master/data-formats
+
+- https://github.com/ooni/spec/tree/master/nettests
+"""
+
 import ujson
 
 from base64 import b64decode
 
-from typing import Optional, Tuple, Union, List, Any, Union
+from typing import Optional, Tuple, Union, List, Union
 from dataclasses import dataclass
 
-from dacite import from_dict
+from dacite.core import from_dict
 
 from oonidata.utils import trivial_id
 
