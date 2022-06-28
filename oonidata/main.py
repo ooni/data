@@ -23,7 +23,7 @@ log = logging.getLogger("oonidata")
 logging.basicConfig(level=logging.INFO)
 
 
-def trim_container(s3cachedir: pathlib.Path, fe: FileEntry, _: int):
+def trim_container(s3cachedir: pathlib.Path, fe: FileEntry, max_string_size: int):
     mc = fe.output_path(s3cachedir)
     temp_path = diskf.with_suffix(".tmp")
     try:
