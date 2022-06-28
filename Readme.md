@@ -111,4 +111,51 @@ Once the day is finished, we can re-run the verdict generation using the batch
 workflow and mark for deletion all the verdicts generated in streaming, leading
 to an eventual consistency.
 
+### Current pipeline
 
+```mermaid
+graph LR
+
+    Probes --> ProbeServices
+    ProbeServices --> Fastpath
+    Fastpath --> S3MiniCans
+    Fastpath --> S3JSONL
+    Fastpath --> FastpathClickhouse
+    S3JSONL --> API
+    FastpathClickhouse --> API
+    API --> Explorer
+```
+
+```mermaid
+classDiagram
+    direction RL
+    class CommonMeta{
+        measurement_uid
+        report_id
+        input
+        domain
+        probe_cc
+        probe_asn
+        test_name
+        test_start_time
+        measurement_start_time
+        platform
+        software_name
+        software_version
+    }
+
+    class Measurement{
+        +Dict test_keys
+    }
+
+    class Fastpath{
+        anomaly
+        confirmed
+        msm_failure
+        blocking_general
+        +Dict scores
+    }
+    Fastpath "1" --> "1" Measurement
+    Measurement *-- CommonMeta
+    Fastpath *-- CommonMeta
+```
