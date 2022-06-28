@@ -76,8 +76,7 @@ class BaseMeasurement:
     software_name: str
     software_version: str
 
-    # XXX do we in fact want this to be so lax?
-    test_keys: Optional[BaseTestKeys]
+    test_keys: BaseTestKeys
 
 
 # This is not 100% accurate, ideally we would say
@@ -283,7 +282,7 @@ class WebConnectivityTestKeys(BaseTestKeys):
 
 @dataclass
 class WebConnectivity(BaseMeasurement):
-    test_keys: Optional[WebConnectivityTestKeys]
+    test_keys: WebConnectivityTestKeys
 
 
 @dataclass
@@ -307,7 +306,7 @@ class TorTestKeys:
 
 @dataclass
 class Tor(BaseMeasurement):
-    test_keys: Optional[TorTestKeys]
+    test_keys: TorTestKeys
 
 
 nettest_dataformats = {"web_connectivity": WebConnectivity, "tor": Tor}

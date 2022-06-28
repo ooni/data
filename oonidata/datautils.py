@@ -1,5 +1,5 @@
 from datetime import datetime, date, timedelta
-from typing import List
+from typing import List, Any
 from dataclasses import dataclass
 from functools import singledispatch
 import re
@@ -53,9 +53,7 @@ def get_first_http_header(
     return b""
 
 
-# TODO(hellais): document where this list comes from. For reference, for
-# probe-cli we use https://ipinfo.io/bogon to populate a similar list.
-
+# This comes from: https://ipinfo.io/bogon
 bogon_ipv4_ranges = [
     ipaddress.ip_network("0.0.0.0/8"),  # "This" network
     ipaddress.ip_network("10.0.0.0/8"),  # Private-use networks
@@ -253,7 +251,7 @@ def _(json_list: list, max_string_size: int):
     return json_list
 
 
-def one_day_dict(day: date) -> dict[str, datetime]:
+def one_day_dict(day: date) -> dict[str, Any]:
     start_day = datetime(year=day.year, month=day.month, day=day.day)
     end_day = start_day + timedelta(days=1)
     return {"start_day": start_day, "end_day": end_day}

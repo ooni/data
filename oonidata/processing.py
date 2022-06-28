@@ -7,10 +7,9 @@ from pathlib import Path
 from dataclasses import asdict, fields
 
 from collections.abc import Iterable
-from typing import Tuple, List, Generator
+from typing import Tuple, List, Generator, Type, TypeVar, Any
 
 from oonidata.datautils import one_day_dict
-from oonidata.dataformat import load_measurement
 from oonidata.observations import (
     DNSObservation,
     HTTPObservation,
@@ -22,7 +21,8 @@ from oonidata.observations import (
     make_tcp_observations,
     make_tls_observations,
 )
-from oonidata.dataformat import BaseMeasurement
+from oonidata.dataformat import load_measurement
+from oonidata.dataformat import BaseMeasurement, WebConnectivity, Tor
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 from oonidata.verdicts import (
@@ -45,7 +45,7 @@ log.addHandler(logging.StreamHandler())
 log.setLevel(logging.DEBUG)
 
 
-def observation_field_names(obs_class: Observation) -> List[str]:
+def observation_field_names(obs_class: Type[Observation]) -> List[str]:
     return list(lambda dc: dc.name, fields(obs_class))
 
 def make_observation_row(observation: Observation) -> dict:
@@ -79,7 +79,7 @@ def default_processor(
 
 
 def tor_processor(
-    msmt: BaseMeasurement,
+    msmt: Tor,
     db: DatabaseConnection,
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
@@ -122,7 +122,7 @@ def tor_processor(
 
 
 def web_connectivity_processor(
-    msmt: BaseMeasurement,
+    msmt: WebConnectivity,
     db: DatabaseConnection,
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
@@ -136,7 +136,7 @@ def web_connectivity_processor(
         make_dns_observations(msmt, msmt.test_keys.queries, fingerprintdb, netinfodb)
     )
     ip_to_domain = {
-        obs.answer: obs.domain_name
+        str(obs.answer): obs.domain_name
         for obs in filter(lambda o: o.answer, dns_observations)
     }
 
@@ -225,13 +225,14 @@ def dns_observations_by_session(
         yield dns_obs_session
 
 
+T = TypeVar("T", bound="Observation")
 def observations_in_session(
     day: date,
     domain_name: str,
-    obs_class: Observation,
+    obs_class: Type[T],
     session_id: str,
     db: ClickhouseConnection,
-) -> List[Observation]:
+) -> List[T]:
     observation_list = []
     field_names = observation_field_names(obs_class)
     q = "SELECT "
@@ -363,15 +364,16 @@ def process_day(db: DatabaseConnection, day: date, testnames=[], start_at_idx=0)
                 log.error(f"Wrote bad msmt to: ./bad_msmts.jsonl")
                 raise exc
 
-    write_verdicts_to_db(
-        db,
-        generate_website_verdicts(
-            day,
+    if isinstance(db, ClickhouseConnection):
+        write_verdicts_to_db(
             db,
-            fingerprintdb,
-            netinfodb,
-        ),
-    )
+            generate_website_verdicts(
+                day,
+                db,
+                fingerprintdb,
+                netinfodb,
+            ),
+        )
 
 
 if __name__ == "__main__":

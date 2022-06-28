@@ -36,6 +36,8 @@ def normalize_failure(failure: Failure):
 
 @dataclass
 class Observation(abc.ABC):
+    __table_name__ = "obs"
+
     measurement_uid: str
     observation_id: str
 
