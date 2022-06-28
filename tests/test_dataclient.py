@@ -46,6 +46,6 @@ def test_stream_jsonl_measurements(tmp_path):
     fe_list = list_file_entries("jsonl/telegram/IT/20201009/00/")
     #assert len(fe_list) == 1
     assert len(fe_list) == 2
-    for _, msmt, msmt_uid in stream_measurements(fe_list, tmp_path, False):
+    for _, msmt, _ in stream_measurements(fe_list, tmp_path, False):
         assert msmt["probe_cc"] == "IT"
         assert msmt["test_name"] == "telegram"

@@ -1,19 +1,15 @@
-import json
 import sys
 import argparse
 import logging
-import tempfile
 from tqdm import tqdm
-from pprint import pprint
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from functools import cache
 from dataclasses import asdict, fields
 
 from collections.abc import Iterable
 from typing import Tuple, List, Generator
 
-from oonidata.datautils import trim_measurement, one_day_dict
+from oonidata.datautils import one_day_dict
 from oonidata.dataformat import load_measurement
 from oonidata.observations import (
     DNSObservation,
@@ -30,7 +26,6 @@ from oonidata.dataformat import BaseMeasurement
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 from oonidata.verdicts import (
-    Outcome,
     Verdict,
     make_dns_baseline,
     make_http_baseline_map,

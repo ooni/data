@@ -53,6 +53,9 @@ def get_first_http_header(
     return b""
 
 
+# TODO(hellais): document where this list comes from. For reference, for
+# probe-cli we use https://ipinfo.io/bogon to populate a similar list.
+
 bogon_ipv4_ranges = [
     ipaddress.ip_network("0.0.0.0/8"),  # "This" network
     ipaddress.ip_network("10.0.0.0/8"),  # Private-use networks

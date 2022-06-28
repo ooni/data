@@ -1,10 +1,7 @@
 from base64 import b64encode
 from copy import deepcopy
-import requests
 
-from typing import Optional
-
-from dacite import from_dict
+from dacite.core import from_dict
 
 from oonidata.dataformat import load_measurement, HTTPTransaction
 from oonidata.apiclient import get_raw_measurement

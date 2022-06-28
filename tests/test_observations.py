@@ -1,5 +1,3 @@
-import pytest
-
 from oonidata.observations import (
     make_http_observations,
     make_dns_observations,
@@ -48,7 +46,7 @@ def test_http_observations(fingerprintdb, netinfodb):
     ]
 
     assert len(all_dns_obs) == 4
-    all_dns_obs[0].answer == "172.67.187.120"
+    assert all_dns_obs[0].answer == "172.67.187.120"
 
     ip_to_domain = {obs.answer: obs.domain_name for obs in all_dns_obs}
     all_tcp_obs = [
@@ -75,11 +73,11 @@ def test_http_observations(fingerprintdb, netinfodb):
     assert len(all_tls_obs) == 2
     assert all_tls_obs[0].tls_handshake_time > 0
     assert all_tls_obs[0].tls_handshake_last_operation.startswith("write_")
-    all_tls_obs[0].ip == "172.67.187.120"
-    all_tls_obs[0].port == 443 
+    assert all_tls_obs[0].ip == "172.67.187.120"
+    assert all_tls_obs[0].port == 443
 
-    all_tls_obs[1].ip == "104.21.32.206"
-    all_tls_obs[1].port == 443 
+    assert all_tls_obs[1].ip == "104.21.32.206"
+    assert all_tls_obs[1].port == 443
 
     http_blocked = load_measurement(
         get_raw_measurement(

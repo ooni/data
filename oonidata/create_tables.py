@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from typing import Optional, Union, Tuple, List, Any
+from typing import Optional, Tuple, List, Any
 from dataclasses import fields
 from oonidata.observations import (
     Observation,

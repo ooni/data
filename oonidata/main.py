@@ -1,17 +1,10 @@
 import argparse
-import shutil
-from collections import namedtuple
-from functools import singledispatch, partial
-import tempfile
-import os
+from functools import partial
 import gzip
-import itertools
 import logging
 import datetime as dt
 import pathlib
 import sys
-import time
-from typing import List, Generator, Tuple, List
 
 import ujson
 
@@ -21,7 +14,6 @@ from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
 from .s3feeder import (
-    create_s3_client,
     FileEntry,
     download_measurement_container,
 )

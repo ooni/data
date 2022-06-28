@@ -5,9 +5,9 @@ from datetime import date
 from oonidata.apiclient import get_raw_measurement
 from oonidata.dataformat import load_measurement
 
-from oonidata.observations import DNSObservation, make_dns_observations
+from oonidata.observations import  make_dns_observations
 from oonidata.verdicts import Outcome, make_dns_baseline, make_tcp_baseline_map, make_http_baseline_map
-from oonidata.verdicts import make_website_dns_verdict, make_website_tcp_verdicts, make_website_tls_verdict
+from oonidata.verdicts import make_website_dns_verdict
 
 def baseline_query_mock(q, q_params):
     if "SELECT DISTINCT(ip) FROM obs_tls" in q:
@@ -15,7 +15,7 @@ def baseline_query_mock(q, q_params):
             ["162.159.137.6"],
             ["162.159.136.6"],
             ["2606:4700:7::a29f:8906"]
-        ] 
+        ]
     if "SELECT DISTINCT(probe_cc, probe_asn, failure) FROM obs_dns" in q:
         return [
             [["IT", 12345, None]],
@@ -93,7 +93,7 @@ def test_baselines():
     assert len(http_baseline_map["https://thepiratebay.org/"].failure_cc_asn) == 1
 
     tcp_baseline_map = make_tcp_baseline_map(day, domain_name, db)
-    len(tcp_baseline_map["162.159.137.6:443"].reachable_cc_asn) == 3
+    assert len(tcp_baseline_map["162.159.137.6:443"].reachable_cc_asn) == 3
 
 def test_website_dns_verdict(fingerprintdb, netinfodb):
     day = date(2022, 1, 1)
