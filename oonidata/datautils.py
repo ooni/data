@@ -229,7 +229,7 @@ def get_certificate_meta(peer_cert: BinaryData) -> CertificateMeta:
 # Taken from:
 # https://github.com/Jigsaw-Code/net-analysis/blob/master/netanalysis/ooni/data/sync_measurements.py#L33
 @singledispatch
-def trim_measurement(json_obj, _: int):
+def trim_measurement(json_obj, max_string_size: int):
     return json_obj
 
 
