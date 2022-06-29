@@ -413,8 +413,11 @@ def network_events_until_connect(
 
 
 def find_tls_handshake_network_events(
-    tls_handshake: TLSHandshake, network_events: List[NetworkEvent]
-) -> List[NetworkEvent]:
+    tls_handshake: TLSHandshake, network_events: Optional[List[NetworkEvent]]
+) -> Optional[List[NetworkEvent]]:
+    if not network_events:
+        return None
+
     current_event_window = []
     for idx, ne in enumerate(network_events):
         if ne.operation == "connect":
@@ -426,7 +429,7 @@ def find_tls_handshake_network_events(
         if ne.operation == "tls_handshake_done" and ne.t == tls_handshake.t:
             current_event_window += network_events_until_connect(network_events[idx:])
             return current_event_window
-
+    return None
 
 @dataclass
 class TLSObservation(Observation):
@@ -491,8 +494,8 @@ class TLSObservation(Observation):
 
         if tls_h.address:
             p = urlsplit("//" + tls_h.address)
-            tlso.ip = tls_h.ip
-            tlso.port = tls_h.port
+            tlso.ip = p.hostname
+            tlso.port = p.port
 
         if tls_h.no_tls_verify == False:
             if tlso.failure in (
@@ -506,11 +509,11 @@ class TLSObservation(Observation):
 
         tls_network_events = find_tls_handshake_network_events(tls_h, network_events)
         if tls_network_events:
-            p = urlsplit("//" + tls_network_events[0].address)
-            tlso.ip = p.hostname
-            tlso.port = p.port
-
-            tlso.domain_name = ip_to_domain.get(tlso.ip, "")
+            if tls_network_events[0].address:
+                p = urlsplit("//" + tls_network_events[0].address)
+                tlso.ip = p.hostname
+                tlso.port = p.port
+                tlso.domain_name = ip_to_domain.get(tlso.ip or "", "")
 
             tlso.tls_handshake_time = tls_network_events[-1].t - tls_network_events[0].t
             tlso.tls_handshake_read_count = 0

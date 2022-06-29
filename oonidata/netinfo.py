@@ -226,7 +226,12 @@ class NetinfoDB:
 
     def lookup_ip(self, day: datetime, ip: str) -> IPInfo:
         rt = self.get_radix_tree(day.date())
-        res = rt.search_best(ip)
+        res = None
+        try:
+            res = rt.search_best(ip)
+        except ValueError:
+            pass
+
         if not res:
             log.error(f"Failed to lookup {ip}")
             return IPInfo(
