@@ -23,9 +23,6 @@ from oonidata.db.connections import ClickhouseConnection
 import logging
 
 log = logging.getLogger("oonidata.processing")
-log.addHandler(logging.StreamHandler())
-log.setLevel(logging.DEBUG)
-
 
 class Outcome(Enum):
     # k: everything is OK

@@ -3,9 +3,6 @@ from pprint import pformat
 import logging
 
 log = logging.getLogger("oonidata.processing")
-log.addHandler(logging.StreamHandler())
-log.setLevel(logging.DEBUG)
-
 
 class DatabaseConnection:
     def __init__(self):

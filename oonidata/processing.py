@@ -41,9 +41,6 @@ from oonidata.db.connections import (
 )
 
 log = logging.getLogger("oonidata.processing")
-log.addHandler(logging.StreamHandler())
-log.setLevel(logging.DEBUG)
-
 
 def observation_field_names(obs_class: Type[Observation]) -> List[str]:
     return list(map(lambda dc: dc.name, fields(obs_class)))
@@ -186,13 +183,12 @@ def web_connectivity_processor(
     )
 
 
-def domains_in_a_day(day: date, db: ClickhouseConnection) -> Generator[str, None, None]:
+def domains_in_a_day(day: date, db: ClickhouseConnection) -> List[str]:
     q = """SELECT DISTINCT(domain_name) FROM obs_dns
     WHERE timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s;
     """
-    for res in db.execute(q, one_day_dict(day)):
-        yield res[0]
+    return [res[0] for res in db.execute(q, one_day_dict(day))]
 
 
 def dns_observations_by_session(
@@ -301,7 +297,7 @@ def generate_website_verdicts(
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
 ):
-    for domain_name in domains_in_a_day(day, db):
+    for domain_name in tqdm(domains_in_a_day(day, db)):
         log.debug(f"Generating verdicts for {domain_name}")
         dns_baseline = make_dns_baseline(day, domain_name, db)
         http_baseline_map = make_http_baseline_map(day, domain_name, db)
@@ -381,6 +377,9 @@ def process_day(db: DatabaseConnection, day: date, testnames=[], start_at_idx=0)
 
 if __name__ == "__main__":
     # XXX this is just for temporary testing
+    log.addHandler(logging.StreamHandler())
+    log.setLevel(logging.DEBUG)
+
     def _parse_date_flag(date_str: str) -> date:
         return datetime.strptime(date_str, "%Y-%m-%d").date()
 
