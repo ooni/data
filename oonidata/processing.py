@@ -46,7 +46,7 @@ log.setLevel(logging.DEBUG)
 
 
 def observation_field_names(obs_class: Type[Observation]) -> List[str]:
-    return list(lambda dc: dc.name, fields(obs_class))
+    return list(map(lambda dc: dc.name, fields(obs_class)))
 
 def make_observation_row(observation: Observation) -> dict:
     return asdict(observation)
@@ -338,7 +338,7 @@ def process_day(db: DatabaseConnection, day: date, testnames=[], start_at_idx=0)
     with tqdm(unit="B", unit_scale=True) as pbar:
         for idx, raw_msmt in enumerate(
             iter_raw_measurements(
-                ccs=[],
+                ccs=set(),
                 testnames=testnames,
                 start_day=day,
                 end_day=day + timedelta(days=1),
@@ -415,6 +415,9 @@ if __name__ == "__main__":
         raise Exception("Missing --csv-dir or --clickhouse")
 
     if args.only_verdicts:
+        if not isinstance(db, ClickhouseConnection):
+            raise Exception("verdict generation requires clickhouse")
+
         fingerprintdb = FingerprintDB()
         netinfodb = NetinfoDB()
         write_verdicts_to_db(
