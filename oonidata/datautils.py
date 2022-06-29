@@ -54,13 +54,12 @@ def get_first_http_header(
     return b""
 
 
-# This comes from: https://ipinfo.io/bogon
+# This comes from: https://ipinfo.io/bogon and https://publicdata.caida.org/datasets/bogon/bogon-bn-agg/
 bogon_ipv4_ranges = [
     ipaddress.ip_network("0.0.0.0/8"),  # "This" network
     ipaddress.ip_network("10.0.0.0/8"),  # Private-use networks
     ipaddress.ip_network("100.64.0.0/10"),  # Carrier-grade NAT
     ipaddress.ip_network("127.0.0.0/8"),  # Loopback
-    ipaddress.ip_network("127.0.53.53"),  # Name collision occurrence
     ipaddress.ip_network("169.254.0.0/16"),  # Link local
     ipaddress.ip_network("172.16.0.0/12"),  # Private-use networks
     ipaddress.ip_network("192.0.0.0/24"),  # IETF protocol assignments
@@ -70,9 +69,7 @@ bogon_ipv4_ranges = [
     ipaddress.ip_network("198.18.0.0/15"),
     ipaddress.ip_network("198.51.100.0/24"),  # TEST-NET-2
     ipaddress.ip_network("203.0.113.0/24"),  # TEST-NET-3
-    ipaddress.ip_network("224.0.0.0/4"),  # Multicast
-    ipaddress.ip_network("240.0.0.0/4"),  # Reserved for future use
-    ipaddress.ip_network("255.255.255.255/32"),  # Limited broadcast
+    ipaddress.ip_network("224.0.0.0/3"),  # Multicast
 ]
 
 

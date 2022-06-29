@@ -388,7 +388,7 @@ def make_website_dns_verdict(
             and dns_o.probe_cc not in fp.expected_countries
         ):
             log.debug(f"Inconsistent probe_cc vs expected_countries {dns_o.probe_cc} != {fp.expected_countries}")
-            confidence *= 0.7
+            confidence = 0.7
 
         outcome_detail = "dns.blockpage"
         return make_verdict_from_obs(
@@ -427,7 +427,8 @@ def make_website_dns_verdict(
             nxdomain_count = len(nxdomain_cc_asn)
             if ok_count > nxdomain_count:
                 # We give a bit extra weight to an NXDOMAIN compared to other failures
-                confidence = ok_count / (ok_count + nxdomain_count + 1) * 1.5
+                confidence = ok_count / (ok_count + nxdomain_count + 1)
+                confidence = min(0.8, confidence * 1.5)
                 outcome = Outcome.BLOCKED
                 outcome_detail = "dns.nxdomain"
             else:
@@ -475,10 +476,13 @@ def make_website_dns_verdict(
         ip_based_consistency = is_dns_consistent(dns_o, dns_b, netinfodb)
         if ip_based_consistency is not None and ip_based_consistency < 0.5:
             confidence = 0.5
+            # If the answer ASN is the same as the probe_asn, it's more likely
+            # to be a blockpage
             if dns_o.answer_asn == dns_o.probe_asn:
-                confidence *= 1.8
+                confidence = 0.8
+            # same for the answer_cc
             elif dns_o.answer_as_cc == dns_o.probe_cc:
-                confidence *= 1.5
+                confidence = 0.7
             outcome_detail = "dns.inconsistent"
             return make_verdict_from_obs(
                 dns_o,
@@ -543,12 +547,12 @@ def make_website_tls_verdict(
         outcome_detail = f"tls.{tls_o.failure}"
         confidence = 0.5
         if tls_o.failure in ("connection_closed", "connection_reset"):
-            confidence *= 1.5
+            confidence *= 1.4
 
         if tls_o.tls_handshake_read_count == 0 and tls_o.tls_handshake_write_count == 1:
             # This means we just wrote the TLS ClientHello, let's give it a bit
             # more confidence in it being a block
-            confidence *= 1.5
+            confidence *= 1.3
 
         return make_verdict_from_obs(
             tls_o,

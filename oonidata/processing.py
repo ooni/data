@@ -2,6 +2,8 @@ import sys
 import argparse
 import logging
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
+
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from dataclasses import asdict, fields
@@ -64,7 +66,6 @@ def write_observations_to_db(
 
 def write_verdicts_to_db(db: DatabaseConnection, verdicts: Iterable[Verdict]) -> None:
     for v in verdicts:
-        log.debug(v)
         row = make_verdict_row(v)
         db.write_row("verdict", row)
 
@@ -297,29 +298,30 @@ def generate_website_verdicts(
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
 ):
-    for domain_name in tqdm(domains_in_a_day(day, db)):
-        log.debug(f"Generating verdicts for {domain_name}")
-        dns_baseline = make_dns_baseline(day, domain_name, db)
-        http_baseline_map = make_http_baseline_map(day, domain_name, db)
-        tcp_baseline_map = make_tcp_baseline_map(day, domain_name, db)
+    with logging_redirect_tqdm():
+        for domain_name in tqdm(domains_in_a_day(day, db)):
+            log.debug(f"Generating verdicts for {domain_name}")
+            dns_baseline = make_dns_baseline(day, domain_name, db)
+            http_baseline_map = make_http_baseline_map(day, domain_name, db)
+            tcp_baseline_map = make_tcp_baseline_map(day, domain_name, db)
 
-        for (
-            dns_o_list,
-            tcp_o_list,
-            tls_o_list,
-            http_o_list,
-        ) in websites_observation_group(day, domain_name, db):
-            yield from make_website_verdicts(
+            for (
                 dns_o_list,
-                dns_baseline,
-                fingerprintdb,
-                netinfodb,
                 tcp_o_list,
-                tcp_baseline_map,
                 tls_o_list,
                 http_o_list,
-                http_baseline_map,
-            )
+            ) in websites_observation_group(day, domain_name, db):
+                yield from make_website_verdicts(
+                    dns_o_list,
+                    dns_baseline,
+                    fingerprintdb,
+                    netinfodb,
+                    tcp_o_list,
+                    tcp_baseline_map,
+                    tls_o_list,
+                    http_o_list,
+                    http_baseline_map,
+                )
 
 
 verdict_generators = [generate_website_verdicts]
@@ -330,9 +332,7 @@ nettest_processors = {
 }
 
 
-def process_day(db: DatabaseConnection, day: date, testnames=[], start_at_idx=0):
-    fingerprintdb = FingerprintDB()
-    netinfodb = NetinfoDB()
+def process_day(db: DatabaseConnection, fingerprintdb : FingerprintDB, netinfodb : NetinfoDB, day: date, testnames=[], start_at_idx=0):
 
     with tqdm(unit="B", unit_scale=True) as pbar:
         for idx, raw_msmt in enumerate(
@@ -409,6 +409,12 @@ if __name__ == "__main__":
     parser.add_argument("--only-verdicts", action="store_true")
     args = parser.parse_args()
 
+    fingerprintdb = FingerprintDB()
+
+    netinfodb = NetinfoDB()
+    since = datetime.combine(args.day, datetime.min.time())
+    netinfodb.download_data(since, since + timedelta(days=1))
+
     if args.clickhouse:
         db = ClickhouseConnection(args.clickhouse)
     elif args.csv_dir:
@@ -420,8 +426,6 @@ if __name__ == "__main__":
         if not isinstance(db, ClickhouseConnection):
             raise Exception("verdict generation requires clickhouse")
 
-        fingerprintdb = FingerprintDB()
-        netinfodb = NetinfoDB()
         write_verdicts_to_db(
             db,
             generate_website_verdicts(
@@ -436,4 +440,4 @@ if __name__ == "__main__":
     testnames = []
     if args.testname:
         testnames = [args.testname]
-    process_day(db, args.day, testnames=testnames, start_at_idx=args.start_at_idx)
+    process_day(db, fingerprintdb, netinfodb, args.day, testnames=testnames, start_at_idx=args.start_at_idx)
