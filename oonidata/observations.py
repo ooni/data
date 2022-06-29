@@ -480,10 +480,10 @@ class TLSObservation(Observation):
         tlso = TLSObservation(
             observation_id = f"{msmt.measurement_uid}{idx}",
             timestamp=make_timestamp(msmt, tls_h.t),
-            server_name = tls_h.server_name,
-            domain_name = tls_h.server_name,
-            tls_version = tls_h.tls_version,
-            cipher_suite = tls_h.cipher_suite,
+            server_name = tls_h.server_name if tls_h.server_name else "",
+            domain_name = tls_h.server_name if tls_h.server_name else "",
+            tls_version = tls_h.tls_version if tls_h.tls_version else "",
+            cipher_suite = tls_h.cipher_suite if tls_h.cipher_suite else "",
             end_entity_certificate_san_list = [],
             failure = normalize_failure(tls_h.failure),
             **make_base_observation_meta(msmt, netinfodb)
