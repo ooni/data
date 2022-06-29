@@ -207,7 +207,7 @@ class NetinfoDB:
             lambda r: r.split("-")[-2], glob(f"{self.datadir}/routeviews-prefix2as/*/*")),
             key=lambda r: abs(datetime.strptime(r, "%Y%m%d").date() - day)
         )
-        return datetime.strptime(closest_ts, "%Y%m%d")
+        return datetime.strptime(closest_ts, "%Y%m%d").date()
 
     def get_radix_tree(self, day : date):
         try:
