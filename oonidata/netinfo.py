@@ -6,7 +6,7 @@ import logging
 from glob import glob
 from typing import Optional, Generator
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, date
 from functools import lru_cache
 
 import requests
@@ -167,14 +167,14 @@ class NetinfoDB:
 
         return as_org_map
 
-    def get_as_org_map(self, day):
+    def get_as_org_map(self, day : date):
         closest_ts = min(map(
             lambda r: r.split(".")[0].split("/")[-1], glob(f"{self.datadir}/as-organizations/*")),
-            key=lambda r: abs(datetime.strptime(r, "%Y%m%d") - day)
+            key=lambda r: abs(datetime.strptime(r, "%Y%m%d").date() - day)
         )
         return self.build_as_org_map(closest_ts)
 
-    def iter_prefixes(self, day):
+    def iter_prefixes(self, day : date):
         path = glob(f"{self.datadir}/routeviews-prefix2as/{day.strftime('%Y')}/routeviews-rv2-{day.strftime('%Y%m%d')}-*")[0]
         with open(path) as in_file:
             for entry in in_file:
@@ -190,7 +190,7 @@ class NetinfoDB:
                 yield ip.strip(), mask_len.strip(), int(asn)
 
     @lru_cache(maxsize=32)
-    def build_radix_tree(self, day) -> radix.Radix:
+    def build_radix_tree(self, day : date) -> radix.Radix:
         as_org_map = self.get_as_org_map(day)
         rtree = radix.Radix()
         for ip, mask_len, asn in self.iter_prefixes(day):
@@ -201,15 +201,15 @@ class NetinfoDB:
             rnode.data["as_cc"] = country
         return rtree
 
-    def find_closest_date_with_data(self, day):
+    def find_closest_date_with_data(self, day : date):
         # Linear time search, not the fastest, but whatevas
         closest_ts = min(map(
             lambda r: r.split("-")[-2], glob(f"{self.datadir}/routeviews-prefix2as/*/*")),
-            key=lambda r: abs(datetime.strptime(r, "%Y%m%d") - day)
+            key=lambda r: abs(datetime.strptime(r, "%Y%m%d").date() - day)
         )
         return datetime.strptime(closest_ts, "%Y%m%d")
 
-    def get_radix_tree(self, day):
+    def get_radix_tree(self, day : date):
         try:
             return self.build_radix_tree(day)
         except IndexError:
@@ -220,12 +220,12 @@ class NetinfoDB:
         """
         Returns information about a particular ASN on a given day, if known.
         """
-        as_org_map = self.get_as_org_map(day)
+        as_org_map = self.get_as_org_map(day.date())
         org_name, country = as_org_map.get(str(asn), ("", ""))
         return ASInfo(asn=asn, as_org_name=org_name, as_cc=country)
 
     def lookup_ip(self, day: datetime, ip: str) -> IPInfo:
-        rt = self.get_radix_tree(day)
+        rt = self.get_radix_tree(day.date())
         res = rt.search_best(ip)
         if not res:
             log.error(f"Failed to lookup {ip}")
