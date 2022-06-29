@@ -46,7 +46,7 @@ class Outcome(Enum):
     THROTTLING = "t"
 
 
-def fp_scope_to_outcome(scope: str) -> Outcome:
+def fp_scope_to_outcome(scope: Optional[str]) -> Outcome:
     # "nat" national level blockpage
     # "isp" ISP level blockpage
     # "prod" text pattern related to a middlebox product
@@ -79,7 +79,7 @@ class Verdict:
     network_type: str
 
     resolver_ip: Optional[str]
-    resolver_asn: Optional[str]
+    resolver_asn: Optional[int]
     resolver_as_org_name: Optional[str]
     resolver_as_cc: Optional[str]
     resolver_cc: Optional[str]
@@ -307,6 +307,9 @@ def make_dns_baseline(
 def is_dns_consistent(
     dns_o: DNSObservation, dns_b: DNSBaseline, netinfodb: NetinfoDB
 ) -> Optional[float]:
+    if not dns_o.answer:
+        return None
+
     try:
         ipaddress.ip_address(dns_o.answer)
     except ValueError:
@@ -374,7 +377,7 @@ def make_website_dns_verdict(
     dns_b: DNSBaseline,
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
-) -> Verdict:
+) -> Optional[Verdict]:
     if dns_o.fingerprint_id:
         fp = fingerprintdb.get_fp(dns_o.fingerprint_id)
         outcome = fp_scope_to_outcome(fp.scope)
@@ -382,7 +385,9 @@ def make_website_dns_verdict(
         # If we see the fingerprint in an unexpected country we should
         # significantly reduce the confidence in the block
         if (
-            len(fp.expected_countries) > 0
+            dns_o.probe_cc
+            and fp.expected_countries
+            and len(fp.expected_countries) > 0
             and dns_o.probe_cc not in fp.expected_countries
         ):
             log.debug(f"Inconsistent probe_cc vs expected_countries {dns_o.probe_cc} != {fp.expected_countries}")
@@ -428,7 +433,7 @@ def make_website_dns_verdict(
                 confidence = ok_count / (ok_count + nxdomain_count + 1) * 1.5
                 outcome = Outcome.BLOCKED
                 outcome_detail = "dns.nxdomain"
-            elif nxdomain_count > ok_count:
+            else:
                 confidence = (nxdomain_count + 1) / (ok_count + nxdomain_count + 1)
                 outcome = Outcome.DOWN
                 outcome_detail = "dns.nxdomain"
@@ -488,6 +493,7 @@ def make_website_dns_verdict(
                 outcome_detail=outcome_detail,
             )
     # No blocking detected
+    return None
 
 def make_website_tls_verdict(
     tls_o: TLSObservation, prev_verdicts: List[Verdict]
@@ -606,11 +612,11 @@ def make_website_http_verdict(
         failure_cc_asn.remove((http_o.probe_cc, http_o.probe_asn))
         failure_count = len(failure_cc_asn)
         ok_count = len(http_b.ok_cc_asn)
-        if failure_count > ok_count:
+        if ok_count > failure_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
             confidence = ok_count / (ok_count + failure_count + 1)
             outcome = Outcome.BLOCKED
-        elif failure_count > ok_count:
+        else:
             confidence = (failure_count + 1) / (ok_count + failure_count + 1)
             outcome = Outcome.DOWN
 
@@ -686,11 +692,11 @@ def make_website_verdicts(
     dns_b: DNSBaseline,
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
-    tcp_o_list: Optional[List[TCPObservation]] = None,
-    tcp_b_map: Optional[dict[str, TCPBaseline]] = None,
-    tls_o_list: Optional[List[TLSObservation]] = None,
-    http_o_list: Optional[List[HTTPObservation]] = None,
-    http_b_map: Optional[dict[str, HTTPBaseline]] = None,
+    tcp_o_list: List[TCPObservation],
+    tcp_b_map: dict[str, TCPBaseline],
+    tls_o_list: List[TLSObservation],
+    http_o_list: List[HTTPObservation],
+    http_b_map: dict[str, HTTPBaseline],
 ) -> Generator[Verdict, None, List[str]]:
     """
     make_website_verdicts will yield many verdicts given some observations
@@ -743,7 +749,7 @@ def make_website_verdicts(
             break
 
     for dns_v in dns_verdicts:
-        verdicts(dns_v)
+        verdicts.append(dns_v)
         yield dns_v
 
     if tcp_o_list:
@@ -752,7 +758,7 @@ def make_website_verdicts(
                 domain_name == tcp_o.domain_name
             ), f"Inconsistent domain_name in tcp_o {tcp_o.domain_name}"
             tcp_b = tcp_b_map.get(f"{tcp_o.ip}:{tcp_o.port}")
-            tcp_v = make_website_tcp_verdicts(tcp_o, tcp_b)
+            tcp_v = make_website_tcp_verdicts(tcp_o, tcp_b) if tcp_b else None
             if tcp_v:
                 verdicts.append(tcp_v)
                 yield tcp_v
@@ -773,7 +779,7 @@ def make_website_verdicts(
                 domain_name == http_o.domain_name
             ), f"Inconsistent domain_name in http_o {http_o.domain_name}"
             http_b = http_b_map.get(http_o.request_url)
-            http_v = make_website_http_verdict(http_o, http_b, verdicts, fingerprintdb)
+            http_v = make_website_http_verdict(http_o, http_b, verdicts, fingerprintdb) if http_b else None
             if http_v:
                 verdicts.append(http_v)
                 yield http_v
