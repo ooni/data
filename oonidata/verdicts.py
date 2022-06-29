@@ -67,7 +67,7 @@ def fp_scope_to_outcome(scope: Optional[str]) -> Outcome:
 @dataclass
 class Verdict:
     measurement_uid: str
-    verdict_uid: str
+    verdict_id: str
     timestamp: datetime
 
     probe_asn: int
@@ -108,7 +108,7 @@ def make_verdict_from_obs(
 ) -> Verdict:
     return Verdict(
         measurement_uid=obs.measurement_uid,
-        verdict_uid=obs.observation_id,
+        verdict_id=obs.observation_id,
         timestamp=obs.timestamp,
         probe_asn=obs.probe_asn,
         probe_cc=obs.probe_cc,

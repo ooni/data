@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from typing import Optional, Tuple, List, Any
+from typing import Optional, Tuple, List, Any, Type
 from dataclasses import fields
 from oonidata.observations import (
     Observation,
@@ -9,7 +9,7 @@ from oonidata.observations import (
     TLSObservation,
     HTTPObservation,
 )
-
+from oonidata.verdicts import Outcome, Verdict
 
 def typing_to_clickhouse(t: Any) -> str:
     if t == str:
@@ -50,10 +50,13 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Optional[List[Tuple[str, bytes]]]:
         return "Nullable(Array(Array(String)))"
 
+    if t == Outcome:
+        return "String"
+
     raise Exception(f"Unhandled type {t}")
 
 
-def create_query_for_observation(obs_class: Observation) -> str:
+def create_query_for_observation(obs_class: Type[Observation]) -> str:
     columns = []
     for f in fields(obs_class):
         type_str = typing_to_clickhouse(f.type)
@@ -70,11 +73,30 @@ def create_query_for_observation(obs_class: Observation) -> str:
     SETTINGS index_granularity = 8192;
     """
 
+def create_query_for_verdict() -> str:
+    columns = []
+    for f in fields(Verdict):
+        type_str = typing_to_clickhouse(f.type)
+        columns.append(f"     `{f.name}` {type_str}")
+
+    columns_str = ",\n".join(columns)
+
+    return f"""
+    CREATE TABLE verdict (
+{columns_str}
+    )
+    ENGINE = ReplacingMergeTree
+    ORDER BY (timestamp, verdict_id, measurement_uid)
+    SETTINGS index_granularity = 8192;
+    """
+
 def main():
     print(create_query_for_observation(DNSObservation))
     print(create_query_for_observation(TCPObservation))
     print(create_query_for_observation(TLSObservation))
     print(create_query_for_observation(HTTPObservation))
 
+    print(create_query_for_verdict())
 
-main()
+if __name__ == "__main__":
+    main()

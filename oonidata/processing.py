@@ -52,7 +52,10 @@ def make_observation_row(observation: Observation) -> dict:
     return asdict(observation)
 
 def make_verdict_row(v: Verdict) -> dict:
-    return asdict(v)
+    row = asdict(v)
+    # XXX come up with a cleaner solution to this
+    row["outcome"] = row["outcome"].value
+    return row
 
 def write_observations_to_db(
     db: DatabaseConnection, observations: Iterable[Observation]
