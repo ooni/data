@@ -85,7 +85,7 @@ def make_base_observation_meta(
         probe_asn=int(msmt.probe_asn.lstrip("AS")),
         probe_cc = msmt.probe_cc,
         probe_as_org_name=probe_as_info.as_org_name if probe_as_info else "",
-        probe_as_cc=probe_as_info.probe_as_cc if probe_as_info else "",
+        probe_as_cc=probe_as_info.as_cc if probe_as_info else "",
         session_id = msmt.report_id,
         software_name = msmt.software_name,
         software_version = msmt.software_version,
