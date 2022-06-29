@@ -8,6 +8,7 @@ import ipaddress
 from base64 import b64decode
 
 from cryptography import x509
+from cryptography.x509.oid import ExtensionOID, NameOID
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 
@@ -179,7 +180,6 @@ class CertificateMeta:
     subject: str
     subject_common_name: str
     san_list: List[str]
-    extensions: str
     not_valid_before: datetime
     not_valid_after: datetime
     fingerprint: str
@@ -187,7 +187,7 @@ class CertificateMeta:
 
 def get_common_name(cert_name: x509.Name) -> str:
     try:
-        attributes = cert_name.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)
+        attributes = cert_name.get_attributes_for_oid(NameOID.COMMON_NAME)
         if attributes:
             return str(attributes[0].value)
     except x509.AttributeNotFound:
@@ -198,11 +198,11 @@ def get_common_name(cert_name: x509.Name) -> str:
 def get_alternative_names(cert: x509.Certificate) -> List[str]:
     try:
         ext = cert.extensions.get_extension_for_oid(
-            x509.ExtensionOID.SUBJECT_ALTERNATIVE_NAME
+            ExtensionOID.SUBJECT_ALTERNATIVE_NAME
         )
-        san_ext: x509.SubjectAlternativeName = ext.value
+        san_ext: x509.SubjectAlternativeName = ext.value # type: ignore
         return san_ext.get_values_for_type(x509.DNSName)
-    except x509.extensions.ExtensionNotFound:
+    except x509.ExtensionNotFound:
         return []
 
 
@@ -216,7 +216,6 @@ def get_certificate_meta(peer_cert: BinaryData) -> CertificateMeta:
         issuer_common_name=get_common_name(cert.issuer),
         subject=cert.subject.rfc4514_string(),
         subject_common_name=get_common_name(cert.subject),
-        extensions=cert.extensions,
         san_list=get_alternative_names(cert),
         not_valid_before=cert.not_valid_before,
         not_valid_after=cert.not_valid_after,
