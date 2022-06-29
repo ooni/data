@@ -70,8 +70,9 @@ def make_base_observation_meta(
     msmt: BaseMeasurement, netinfodb: NetinfoDB
 ) -> dict:
     assert msmt.measurement_uid is not None
+    probe_asn = int(msmt.probe_asn.lstrip("AS"))
     measurement_start_time = datetime.strptime(msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S")
-    probe_as_info = netinfodb.lookup_asn(measurement_start_time, msmt.probe_asn)
+    probe_as_info = netinfodb.lookup_asn(measurement_start_time, probe_asn)
 
     resolver_as_info = None
     resolver_ip = msmt.resolver_ip
@@ -82,7 +83,7 @@ def make_base_observation_meta(
 
     return dict(
         measurement_uid=msmt.measurement_uid,
-        probe_asn=int(msmt.probe_asn.lstrip("AS")),
+        probe_asn=probe_asn,
         probe_cc = msmt.probe_cc,
         probe_as_org_name=probe_as_info.as_org_name if probe_as_info else "",
         probe_as_cc=probe_as_info.as_cc if probe_as_info else "",
