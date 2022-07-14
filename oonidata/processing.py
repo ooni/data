@@ -397,6 +397,14 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
+        "--geoip-dir",
+        type=str,
+    )
+    parser.add_argument(
+        "--asn-map",
+        type=str,
+    )
+    parser.add_argument(
         "--day",
         type=_parse_date_flag,
         default=date(2022, 1, 1),
@@ -411,9 +419,8 @@ if __name__ == "__main__":
 
     fingerprintdb = FingerprintDB()
 
-    netinfodb = NetinfoDB()
+    netinfodb = NetinfoDB(datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map))
     since = datetime.combine(args.day, datetime.min.time())
-    netinfodb.download_data(since, since + timedelta(days=1))
 
     if args.clickhouse:
         db = ClickhouseConnection(args.clickhouse)
