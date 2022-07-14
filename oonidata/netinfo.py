@@ -114,6 +114,14 @@ class NetinfoDB:
         res : dict = reader.get(ip)
         if not res:
             log.error(f"Failed to lookup {ip}")
+            return IPInfo(
+                ASInfo(
+                    asn=0,
+                    as_org_name="",
+                    as_cc="",
+                ),
+                cc="ZZ"
+            )
 
         asn = res.get("asn", 0)
         as_org_name = res.get("as_org_name", "")
