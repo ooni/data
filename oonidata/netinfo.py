@@ -81,12 +81,12 @@ class NetinfoDB:
         Find DB for date will return a dictionary with asn and country keys set
         which is closest in time and <= day.
         """
-        last_db = None
+        chosen_db = list(self.databases.values())[0]
         for ts, db in self.databases.items():
-            last_db = db
             if ts > day:
                 break
-        return last_db
+            chosen_db = db
+        return chosen_db
 
     def lookup_asn(self, day: datetime, asn: int) -> ASInfo:
         """
