@@ -156,14 +156,20 @@ bogon_ipv6_ranges = [
 
 
 def is_ipv4_bogon(ip: str) -> bool:
-    ipv4addr = ipaddress.IPv4Address(ip)
+    try:
+        ipv4addr = ipaddress.IPv4Address(ip)
+    except ipaddress.AddressValueError:
+        return False
     if any([ipv4addr in ip_range for ip_range in bogon_ipv4_ranges]):
         return True
     return False
 
 
 def is_ipv6_bogon(ip: str) -> bool:
-    ipv6addr = ipaddress.IPv6Address(ip)
+    try:
+        ipv6addr = ipaddress.IPv6Address(ip)
+    except ipaddress.AddressValueError:
+        return False
     if any([ipv6addr in ip_range for ip_range in bogon_ipv4_ranges]):
         return True
     return False
