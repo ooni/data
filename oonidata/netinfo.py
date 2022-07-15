@@ -111,7 +111,12 @@ class NetinfoDB:
         assert db_path is not None
 
         reader = self.get_reader(db_path)
-        res : dict = reader.get(ip)
+        res = None
+        try:
+            res = reader.get(ip)
+        except ValueError:
+            pass
+
         if not res:
             log.error(f"Failed to lookup {ip}")
             return IPInfo(
