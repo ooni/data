@@ -1,5 +1,6 @@
 import hashlib
 import abc
+import logging
 
 from dataclasses import dataclass, field
 from urllib.parse import urlparse, urlsplit
@@ -27,6 +28,9 @@ from oonidata.datautils import (
 )
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
+
+
+log = logging.getLogger("oonidata.processing")
 
 
 def normalize_failure(failure: Failure):
@@ -66,12 +70,12 @@ class Observation(abc.ABC):
     resolver_as_cc: str
 
 
-def make_base_observation_meta(
-    msmt: BaseMeasurement, netinfodb: NetinfoDB
-) -> dict:
+def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> dict:
     assert msmt.measurement_uid is not None
     probe_asn = int(msmt.probe_asn.lstrip("AS"))
-    measurement_start_time = datetime.strptime(msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S")
+    measurement_start_time = datetime.strptime(
+        msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S"
+    )
     probe_as_info = netinfodb.lookup_asn(measurement_start_time, probe_asn)
 
     resolver_as_info = None
@@ -84,20 +88,22 @@ def make_base_observation_meta(
     return dict(
         measurement_uid=msmt.measurement_uid,
         probe_asn=probe_asn,
-        probe_cc = msmt.probe_cc,
+        probe_cc=msmt.probe_cc,
         probe_as_org_name=probe_as_info.as_org_name if probe_as_info else "",
         probe_as_cc=probe_as_info.as_cc if probe_as_info else "",
-        session_id = msmt.report_id,
-        software_name = msmt.software_name,
-        software_version = msmt.software_version,
-        network_type = msmt.annotations.network_type,
-        platform = msmt.annotations.platform,
-        origin = msmt.annotations.origin,
+        session_id=msmt.report_id,
+        software_name=msmt.software_name,
+        software_version=msmt.software_version,
+        network_type=msmt.annotations.network_type,
+        platform=msmt.annotations.platform,
+        origin=msmt.annotations.origin,
         target="",
         resolver_ip=resolver_ip if resolver_ip else "",
         resolver_cc=resolver_as_info.cc if resolver_as_info else "",
         resolver_asn=resolver_as_info.as_info.asn if resolver_as_info else 0,
-        resolver_as_org_name=resolver_as_info.as_info.as_org_name if resolver_as_info else "",
+        resolver_as_org_name=resolver_as_info.as_info.as_org_name
+        if resolver_as_info
+        else "",
         resolver_as_cc=resolver_as_info.as_info.as_cc if resolver_as_info else "",
     )
 
@@ -138,7 +144,6 @@ class HTTPObservation(Observation):
     request_redirect_from: Optional[str] = None
     request_body_is_truncated: Optional[bool] = None
 
-
     fingerprint_country_consistent: Optional[bool] = None
     response_matches_blockpage: bool = False
     response_matches_false_positive: bool = False
@@ -159,22 +164,23 @@ class HTTPObservation(Observation):
             # XXX maybe log this somewhere
             return None
 
-
         parsed_url = urlparse(http_transaction.request.url)
         hrro = HTTPObservation(
-            observation_id = f"{msmt.measurement_uid}{idx}",
-            request_url = http_transaction.request.url,
-            domain_name = parsed_url.hostname,
-            request_is_encrypted = parsed_url.scheme == "https",
-            request_body_is_truncated = http_transaction.request.body_is_truncated,
+            observation_id=f"{msmt.measurement_uid}{idx}",
+            request_url=http_transaction.request.url,
+            domain_name=parsed_url.hostname,
+            request_is_encrypted=parsed_url.scheme == "https",
+            request_body_is_truncated=http_transaction.request.body_is_truncated,
             # hrro.request_headers_list = http_transaction.request.headers_list_bytes
-            request_method = http_transaction.request.method,
-            request_body_length = len(http_transaction.request.body_bytes) if http_transaction.request.body_bytes else 0,
-            response_fingerprints = [],
-            x_transport = http_transaction.request.x_transport,
+            request_method=http_transaction.request.method,
+            request_body_length=len(http_transaction.request.body_bytes)
+            if http_transaction.request.body_bytes
+            else 0,
+            response_fingerprints=[],
+            x_transport=http_transaction.request.x_transport,
             failure=normalize_failure(http_transaction.failure),
             timestamp=make_timestamp(msmt, http_transaction.t),
-            **make_base_observation_meta(msmt, netinfodb)
+            **make_base_observation_meta(msmt, netinfodb),
         )
 
         if not http_transaction.response:
@@ -277,12 +283,12 @@ class DNSObservation(Observation):
         netinfodb: NetinfoDB,
     ) -> "DNSObservation":
         dnso = DNSObservation(
-            observation_id = f"{msmt.measurement_uid}{idx}",
-            query_type = query.query_type,
-            domain_name = query.hostname,
-            failure = normalize_failure(query.failure),
+            observation_id=f"{msmt.measurement_uid}{idx}",
+            query_type=query.query_type,
+            domain_name=query.hostname,
+            failure=normalize_failure(query.failure),
             timestamp=make_timestamp(msmt, query.t),
-            **make_base_observation_meta(msmt, netinfodb)
+            **make_base_observation_meta(msmt, netinfodb),
         )
 
         if not answer:
@@ -365,13 +371,13 @@ class TCPObservation(Observation):
         netinfodb: NetinfoDB,
     ) -> "TCPObservation":
         tcpo = TCPObservation(
-            observation_id = f"{msmt.measurement_uid}{idx}",
+            observation_id=f"{msmt.measurement_uid}{idx}",
             timestamp=make_timestamp(msmt, res.t),
-            ip = res.ip,
-            port = res.port,
-            failure = normalize_failure(res.status.failure),
-            domain_name = ip_to_domain.get(res.ip, ""),
-            **make_base_observation_meta(msmt, netinfodb)
+            ip=res.ip,
+            port=res.port,
+            failure=normalize_failure(res.status.failure),
+            domain_name=ip_to_domain.get(res.ip, ""),
+            **make_base_observation_meta(msmt, netinfodb),
         )
 
         ip_info = netinfodb.lookup_ip(tcpo.timestamp, res.ip)
@@ -431,6 +437,7 @@ def find_tls_handshake_network_events(
             return current_event_window
     return None
 
+
 @dataclass
 class TLSObservation(Observation):
     __table_name__ = "obs_tls"
@@ -450,7 +457,6 @@ class TLSObservation(Observation):
     ip_as_org_name: Optional[str] = None
     ip_as_cc: Optional[str] = None
     ip_cc: Optional[str] = None
-
 
     is_certificate_valid: Optional[bool] = None
 
@@ -481,15 +487,15 @@ class TLSObservation(Observation):
         netinfodb: NetinfoDB,
     ) -> "TLSObservation":
         tlso = TLSObservation(
-            observation_id = f"{msmt.measurement_uid}{idx}",
+            observation_id=f"{msmt.measurement_uid}{idx}",
             timestamp=make_timestamp(msmt, tls_h.t),
-            server_name = tls_h.server_name if tls_h.server_name else "",
-            domain_name = tls_h.server_name if tls_h.server_name else "",
-            tls_version = tls_h.tls_version if tls_h.tls_version else "",
-            cipher_suite = tls_h.cipher_suite if tls_h.cipher_suite else "",
-            end_entity_certificate_san_list = [],
-            failure = normalize_failure(tls_h.failure),
-            **make_base_observation_meta(msmt, netinfodb)
+            server_name=tls_h.server_name if tls_h.server_name else "",
+            domain_name=tls_h.server_name if tls_h.server_name else "",
+            tls_version=tls_h.tls_version if tls_h.tls_version else "",
+            cipher_suite=tls_h.cipher_suite if tls_h.cipher_suite else "",
+            end_entity_certificate_san_list=[],
+            failure=normalize_failure(tls_h.failure),
+            **make_base_observation_meta(msmt, netinfodb),
         )
 
         if tls_h.address:
@@ -538,17 +544,27 @@ class TLSObservation(Observation):
 
         if tls_h.peer_certificates:
             tlso.certificate_chain_length = len(tls_h.peer_certificates)
-            cert_meta = get_certificate_meta(tls_h.peer_certificates[0])
-            tlso.end_entity_certificate_fingerprint = cert_meta.fingerprint
-            tlso.end_entity_certificate_subject = cert_meta.subject
-            tlso.end_entity_certificate_subject_common_name = (
-                cert_meta.subject_common_name
-            )
-            tlso.end_entity_certificate_issuer = cert_meta.issuer
-            tlso.end_entity_certificate_issuer_common_name = cert_meta.issuer_common_name
-            tlso.end_entity_certificate_not_valid_after = cert_meta.not_valid_after
-            tlso.end_entity_certificate_not_valid_before = cert_meta.not_valid_before
-            tlso.end_entity_certificate_san_list = cert_meta.san_list
+            try:
+                cert_meta = get_certificate_meta(tls_h.peer_certificates[0])
+                tlso.end_entity_certificate_fingerprint = cert_meta.fingerprint
+                tlso.end_entity_certificate_subject = cert_meta.subject
+                tlso.end_entity_certificate_subject_common_name = (
+                    cert_meta.subject_common_name
+                )
+                tlso.end_entity_certificate_issuer = cert_meta.issuer
+                tlso.end_entity_certificate_issuer_common_name = (
+                    cert_meta.issuer_common_name
+                )
+                tlso.end_entity_certificate_not_valid_after = cert_meta.not_valid_after
+                tlso.end_entity_certificate_not_valid_before = (
+                    cert_meta.not_valid_before
+                )
+                tlso.end_entity_certificate_san_list = cert_meta.san_list
+            except Exception as exc:
+                log.error(exc)
+                log.error(
+                    f"Failed to extract certificate meta for {msmt.measurement_uid}"
+                )
 
         return tlso
 
