@@ -445,7 +445,11 @@ if __name__ == "__main__":
         )
         sys.exit(0)
 
+    skip_verdicts = args.skip_verdicts
+    if not isinstance(db, ClickhouseConnection):
+        skip_verdicts = True
+
     testnames = []
     if args.testname:
         testnames = [args.testname]
-    process_day(db, fingerprintdb, netinfodb, args.day, testnames=testnames, start_at_idx=args.start_at_idx, skip_verdicts=args.skip_verdicts)
+    process_day(db, fingerprintdb, netinfodb, args.day, testnames=testnames, start_at_idx=args.start_at_idx, skip_verdicts=skip_verdicts)
