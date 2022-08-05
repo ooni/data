@@ -7,7 +7,7 @@ To get yourself started with using this repo, run the following:
 ```
 poetry install
 mkdir output/
-poetry run python oonidata/processing.py --csv-dir output/
+poetry run python oonidata/processing.py --csv-dir output/ --geoip-dir ../historical-geoip/country-asn-databases --asn-map ../historical-geoip/as-orgs/all_as_org_map.json
 ```
 
 ## Architecture overview
