@@ -259,6 +259,8 @@ class DNSObservation(Observation):
 
     query_type: str
     failure: Failure
+    engine: Optional[str]
+    engine_resolver_address: Optional[str]
 
     answer_type: Optional[str] = None
     answer: Optional[str] = None
@@ -284,6 +286,8 @@ class DNSObservation(Observation):
     ) -> "DNSObservation":
         dnso = DNSObservation(
             observation_id=f"{msmt.measurement_uid}{idx}",
+            engine=query.engine,
+            engine_resolver_address=query.resolver_address,
             query_type=query.query_type,
             domain_name=query.hostname,
             failure=normalize_failure(query.failure),
