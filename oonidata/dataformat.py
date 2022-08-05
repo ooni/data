@@ -166,7 +166,7 @@ class DNSQuery:
     dial_id: Optional[int]
     engine: Optional[str]
     failure: Failure
-    hostname: Optional[str]
+    hostname: str
     query_type: str
 
     # XXX: Map resolver_hostname and resolver_port to this

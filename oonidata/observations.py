@@ -139,8 +139,8 @@ class HTTPObservation(Observation):
 
     response_status_code: Optional[int] = None
     # response_headers_list: Optional[List[Tuple[str, bytes]]]
-    response_header_location: Optional[str] = None
-    response_header_server: Optional[str] = None
+    response_header_location: Optional[bytes] = None
+    response_header_server: Optional[bytes] = None
     request_redirect_from: Optional[str] = None
     request_body_is_truncated: Optional[bool] = None
 
@@ -168,11 +168,11 @@ class HTTPObservation(Observation):
         hrro = HTTPObservation(
             observation_id=f"{msmt.measurement_uid}{idx}",
             request_url=http_transaction.request.url,
-            domain_name=parsed_url.hostname,
+            domain_name=parsed_url.hostname or "",
             request_is_encrypted=parsed_url.scheme == "https",
             request_body_is_truncated=http_transaction.request.body_is_truncated,
             # hrro.request_headers_list = http_transaction.request.headers_list_bytes
-            request_method=http_transaction.request.method,
+            request_method=http_transaction.request.method or "",
             request_body_length=len(http_transaction.request.body_bytes)
             if http_transaction.request.body_bytes
             else 0,
@@ -214,19 +214,19 @@ class HTTPObservation(Observation):
         # hrro.response_headers_list = http_transaction.response.headers_list_bytes
 
         hrro.response_header_location = get_first_http_header(
-            "location", http_transaction.response.headers_list_bytes
+            "location", http_transaction.response.headers_list_bytes or []
         )
         hrro.response_header_server = get_first_http_header(
-            "server", http_transaction.response.headers_list_bytes
+            "server", http_transaction.response.headers_list_bytes or []
         )
 
         try:
-            prev_request = requests_list[idx + 1]
+            prev_request = requests_list[idx + 1] # type: ignore
             prev_location = get_first_http_header(
-                "location", prev_request.response.headers_list_bytes
+                "location", prev_request.response.headers_list_bytes or [] # type: ignore
             ).decode("utf-8")
             if prev_location == hrro.request_url:
-                hrro.request_redirect_from = prev_request.request.url
+                hrro.request_redirect_from = prev_request.request.url # type: ignore
         except (IndexError, UnicodeDecodeError, AttributeError):
             pass
         return hrro
@@ -305,14 +305,14 @@ class DNSObservation(Observation):
             dnso.answer = answer.hostname
 
         if answer.ipv4 or answer.ipv6:
-            answer_meta = netinfodb.lookup_ip(dnso.timestamp, dnso.answer)
+            answer_meta = netinfodb.lookup_ip(dnso.timestamp, dnso.answer)  # type: ignore
             if answer_meta:
                 dnso.answer_asn = answer_meta.as_info.asn
                 dnso.answer_as_cc = answer_meta.as_info.as_cc
                 dnso.answer_as_org_name = answer_meta.as_info.as_org_name
                 dnso.answer_cc = answer_meta.cc
 
-        matched_fingerprint = fingerprintdb.match_dns(dnso.answer)
+        matched_fingerprint = fingerprintdb.match_dns(dnso.answer) # type: ignore
         if matched_fingerprint:
             dnso.fingerprint_id = matched_fingerprint.name
             if matched_fingerprint.expected_countries:
