@@ -119,6 +119,22 @@ Once the day is finished, we can re-run the verdict generation using the batch
 workflow and mark for deletion all the verdicts generated in streaming mode, leading
 to an eventual consistency.
 
+The possible outcomes for the verdict are:
+
+* dns.blockpage
+* dns.bogon
+* dns.nxdomain
+* dns.{failure}
+* dns.inconsistent
+* tls.mitm
+* tls.{failure}
+* http.{failure}
+* https.{failure}
+* http.blockpage
+* http.bodydiff
+* tcp.{failure}
+
+
 ### Current pipeline
 
 This section documents the current [ooni/pipeline](https://github.com/ooni/pipeline)
