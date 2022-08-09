@@ -15,6 +15,6 @@ def fingerprintdb():
 @pytest.fixture
 def netinfodb():
     return NetinfoDB(
-        datadir=FIXTURE_PATH / "geoip",
-        as_org_map_path=FIXTURE_PATH / "all_as_org_map.json"
+        datadir=FIXTURE_PATH / "historical-geoip" / "country-asn-databases",
+        as_org_map_path=FIXTURE_PATH / "historical-geoip" / "as-orgs" / "all_as_org_map.json"
     )
