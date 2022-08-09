@@ -13,6 +13,7 @@ from typing import Tuple, List, Generator, Type, TypeVar, Any
 
 from oonidata.datautils import one_day_dict
 from oonidata.observations import (
+    NettestObservation,
     DNSObservation,
     HTTPObservation,
     Observation,
@@ -232,6 +233,13 @@ def dnscheck_processor(
             )
         )
 
+def base_processor(
+    msmt: BaseMeasurement,
+    db: DatabaseConnection,
+    netinfodb: NetinfoDB,
+) -> None:
+    write_observations_to_db(db, [NettestObservation.from_measurement(msmt, netinfodb)])
+ 
 def domains_in_a_day(day: date, db: ClickhouseConnection) -> List[str]:
     q = """SELECT DISTINCT(domain_name) FROM obs_dns
     WHERE timestamp >= %(start_day)s
@@ -398,6 +406,7 @@ def process_day(db: DatabaseConnection, fingerprintdb : FingerprintDB, netinfodb
                 continue
             try:
                 msmt = load_measurement(raw_msmt)
+                base_processor(msmt, db, netinfodb)
                 processor = nettest_processors.get(msmt.test_name, default_processor)
                 processor(
                     msmt,

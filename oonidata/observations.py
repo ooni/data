@@ -24,7 +24,7 @@ from oonidata.datautils import (
     get_html_title,
     is_ipv4_bogon,
     is_ipv6_bogon,
-    get_certificate_meta,
+    get_certificate_meta
 )
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
@@ -59,6 +59,7 @@ class Observation(abc.ABC):
 
     software_name: str
     software_version: str
+    test_name: str
     network_type: str
     platform: str
     origin: str
@@ -94,9 +95,10 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
         session_id=msmt.report_id,
         software_name=msmt.software_name,
         software_version=msmt.software_version,
-        network_type=msmt.annotations.network_type,
-        platform=msmt.annotations.platform,
-        origin=msmt.annotations.origin,
+        test_name=msmt.test_name,
+        network_type=msmt.annotations.get("network_type", "unknown"),
+        platform=msmt.annotations.get("platform", "unknown"),
+        origin=msmt.annotations.get("origin", "unknown"),
         target="",
         resolver_ip=resolver_ip if resolver_ip else "",
         resolver_cc=resolver_as_info.cc if resolver_as_info else "",
@@ -114,6 +116,25 @@ def make_timestamp(msmt: BaseMeasurement, t: Optional[float] = None):
         timestamp += timedelta(seconds=t)
     return timestamp
 
+
+@dataclass
+class NettestObservation(Observation):
+    __table_name__ = "obs_nettest"
+
+    test_runtime: float
+    annotations: dict[str, str]
+
+    @staticmethod
+    def from_measurement(
+        msmt: BaseMeasurement,
+        netinfodb: NetinfoDB,
+    ) -> "NettestObservation":
+        return NettestObservation(
+            test_runtime=msmt.test_runtime,
+            annotations=msmt.annotations,
+            **make_base_observation_meta(msmt, netinfodb),
+        )
+ 
 
 @dataclass
 class HTTPObservation(Observation):

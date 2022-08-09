@@ -19,7 +19,6 @@ from dacite.core import from_dict
 
 from oonidata.utils import trivial_id
 
-
 @dataclass
 class BinaryData:
     format: str
@@ -29,6 +28,16 @@ class BinaryData:
 MaybeBinaryData = Union[str, BinaryData, None]
 Failure = Optional[str]
 
+def guess_decode(s: bytes) -> str:
+    """
+    best effort decoding of a string of bytes
+    """
+    for encoding in ("ascii", "utf-8", "latin1"):
+        try:
+            return s.decode(encoding)
+        except UnicodeDecodeError:
+            pass
+    return s.decode("ascii", "ignore")
 
 def maybe_binary_data_to_bytes(mbd: MaybeBinaryData) -> bytes:
     if isinstance(mbd, BinaryData):
@@ -40,13 +49,6 @@ def maybe_binary_data_to_bytes(mbd: MaybeBinaryData) -> bytes:
 
 
 @dataclass
-class Annotations:
-    network_type: Optional[str] = "unknown"
-    platform: Optional[str] = "unknown"
-    origin: Optional[str] = "unknown"
-
-
-@dataclass
 class BaseTestKeys:
     client_resolver: Optional[str]
 
@@ -55,7 +57,7 @@ class BaseTestKeys:
 class BaseMeasurement:
     measurement_uid: Optional[str]
 
-    annotations: Annotations
+    annotations: dict[str, str]
 
     input: Union[str, List[str], None]
     report_id: str
@@ -112,8 +114,10 @@ class HTTPBase:
             self.headers_list_bytes = []
             for header_pair in self.headers_list:
                 assert len(header_pair) == 2, "Inconsistent header"
+                header_name = guess_decode(maybe_binary_data_to_bytes(header_pair[0]))
+                header_value = maybe_binary_data_to_bytes(header_pair[1])
                 self.headers_list_bytes.append(
-                    (header_pair[0], maybe_binary_data_to_bytes(header_pair[1]))
+                    (header_name, header_value)
                 )
 
         if self.body:

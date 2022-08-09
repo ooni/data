@@ -12,22 +12,11 @@ from cryptography.x509.oid import ExtensionOID, NameOID
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 
-from oonidata.dataformat import HeadersListBytes, BinaryData
+from oonidata.dataformat import HeadersListBytes, BinaryData, guess_decode
 
 META_TITLE_REGEXP = re.compile(
     b'<meta.*?property="og:title".*?content="(.*?)"', re.IGNORECASE | re.DOTALL
 )
-
-def guess_decode(s: bytes) -> str:
-    """
-    best effort decoding of a string of bytes
-    """
-    for encoding in ("ascii", "utf-8", "latin1"):
-        try:
-            return s.decode(encoding)
-        except UnicodeDecodeError:
-            pass
-    return s.decode("ascii", "ignore")
 
 def get_html_meta_title(body: bytes) -> str:
     m = META_TITLE_REGEXP.search(body, re.IGNORECASE | re.DOTALL)
