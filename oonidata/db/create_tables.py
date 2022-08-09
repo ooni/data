@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional, Tuple, List, Any, Type
 from dataclasses import fields
 from oonidata.observations import (
+    NettestObservation,
     Observation,
     DNSObservation,
     TCPObservation,
@@ -53,6 +54,9 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Outcome:
         return "String"
 
+    if t == dict[str, str]:
+        return "Map(String, String)"
+
     raise Exception(f"Unhandled type {t}")
 
 
@@ -95,6 +99,7 @@ def main():
     print(create_query_for_observation(TCPObservation))
     print(create_query_for_observation(TLSObservation))
     print(create_query_for_observation(HTTPObservation))
+    print(create_query_for_observation(NettestObservation))
 
     print(create_query_for_verdict())
 
