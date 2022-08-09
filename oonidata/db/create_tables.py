@@ -16,7 +16,7 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == str:
         return "String"
 
-    if t == Optional[str]:
+    if t == Optional[str] or t == Optional[bytes]:
         return "Nullable(String)"
 
     if t == int:
@@ -60,11 +60,11 @@ def typing_to_clickhouse(t: Any) -> str:
     raise Exception(f"Unhandled type {t}")
 
 
-def create_query_for_observation(obs_class: Type[Observation]) -> str:
+def create_query_for_observation(obs_class: Type[Observation]) -> (str, str):
     columns = []
     for f in fields(obs_class):
         type_str = typing_to_clickhouse(f.type)
-        columns.append(f"     `{f.name}` {type_str}")
+        columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
 
@@ -75,13 +75,13 @@ def create_query_for_observation(obs_class: Type[Observation]) -> str:
     ENGINE = ReplacingMergeTree
     ORDER BY (timestamp, observation_id, measurement_uid)
     SETTINGS index_granularity = 8192;
-    """
+    """, obs_class.__table_name__
 
-def create_query_for_verdict() -> str:
+def create_query_for_verdict() -> (str, str):
     columns = []
     for f in fields(Verdict):
         type_str = typing_to_clickhouse(f.type)
-        columns.append(f"     `{f.name}` {type_str}")
+        columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
 
@@ -92,16 +92,22 @@ def create_query_for_verdict() -> str:
     ENGINE = ReplacingMergeTree
     ORDER BY (timestamp, verdict_id, measurement_uid)
     SETTINGS index_granularity = 8192;
-    """
+    """, "verdict"
 
 def main():
-    print(create_query_for_observation(DNSObservation))
-    print(create_query_for_observation(TCPObservation))
-    print(create_query_for_observation(TLSObservation))
-    print(create_query_for_observation(HTTPObservation))
-    print(create_query_for_observation(NettestObservation))
-
-    print(create_query_for_verdict())
+    create_queries = [
+            create_query_for_observation(DNSObservation),
+            create_query_for_observation(TCPObservation),
+            create_query_for_observation(TLSObservation),
+            create_query_for_observation(HTTPObservation),
+            create_query_for_observation(NettestObservation),
+            create_query_for_verdict(),
+    ]
+    for query, table_name in create_queries:
+        print(f"clickhouse-client -q 'DROP TABLE {table_name}';")
+        print("cat <<EOF | clickhouse-client -nm")
+        print(query)
+        print("EOF")
 
 if __name__ == "__main__":
     main()
