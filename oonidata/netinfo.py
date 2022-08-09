@@ -52,19 +52,21 @@ class NetinfoDB:
         Where dat or mmdb indicates if the format is the legacy maxmind GeoIP or
         GeoIP2 formats respectively.
         """
-        for db_path in self.datadir.glob("*.gz"):
-            decompressed_path = db_path.with_suffix("")
+
+        # If the maxmind databases are compressed, we uncompress them.
+        for db_path in self.datadir.glob("*-country-asn.mmdb.gz"):
+            decompressed_path = db_path.with_suffix(".tmp")
             if decompressed_path.exists():
                 continue
             with gzip.open(db_path) as in_file, decompressed_path.open("wb") as out_file:
                 shutil.copyfileobj(in_file, out_file)
+            decompressed_path.rename(db_path.with_suffix(""))
 
         db_files = {}
         for db_path in self.datadir.glob("*"):
             if db_path.match("*.gz"):
                 continue
             ts = datetime.strptime(db_path.name.split("-")[0], "%Y%m%d").date()
-            db_files[ts] = db_files.get(ts, {})
             if db_path.match("*-country-asn.mmdb"):
                 db_files[ts] = db_path
             else:
@@ -74,7 +76,7 @@ class NetinfoDB:
         for ts in sorted(db_files.keys()):
             self.databases[ts] = db_files[ts]
         
-        assert self.databases
+        assert len(self.databases) > 0, "Did not find any geoip database files"
 
     def find_db_for_date(self, day : date):
         """
