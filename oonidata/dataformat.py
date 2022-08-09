@@ -19,6 +19,7 @@ from dacite.core import from_dict
 
 from oonidata.utils import trivial_id
 
+
 @dataclass
 class BinaryData:
     format: str
@@ -27,6 +28,7 @@ class BinaryData:
 
 MaybeBinaryData = Union[str, BinaryData, None]
 Failure = Optional[str]
+
 
 def guess_decode(s: bytes) -> str:
     """
@@ -38,6 +40,7 @@ def guess_decode(s: bytes) -> str:
         except UnicodeDecodeError:
             pass
     return s.decode("ascii", "ignore")
+
 
 def maybe_binary_data_to_bytes(mbd: MaybeBinaryData) -> bytes:
     if isinstance(mbd, BinaryData):
@@ -116,9 +119,7 @@ class HTTPBase:
                 assert len(header_pair) == 2, "Inconsistent header"
                 header_name = guess_decode(maybe_binary_data_to_bytes(header_pair[0]))
                 header_value = maybe_binary_data_to_bytes(header_pair[1])
-                self.headers_list_bytes.append(
-                    (header_name, header_value)
-                )
+                self.headers_list_bytes.append((header_name, header_value))
 
         if self.body:
             self.body_bytes = maybe_binary_data_to_bytes(self.body)
@@ -288,6 +289,7 @@ class WebConnectivityTestKeys(BaseTestKeys):
 class WebConnectivity(BaseMeasurement):
     test_keys: WebConnectivityTestKeys
 
+
 @dataclass
 class URLGetterTestKeys(BaseTestKeys):
     failure: Failure
@@ -298,15 +300,18 @@ class URLGetterTestKeys(BaseTestKeys):
     tcp_connect: Optional[List[TCPConnect]]
     requests: Optional[List[HTTPTransaction]]
 
+
 @dataclass
 class DNSCheckTestKeys(BaseTestKeys):
     bootstrap: Optional[URLGetterTestKeys]
     bootstrap_failure: Optional[str]
     lookups: dict[str, URLGetterTestKeys]
 
+
 @dataclass
 class DNSCheck(BaseMeasurement):
     test_keys: DNSCheckTestKeys
+
 
 @dataclass
 class TorTestTarget:
@@ -333,9 +338,9 @@ class Tor(BaseMeasurement):
 
 
 nettest_dataformats = {
-    "web_connectivity": WebConnectivity, 
+    "web_connectivity": WebConnectivity,
     "tor": Tor,
-    "dnscheck": DNSCheck
+    "dnscheck": DNSCheck,
 }
 
 
