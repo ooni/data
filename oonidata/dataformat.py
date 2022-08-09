@@ -128,7 +128,7 @@ class HTTPBase:
 class HTTPRequest(HTTPBase):
     url: str
     method: Optional[str]
-    tor: TorInfo
+    tor: Optional[TorInfo]
     x_transport: Optional[str] = "tcp"
 
 
