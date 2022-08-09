@@ -130,6 +130,8 @@ class NettestObservation(Observation):
         netinfodb: NetinfoDB,
     ) -> "NettestObservation":
         return NettestObservation(
+            observation_id=f"{msmt.measurement_uid}_nettest",
+            timestamp=make_timestamp(msmt),
             test_runtime=msmt.test_runtime,
             annotations=msmt.annotations,
             **make_base_observation_meta(msmt, netinfodb),
@@ -187,7 +189,7 @@ class HTTPObservation(Observation):
 
         parsed_url = urlparse(http_transaction.request.url)
         hrro = HTTPObservation(
-            observation_id=f"{msmt.measurement_uid}{idx}",
+            observation_id=f"{msmt.measurement_uid}_http_{idx}",
             request_url=http_transaction.request.url,
             domain_name=parsed_url.hostname or "",
             request_is_encrypted=parsed_url.scheme == "https",
@@ -306,7 +308,7 @@ class DNSObservation(Observation):
         netinfodb: NetinfoDB,
     ) -> "DNSObservation":
         dnso = DNSObservation(
-            observation_id=f"{msmt.measurement_uid}{idx}",
+            observation_id=f"{msmt.measurement_uid}_dns_{idx}",
             engine=query.engine,
             engine_resolver_address=query.resolver_address,
             query_type=query.query_type,
@@ -396,7 +398,7 @@ class TCPObservation(Observation):
         netinfodb: NetinfoDB,
     ) -> "TCPObservation":
         tcpo = TCPObservation(
-            observation_id=f"{msmt.measurement_uid}{idx}",
+            observation_id=f"{msmt.measurement_uid}_tcp_{idx}",
             timestamp=make_timestamp(msmt, res.t),
             ip=res.ip,
             port=res.port,
@@ -512,7 +514,7 @@ class TLSObservation(Observation):
         netinfodb: NetinfoDB,
     ) -> "TLSObservation":
         tlso = TLSObservation(
-            observation_id=f"{msmt.measurement_uid}{idx}",
+            observation_id=f"{msmt.measurement_uid}_tls_{idx}",
             timestamp=make_timestamp(msmt, tls_h.t),
             server_name=tls_h.server_name if tls_h.server_name else "",
             domain_name=tls_h.server_name if tls_h.server_name else "",
