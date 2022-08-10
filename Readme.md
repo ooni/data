@@ -7,7 +7,7 @@ To get yourself started with using this repo, run the following:
 ```
 poetry install
 mkdir output/
-poetry run python oonidata/processing.py --csv-dir output/
+poetry run python oonidata/processing.py --csv-dir output/ --geoip-dir ../historical-geoip/country-asn-databases --asn-map ../historical-geoip/as-orgs/all_as_org_map.json
 ```
 
 ## Architecture overview
@@ -118,6 +118,22 @@ most 24h.
 Once the day is finished, we can re-run the verdict generation using the batch
 workflow and mark for deletion all the verdicts generated in streaming mode, leading
 to an eventual consistency.
+
+The possible outcomes for the verdict are:
+
+* dns.blockpage
+* dns.bogon
+* dns.nxdomain
+* dns.{failure}
+* dns.inconsistent
+* tls.mitm
+* tls.{failure}
+* http.{failure}
+* https.{failure}
+* http.blockpage
+* http.bodydiff
+* tcp.{failure}
+
 
 ### Current pipeline
 

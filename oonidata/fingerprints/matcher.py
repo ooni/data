@@ -27,27 +27,29 @@ class Fingerprint:
     def matches_http(self, http_response: HTTPResponse) -> bool:
         assert self.location_found != "dns", "Cannot use a DNS signature to match HTTP"
 
-        if self.location_found == "body":
+        if self.location_found == "body" and self.regexp:
             if not http_response.body_bytes:
                 return False
             try:
-                return self.regexp.search(http_response.body_bytes.decode("utf-8"))
+                return (
+                    self.regexp.search(http_response.body_bytes.decode("utf-8")) != None
+                )
             except UnicodeDecodeError:
                 return False
 
-        if self.location_found.startswith("header."):
+        if self.location_found.startswith("header.") and self.regexp:
             search_header = self.location_found.lstrip("header.")
             header_value = get_first_http_header(
-                search_header, http_response.headers_list_bytes
+                search_header, http_response.headers_list_bytes or []
             )
             try:
-                return self.regexp.search(header_value.decode("utf-8"))
+                return self.regexp.search(header_value.decode("utf-8")) != None
             except UnicodeDecodeError:
                 return False
         return False
 
 
-def _load_fingerprints(fn: str) -> OrderedDict[Fingerprint]:
+def _load_fingerprints(fn: str) -> OrderedDict[str, Fingerprint]:
     fingerprints = OrderedDict()
     data = pkgutil.get_data(__name__, fn)
     if not data:
@@ -74,7 +76,9 @@ class FingerprintDB:
                 matches.append(fp)
         return matches
 
-    def match_dns(self, address: str) -> Optional[Fingerprint]:
+    def match_dns(self, address: Optional[str]) -> Optional[Fingerprint]:
+        if not address:
+            return None
         for fp in self.dns_fp.values():
             if fp.pattern == address:
                 return fp

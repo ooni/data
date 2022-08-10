@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, date, timedelta
 from typing import List, Any
 from dataclasses import dataclass
@@ -14,26 +15,41 @@ from cryptography.hazmat.primitives import hashes
 
 from oonidata.dataformat import HeadersListBytes, BinaryData
 
+log = logging.getLogger("oonidata.datautils")
+
 META_TITLE_REGEXP = re.compile(
     b'<meta.*?property="og:title".*?content="(.*?)"', re.IGNORECASE | re.DOTALL
 )
 
 
-def get_html_meta_title(body: bytes) -> bytes:
+def guess_decode(s: bytes) -> str:
+    """
+    best effort decoding of a string of bytes
+    """
+    for encoding in ("ascii", "utf-8", "latin1"):
+        try:
+            return s.decode(encoding)
+        except UnicodeDecodeError:
+            pass
+    log.warning(f"unable to decode '{s}'")
+    return s.decode("ascii", "ignore")
+
+
+def get_html_meta_title(body: bytes) -> str:
     m = META_TITLE_REGEXP.search(body, re.IGNORECASE | re.DOTALL)
     if m:
-        return m.group(1)
-    return b""
+        return guess_decode(m.group(1))
+    return ""
 
 
 TITLE_REGEXP = re.compile(b"<title.*?>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
-def get_html_title(body: bytes) -> bytes:
+def get_html_title(body: bytes) -> str:
     m = META_TITLE_REGEXP.search(body, re.IGNORECASE | re.DOTALL)
     if m:
-        return m.group(1)
-    return b""
+        return guess_decode(m.group(1))
+    return ""
 
 
 def get_first_http_header(
@@ -203,7 +219,7 @@ def get_alternative_names(cert: x509.Certificate) -> List[str]:
         ext = cert.extensions.get_extension_for_oid(
             ExtensionOID.SUBJECT_ALTERNATIVE_NAME
         )
-        san_ext: x509.SubjectAlternativeName = ext.value # type: ignore
+        san_ext: x509.SubjectAlternativeName = ext.value  # type: ignore
         return san_ext.get_values_for_type(x509.DNSName)
     except x509.ExtensionNotFound:
         return []

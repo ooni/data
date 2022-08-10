@@ -166,7 +166,7 @@ class DNSQuery:
     dial_id: Optional[int]
     engine: Optional[str]
     failure: Failure
-    hostname: Optional[str]
+    hostname: str
     query_type: str
 
     # XXX: Map resolver_hostname and resolver_port to this
@@ -284,6 +284,25 @@ class WebConnectivityTestKeys(BaseTestKeys):
 class WebConnectivity(BaseMeasurement):
     test_keys: WebConnectivityTestKeys
 
+@dataclass
+class URLGetterTestKeys(BaseTestKeys):
+    failure: Failure
+    socksproxy: Optional[str]
+    tls_handshakes: Optional[List[TLSHandshake]]
+    network_events: Optional[List[NetworkEvent]]
+    queries: Optional[List[DNSQuery]]
+    tcp_connect: Optional[List[TCPConnect]]
+    requests: Optional[List[HTTPTransaction]]
+
+@dataclass
+class DNSCheckTestKeys(BaseTestKeys):
+    bootstrap: Optional[URLGetterTestKeys]
+    bootstrap_failure: Optional[str]
+    lookups: dict[str, URLGetterTestKeys]
+
+@dataclass
+class DNSCheck(BaseMeasurement):
+    test_keys: DNSCheckTestKeys
 
 @dataclass
 class TorTestTarget:
@@ -309,7 +328,11 @@ class Tor(BaseMeasurement):
     test_keys: TorTestKeys
 
 
-nettest_dataformats = {"web_connectivity": WebConnectivity, "tor": Tor}
+nettest_dataformats = {
+    "web_connectivity": WebConnectivity, 
+    "tor": Tor,
+    "dnscheck": DNSCheck
+}
 
 
 def load_measurement(raw: bytes) -> BaseMeasurement:

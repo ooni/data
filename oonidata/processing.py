@@ -23,7 +23,7 @@ from oonidata.observations import (
     make_tcp_observations,
     make_tls_observations,
 )
-from oonidata.dataformat import load_measurement
+from oonidata.dataformat import DNSCheck, load_measurement
 from oonidata.dataformat import BaseMeasurement, WebConnectivity, Tor
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
@@ -183,6 +183,54 @@ def web_connectivity_processor(
         enriched_dns_observations,
     )
 
+def dnscheck_processor(
+    msmt: DNSCheck,
+    db: DatabaseConnection,
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
+) -> None:
+    ip_to_domain = {}
+    if msmt.test_keys.bootstrap:
+        dns_observations = list(
+            make_dns_observations(msmt, msmt.test_keys.bootstrap.queries, fingerprintdb, netinfodb)
+        )
+        ip_to_domain = {
+            str(obs.answer): obs.domain_name
+            for obs in filter(lambda o: o.answer, dns_observations)
+        }
+        write_observations_to_db(
+            db,
+            dns_observations,
+        )
+
+    for lookup in msmt.test_keys.lookups.values():
+        write_observations_to_db(
+            db,
+            make_dns_observations(msmt, lookup.queries, fingerprintdb, netinfodb)
+        )
+
+        write_observations_to_db(
+            db,
+            make_http_observations(msmt, lookup.requests, fingerprintdb, netinfodb),
+        )
+
+        write_observations_to_db(
+            db,
+            make_tcp_observations(
+                msmt, lookup.tcp_connect, netinfodb, ip_to_domain
+            ),
+        )
+
+        write_observations_to_db(
+            db,
+            make_tls_observations(
+                msmt,
+                lookup.tls_handshakes,
+                lookup.network_events,
+                netinfodb,
+                ip_to_domain,
+            )
+        )
 
 def domains_in_a_day(day: date, db: ClickhouseConnection) -> List[str]:
     q = """SELECT DISTINCT(domain_name) FROM obs_dns
@@ -328,11 +376,12 @@ verdict_generators = [generate_website_verdicts]
 
 nettest_processors = {
     "web_connectivity": web_connectivity_processor,
+    "dnscheck": dnscheck_processor,
     "tor": tor_processor,
 }
 
 
-def process_day(db: DatabaseConnection, fingerprintdb : FingerprintDB, netinfodb : NetinfoDB, day: date, testnames=[], start_at_idx=0):
+def process_day(db: DatabaseConnection, fingerprintdb : FingerprintDB, netinfodb : NetinfoDB, day: date, testnames=[], start_at_idx=0, skip_verdicts=False):
 
     with tqdm(unit="B", unit_scale=True) as pbar:
         for idx, raw_msmt in enumerate(
@@ -363,7 +412,7 @@ def process_day(db: DatabaseConnection, fingerprintdb : FingerprintDB, netinfodb
                 log.error(f"Wrote bad msmt to: ./bad_msmts.jsonl")
                 raise exc
 
-    if isinstance(db, ClickhouseConnection):
+    if not skip_verdicts:
         write_verdicts_to_db(
             db,
             generate_website_verdicts(
@@ -415,6 +464,7 @@ if __name__ == "__main__":
         default=0,
     )
     parser.add_argument("--only-verdicts", action="store_true")
+    parser.add_argument("--skip-verdicts", action="store_true")
     args = parser.parse_args()
 
     fingerprintdb = FingerprintDB()
@@ -444,7 +494,11 @@ if __name__ == "__main__":
         )
         sys.exit(0)
 
+    skip_verdicts = args.skip_verdicts
+    if not isinstance(db, ClickhouseConnection):
+        skip_verdicts = True
+
     testnames = []
     if args.testname:
         testnames = [args.testname]
-    process_day(db, fingerprintdb, netinfodb, args.day, testnames=testnames, start_at_idx=args.start_at_idx)
+    process_day(db, fingerprintdb, netinfodb, args.day, testnames=testnames, start_at_idx=args.start_at_idx, skip_verdicts=skip_verdicts)
