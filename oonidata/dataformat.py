@@ -7,7 +7,7 @@ See:
 
 - https://github.com/ooni/spec/tree/master/nettests
 """
-
+import logging
 import ujson
 
 from base64 import b64decode
@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from dacite.core import from_dict
 
 from oonidata.utils import trivial_id
+
+log = logging.getLogger("oonidata.dataformat")
 
 
 @dataclass
@@ -39,6 +41,7 @@ def guess_decode(s: bytes) -> str:
             return s.decode(encoding)
         except UnicodeDecodeError:
             pass
+    log.warning(f"unable to decode '{s}'")
     return s.decode("ascii", "ignore")
 
 

@@ -244,12 +244,16 @@ class HTTPObservation(Observation):
         )
 
         try:
-            prev_request = requests_list[idx + 1] # type: ignore
+            # We add type: ignore in here, because requests_lists is an optional
+            # field and the fact it might not be defined is handled by the
+            # except block below, yet pylint is not able to figure that out.
+            # TODO: maybe refactor this handle it better by checking if these are defined
+            prev_request = requests_list[idx + 1]  # type: ignore
             prev_location = get_first_http_header(
-                "location", prev_request.response.headers_list_bytes or [] # type: ignore
+                "location", prev_request.response.headers_list_bytes or []  # type: ignore
             ).decode("utf-8")
             if prev_location == hrro.request_url:
-                hrro.request_redirect_from = prev_request.request.url # type: ignore
+                hrro.request_redirect_from = prev_request.request.url  # type: ignore
         except (IndexError, UnicodeDecodeError, AttributeError):
             pass
         return hrro
@@ -332,6 +336,9 @@ class DNSObservation(Observation):
             dnso.answer = answer.hostname
 
         if answer.ipv4 or answer.ipv6:
+            # This is guaranteed to be the correct type since we set it's value
+            # based on answer.ipv4 or answer.ipv6 being set in the previous
+            # blocks
             answer_meta = netinfodb.lookup_ip(dnso.timestamp, dnso.answer)  # type: ignore
             if answer_meta:
                 dnso.answer_asn = answer_meta.as_info.asn
@@ -339,7 +346,7 @@ class DNSObservation(Observation):
                 dnso.answer_as_org_name = answer_meta.as_info.as_org_name
                 dnso.answer_cc = answer_meta.cc
 
-        matched_fingerprint = fingerprintdb.match_dns(dnso.answer) # type: ignore
+        matched_fingerprint = fingerprintdb.match_dns(dnso.answer)
         if matched_fingerprint:
             dnso.fingerprint_id = matched_fingerprint.name
             if matched_fingerprint.expected_countries:
