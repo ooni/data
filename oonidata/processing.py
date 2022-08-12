@@ -406,6 +406,7 @@ def process_day(
     country_codes=[],
     start_at_idx=0,
     skip_verdicts=False,
+    fast_fail=False,
 ):
 
     with tqdm(unit="B", unit_scale=True) as pbar:
@@ -436,7 +437,8 @@ def process_day(
                     out_file.write(raw_msmt.decode("utf-8"))
                     out_file.write("\n")
                 log.error(f"Wrote bad msmt to: ./bad_msmts.jsonl")
-                raise exc
+                if fast_fail:
+                    raise exc
 
     if not skip_verdicts:
         write_verdicts_to_db(
@@ -495,6 +497,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--only-verdicts", action="store_true")
     parser.add_argument("--skip-verdicts", action="store_true")
+    parser.add_argument("--fast-fail", action="store_true")
     args = parser.parse_args()
 
     fingerprintdb = FingerprintDB()
@@ -547,4 +550,5 @@ if __name__ == "__main__":
         country_codes=country_codes,
         start_at_idx=args.start_at_idx,
         skip_verdicts=skip_verdicts,
+        fast_fail=args.fast_fail,
     )
