@@ -436,7 +436,9 @@ def process_day(
                 with open("bad_msmts.jsonl", "a+") as out_file:
                     out_file.write(raw_msmt.decode("utf-8"))
                     out_file.write("\n")
-                log.error(f"Wrote bad msmt to: ./bad_msmts.jsonl")
+                with open("bad_msmts_fail_log.txt", "a+") as out_file:
+                    out_file.write(traceback.format_exc())
+                    out_file.write("ENDTB----\n")
                 if fast_fail:
                     raise exc
 
