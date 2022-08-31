@@ -1,6 +1,7 @@
 import sys
 import argparse
 import logging
+import traceback
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
@@ -9,7 +10,7 @@ from pathlib import Path
 from dataclasses import asdict, fields
 
 from collections.abc import Iterable
-from typing import Tuple, List, Generator, Type, TypeVar, Any
+from typing import Tuple, List, Generator, Type, TypeVar, Any, Optional
 
 from oonidata.datautils import one_day_dict
 from oonidata.observations import (
@@ -255,10 +256,17 @@ def domains_in_a_day(day: date, db: ClickhouseConnection) -> List[str]:
 
 
 def dns_observations_by_session(
-    day: date, domain_name: str, db: ClickhouseConnection
+    day: date,
+    domain_name: str,
+    db: ClickhouseConnection,
+    probe_cc: Optional[str] = None,
 ) -> Generator[List[DNSObservation], None, None]:
     # I wish I had an ORM...
     field_names = observation_field_names(DNSObservation)
+
+    q_params = one_day_dict(day)
+    q_params["domain_name"] = domain_name
+
     q = "SELECT "
     q += ",\n".join(field_names)
     q += """
@@ -266,11 +274,14 @@ def dns_observations_by_session(
     WHERE domain_name = %(domain_name)s
     AND timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
-    ORDER BY session_id, measurement_uid;
     """
-    q_params = one_day_dict(day)
-    q_params["domain_name"] = domain_name
+    if probe_cc:
+        q += "AND probe_cc = %(probe_cc)s\n"
+        q_params["probe_cc"] = probe_cc
 
+    q += "ORDER BY session_id, measurement_uid;"
+
+    # Put all the DNS observations from the same testing session into a list and yield it
     dns_obs_session = []
     last_obs_session_id = None
     for res in db.execute(q, q_params):
@@ -306,7 +317,7 @@ def observations_in_session(
     WHERE domain_name = %(domain_name)s
     AND timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
-    AND (session_id = %(session_id)s OR measurement_uid = %(session_id)s);
+    AND session_id = %(session_id)s;
     """
     q_params = one_day_dict(day)
     q_params["domain_name"] = domain_name
@@ -319,7 +330,10 @@ def observations_in_session(
 
 
 def websites_observation_group(
-    day: date, domain_name: str, db: ClickhouseConnection
+    day: date,
+    domain_name: str,
+    db: ClickhouseConnection,
+    probe_cc: Optional[str] = None,
 ) -> Generator[
     Tuple[
         List[DNSObservation],
@@ -330,7 +344,7 @@ def websites_observation_group(
     None,
     None,
 ]:
-    for dns_obs_list in dns_observations_by_session(day, domain_name, db):
+    for dns_obs_list in dns_observations_by_session(day, domain_name, db, probe_cc):
         session_id = dns_obs_list[0].session_id
         tcp_o_list = observations_in_session(
             day,
@@ -353,6 +367,15 @@ def websites_observation_group(
             session_id,
             db,
         )
+
+        # Drop all verdicts related to this session from the database.
+        # XXX this should probably be refactored to be closer to the place where
+        # we do the insert, but will require quite a bit of reorganizing of the
+        # logic in here.
+        db.execute(
+            "ALTER TABLE verdict DELETE WHERE session_id = %(session_id)s",
+            {"session_id": session_id},
+        )
         yield dns_obs_list, tcp_o_list, tls_o_list, http_o_list
 
 
@@ -361,6 +384,7 @@ def generate_website_verdicts(
     db: ClickhouseConnection,
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
+    probe_cc: Optional[str] = None,
 ):
     with logging_redirect_tqdm():
         for domain_name in tqdm(domains_in_a_day(day, db)):
@@ -374,7 +398,7 @@ def generate_website_verdicts(
                 tcp_o_list,
                 tls_o_list,
                 http_o_list,
-            ) in websites_observation_group(day, domain_name, db):
+            ) in websites_observation_group(day, domain_name, db, probe_cc=probe_cc):
                 yield from make_website_verdicts(
                     dns_o_list,
                     dns_baseline,

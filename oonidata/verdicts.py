@@ -24,6 +24,7 @@ import logging
 
 log = logging.getLogger("oonidata.processing")
 
+
 class Outcome(Enum):
     # k: everything is OK
     OK = "k"
@@ -64,7 +65,8 @@ def fp_scope_to_outcome(scope: Optional[str]) -> Outcome:
 @dataclass
 class Verdict:
     measurement_uid: str
-    verdict_id: str
+    observation_id: str
+    session_id: str
     timestamp: datetime
 
     probe_asn: int
@@ -105,7 +107,8 @@ def make_verdict_from_obs(
 ) -> Verdict:
     return Verdict(
         measurement_uid=obs.measurement_uid,
-        verdict_id=obs.observation_id,
+        observation_id=obs.observation_id,
+        session_id=obs.session_id,
         timestamp=obs.timestamp,
         probe_asn=obs.probe_asn,
         probe_cc=obs.probe_cc,
@@ -326,7 +329,10 @@ def is_dns_consistent(
 
     if dns_o.answer_asn in baseline_asns:
         return 0.9
-    if dns_o.answer_as_org_name and dns_o.answer_as_org_name.lower() in baseline_as_org_names:
+    if (
+        dns_o.answer_as_org_name
+        and dns_o.answer_as_org_name.lower() in baseline_as_org_names
+    ):
         return 0.9
     # XXX maybe with the org_name we can also do something like levenshtein
     # distance to get more similarities
@@ -387,7 +393,9 @@ def make_website_dns_verdict(
             and len(fp.expected_countries) > 0
             and dns_o.probe_cc not in fp.expected_countries
         ):
-            log.debug(f"Inconsistent probe_cc vs expected_countries {dns_o.probe_cc} != {fp.expected_countries}")
+            log.debug(
+                f"Inconsistent probe_cc vs expected_countries {dns_o.probe_cc} != {fp.expected_countries}"
+            )
             confidence = 0.7
 
         outcome_detail = "dns.blockpage"
@@ -496,6 +504,7 @@ def make_website_dns_verdict(
     # No blocking detected
     return None
 
+
 def make_website_tls_verdict(
     tls_o: TLSObservation, prev_verdicts: List[Verdict]
 ) -> Optional[Verdict]:
@@ -563,6 +572,7 @@ def make_website_tls_verdict(
             outcome=Outcome.BLOCKED,
             outcome_detail=outcome_detail,
         )
+
 
 def make_website_http_verdict(
     http_o: HTTPObservation,
@@ -780,7 +790,11 @@ def make_website_verdicts(
                 domain_name == http_o.domain_name
             ), f"Inconsistent domain_name in http_o {http_o.domain_name}"
             http_b = http_b_map.get(http_o.request_url)
-            http_v = make_website_http_verdict(http_o, http_b, verdicts, fingerprintdb) if http_b else None
+            http_v = (
+                make_website_http_verdict(http_o, http_b, verdicts, fingerprintdb)
+                if http_b
+                else None
+            )
             if http_v:
                 verdicts.append(http_v)
                 yield http_v
