@@ -359,6 +359,9 @@ def is_dns_consistent(
 
             other_ips[ip] = other_ips.get(ip, 0)
             other_ips[ip] += 1
+            if ip is None:
+                log.error(f"Missing ip for {dns_o.domain_name}")
+                continue
             ip_info = netinfodb.lookup_ip(dns_o.timestamp, ip)
             if ip_info:
                 asn = ip_info.as_info.asn
