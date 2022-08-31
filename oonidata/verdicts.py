@@ -295,8 +295,7 @@ def make_dns_baseline(
     """
     res = db.execute(q, q_params)
     if len(res) > 0:
-        for row in res:
-            probe_cc, probe_asn, failure, ip = row[0]
+        for probe_cc, probe_asn, failure, ip in res:
             if not failure:
                 dns_baseline.ok_cc_asn.append((probe_cc, probe_asn))
                 dns_baseline.answers_map[probe_cc] = dns_baseline.answers_map.get(
@@ -348,10 +347,10 @@ def is_dns_consistent(
     other_answers = dns_b.answers_map.copy()
     other_answers.pop(dns_o.probe_cc, None)
     other_answers_map = {}
-    for answer in other_answers.values():
-        _, ip = answer
-        other_answers_map[ip] = other_answers_map.get(ip, 0)
-        other_answers_map[ip] += 1
+    for answer_list in other_answers.values():
+        for _, ip in answer_list:
+            other_answers_map[ip] = other_answers_map.get(ip, 0)
+            other_answers_map[ip] += 1
 
     if dns_o.answer in other_answers_map:
         x = other_answers_map[dns_o.answer]
@@ -511,7 +510,7 @@ def make_website_dns_verdict(
         # blocked.
         ip_based_consistency = is_dns_consistent(dns_o, dns_b, netinfodb)
         if ip_based_consistency is not None and ip_based_consistency < 0.5:
-            confidence = 0.7 * ip_based_consistency  # note, this is <= 0.9
+            confidence = 0.5
             outcome_detail = "dns.inconsistent.generic"
             # If the answer ASN is the same as the probe_asn, it's more likely
             # to be a blockpage
