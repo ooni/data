@@ -301,7 +301,12 @@ def make_dns_baseline(
                 dns_baseline.answers_map[probe_cc] = dns_baseline.answers_map.get(
                     probe_cc, []
                 )
-                dns_baseline.answers_map[probe_cc].append((probe_asn, ip))
+                if ip:
+                    dns_baseline.answers_map[probe_cc].append((probe_asn, ip))
+                else:
+                    log.error(
+                        f"No IP present for {domain_name} {probe_cc} ({probe_asn}) in baseline"
+                    )
             else:
                 dns_baseline.failure_cc_asn.append((probe_cc, probe_asn))
                 if failure == "dns_nxdomain_error":
@@ -351,6 +356,7 @@ def is_dns_consistent(
     other_asns = {}
     for answer_list in other_answers.values():
         for _, ip in answer_list:
+
             other_ips[ip] = other_ips.get(ip, 0)
             other_ips[ip] += 1
             ip_info = netinfodb.lookup_ip(dns_o.timestamp, ip)
