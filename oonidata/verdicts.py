@@ -362,7 +362,7 @@ def is_dns_consistent(
         # where f(1) ~= 0.5, doing a bit of plots and choosing a curve that
         # looks reasonably sloped.
         y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
-        return 0.8 * y
+        return min(0.9, 0.8 * y)
 
     return 0
 
@@ -511,7 +511,7 @@ def make_website_dns_verdict(
         # blocked.
         ip_based_consistency = is_dns_consistent(dns_o, dns_b, netinfodb)
         if ip_based_consistency is not None and ip_based_consistency < 0.5:
-            confidence = 0.5
+            confidence = 0.7 * ip_based_consistency  # note, this is <= 0.9
             outcome_detail = "dns.inconsistent.generic"
             # If the answer ASN is the same as the probe_asn, it's more likely
             # to be a blockpage
