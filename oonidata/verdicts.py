@@ -312,17 +312,18 @@ def make_dns_baseline(
 
 def is_dns_consistent(
     dns_o: DNSObservation, dns_b: DNSBaseline, netinfodb: NetinfoDB
-) -> Optional[float]:
+) -> Tuple[bool, float]
     if not dns_o.answer:
-        return None
+        return False, 0
 
     try:
         ipaddress.ip_address(dns_o.answer)
     except ValueError:
         # Not an IP, er can't do much to validate it
-        return None
+        return False, 0
+
     if dns_o.answer in dns_b.tls_consistent_answers:
-        return 1.0
+        return True, 1.0
 
     baseline_asns = set()
     baseline_as_org_names = set()
@@ -334,7 +335,7 @@ def is_dns_consistent(
             baseline_as_org_names.add(ip_info.as_info.as_org_name.lower())
 
     if dns_o.answer_asn in baseline_asns:
-        return 0.9
+        return True, 0.9
 
     # XXX maybe with the org_name we can also do something like levenshtein
     # distance to get more similarities
@@ -342,7 +343,7 @@ def is_dns_consistent(
         dns_o.answer_as_org_name
         and dns_o.answer_as_org_name.lower() in baseline_as_org_names
     ):
-        return 0.9
+        return True, 0.9
 
     other_answers = dns_b.answers_map.copy()
     other_answers.pop(dns_o.probe_cc, None)
@@ -367,14 +368,16 @@ def is_dns_consistent(
         # where f(1) ~= 0.5, doing a bit of plots and choosing a curve that
         # looks reasonably sloped.
         y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
-        return min(0.9, 0.8 * y)
+        return True, min(0.9, 0.8 * y)
 
     if dns_o.answer in other_asns:
         x = other_asns[dns_o.answer_asn]
         y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
-        return min(0.8, 0.7 * y)
+        return True, min(0.8, 0.7 * y)
 
-    return 0
+    x = len(baseline_asns)
+    y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
+    return False, min(0.9, 0.8 * y)
 
 
 def make_website_tcp_verdicts(
@@ -519,9 +522,9 @@ def make_website_dns_verdict(
         # listening on HTTPS (which is quite fishy).
         # In either case we should flag these with being somewhat likely to be
         # blocked.
-        ip_based_consistency = is_dns_consistent(dns_o, dns_b, netinfodb)
-        if ip_based_consistency is not None and ip_based_consistency < 0.5:
-            confidence = 0.5
+        ip_based_consistency, consistency_confidence = is_dns_consistent(dns_o, dns_b, netinfodb)
+        if ip_based_consistency is False and consistency_confidence > 0:
+            confidence = consistency_confidence
             outcome_detail = "dns.inconsistent.generic"
             # If the answer ASN is the same as the probe_asn, it's more likely
             # to be a blockpage
@@ -687,7 +690,7 @@ def make_website_http_verdict(
         )
     elif http_o.response_matches_blockpage:
         outcome = Outcome.BLOCKED
-        confidence = 0.5
+        confidence = 0.7
         if http_o.request_is_encrypted:
             confidence = 0
         elif http_o.fingerprint_country_consistent:
