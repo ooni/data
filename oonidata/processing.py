@@ -247,12 +247,18 @@ def base_processor(
     write_observations_to_db(db, [NettestObservation.from_measurement(msmt, netinfodb)])
 
 
-def domains_in_a_day(day: date, db: ClickhouseConnection) -> List[str]:
+def domains_in_a_day(
+    day: date, db: ClickhouseConnection, probe_cc: Optional[str]
+) -> List[str]:
     q = """SELECT DISTINCT(domain_name) FROM obs_dns
     WHERE timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s;
+    AND timestamp <= %(end_day)s
     """
-    return [res[0] for res in db.execute(q, one_day_dict(day))]
+    params = {}
+    if probe_cc:
+        q += "AND probe_cc = %(probe_cc)s"
+        params["probe_cc"] = probe_cc
+    return [res[0] for res in db.execute(q, one_day_dict(day), params)]
 
 
 def dns_observations_by_session(
@@ -387,7 +393,7 @@ def generate_website_verdicts(
     probe_cc: Optional[str] = None,
 ):
     with logging_redirect_tqdm():
-        for domain_name in tqdm(domains_in_a_day(day, db)):
+        for domain_name in tqdm(domains_in_a_day(day, db, probe_cc)):
             log.debug(f"Generating verdicts for {domain_name}")
             dns_baseline = make_dns_baseline(day, domain_name, db)
             http_baseline_map = make_http_baseline_map(day, domain_name, db)
