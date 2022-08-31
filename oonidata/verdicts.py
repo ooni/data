@@ -347,10 +347,10 @@ def is_dns_consistent(
     other_answers = dns_b.answers_map.copy()
     other_answers.pop(dns_o.probe_cc, None)
     other_answers_map = {}
-    for answer in other_answers.values():
-        _, ip = answer
-        other_answers_map[ip] = other_answers_map.get(ip, 0)
-        other_answers_map[ip] += 1
+    for answer_list in other_answers.values():
+        for _, ip in answer_list:
+            other_answers_map[ip] = other_answers_map.get(ip, 0)
+            other_answers_map[ip] += 1
 
     if dns_o.answer in other_answers_map:
         x = other_answers_map[dns_o.answer]
