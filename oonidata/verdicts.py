@@ -346,14 +346,20 @@ def is_dns_consistent(
 
     other_answers = dns_b.answers_map.copy()
     other_answers.pop(dns_o.probe_cc, None)
-    other_answers_map = {}
+    other_ips = {}
+    other_asns = {}
     for answer_list in other_answers.values():
         for _, ip in answer_list:
-            other_answers_map[ip] = other_answers_map.get(ip, 0)
-            other_answers_map[ip] += 1
+            other_ips[ip] = other_ips.get(ip, 0)
+            other_ips[ip] += 1
+            ip_info = netinfodb.lookup_ip(dns_o.timestamp, ip)
+            if ip_info:
+                asn = ip_info.as_info.asn
+                other_asns[asn] = other_asns.get(ip, 0)
+                other_asns[asn] += 1
 
-    if dns_o.answer in other_answers_map:
-        x = other_answers_map[dns_o.answer]
+    if dns_o.answer in other_ips:
+        x = other_ips[dns_o.answer]
         # This function was derived by looking for an exponential function in
         # the form f(x) = c1*a^x + c2 and solving for f(0) = 0 and f(10) = 1,
         # giving us a function in the form f(x) = (a^x - 1) / (a^10 - 1). We
@@ -362,6 +368,11 @@ def is_dns_consistent(
         # looks reasonably sloped.
         y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
         return min(0.9, 0.8 * y)
+
+    if dns_o.answer in other_asns:
+        x = other_asns[dns_o.answer_asn]
+        y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
+        return min(0.8, 0.7 * y)
 
     return 0
 
