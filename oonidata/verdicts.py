@@ -312,7 +312,7 @@ def make_dns_baseline(
 
 def is_dns_consistent(
     dns_o: DNSObservation, dns_b: DNSBaseline, netinfodb: NetinfoDB
-) -> Tuple[bool, float]
+) -> Tuple[bool, float]:
     if not dns_o.answer:
         return False, 0
 
@@ -522,7 +522,9 @@ def make_website_dns_verdict(
         # listening on HTTPS (which is quite fishy).
         # In either case we should flag these with being somewhat likely to be
         # blocked.
-        ip_based_consistency, consistency_confidence = is_dns_consistent(dns_o, dns_b, netinfodb)
+        ip_based_consistency, consistency_confidence = is_dns_consistent(
+            dns_o, dns_b, netinfodb
+        )
         if ip_based_consistency is False and consistency_confidence > 0:
             confidence = consistency_confidence
             outcome_detail = "dns.inconsistent.generic"
