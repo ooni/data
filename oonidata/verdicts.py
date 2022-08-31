@@ -2,7 +2,7 @@ import ipaddress
 from dataclasses import dataclass, field
 from enum import Enum
 from re import L
-from typing import Optional, List, Tuple, Generator, Any
+from typing import Optional, List, Tuple, Generator, Any, Mapping
 from datetime import datetime, date, timedelta
 
 from requests import request
@@ -265,6 +265,7 @@ class DNSBaseline:
     failure_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
     ok_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
     tls_consistent_answers: List[str] = field(default_factory=list)
+    answers_map: dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
 
 
 def make_dns_baseline(
@@ -285,17 +286,23 @@ def make_dns_baseline(
     if len(res) > 0:
         dns_baseline.tls_consistent_answers = [row[0] for row in res]
 
-    q = """SELECT DISTINCT(probe_cc, probe_asn, failure) FROM obs_dns
+    q = """SELECT probe_cc, probe_asn, failure, answer
+    FROM obs_dns
     WHERE domain_name = %(domain_name)s 
     AND timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s;
+    AND timestamp <= %(end_day)s
+    GROUP BY probe_cc, probe_asn, failure, answer;
     """
     res = db.execute(q, q_params)
     if len(res) > 0:
         for row in res:
-            probe_cc, probe_asn, failure = row[0]
+            probe_cc, probe_asn, failure, ip = row[0]
             if not failure:
                 dns_baseline.ok_cc_asn.append((probe_cc, probe_asn))
+                dns_baseline.answers_map[probe_cc] = dns_baseline.answers_map.get(
+                    probe_cc, []
+                )
+                dns_baseline.answers_map[probe_cc].append((probe_asn, ip))
             else:
                 dns_baseline.failure_cc_asn.append((probe_cc, probe_asn))
                 if failure == "dns_nxdomain_error":
@@ -329,13 +336,34 @@ def is_dns_consistent(
 
     if dns_o.answer_asn in baseline_asns:
         return 0.9
+
+    # XXX maybe with the org_name we can also do something like levenshtein
+    # distance to get more similarities
     if (
         dns_o.answer_as_org_name
         and dns_o.answer_as_org_name.lower() in baseline_as_org_names
     ):
         return 0.9
-    # XXX maybe with the org_name we can also do something like levenshtein
-    # distance to get more similarities
+
+    other_answers = dns_b.answers_map.copy()
+    other_answers.pop(dns_o.probe_cc, None)
+    other_answers_map = {}
+    for answer in other_answers.values():
+        _, ip = answer
+        other_answers_map[ip] = other_answers_map.get(ip, 0)
+        other_answers_map[ip] += 1
+
+    if dns_o.answer in other_answers_map:
+        x = other_answers_map[dns_o.answer]
+        # This function was derived by looking for an exponential function in
+        # the form f(x) = c1*a^x + c2 and solving for f(0) = 0 and f(10) = 1,
+        # giving us a function in the form f(x) = (a^x - 1) / (a^10 - 1). We
+        # then choose the magic value of 0.6 by looking for a solution in a
+        # where f(1) ~= 0.5, doing a bit of plots and choosing a curve that
+        # looks reasonably sloped.
+        y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
+        return 0.8 * y
+
     return 0
 
 
@@ -462,7 +490,7 @@ def make_website_dns_verdict(
         )
 
     elif dns_o.is_tls_consistent == False:
-        outcome_detail = "dns.inconsistent"
+        outcome_detail = "dns.inconsistent.tls_mismatch"
         return make_verdict_from_obs(
             dns_o,
             confidence=0.8,
@@ -484,14 +512,16 @@ def make_website_dns_verdict(
         ip_based_consistency = is_dns_consistent(dns_o, dns_b, netinfodb)
         if ip_based_consistency is not None and ip_based_consistency < 0.5:
             confidence = 0.5
+            outcome_detail = "dns.inconsistent.generic"
             # If the answer ASN is the same as the probe_asn, it's more likely
             # to be a blockpage
             if dns_o.answer_asn == dns_o.probe_asn:
+                outcome_detail = "dns.inconsistent.asn_match"
                 confidence = 0.8
             # same for the answer_cc
             elif dns_o.answer_as_cc == dns_o.probe_cc:
+                outcome_detail = "dns.inconsistent.cc_match"
                 confidence = 0.7
-            outcome_detail = "dns.inconsistent"
             return make_verdict_from_obs(
                 dns_o,
                 confidence=confidence,
@@ -555,13 +585,14 @@ def make_website_tls_verdict(
         # blocks in TCP
         outcome_detail = f"tls.{tls_o.failure}"
         confidence = 0.5
-        if tls_o.failure in ("connection_closed", "connection_reset"):
-            confidence *= 1.4
 
         if tls_o.tls_handshake_read_count == 0 and tls_o.tls_handshake_write_count == 1:
             # This means we just wrote the TLS ClientHello, let's give it a bit
             # more confidence in it being a block
-            confidence *= 1.3
+            confidence = 0.7
+
+        if tls_o.failure in ("connection_closed", "connection_reset"):
+            confidence += 0.2
 
         return make_verdict_from_obs(
             tls_o,

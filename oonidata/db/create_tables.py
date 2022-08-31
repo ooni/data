@@ -96,7 +96,7 @@ def create_query_for_verdict() -> Tuple[str, str]:
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
-    ORDER BY (timestamp, verdict_id, measurement_uid)
+    ORDER BY (timestamp, observation_id, measurement_uid)
     SETTINGS index_granularity = 8192;
     """,
         "verdict",
