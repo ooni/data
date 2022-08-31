@@ -254,11 +254,11 @@ def domains_in_a_day(
     WHERE timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
     """
-    params = {}
+    params = one_day_dict(day)
     if probe_cc:
         q += "AND probe_cc = %(probe_cc)s"
         params["probe_cc"] = probe_cc
-    return [res[0] for res in db.execute(q, one_day_dict(day), params)]
+    return [res[0] for res in db.execute(q, params)]
 
 
 def dns_observations_by_session(
