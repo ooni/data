@@ -111,6 +111,19 @@ def main():
         create_query_for_observation(HTTPObservation),
         create_query_for_observation(NettestObservation),
         create_query_for_verdict(),
+        (
+            """
+        CREATE TABLE dns_consistency_tls_baseline (
+            ip String,
+            domain_name String,
+            timestamp Datetime
+        )
+        ENGINE = ReplacingMergeTree
+        ORDER BY (ip, domain_name, timestamp)
+        SETTINGS index_granularity = 8192;
+        """,
+            "dns_consistency_tls_baseline",
+        ),
     ]
     for query, table_name in create_queries:
         print(f"clickhouse-client -q 'DROP TABLE {table_name}';")

@@ -2,6 +2,8 @@ import sys
 import argparse
 import logging
 import traceback
+import ipaddress
+
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
@@ -12,7 +14,7 @@ from dataclasses import asdict, fields
 from collections.abc import Iterable
 from typing import Tuple, List, Generator, Type, TypeVar, Any, Optional
 
-from oonidata.datautils import one_day_dict
+from oonidata.datautils import one_day_dict, is_ip_bogon
 from oonidata.observations import (
     NettestObservation,
     DNSObservation,
@@ -30,6 +32,7 @@ from oonidata.dataformat import BaseMeasurement, WebConnectivity, Tor
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 from oonidata.verdicts import (
+    DNSBaseline,
     Verdict,
     make_dns_baseline,
     make_http_baseline_map,
@@ -385,6 +388,82 @@ def websites_observation_group(
         yield dns_obs_list, tcp_o_list, tls_o_list, http_o_list
 
 
+import certifi
+import ssl
+import socket
+
+
+def is_tls_valid(ip, hostname):
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.load_verify_locations(certifi.where())
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
+        sock.settimeout(1)
+        with context.wrap_socket(sock, server_hostname=hostname) as conn:
+            try:
+                conn.connect((ip, 443))
+            # TODO: do we care to distinguish these values?
+            except ssl.SSLCertVerificationError:
+                return False
+            except ssl.SSLError:
+                return False
+            except socket.timeout:
+                return False
+            except socket.error:
+                return False
+            except:
+                return False
+    return True
+
+
+def get_extra_dns_consistency_tls_baseline(
+    dns_baseline: DNSBaseline,
+    dns_o_list: List[DNSObservation],
+    db: ClickhouseConnection,
+) -> List[str]:
+    domain_name = dns_o_list[0].domain_name
+    missing_answers = list(map(lambda a: a.answer, dns_o_list))
+    for a in missing_answers:
+        if a is None:
+            missing_answers.remove(a)
+            continue
+
+        try:
+            if is_ip_bogon(a):
+                missing_answers.remove(a)
+        except ipaddress.AddressValueError:
+            missing_answers.remove(a)
+
+    for a in dns_baseline.tls_consistent_answers:
+        try:
+            missing_answers.remove(a)
+        except ValueError:
+            pass
+
+    new_tls_consistent_ips = []
+    res = db.execute(
+        "SELECT ip FROM dns_consistency_tls_baseline WHERE ip IN %(ip_list)s AND domain_name = %(domain_name)s",
+        {"ip_list": missing_answers, "domain_name": domain_name},
+    )
+    for row in res:
+        missing_answers.remove(row[0])
+        new_tls_consistent_ips.append(row[0])
+
+    rows_to_write = []
+    for ip in missing_answers:
+        timestamp = datetime.now()
+        if is_tls_valid(ip, domain_name):
+            rows_to_write.append((ip, domain_name, timestamp))
+            new_tls_consistent_ips.append(ip)
+
+    if len(rows_to_write) > 0:
+        db.execute(
+            "INSERT INTO dns_consistency_tls_baseline (ip, domain_name, timestamp) VALUES",
+            rows_to_write,
+        )
+    return new_tls_consistent_ips
+
+
 def generate_website_verdicts(
     day: date,
     db: ClickhouseConnection,
@@ -405,6 +484,15 @@ def generate_website_verdicts(
                 tls_o_list,
                 http_o_list,
             ) in websites_observation_group(day, domain_name, db, probe_cc=probe_cc):
+                extra_tls_consistent_answers = get_extra_dns_consistency_tls_baseline(
+                    dns_baseline, dns_o_list, db
+                )
+                dns_baseline.tls_consistent_answers = list(
+                    set(
+                        list(dns_baseline.tls_consistent_answers)
+                        + extra_tls_consistent_answers
+                    )
+                )
                 yield from make_website_verdicts(
                     dns_o_list,
                     dns_baseline,
