@@ -1,18 +1,20 @@
-import os
 import json
 import shutil
 import gzip
 import logging
+import ipaddress
 from collections import OrderedDict
 
 from dataclasses import dataclass
 from datetime import datetime, date
 from pathlib import Path
-from functools import lru_cache
 
 import maxminddb
 
+from oonidata.datautils import is_ip_bogon
+
 log = logging.getLogger("oonidata.processing")
+
 
 @dataclass
 class ASInfo:
@@ -21,22 +23,26 @@ class ASInfo:
     as_org_name: str
     as_cc: str
 
+
 @dataclass
 class IPInfo:
     as_info: ASInfo
     cc: str
 
 
-
 class NetinfoDB:
-    def __init__(self, datadir : Path = Path("geoip"), as_org_map_path : Path = Path("all_as_org_map.json")):
+    def __init__(
+        self,
+        datadir: Path = Path("geoip"),
+        as_org_map_path: Path = Path("all_as_org_map.json"),
+    ):
         self.datadir = datadir
         with as_org_map_path.open() as in_file:
             self.as_org_map = json.load(in_file)
         self.load_databases()
         self.readers = {}
 
-    def get_reader(self, db_path : Path):
+    def get_reader(self, db_path: Path):
         if db_path in self.readers:
             return self.readers[db_path]
         self.readers[db_path] = maxminddb.open_database(str(db_path))
@@ -58,7 +64,9 @@ class NetinfoDB:
             decompressed_path = db_path.with_suffix(".tmp")
             if decompressed_path.exists():
                 continue
-            with gzip.open(db_path) as in_file, decompressed_path.open("wb") as out_file:
+            with gzip.open(db_path) as in_file, decompressed_path.open(
+                "wb"
+            ) as out_file:
                 shutil.copyfileobj(in_file, out_file)
             decompressed_path.rename(db_path.with_suffix(""))
 
@@ -75,10 +83,10 @@ class NetinfoDB:
         self.databases = OrderedDict()
         for ts in sorted(db_files.keys()):
             self.databases[ts] = db_files[ts]
-        
+
         assert len(self.databases) > 0, "Did not find any geoip database files"
 
-    def find_db_for_date(self, day : date):
+    def find_db_for_date(self, day: date):
         """
         Find DB for date will return a dictionary with asn and country keys set
         which is closest in time and <= day.
@@ -95,7 +103,7 @@ class NetinfoDB:
         Returns information about a particular ASN on a given day, if known.
         """
         day_str = day.strftime("%Y%m%d")
-        org_name, country = ("",  "")
+        org_name, country = ("", "")
         try:
             meta_list = self.as_org_map[str(asn)]
             org_name, country = meta_list[0][:2]
@@ -112,6 +120,26 @@ class NetinfoDB:
         db_path = self.find_db_for_date(day.date())
         assert db_path is not None
 
+        try:
+            if is_ip_bogon(ip):
+                return IPInfo(
+                    ASInfo(
+                        asn=64666,
+                        as_org_name="Bogon",
+                        as_cc="ZZ",
+                    ),
+                    cc="ZZ",
+                )
+        except ipaddress.AddressValueError:
+            return IPInfo(
+                ASInfo(
+                    asn=0,
+                    as_org_name="",
+                    as_cc="",
+                ),
+                cc="ZZ",
+            )
+
         reader = self.get_reader(db_path)
         res = None
         try:
@@ -127,7 +155,7 @@ class NetinfoDB:
                     as_org_name="",
                     as_cc="",
                 ),
-                cc="ZZ"
+                cc="ZZ",
             )
 
         asn = res.get("asn", 0)
@@ -141,5 +169,5 @@ class NetinfoDB:
                 as_org_name=as_org_name,
                 as_cc=as_cc,
             ),
-            cc=cc
+            cc=cc,
         )
