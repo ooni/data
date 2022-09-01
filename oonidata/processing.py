@@ -431,7 +431,7 @@ def get_extra_dns_consistency_tls_baseline(
         try:
             if is_ip_bogon(a):
                 missing_answers.remove(a)
-        except ipaddress.AddressValueError:
+        except ValueError:
             missing_answers.remove(a)
 
     for a in dns_baseline.tls_consistent_answers:

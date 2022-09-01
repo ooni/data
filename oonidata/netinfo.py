@@ -2,7 +2,6 @@ import json
 import shutil
 import gzip
 import logging
-import ipaddress
 from collections import OrderedDict
 
 from dataclasses import dataclass
@@ -130,7 +129,7 @@ class NetinfoDB:
                     ),
                     cc="ZZ",
                 )
-        except ipaddress.AddressValueError:
+        except ValueError:
             return IPInfo(
                 ASInfo(
                     asn=0,
