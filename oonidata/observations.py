@@ -24,10 +24,9 @@ from oonidata.datautils import (
     get_html_title,
     is_ipv4_bogon,
     is_ipv6_bogon,
-    get_certificate_meta
+    get_certificate_meta,
 )
 from oonidata.fingerprints.matcher import FingerprintDB
-from oonidata.netinfo import NetinfoDB
 
 
 log = logging.getLogger("oonidata.processing")
@@ -71,7 +70,7 @@ class Observation(abc.ABC):
     resolver_as_cc: str
 
 
-def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> dict:
+def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: "NetinfoDB") -> dict:
     assert msmt.measurement_uid is not None
     probe_asn = int(msmt.probe_asn.lstrip("AS"))
     measurement_start_time = datetime.strptime(
@@ -127,7 +126,7 @@ class NettestObservation(Observation):
     @staticmethod
     def from_measurement(
         msmt: BaseMeasurement,
-        netinfodb: NetinfoDB,
+        netinfodb: "NetinfoDB",
     ) -> "NettestObservation":
         return NettestObservation(
             observation_id=f"{msmt.measurement_uid}_nettest",
@@ -136,7 +135,7 @@ class NettestObservation(Observation):
             annotations=msmt.annotations,
             **make_base_observation_meta(msmt, netinfodb),
         )
- 
+
 
 @dataclass
 class HTTPObservation(Observation):
@@ -175,7 +174,7 @@ class HTTPObservation(Observation):
     @staticmethod
     def from_measurement(
         msmt: BaseMeasurement,
-        netinfodb: NetinfoDB,
+        netinfodb: "NetinfoDB",
         idx: int,
         requests_list: Optional[List[HTTPTransaction]],
         http_transaction: HTTPTransaction,
@@ -263,7 +262,7 @@ def make_http_observations(
     msmt: BaseMeasurement,
     requests_list: Optional[List[HTTPTransaction]],
     fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
+    netinfodb: "NetinfoDB",
     target: str = "",
 ) -> Generator[HTTPObservation, None, None]:
     if not requests_list:
@@ -309,7 +308,7 @@ class DNSObservation(Observation):
         answer: Optional[DNSAnswer],
         idx: int,
         fingerprintdb: FingerprintDB,
-        netinfodb: NetinfoDB,
+        netinfodb: "NetinfoDB",
     ) -> "DNSObservation":
         dnso = DNSObservation(
             observation_id=f"{msmt.measurement_uid}_dns_{idx}",
