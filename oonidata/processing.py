@@ -442,7 +442,7 @@ def get_extra_dns_consistency_tls_baseline(
 
     new_tls_consistent_ips = []
     res = db.execute(
-        "SELECT ip FROM dns_consistency_tls_baseline WHERE ip IN %(ip_list)s AND domain_name = %(domain_name)s",
+        "SELECT DISTINCT ip FROM dns_consistency_tls_baseline WHERE ip IN %(ip_list)s AND domain_name = %(domain_name)s",
         {"ip_list": missing_answers, "domain_name": domain_name},
     )
     for row in res:
