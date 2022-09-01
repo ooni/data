@@ -431,7 +431,7 @@ def get_extra_dns_consistency_tls_baseline(
         try:
             if is_ip_bogon(a):
                 missing_answers.remove(a)
-        except ipaddress.AddressValueError:
+        except ValueError:
             missing_answers.remove(a)
 
     for a in dns_baseline.tls_consistent_answers:
@@ -442,7 +442,7 @@ def get_extra_dns_consistency_tls_baseline(
 
     new_tls_consistent_ips = []
     res = db.execute(
-        "SELECT ip FROM dns_consistency_tls_baseline WHERE ip IN %(ip_list)s AND domain_name = %(domain_name)s",
+        "SELECT DISTINCT ip FROM dns_consistency_tls_baseline WHERE ip IN %(ip_list)s AND domain_name = %(domain_name)s",
         {"ip_list": missing_answers, "domain_name": domain_name},
     )
     for row in res:
