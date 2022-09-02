@@ -632,7 +632,6 @@ if __name__ == "__main__":
     netinfodb = NetinfoDB(
         datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map)
     )
-    since = datetime.combine(args.day, datetime.min.time())
 
     if args.clickhouse:
         db = ClickhouseConnection(args.clickhouse)
