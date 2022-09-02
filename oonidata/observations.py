@@ -27,6 +27,7 @@ from oonidata.datautils import (
     get_certificate_meta,
 )
 from oonidata.fingerprints.matcher import FingerprintDB
+from oonidata.netinfo import NetinfoDB
 
 
 log = logging.getLogger("oonidata.processing")
@@ -70,7 +71,7 @@ class Observation(abc.ABC):
     resolver_as_cc: str
 
 
-def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: "NetinfoDB") -> dict:
+def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> dict:
     assert msmt.measurement_uid is not None
     probe_asn = int(msmt.probe_asn.lstrip("AS"))
     measurement_start_time = datetime.strptime(
@@ -126,7 +127,7 @@ class NettestObservation(Observation):
     @staticmethod
     def from_measurement(
         msmt: BaseMeasurement,
-        netinfodb: "NetinfoDB",
+        netinfodb: NetinfoDB,
     ) -> "NettestObservation":
         return NettestObservation(
             observation_id=f"{msmt.measurement_uid}_nettest",
@@ -174,7 +175,7 @@ class HTTPObservation(Observation):
     @staticmethod
     def from_measurement(
         msmt: BaseMeasurement,
-        netinfodb: "NetinfoDB",
+        netinfodb: NetinfoDB,
         idx: int,
         requests_list: Optional[List[HTTPTransaction]],
         http_transaction: HTTPTransaction,
