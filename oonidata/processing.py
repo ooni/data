@@ -1,4 +1,5 @@
 import sys
+import time
 import argparse
 import logging
 import traceback
@@ -522,8 +523,8 @@ def process_day(
     start_at_idx=0,
     skip_verdicts=False,
     fast_fail=False,
-):
-
+) -> Tuple[float, date]:
+    t0 = time.monotonic()
     with tqdm(unit="B", unit_scale=True) as pbar:
         for idx, raw_msmt in enumerate(
             iter_raw_measurements(
@@ -567,6 +568,8 @@ def process_day(
                 netinfodb,
             ),
         )
+
+    return time.monotonic() - t0, day
 
 
 if __name__ == "__main__":
@@ -681,4 +684,8 @@ if __name__ == "__main__":
         )
 
     with multiprocessing.Pool(processes=args.parallelism) as pool:
-        pool.map(task_for_a_day, date_interval(args.start_day, args.end_day))
+        for runtime, day in pool.imap_unordered(
+            task_for_a_day, date_interval(args.start_day, args.end_day)
+        ):
+            with open("runtime-log.txt", "a+") as out_file:
+                out_file.write(f"{day},{runtime}\n")
