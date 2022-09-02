@@ -2,7 +2,7 @@ import sys
 import argparse
 import logging
 import traceback
-import ipaddress
+import multiprocessing
 
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
@@ -40,7 +40,7 @@ from oonidata.verdicts import (
     make_website_verdicts,
 )
 
-from oonidata.dataclient import iter_raw_measurements
+from oonidata.dataclient import iter_raw_measurements, date_interval
 from oonidata.db.connections import (
     DatabaseConnection,
     ClickhouseConnection,
@@ -603,9 +603,19 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--day",
+        "--start-day",
         type=_parse_date_flag,
         default=date(2022, 1, 1),
+    )
+    parser.add_argument(
+        "--end-day",
+        type=_parse_date_flag,
+        default=date(2022, 1, 2),
+    )
+    parser.add_argument(
+        "--parallelism",
+        type=int,
+        default=multiprocessing.cpu_count(),
     )
     parser.add_argument(
         "--start-at-idx",
@@ -622,7 +632,6 @@ if __name__ == "__main__":
     netinfodb = NetinfoDB(
         datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map)
     )
-    since = datetime.combine(args.day, datetime.min.time())
 
     if args.clickhouse:
         db = ClickhouseConnection(args.clickhouse)
@@ -658,14 +667,18 @@ if __name__ == "__main__":
     if args.country_code:
         country_codes = [args.country_code]
 
-    process_day(
-        db,
-        fingerprintdb,
-        netinfodb,
-        args.day,
-        testnames=testnames,
-        country_codes=country_codes,
-        start_at_idx=args.start_at_idx,
-        skip_verdicts=skip_verdicts,
-        fast_fail=args.fast_fail,
-    )
+    def task_for_a_day(day):
+        process_day(
+            db,
+            fingerprintdb,
+            netinfodb,
+            day,
+            testnames=testnames,
+            country_codes=country_codes,
+            start_at_idx=args.start_at_idx,
+            skip_verdicts=skip_verdicts,
+            fast_fail=args.fast_fail,
+        )
+
+    with multiprocessing.Pool(processes=args.parallelism) as pool:
+        pool.map(task_for_a_day, date_interval(args.start_day, args.end_day))
