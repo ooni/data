@@ -422,31 +422,28 @@ def get_extra_dns_consistency_tls_baseline(
     db: ClickhouseConnection,
 ) -> List[str]:
     domain_name = dns_o_list[0].domain_name
-    missing_answers = list(map(lambda a: a.answer, dns_o_list))
-    for a in missing_answers:
+    missing_answers = set(map(lambda a: a.answer, dns_o_list))
+    for a in list(missing_answers):
         if a is None:
-            missing_answers.remove(a)
+            missing_answers.discard(a)
             continue
 
         try:
             if is_ip_bogon(a):
-                missing_answers.remove(a)
+                missing_answers.discard(a)
         except ValueError:
-            missing_answers.remove(a)
+            missing_answers.discard(a)
 
     for a in dns_baseline.tls_consistent_answers:
-        try:
-            missing_answers.remove(a)
-        except ValueError:
-            pass
+        missing_answers.discard(a)
 
     new_tls_consistent_ips = []
     res = db.execute(
         "SELECT DISTINCT ip FROM dns_consistency_tls_baseline WHERE ip IN %(ip_list)s AND domain_name = %(domain_name)s",
-        {"ip_list": missing_answers, "domain_name": domain_name},
+        {"ip_list": list(missing_answers), "domain_name": domain_name},
     )
     for row in res:
-        missing_answers.remove(row[0])
+        missing_answers.discard(row[0])
         new_tls_consistent_ips.append(row[0])
 
     rows_to_write = []
