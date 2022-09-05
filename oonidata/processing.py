@@ -671,7 +671,7 @@ if __name__ == "__main__":
         country_codes = [args.country_code]
 
     def task_for_a_day(day):
-        process_day(
+        return process_day(
             db,
             fingerprintdb,
             netinfodb,
