@@ -7,7 +7,7 @@ See:
 
 - https://github.com/ooni/spec/tree/master/nettests
 """
-
+import logging
 import ujson
 
 from base64 import b64decode
@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from dacite.core import from_dict
 
 from oonidata.utils import trivial_id
+
+log = logging.getLogger("oonidata.dataformat")
 
 
 @dataclass
@@ -30,6 +32,19 @@ MaybeBinaryData = Union[str, BinaryData, None]
 Failure = Optional[str]
 
 
+def guess_decode(s: bytes) -> str:
+    """
+    best effort decoding of a string of bytes
+    """
+    for encoding in ("ascii", "utf-8", "latin1"):
+        try:
+            return s.decode(encoding)
+        except UnicodeDecodeError:
+            pass
+    log.warning(f"unable to decode '{s}'")
+    return s.decode("ascii", "ignore")
+
+
 def maybe_binary_data_to_bytes(mbd: MaybeBinaryData) -> bytes:
     if isinstance(mbd, BinaryData):
         return b64decode(mbd.data)
@@ -37,13 +52,6 @@ def maybe_binary_data_to_bytes(mbd: MaybeBinaryData) -> bytes:
         return mbd.encode("utf-8")
 
     raise Exception("Invalid type")
-
-
-@dataclass
-class Annotations:
-    network_type: Optional[str] = "unknown"
-    platform: Optional[str] = "unknown"
-    origin: Optional[str] = "unknown"
 
 
 @dataclass
@@ -55,7 +63,7 @@ class BaseTestKeys:
 class BaseMeasurement:
     measurement_uid: Optional[str]
 
-    annotations: Annotations
+    annotations: dict[str, str]
 
     input: Union[str, List[str], None]
     report_id: str
@@ -112,9 +120,9 @@ class HTTPBase:
             self.headers_list_bytes = []
             for header_pair in self.headers_list:
                 assert len(header_pair) == 2, "Inconsistent header"
-                self.headers_list_bytes.append(
-                    (header_pair[0], maybe_binary_data_to_bytes(header_pair[1]))
-                )
+                header_name = guess_decode(maybe_binary_data_to_bytes(header_pair[0]))
+                header_value = maybe_binary_data_to_bytes(header_pair[1])
+                self.headers_list_bytes.append((header_name, header_value))
 
         if self.body:
             self.body_bytes = maybe_binary_data_to_bytes(self.body)
@@ -124,7 +132,7 @@ class HTTPBase:
 class HTTPRequest(HTTPBase):
     url: str
     method: Optional[str]
-    tor: TorInfo
+    tor: Optional[TorInfo]
     x_transport: Optional[str] = "tcp"
 
 
@@ -284,6 +292,7 @@ class WebConnectivityTestKeys(BaseTestKeys):
 class WebConnectivity(BaseMeasurement):
     test_keys: WebConnectivityTestKeys
 
+
 @dataclass
 class URLGetterTestKeys(BaseTestKeys):
     failure: Failure
@@ -294,15 +303,18 @@ class URLGetterTestKeys(BaseTestKeys):
     tcp_connect: Optional[List[TCPConnect]]
     requests: Optional[List[HTTPTransaction]]
 
+
 @dataclass
 class DNSCheckTestKeys(BaseTestKeys):
     bootstrap: Optional[URLGetterTestKeys]
     bootstrap_failure: Optional[str]
     lookups: dict[str, URLGetterTestKeys]
 
+
 @dataclass
 class DNSCheck(BaseMeasurement):
     test_keys: DNSCheckTestKeys
+
 
 @dataclass
 class TorTestTarget:
@@ -329,9 +341,9 @@ class Tor(BaseMeasurement):
 
 
 nettest_dataformats = {
-    "web_connectivity": WebConnectivity, 
+    "web_connectivity": WebConnectivity,
     "tor": Tor,
-    "dnscheck": DNSCheck
+    "dnscheck": DNSCheck,
 }
 
 

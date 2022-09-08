@@ -13,6 +13,7 @@ from typing import Tuple, List, Generator, Type, TypeVar, Any
 
 from oonidata.datautils import one_day_dict
 from oonidata.observations import (
+    NettestObservation,
     DNSObservation,
     HTTPObservation,
     Observation,
@@ -44,17 +45,21 @@ from oonidata.db.connections import (
 
 log = logging.getLogger("oonidata.processing")
 
+
 def observation_field_names(obs_class: Type[Observation]) -> List[str]:
     return list(map(lambda dc: dc.name, fields(obs_class)))
 
+
 def make_observation_row(observation: Observation) -> dict:
     return asdict(observation)
+
 
 def make_verdict_row(v: Verdict) -> dict:
     row = asdict(v)
     # XXX come up with a cleaner solution to this
     row["outcome"] = row["outcome"].value
     return row
+
 
 def write_observations_to_db(
     db: DatabaseConnection, observations: Iterable[Observation]
@@ -183,6 +188,7 @@ def web_connectivity_processor(
         enriched_dns_observations,
     )
 
+
 def dnscheck_processor(
     msmt: DNSCheck,
     db: DatabaseConnection,
@@ -192,7 +198,9 @@ def dnscheck_processor(
     ip_to_domain = {}
     if msmt.test_keys.bootstrap:
         dns_observations = list(
-            make_dns_observations(msmt, msmt.test_keys.bootstrap.queries, fingerprintdb, netinfodb)
+            make_dns_observations(
+                msmt, msmt.test_keys.bootstrap.queries, fingerprintdb, netinfodb
+            )
         )
         ip_to_domain = {
             str(obs.answer): obs.domain_name
@@ -205,8 +213,7 @@ def dnscheck_processor(
 
     for lookup in msmt.test_keys.lookups.values():
         write_observations_to_db(
-            db,
-            make_dns_observations(msmt, lookup.queries, fingerprintdb, netinfodb)
+            db, make_dns_observations(msmt, lookup.queries, fingerprintdb, netinfodb)
         )
 
         write_observations_to_db(
@@ -216,9 +223,7 @@ def dnscheck_processor(
 
         write_observations_to_db(
             db,
-            make_tcp_observations(
-                msmt, lookup.tcp_connect, netinfodb, ip_to_domain
-            ),
+            make_tcp_observations(msmt, lookup.tcp_connect, netinfodb, ip_to_domain),
         )
 
         write_observations_to_db(
@@ -229,8 +234,17 @@ def dnscheck_processor(
                 lookup.network_events,
                 netinfodb,
                 ip_to_domain,
-            )
+            ),
         )
+
+
+def base_processor(
+    msmt: BaseMeasurement,
+    db: DatabaseConnection,
+    netinfodb: NetinfoDB,
+) -> None:
+    write_observations_to_db(db, [NettestObservation.from_measurement(msmt, netinfodb)])
+
 
 def domains_in_a_day(day: date, db: ClickhouseConnection) -> List[str]:
     q = """SELECT DISTINCT(domain_name) FROM obs_dns
@@ -274,6 +288,8 @@ def dns_observations_by_session(
 
 
 T = TypeVar("T", bound="Observation")
+
+
 def observations_in_session(
     day: date,
     domain_name: str,
@@ -381,12 +397,22 @@ nettest_processors = {
 }
 
 
-def process_day(db: DatabaseConnection, fingerprintdb : FingerprintDB, netinfodb : NetinfoDB, day: date, testnames=[], start_at_idx=0, skip_verdicts=False):
+def process_day(
+    db: DatabaseConnection,
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
+    day: date,
+    testnames=[],
+    country_codes=[],
+    start_at_idx=0,
+    skip_verdicts=False,
+    fast_fail=False,
+):
 
     with tqdm(unit="B", unit_scale=True) as pbar:
         for idx, raw_msmt in enumerate(
             iter_raw_measurements(
-                ccs=set(),
+                ccs=set(country_codes),
                 testnames=testnames,
                 start_day=day,
                 end_day=day + timedelta(days=1),
@@ -398,6 +424,7 @@ def process_day(db: DatabaseConnection, fingerprintdb : FingerprintDB, netinfodb
                 continue
             try:
                 msmt = load_measurement(raw_msmt)
+                base_processor(msmt, db, netinfodb)
                 processor = nettest_processors.get(msmt.test_name, default_processor)
                 processor(
                     msmt,
@@ -409,8 +436,11 @@ def process_day(db: DatabaseConnection, fingerprintdb : FingerprintDB, netinfodb
                 with open("bad_msmts.jsonl", "a+") as out_file:
                     out_file.write(raw_msmt.decode("utf-8"))
                     out_file.write("\n")
-                log.error(f"Wrote bad msmt to: ./bad_msmts.jsonl")
-                raise exc
+                with open("bad_msmts_fail_log.txt", "a+") as out_file:
+                    out_file.write(traceback.format_exc())
+                    out_file.write("ENDTB----\n")
+                if fast_fail:
+                    raise exc
 
     if not skip_verdicts:
         write_verdicts_to_db(
@@ -454,6 +484,10 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
+        "--country-code",
+        type=str,
+    )
+    parser.add_argument(
         "--day",
         type=_parse_date_flag,
         default=date(2022, 1, 1),
@@ -465,11 +499,14 @@ if __name__ == "__main__":
     )
     parser.add_argument("--only-verdicts", action="store_true")
     parser.add_argument("--skip-verdicts", action="store_true")
+    parser.add_argument("--fast-fail", action="store_true")
     args = parser.parse_args()
 
     fingerprintdb = FingerprintDB()
 
-    netinfodb = NetinfoDB(datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map))
+    netinfodb = NetinfoDB(
+        datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map)
+    )
     since = datetime.combine(args.day, datetime.min.time())
 
     if args.clickhouse:
@@ -501,4 +538,19 @@ if __name__ == "__main__":
     testnames = []
     if args.testname:
         testnames = [args.testname]
-    process_day(db, fingerprintdb, netinfodb, args.day, testnames=testnames, start_at_idx=args.start_at_idx, skip_verdicts=skip_verdicts)
+
+    country_codes = []
+    if args.country_code:
+        country_codes = [args.country_code]
+
+    process_day(
+        db,
+        fingerprintdb,
+        netinfodb,
+        args.day,
+        testnames=testnames,
+        country_codes=country_codes,
+        start_at_idx=args.start_at_idx,
+        skip_verdicts=skip_verdicts,
+        fast_fail=args.fast_fail,
+    )
