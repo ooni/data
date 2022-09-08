@@ -81,7 +81,6 @@ def create_query_for_observation(obs_class: Type[Observation]) -> Tuple[str, str
         obs_class.__table_name__,
     )
 
-
 def create_query_for_verdict() -> Tuple[str, str]:
     columns = []
     for f in fields(Verdict):

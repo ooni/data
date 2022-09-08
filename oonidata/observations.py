@@ -24,7 +24,7 @@ from oonidata.datautils import (
     get_html_title,
     is_ipv4_bogon,
     is_ipv6_bogon,
-    get_certificate_meta,
+    get_certificate_meta
 )
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
