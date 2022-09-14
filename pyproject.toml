@@ -18,6 +18,8 @@ clickhouse-driver = "^0.2.3"
 py-radix = "^0.10.0"
 lxml = "^4.9.0"
 maxminddb = "^2.2.0"
+orjson = "^3.8.0"
+mashumaro = "^3.0.4"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2"

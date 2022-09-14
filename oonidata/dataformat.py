@@ -8,21 +8,22 @@ See:
 - https://github.com/ooni/spec/tree/master/nettests
 """
 import logging
-import ujson
+import orjson
 
 from base64 import b64decode
 
 from typing import Optional, Tuple, Union, List, Union
-from dataclasses import dataclass
 
-from dacite.core import from_dict
+from dataclasses import dataclass
+from mashumaro import DataClassDictMixin
 
 from oonidata.utils import trivial_id
+
 
 log = logging.getLogger("oonidata.dataformat")
 
 
-class BaseModel:
+class BaseModel(DataClassDictMixin):
     pass
 
 
@@ -366,9 +367,9 @@ nettest_dataformats = {
 
 
 def load_measurement(raw: bytes) -> BaseMeasurement:
-    data = ujson.loads(raw)
+    data = orjson.loads(raw)
     dc = nettest_dataformats.get(data["test_name"], BaseMeasurement)
-    msm = from_dict(data_class=dc, data=data)
+    msm = dc.from_dict(data)
     if not msm.measurement_uid:
         msm.measurement_uid = trivial_id(raw=raw, msm=msm)
     return msm
