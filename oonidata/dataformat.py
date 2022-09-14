@@ -22,8 +22,12 @@ from oonidata.utils import trivial_id
 log = logging.getLogger("oonidata.dataformat")
 
 
+class BaseModel:
+    pass
+
+
 @dataclass
-class BinaryData:
+class BinaryData(BaseModel):
     format: str
     data: str
 
@@ -45,46 +49,52 @@ def guess_decode(s: bytes) -> str:
     return s.decode("ascii", "ignore")
 
 
-def maybe_binary_data_to_bytes(mbd: MaybeBinaryData) -> bytes:
+def maybe_binary_data_to_bytes(mbd: Union[MaybeBinaryData, dict]) -> bytes:
     if isinstance(mbd, BinaryData):
         return b64decode(mbd.data)
+    elif isinstance(mbd, dict):
+        return b64decode(mbd["data"])
     elif isinstance(mbd, str):
         return mbd.encode("utf-8")
 
-    raise Exception("Invalid type")
+    raise Exception(f"Invalid type {type(mbd)} {mbd}")
 
 
 @dataclass
-class BaseTestKeys:
+class BaseTestKeys(BaseModel):
     client_resolver: Optional[str]
 
 
 @dataclass
-class BaseMeasurement:
-    measurement_uid: Optional[str]
-
+class BaseMeasurement(BaseModel):
     annotations: dict[str, str]
 
     input: Union[str, List[str], None]
     report_id: str
 
     measurement_start_time: str
+    test_start_time: str
 
     probe_asn: str
     probe_network_name: Optional[str]
     probe_cc: str
+    probe_ip: Optional[str]
 
     resolver_asn: Optional[str]
     resolver_ip: Optional[str]
     resolver_network_name: Optional[str]
 
     test_name: str
+    test_version: str
     test_runtime: float
 
     software_name: str
     software_version: str
 
+    test_helpers: Optional[dict]
     test_keys: BaseTestKeys
+    data_format_version: Optional[str] = None
+    measurement_uid: Optional[str] = None
 
 
 # This is not 100% accurate, ideally we would say
@@ -95,20 +105,21 @@ HeadersListBytes = List[Tuple[str, bytes]]
 
 
 @dataclass
-class TorInfo:
+class TorInfo(BaseModel):
     is_tor: bool
     exit_ip: Optional[str]
     exit_name: Optional[str]
 
 
 @dataclass
-class HTTPBase:
+class HTTPBase(BaseModel):
     body: MaybeBinaryData
-    body_bytes: Optional[bytes]
-    body_is_truncated: Optional[bool]
-    headers: Optional[dict[str, MaybeBinaryData]]
-    headers_list: Optional[HeadersList]
-    headers_list_bytes: Optional[HeadersListBytes]
+    body_is_truncated: Optional[bool] = None
+    headers: Optional[dict[str, MaybeBinaryData]] = None
+    headers_list: Optional[HeadersList] = None
+    headers_list_bytes: Optional[HeadersListBytes] = None
+
+    body_bytes: Optional[bytes] = None
 
     def __post_init__(self):
         if not self.headers_list and self.headers:
@@ -130,70 +141,71 @@ class HTTPBase:
 
 @dataclass
 class HTTPRequest(HTTPBase):
-    url: str
-    method: Optional[str]
-    tor: Optional[TorInfo]
+    url: str = ""
+    method: Optional[str] = None
+    tor: Optional[TorInfo] = None
     x_transport: Optional[str] = "tcp"
 
 
 @dataclass
 class HTTPResponse(HTTPBase):
-    code: Optional[int]
+    code: Optional[int] = None
 
 
 @dataclass
-class HTTPTransaction:
+class HTTPTransaction(BaseModel):
     failure: Failure
-    transaction_id: Optional[int]
 
     request: Optional[HTTPRequest]
     response: Optional[HTTPResponse]
 
     t: Optional[float]
+    transaction_id: Optional[int] = None
 
 
 @dataclass
-class DNSAnswer:
+class DNSAnswer(BaseModel):
     answer_type: str
-    asn: Optional[int]
-    as_org_name: Optional[str]
-    expiration_limit: Optional[str]
-    hostname: Optional[str]
-    ipv4: Optional[str]
-    ipv6: Optional[str]
-    minimum_ttl: Optional[str]
-    refresh_interval: Optional[str]
-    responsible_name: Optional[str]
-    retry_interval: Optional[str]
-    serial_number: Optional[str]
-    ttl: Optional[int]
+    asn: Optional[int] = None
+    as_org_name: Optional[str] = None
+    expiration_limit: Optional[str] = None
+    hostname: Optional[str] = None
+    ipv4: Optional[str] = None
+    ipv6: Optional[str] = None
+    minimum_ttl: Optional[str] = None
+    refresh_interval: Optional[str] = None
+    responsible_name: Optional[str] = None
+    retry_interval: Optional[str] = None
+    serial_number: Optional[str] = None
+    ttl: Optional[int] = None
 
 
 @dataclass
-class DNSQuery:
-    dial_id: Optional[int]
-    engine: Optional[str]
+class DNSQuery(BaseModel):
     failure: Failure
     hostname: str
     query_type: str
 
-    # XXX: Map resolver_hostname and resolver_port to this
-    resolver_address: Optional[str]
-    t: Optional[float]
-    transaction_id: Optional[int]
+    dial_id: Optional[int] = None
+    engine: Optional[str] = None
 
-    answers: Optional[List[DNSAnswer]]
+    # XXX: Map resolver_hostname and resolver_port to this
+    resolver_address: Optional[str] = None
+    t: Optional[float] = None
+    transaction_id: Optional[int] = None
+
+    answers: Optional[List[DNSAnswer]] = None
 
 
 @dataclass
-class TCPConnectStatus:
+class TCPConnectStatus(BaseModel):
     blocked: Optional[bool]
     success: bool
     failure: Failure
 
 
 @dataclass
-class TCPConnect:
+class TCPConnect(BaseModel):
     ip: str
     port: int
     status: TCPConnectStatus
@@ -202,36 +214,36 @@ class TCPConnect:
 
 
 @dataclass
-class TLSHandshake:
-    address: Optional[str]
-    cipher_suite: Optional[str]
+class TLSHandshake(BaseModel):
     failure: Failure
-    negotiated_protocol: Optional[str]
-    no_tls_verify: Optional[bool]
-    peer_certificates: Optional[List[BinaryData]]
-    server_name: Optional[str]
-    t: Optional[float]
-    tags: Optional[List[str]]
-    tls_version: Optional[str]
-    transaction_id: Optional[int]
+    peer_certificates: Optional[List[BinaryData]] = None
+    address: Optional[str] = None
+    cipher_suite: Optional[str] = None
+    negotiated_protocol: Optional[str] = None
+    no_tls_verify: Optional[bool] = None
+    server_name: Optional[str] = None
+    t: Optional[float] = None
+    tags: Optional[List[str]] = None
+    tls_version: Optional[str] = None
+    transaction_id: Optional[int] = None
 
 
 @dataclass
-class NetworkEvent:
-    address: Optional[str]
-    conn_id: Optional[int]
-    dial_id: Optional[int]
+class NetworkEvent(BaseModel):
     failure: Failure
-    num_bytes: Optional[int]
     operation: str
-    proto: Optional[str]
     t: float
-    tags: Optional[List[str]]
-    transaction_id: Optional[str]
+    address: Optional[str] = None
+    dial_id: Optional[int] = None
+    num_bytes: Optional[int] = None
+    proto: Optional[str] = None
+    tags: Optional[List[str]] = None
+    transaction_id: Optional[str] = None
+    conn_id: Optional[int] = None
 
 
 @dataclass
-class WebConnectivityControlHTTPRequest:
+class WebConnectivityControlHTTPRequest(BaseModel):
     body_length: Optional[int]
     failure: Failure
     title: Optional[str]
@@ -240,26 +252,26 @@ class WebConnectivityControlHTTPRequest:
 
 
 @dataclass
-class WebConnectivityControlDNS:
+class WebConnectivityControlDNS(BaseModel):
     failure: Failure
     addrs: Optional[List[str]]
 
 
 @dataclass
-class WebConnectivityControlTCPConnectStatus:
+class WebConnectivityControlTCPConnectStatus(BaseModel):
     status: Optional[bool]
     failure: Failure
 
 
 @dataclass
-class WebConnectivityControl:
+class WebConnectivityControl(BaseModel):
     tcp_connect: Optional[dict[str, WebConnectivityControlTCPConnectStatus]]
     http_request: Optional[WebConnectivityControlHTTPRequest]
     dns: Optional[WebConnectivityControlDNS]
 
 
 @dataclass
-class WebConnectivityTestKeys(BaseTestKeys):
+class WebConnectivityTestKeys(BaseModel):
     dns_experiment_failure: Failure
     control_failure: Failure
     http_experiment_failure: Failure
@@ -274,18 +286,24 @@ class WebConnectivityTestKeys(BaseTestKeys):
     accessible: Optional[bool]
     blocking: Union[str, bool, None]
 
-    x_status: Optional[int]
-    x_dns_runtime: Optional[int]
-    x_th_runtime: Optional[int]
-    x_tcptls_runtime: Optional[int]
-    x_http_runtime: Optional[int]
-
     control: Optional[WebConnectivityControl]
     tls_handshakes: Optional[List[TLSHandshake]]
     network_events: Optional[List[NetworkEvent]]
     queries: Optional[List[DNSQuery]]
     tcp_connect: Optional[List[TCPConnect]]
     requests: Optional[List[HTTPTransaction]]
+
+    x_status: Optional[int] = None
+    x_dns_runtime: Optional[int] = None
+    x_th_runtime: Optional[int] = None
+    x_tcptls_runtime: Optional[int] = None
+    x_http_runtime: Optional[int] = None
+
+    client_resolver: Optional[str] = None
+
+    agent: Optional[str] = None
+    retries: Optional[int] = None
+    socksproxy: Optional[str] = None
 
 
 @dataclass
@@ -317,7 +335,7 @@ class DNSCheck(BaseMeasurement):
 
 
 @dataclass
-class TorTestTarget:
+class TorTestTarget(BaseModel):
     failure: Failure
     network_events: Optional[List[NetworkEvent]]
     queries: Optional[List[DNSQuery]]
@@ -331,7 +349,7 @@ class TorTestTarget:
 
 
 @dataclass
-class TorTestKeys:
+class TorTestKeys(BaseModel):
     targets: dict[str, TorTestTarget]
 
 
