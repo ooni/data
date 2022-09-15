@@ -572,6 +572,84 @@ def process_day(
     return time.monotonic() - t0, day
 
 
+def worker(day_queue, args):
+    fingerprintdb = FingerprintDB()
+
+    netinfodb = NetinfoDB(
+        datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map)
+    )
+
+    if args.clickhouse:
+        db = ClickhouseConnection(args.clickhouse)
+    elif args.csv_dir:
+        db = CSVConnection(Path(args.csv_dir))
+    else:
+        raise Exception("Missing --csv-dir or --clickhouse")
+
+    skip_verdicts = args.skip_verdicts
+    if not isinstance(db, ClickhouseConnection):
+        skip_verdicts = True
+
+    testnames = []
+    if args.testname:
+        testnames = [args.testname]
+
+    country_codes = []
+    if args.country_code:
+        country_codes = [args.country_code]
+
+    fingerprintdb = FingerprintDB()
+
+    netinfodb = NetinfoDB(
+        datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map)
+    )
+    if args.clickhouse:
+        db = ClickhouseConnection(args.clickhouse)
+    elif args.csv_dir:
+        db = CSVConnection(Path(args.csv_dir))
+
+    testnames = []
+    if args.testname:
+        testnames = [args.testname]
+
+    country_codes = []
+    if args.country_code:
+        country_codes = [args.country_code]
+
+    skip_verdicts = args.skip_verdicts
+    if not isinstance(db, ClickhouseConnection):
+        skip_verdicts = True
+
+    while True:
+        day = day_queue.get(block=True)
+        if day == None:
+            break
+
+        if args.only_verdicts:
+            write_verdicts_to_db(
+                db,
+                generate_website_verdicts(
+                    args.day,
+                    db,
+                    fingerprintdb,
+                    netinfodb,
+                ),
+            )
+            continue
+
+        process_day(
+            db,
+            fingerprintdb,
+            netinfodb,
+            day,
+            testnames=testnames,
+            country_codes=country_codes,
+            start_at_idx=args.start_at_idx,
+            skip_verdicts=skip_verdicts,
+            fast_fail=args.fast_fail,
+        )
+
+
 if __name__ == "__main__":
     # XXX this is just for temporary testing
     log.addHandler(logging.StreamHandler())
@@ -630,62 +708,18 @@ if __name__ == "__main__":
     parser.add_argument("--fast-fail", action="store_true")
     args = parser.parse_args()
 
-    fingerprintdb = FingerprintDB()
-
-    netinfodb = NetinfoDB(
-        datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map)
+    day_queue = multiprocessing.Queue()
+    pool = multiprocessing.Pool(
+        processes=args.parallelism, initializer=worker, initargs=(day_queue, args)
     )
+    for day in date_interval(args.start_day, args.end_day):
+        day_queue.put(day)
 
-    if args.clickhouse:
-        db = ClickhouseConnection(args.clickhouse)
-    elif args.csv_dir:
-        db = CSVConnection(Path(args.csv_dir))
-    else:
-        raise Exception("Missing --csv-dir or --clickhouse")
+    for _ in range(args.parallelism):
+        day_queue.put(None)
 
-    if args.only_verdicts:
-        if not isinstance(db, ClickhouseConnection):
-            raise Exception("verdict generation requires clickhouse")
+    day_queue.close()
+    day_queue.join_thread()
 
-        write_verdicts_to_db(
-            db,
-            generate_website_verdicts(
-                args.day,
-                db,
-                fingerprintdb,
-                netinfodb,
-            ),
-        )
-        sys.exit(0)
-
-    skip_verdicts = args.skip_verdicts
-    if not isinstance(db, ClickhouseConnection):
-        skip_verdicts = True
-
-    testnames = []
-    if args.testname:
-        testnames = [args.testname]
-
-    country_codes = []
-    if args.country_code:
-        country_codes = [args.country_code]
-
-    def task_for_a_day(day):
-        return process_day(
-            db,
-            fingerprintdb,
-            netinfodb,
-            day,
-            testnames=testnames,
-            country_codes=country_codes,
-            start_at_idx=args.start_at_idx,
-            skip_verdicts=skip_verdicts,
-            fast_fail=args.fast_fail,
-        )
-
-    with multiprocessing.Pool(processes=args.parallelism) as pool:
-        for runtime, day in pool.imap_unordered(
-            task_for_a_day, date_interval(args.start_day, args.end_day)
-        ):
-            with open("runtime-log.txt", "a+") as out_file:
-                out_file.write(f"{day},{runtime}\n")
+    pool.close()
+    pool.join()
