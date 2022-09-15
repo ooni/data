@@ -114,7 +114,7 @@ class TorInfo(BaseModel):
 
 @dataclass
 class HTTPBase(BaseModel):
-    body: MaybeBinaryData
+    body: MaybeBinaryData = None
     body_is_truncated: Optional[bool] = None
     headers: Optional[dict[str, MaybeBinaryData]] = None
     headers_list: Optional[HeadersList] = None
@@ -155,12 +155,12 @@ class HTTPResponse(HTTPBase):
 
 @dataclass
 class HTTPTransaction(BaseModel):
-    failure: Failure
+    failure: Failure = None
 
-    request: Optional[HTTPRequest]
-    response: Optional[HTTPResponse]
+    request: Optional[HTTPRequest] = None
+    response: Optional[HTTPResponse] = None
 
-    t: Optional[float]
+    t: Optional[float] = None
     transaction_id: Optional[int] = None
 
 
@@ -183,10 +183,10 @@ class DNSAnswer(BaseModel):
 
 @dataclass
 class DNSQuery(BaseModel):
-    failure: Failure
     hostname: str
     query_type: str
 
+    failure: Failure = None
     dial_id: Optional[int] = None
     engine: Optional[str] = None
 
@@ -200,9 +200,9 @@ class DNSQuery(BaseModel):
 
 @dataclass
 class TCPConnectStatus(BaseModel):
-    blocked: Optional[bool]
     success: bool
-    failure: Failure
+    blocked: Optional[bool] = None
+    failure: Failure = None
 
 
 @dataclass
@@ -211,12 +211,12 @@ class TCPConnect(BaseModel):
     port: int
     status: TCPConnectStatus
 
-    t: Optional[float]
+    t: Optional[float] = None
 
 
 @dataclass
 class TLSHandshake(BaseModel):
-    failure: Failure
+    failure: Failure = None
     peer_certificates: Optional[List[BinaryData]] = None
     address: Optional[str] = None
     cipher_suite: Optional[str] = None
@@ -231,9 +231,9 @@ class TLSHandshake(BaseModel):
 
 @dataclass
 class NetworkEvent(BaseModel):
-    failure: Failure
     operation: str
     t: float
+    failure: Failure = None
     address: Optional[str] = None
     dial_id: Optional[int] = None
     num_bytes: Optional[int] = None
@@ -245,54 +245,54 @@ class NetworkEvent(BaseModel):
 
 @dataclass
 class WebConnectivityControlHTTPRequest(BaseModel):
-    body_length: Optional[int]
-    failure: Failure
-    title: Optional[str]
-    headers: Optional[dict[str, str]]
-    status_code: Optional[int]
+    body_length: Optional[int] = None
+    failure: Failure = None
+    title: Optional[str] = None
+    headers: Optional[dict[str, str]] = None
+    status_code: Optional[int] = None
 
 
 @dataclass
 class WebConnectivityControlDNS(BaseModel):
-    failure: Failure
-    addrs: Optional[List[str]]
+    failure: Failure = None
+    addrs: Optional[List[str]] = None
 
 
 @dataclass
 class WebConnectivityControlTCPConnectStatus(BaseModel):
-    status: Optional[bool]
-    failure: Failure
+    status: Optional[bool] = None
+    failure: Failure = None
 
 
 @dataclass
 class WebConnectivityControl(BaseModel):
-    tcp_connect: Optional[dict[str, WebConnectivityControlTCPConnectStatus]]
-    http_request: Optional[WebConnectivityControlHTTPRequest]
-    dns: Optional[WebConnectivityControlDNS]
+    tcp_connect: Optional[dict[str, WebConnectivityControlTCPConnectStatus]] = None
+    http_request: Optional[WebConnectivityControlHTTPRequest] = None
+    dns: Optional[WebConnectivityControlDNS] = None
 
 
 @dataclass
 class WebConnectivityTestKeys(BaseModel):
-    dns_experiment_failure: Failure
-    control_failure: Failure
-    http_experiment_failure: Failure
+    dns_experiment_failure: Failure = None
+    control_failure: Failure = None
+    http_experiment_failure: Failure = None
 
-    dns_consistency: Optional[str]
+    dns_consistency: Optional[str] = None
 
-    body_length_match: Optional[bool]
-    body_proportion: Optional[float]
-    status_code_match: Optional[bool]
-    headers_match: Optional[bool]
-    title_match: Optional[bool]
-    accessible: Optional[bool]
-    blocking: Union[str, bool, None]
+    body_length_match: Optional[bool] = None
+    body_proportion: Optional[float] = None
+    status_code_match: Optional[bool] = None
+    headers_match: Optional[bool] = None
+    title_match: Optional[bool] = None
+    accessible: Optional[bool] = None
+    blocking: Union[str, bool, None] = None
 
-    control: Optional[WebConnectivityControl]
-    tls_handshakes: Optional[List[TLSHandshake]]
-    network_events: Optional[List[NetworkEvent]]
-    queries: Optional[List[DNSQuery]]
-    tcp_connect: Optional[List[TCPConnect]]
-    requests: Optional[List[HTTPTransaction]]
+    control: Optional[WebConnectivityControl] = None
+    tls_handshakes: Optional[List[TLSHandshake]] = None
+    network_events: Optional[List[NetworkEvent]] = None
+    queries: Optional[List[DNSQuery]] = None
+    tcp_connect: Optional[List[TCPConnect]] = None
+    requests: Optional[List[HTTPTransaction]] = None
 
     x_status: Optional[int] = None
     x_dns_runtime: Optional[int] = None
@@ -314,20 +314,20 @@ class WebConnectivity(BaseMeasurement):
 
 @dataclass
 class URLGetterTestKeys(BaseTestKeys):
-    failure: Failure
-    socksproxy: Optional[str]
-    tls_handshakes: Optional[List[TLSHandshake]]
-    network_events: Optional[List[NetworkEvent]]
-    queries: Optional[List[DNSQuery]]
-    tcp_connect: Optional[List[TCPConnect]]
-    requests: Optional[List[HTTPTransaction]]
+    failure: Failure = None
+    socksproxy: Optional[str] = None
+    tls_handshakes: Optional[List[TLSHandshake]] = None
+    network_events: Optional[List[NetworkEvent]] = None
+    queries: Optional[List[DNSQuery]] = None
+    tcp_connect: Optional[List[TCPConnect]] = None
+    requests: Optional[List[HTTPTransaction]] = None
 
 
 @dataclass
 class DNSCheckTestKeys(BaseTestKeys):
-    bootstrap: Optional[URLGetterTestKeys]
-    bootstrap_failure: Optional[str]
     lookups: dict[str, URLGetterTestKeys]
+    bootstrap: Optional[URLGetterTestKeys] = None
+    bootstrap_failure: Optional[str] = None
 
 
 @dataclass
@@ -337,16 +337,16 @@ class DNSCheck(BaseMeasurement):
 
 @dataclass
 class TorTestTarget(BaseModel):
-    failure: Failure
-    network_events: Optional[List[NetworkEvent]]
-    queries: Optional[List[DNSQuery]]
-    requests: Optional[List[HTTPTransaction]]
-    tls_handshakes: Optional[List[TLSHandshake]]
-    tcp_connect: Optional[List[TCPConnect]]
-
     target_address: str
-    target_name: Optional[str]
     target_protocol: str
+
+    network_events: Optional[List[NetworkEvent]] = None
+    queries: Optional[List[DNSQuery]] = None
+    requests: Optional[List[HTTPTransaction]] = None
+    tls_handshakes: Optional[List[TLSHandshake]] = None
+    tcp_connect: Optional[List[TCPConnect]] = None
+    target_name: Optional[str] = None
+    failure: Failure = None
 
 
 @dataclass
