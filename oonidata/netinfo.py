@@ -61,8 +61,9 @@ class NetinfoDB:
         # If the maxmind databases are compressed, we uncompress them.
         for db_path in self.datadir.glob("*-country-asn.mmdb.gz"):
             decompressed_path = db_path.with_suffix(".tmp")
-            if decompressed_path.exists():
+            if decompressed_path.with_suffix("").exists():
                 continue
+            log.info(f"decompressing {db_path}")
             with gzip.open(db_path) as in_file, decompressed_path.open(
                 "wb"
             ) as out_file:
@@ -70,9 +71,7 @@ class NetinfoDB:
             decompressed_path.rename(db_path.with_suffix(""))
 
         db_files = {}
-        for db_path in self.datadir.glob("*"):
-            if db_path.match("*.gz"):
-                continue
+        for db_path in self.datadir.glob("*.mmdb"):
             ts = datetime.strptime(db_path.name.split("-")[0], "%Y%m%d").date()
             if db_path.match("*-country-asn.mmdb"):
                 db_files[ts] = db_path
