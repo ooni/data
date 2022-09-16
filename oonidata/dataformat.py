@@ -92,8 +92,8 @@ class BaseMeasurement(BaseModel):
     software_name: str
     software_version: str
 
-    test_helpers: Optional[dict]
     test_keys: BaseTestKeys
+    test_helpers: Optional[dict] = None
     data_format_version: Optional[str] = None
     measurement_uid: Optional[str] = None
 
