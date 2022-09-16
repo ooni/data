@@ -29,15 +29,10 @@ def date_interval(start_day: date, end_day: date):
 
     The end_day is not included in the range.
     """
-    today = date.today()
-    if not start_day or start_day >= today:
-        raise StopIteration
-    day = start_day
-    # the last day is not included
-    stop_day = end_day if end_day < today else today
-    while day < stop_day:
-        yield day
-        day += timedelta(days=1)
+    if start_day > end_day:
+        raise ValueError("start_day > end_day")
+    for d in range((end_day - start_day).days):
+        yield start_day + timedelta(days=d)
 
 
 @dataclass
