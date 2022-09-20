@@ -1,51 +1,145 @@
-from datetime import date
+from datetime import date, datetime
+from re import I
 
-from oonidata.dataclient import iter_file_entries, get_jsonl_prefixes
-from oonidata.dataclient import jsonl_in_range, list_file_entries
-from oonidata.s3feeder import stream_measurements, iter_cans_on_s3_for_a_day
+from oonidata.dataclient import (
+    date_interval,
+    iter_file_entries,
+    get_v2_prefixes,
+    iter_measurements,
+)
+from oonidata.dataclient import (
+    get_file_entries,
+    get_can_prefixes,
+    Prefix,
+    MC_BUCKET_NAME,
+)
 
 
 def test_iter_file_entries_new_jsonl():
-    fe_list = list(iter_file_entries("jsonl/webconnectivity/IT/20201020/00/"))
-    #assert len(fe_list) == 19
+    fe_list = list(
+        iter_file_entries(
+            Prefix(
+                prefix="jsonl/webconnectivity/IT/20201020/00/",
+                bucket_name=MC_BUCKET_NAME,
+            )
+        )
+    )
     assert len(fe_list) == 41
     for fe in fe_list:
-        assert fe.test_name == "webconnectivity"
-        assert fe.country_code == "IT"
+        assert fe.testname == "webconnectivity"
+        assert fe.probe_cc == "IT"
         assert fe.size > 0
-        assert fe.bucket_name == "ooni-data-eu-fra"
-        assert fe.day == date(2020, 10, 20)
+        assert fe.bucket_name == MC_BUCKET_NAME
+        assert fe.timestamp == datetime(2020, 10, 20, 0, 0)
         assert fe.ext == "jsonl.gz"
 
+
 def test_iter_file_entries_old_format():
-    fe_list = list(iter_file_entries("raw/20211020/00/IT/webconnectivity/"))
+    fe_list = list(
+        iter_file_entries(
+            Prefix(
+                prefix="raw/20211020/00/IT/webconnectivity/", bucket_name=MC_BUCKET_NAME
+            )
+        )
+    )
     assert len(fe_list) == 6
     for fe in fe_list:
-        assert fe.test_name == "webconnectivity"
-        assert fe.country_code == "IT"
+        assert fe.testname == "webconnectivity"
+        assert fe.probe_cc == "IT"
         assert fe.size > 0
-        assert fe.bucket_name == "ooni-data-eu-fra"
-        assert fe.day == date(2021, 10, 20)
+        assert fe.bucket_name == MC_BUCKET_NAME
+        assert fe.timestamp == datetime(2021, 10, 20, 0, 0)
 
-def test_iter_cans_on_s3_for_a_day():
-    fe_list = list(iter_cans_on_s3_for_a_day(date(2020, 1, 1)))
-    assert len(fe_list) == 136
-    assert all(map(lambda fe: fe.bucket_name == "ooni-data", fe_list))
 
-def test_get_jsonl_prefixes():
-    prefixes = list(get_jsonl_prefixes([], [], date(2020, 1, 1), date(2020, 1, 2)))
-    #assert len(prefixes) == 2516
+def test_get_v2_prefixes():
+    prefixes = list(get_v2_prefixes(set(), set(), date(2020, 1, 1), date(2020, 1, 2)))
+    # assert len(prefixes) == 2516
     assert len(prefixes) == 2905
 
-def test_jsonl_in_range():
-    fe_list = list(jsonl_in_range([], [], date(2021, 1, 1), date(2021, 1, 2)))
-    #assert len(fe_list) == 1125
+
+def test_get_file_entries():
+    fe_list = list(
+        get_file_entries(
+            ccs=set(),
+            testnames=set(),
+            start_day=date(2021, 1, 1),
+            end_day=date(2021, 1, 2),
+            from_cans=False,
+        )
+    )
+    # assert len(fe_list) == 1125
     assert len(fe_list) == 3320
 
-def test_stream_jsonl_measurements(tmp_path):
-    fe_list = list_file_entries("jsonl/telegram/IT/20201009/00/")
-    #assert len(fe_list) == 1
-    assert len(fe_list) == 2
-    for _, msmt, _ in stream_measurements(fe_list, tmp_path, False):
-        assert msmt["probe_cc"] == "IT"
-        assert msmt["test_name"] == "telegram"
+
+def test_get_can_prefixes():
+    # print(get_can_prefixes(set(), set(), date(2019, 6, 2), date(2020, 10, 21)))
+    # print(get_can_prefixes(set(), set(), date(2020, 6, 2), date(2020, 10, 21)))
+    start_day = date(2020, 6, 1)
+    end_day = date(2020, 6, 11)
+    prefixes = get_can_prefixes(start_day, end_day)
+    assert len(set([p.prefix.split("/")[-1] for p in prefixes])) == len(
+        prefixes
+    ), "Duplicate prefixes"
+    assert len(prefixes) == len(
+        list(date_interval(start_day, end_day))
+    ), "Inconsistent prefix length"
+
+    start_day = date(2020, 10, 12)
+    end_day = date(2020, 10, 22)
+    prefixes = get_can_prefixes(start_day, end_day)
+
+    assert len(set([p.prefix.split("/")[-1] for p in prefixes])) == len(
+        prefixes
+    ), "Duplicate prefixes"
+    assert len(prefixes) == len(
+        list(date_interval(start_day, end_day))
+    ), "Inconsistent prefix length"
+
+    start_day = date(2019, 1, 1)
+    end_day = date(2020, 10, 22)
+    prefixes = get_can_prefixes(start_day, end_day)
+
+    assert len(set([p.prefix.split("/")[-1] for p in prefixes])) == len(
+        prefixes
+    ), "Duplicate prefixes"
+    assert len(prefixes) == len(
+        list(date_interval(start_day, end_day))
+    ), "Inconsistent prefix length"
+
+
+def test_iter_measurements(caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG, logger="oonidata.dataclient")
+    msmt_count_cans = 0
+    report_id_cans = []
+    msmt_count_jsonl = 0
+    report_id_jsonl = []
+    for msmt in iter_measurements(
+        start_day=date(2018, 1, 1),
+        end_day=date(2018, 1, 2),
+        probe_cc=["IT"],
+        test_name=["whatsapp"],
+        from_cans=True,
+        progress_callback=lambda x: print(x),
+    ):
+        msmt_count_cans += 1
+        report_id_cans.append(msmt["report_id"])
+        assert msmt["measurement_uid"] is not None
+
+    for msmt in iter_measurements(
+        start_day=date(2018, 1, 1),
+        end_day=date(2018, 1, 2),
+        probe_cc=["IT"],
+        test_name=["whatsapp"],
+        from_cans=False,
+        progress_callback=lambda x: print(x),
+    ):
+        report_id_jsonl.append(msmt["report_id"])
+        msmt_count_jsonl += 1
+
+    assert set(report_id_jsonl) == set(report_id_cans)
+    # TODO: these are disabled due to: https://github.com/ooni/backend/issues/613
+    # We ought to probably come up with a workaround in the meantime
+    # assert msmt_count_jsonl == msmt_count_cans
+    # assert report_id_jsonl == report_id_cans
