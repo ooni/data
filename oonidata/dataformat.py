@@ -227,7 +227,7 @@ class NetworkEvent:
     proto: Optional[str]
     t: float
     tags: Optional[List[str]]
-    transaction_id: Optional[str]
+    transaction_id: Optional[int]
 
 
 @dataclass
