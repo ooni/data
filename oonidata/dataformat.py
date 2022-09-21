@@ -9,12 +9,13 @@ See:
 """
 import logging
 import orjson
-
+import hashlib
 from base64 import b64decode
 
 from typing import Optional, Tuple, Union, List, Union
 
 from dataclasses import dataclass
+from mashumaro.config import BaseConfig, TO_DICT_ADD_OMIT_NONE_FLAG
 from mashumaro import DataClassDictMixin
 
 from oonidata.utils import trivial_id
@@ -24,7 +25,11 @@ log = logging.getLogger("oonidata.dataformat")
 
 
 class BaseModel(DataClassDictMixin):
-    pass
+    class Config(BaseConfig):
+        # This makes it possible to call .to_dict(omit_none=True) to remove any
+        # attributes of the dataclass that a None, saving up quite a bit of
+        # space for unnecessary keys
+        code_generation_options = [TO_DICT_ADD_OMIT_NONE_FLAG]
 
 
 @dataclass
@@ -116,28 +121,53 @@ class TorInfo(BaseModel):
 class HTTPBase(BaseModel):
     body: MaybeBinaryData = None
     body_is_truncated: Optional[bool] = None
-    headers: Optional[dict[str, MaybeBinaryData]] = None
     headers_list: Optional[HeadersList] = None
-    headers_list_bytes: Optional[HeadersListBytes] = None
 
-    body_bytes: Optional[bytes] = None
+    _body_bytes = None
+    _headers = None
+    _headers_list_bytes = None
+
+    @property
+    def body_bytes(self):
+        if not self.body:
+            return None
+
+        if self._body_bytes:
+            return self._body_bytes
+
+        self._body_bytes = maybe_binary_data_to_bytes(self.body)
+        return self._body_bytes
+
+    @property
+    def headers(self):
+        if not self.headers_list:
+            return None
+
+        if self._headers:
+            return self._headers
+
+        self._headers = {k: v for k, v in self.headers_list}
+        return self._headers
+
+    @property
+    def headers_list_bytes(self):
+        if not self.headers_list:
+            return None
+
+        if self._headers_list_bytes:
+            return self._headers_list_bytes
+
+        self._headers_list_bytes = [
+            (guess_decode(maybe_binary_data_to_bytes(k)), maybe_binary_data_to_bytes(v))
+            for k, v in self.headers_list
+        ]
+        return self.headers_list_bytes
 
     def __post_init__(self):
         if not self.headers_list and self.headers:
             self.headers_list = []
             for k, v in self.headers.items():
                 self.headers_list.append([k, v])
-
-        if self.headers_list:
-            self.headers_list_bytes = []
-            for header_pair in self.headers_list:
-                assert len(header_pair) == 2, "Inconsistent header"
-                header_name = guess_decode(maybe_binary_data_to_bytes(header_pair[0]))
-                header_value = maybe_binary_data_to_bytes(header_pair[1])
-                self.headers_list_bytes.append((header_name, header_value))
-
-        if self.body:
-            self.body_bytes = maybe_binary_data_to_bytes(self.body)
 
 
 @dataclass
@@ -162,6 +192,11 @@ class HTTPTransaction(BaseModel):
 
     t: Optional[float] = None
     transaction_id: Optional[int] = None
+
+    def response_sha1(self) -> str:
+        if self.response and self.response.body_bytes:
+            return hashlib.sha1(self.response.body_bytes).hexdigest()
+        return ""
 
 
 @dataclass
@@ -365,11 +400,9 @@ nettest_dataformats = {
     "dnscheck": DNSCheck,
 }
 
+SupportedDataformats = Union[WebConnectivity, Tor, DNSCheck, BaseMeasurement]
 
-def load_measurement(raw: bytes) -> BaseMeasurement:
-    data = orjson.loads(raw)
-    dc = nettest_dataformats.get(data["test_name"], BaseMeasurement)
-    msm = dc.from_dict(data)
-    if not msm.measurement_uid:
-        msm.measurement_uid = trivial_id(raw=raw, msm=msm)
-    return msm
+
+def load_measurement(msmt: dict) -> SupportedDataformats:
+    dc = nettest_dataformats.get(msmt["test_name"], BaseMeasurement)
+    return dc.from_dict(msmt)
