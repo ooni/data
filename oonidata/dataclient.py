@@ -453,8 +453,8 @@ def get_file_entries(
 
 
 def iter_measurements(
-    start_day: date,
-    end_day: date,
+    start_day: Union[date, str],
+    end_day: Union[date, str],
     from_cans: bool = True,
     probe_cc: Optional[Union[List[str], str]] = None,
     test_name: Optional[Union[List[str], str]] = None,
@@ -471,6 +471,11 @@ def iter_measurements(
         if isinstance(test_name, str):
             test_name = [test_name]
         testnames = set(list(map(lambda x: x.lower().replace("_", ""), test_name)))
+
+    if isinstance(start_day, str):
+        start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
+    if isinstance(end_day, str):
+        end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
 
     file_entries, total_file_entry_size = get_file_entries(
         start_day=start_day,
