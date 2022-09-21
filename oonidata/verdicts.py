@@ -400,7 +400,13 @@ def make_website_tcp_verdicts(
 
     if tcp_o.failure:
         unreachable_cc_asn = list(tcp_b.unreachable_cc_asn)
-        unreachable_cc_asn.remove((tcp_o.probe_cc, tcp_o.probe_asn))
+        try:
+            unreachable_cc_asn.remove((tcp_o.probe_cc, tcp_o.probe_asn))
+        except ValueError:
+            log.info(
+                "missing failure in tcp baseline. You are probably using a control derived baseline."
+            )
+
         reachable_count = len(tcp_b.reachable_cc_asn)
         unreachable_count = len(unreachable_cc_asn)
         if reachable_count > unreachable_count:
@@ -475,14 +481,24 @@ def make_website_dns_verdict(
 
     elif dns_o.failure:
         failure_cc_asn = list(dns_b.failure_cc_asn)
-        failure_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
+        try:
+            failure_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
+        except ValueError:
+            log.info(
+                "missing failure for the probe in the baseline. You are probably using a control derived baseline."
+            )
 
         failure_count = len(failure_cc_asn)
         ok_count = len(dns_b.ok_cc_asn)
 
         if dns_o.failure == "dns_nxdomain_error":
             nxdomain_cc_asn = list(dns_b.nxdomain_cc_asn)
-            nxdomain_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
+            try:
+                nxdomain_cc_asn.remove((dns_o.probe_cc, dns_o.probe_asn))
+            except ValueError:
+                log.info(
+                    "missing nx_domain failure for the probe in the baseline. You are probably using a control derived baseline."
+                )
 
             nxdomain_count = len(nxdomain_cc_asn)
             if ok_count > nxdomain_count:
@@ -677,7 +693,13 @@ def make_website_http_verdict(
             return
 
         failure_cc_asn = list(http_b.failure_cc_asn)
-        failure_cc_asn.remove((http_o.probe_cc, http_o.probe_asn))
+        try:
+            failure_cc_asn.remove((http_o.probe_cc, http_o.probe_asn))
+        except ValueError:
+            log.info(
+                "missing failure in http baseline. Either something is wrong or you are using a control derived baseline"
+            )
+
         failure_count = len(failure_cc_asn)
         ok_count = len(http_b.ok_cc_asn)
         if ok_count > failure_count:
