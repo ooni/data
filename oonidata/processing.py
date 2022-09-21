@@ -1,4 +1,5 @@
 import sys
+import traceback
 import argparse
 import logging
 from tqdm import tqdm
