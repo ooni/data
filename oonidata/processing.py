@@ -4,6 +4,7 @@ import argparse
 import logging
 import traceback
 import multiprocessing
+import orjson
 
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
@@ -13,7 +14,7 @@ from pathlib import Path
 from dataclasses import asdict, fields
 
 from collections.abc import Iterable
-from typing import Tuple, List, Generator, Type, TypeVar, Any, Optional
+from typing import Tuple, List, Generator, Type, TypeVar, Any, Optional, Union
 
 from oonidata.datautils import one_day_dict, is_ip_bogon
 from oonidata.observations import (
@@ -27,6 +28,7 @@ from oonidata.observations import (
     make_dns_observations,
     make_tcp_observations,
     make_tls_observations,
+    make_web_connectivity_observations,
 )
 from oonidata.dataformat import DNSCheck, load_measurement
 from oonidata.dataformat import BaseMeasurement, WebConnectivity, Tor
@@ -41,7 +43,11 @@ from oonidata.verdicts import (
     make_website_verdicts,
 )
 
-from oonidata.dataclient import iter_raw_measurements, date_interval
+from oonidata.dataclient import (
+    MeasurementListProgress,
+    iter_measurements,
+    date_interval,
+)
 from oonidata.db.connections import (
     DatabaseConnection,
     ClickhouseConnection,
@@ -140,57 +146,9 @@ def web_connectivity_processor(
 ) -> None:
     write_observations_to_db(
         db,
-        make_http_observations(msmt, msmt.test_keys.requests, fingerprintdb, netinfodb),
-    )
-
-    dns_observations = list(
-        make_dns_observations(msmt, msmt.test_keys.queries, fingerprintdb, netinfodb)
-    )
-    ip_to_domain = {
-        str(obs.answer): obs.domain_name
-        for obs in filter(lambda o: o.answer, dns_observations)
-    }
-
-    write_observations_to_db(
-        db,
-        make_tcp_observations(
-            msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
+        make_web_connectivity_observations(
+            msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
         ),
-    )
-
-    tls_observations = list(
-        make_tls_observations(
-            msmt,
-            msmt.test_keys.tls_handshakes,
-            msmt.test_keys.network_events,
-            netinfodb,
-            ip_to_domain,
-        )
-    )
-    write_observations_to_db(
-        db,
-        tls_observations,
-    )
-
-    # Here we take dns measurements and compare them to what we see in the tls
-    # data and check for TLS consistency.
-    tls_valid_ip_to_domain = {}
-    for obs in filter(
-        lambda o: o.ip and o.domain_name,
-        tls_observations,
-    ):
-        tls_valid_ip_to_domain[obs.ip] = tls_valid_ip_to_domain.get(obs.ip, {})
-        tls_valid_ip_to_domain[obs.ip][obs.domain_name] = obs.is_certificate_valid
-    enriched_dns_observations = []
-    for dns_obs in dns_observations:
-        if dns_obs.answer:
-            valid_domains = tls_valid_ip_to_domain.get(dns_obs.answer, {})
-            dns_obs.is_tls_consistent = valid_domains.get(dns_obs.domain_name, None)
-        enriched_dns_observations.append(dns_obs)
-
-    write_observations_to_db(
-        db,
-        enriched_dns_observations,
     )
 
 
@@ -289,7 +247,7 @@ def dns_observations_by_session(
         q += "AND probe_cc = %(probe_cc)s\n"
         q_params["probe_cc"] = probe_cc
 
-    q += "ORDER BY session_id, measurement_uid;"
+    q += "ORDER BY report_id, measurement_uid;"
 
     # Put all the DNS observations from the same testing session into a list and yield it
     dns_obs_session = []
@@ -298,10 +256,10 @@ def dns_observations_by_session(
         obs_dict = {field_names[idx]: val for idx, val in enumerate(res)}
         dns_obs = DNSObservation(**obs_dict)
 
-        if last_obs_session_id and last_obs_session_id != dns_obs.session_id:
+        if last_obs_session_id and last_obs_session_id != dns_obs.report_id:
             yield dns_obs_session
             dns_obs_session = [dns_obs]
-            last_obs_session_id = dns_obs.session_id
+            last_obs_session_id = dns_obs.report_id
         else:
             dns_obs_session.append(dns_obs)
     if len(dns_obs_session) > 0:
@@ -315,7 +273,7 @@ def observations_in_session(
     day: date,
     domain_name: str,
     obs_class: Type[T],
-    session_id: str,
+    report_id: str,
     db: ClickhouseConnection,
 ) -> List[T]:
     observation_list = []
@@ -327,11 +285,11 @@ def observations_in_session(
     WHERE domain_name = %(domain_name)s
     AND timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
-    AND session_id = %(session_id)s;
+    AND report_id = %(report_id)s;
     """
     q_params = one_day_dict(day)
     q_params["domain_name"] = domain_name
-    q_params["session_id"] = session_id
+    q_params["report_id"] = report_id
 
     for res in db.execute(q, q_params):
         obs_dict = {field_names[idx]: val for idx, val in enumerate(res)}
@@ -355,26 +313,26 @@ def websites_observation_group(
     None,
 ]:
     for dns_obs_list in dns_observations_by_session(day, domain_name, db, probe_cc):
-        session_id = dns_obs_list[0].session_id
+        report_id = dns_obs_list[0].report_id
         tcp_o_list = observations_in_session(
             day,
             domain_name,
             TCPObservation,
-            session_id,
+            report_id,
             db,
         )
         tls_o_list = observations_in_session(
             day,
             domain_name,
             TLSObservation,
-            session_id,
+            report_id,
             db,
         )
         http_o_list = observations_in_session(
             day,
             domain_name,
             HTTPObservation,
-            session_id,
+            report_id,
             db,
         )
 
@@ -383,8 +341,8 @@ def websites_observation_group(
         # we do the insert, but will require quite a bit of reorganizing of the
         # logic in here.
         db.execute(
-            "ALTER TABLE verdict DELETE WHERE session_id = %(session_id)s",
-            {"session_id": session_id},
+            "ALTER TABLE verdict DELETE WHERE report_id = %(report_id)s",
+            {"report_id": report_id},
         )
         yield dns_obs_list, tcp_o_list, tls_o_list, http_o_list
 
@@ -514,32 +472,38 @@ nettest_processors = {
 
 
 def process_day(
-    db: DatabaseConnection,
+    db: Union[ClickhouseConnection, CSVConnection],
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
     day: date,
-    testnames=[],
-    country_codes=[],
+    test_name=[],
+    probe_cc=[],
     start_at_idx=0,
     skip_verdicts=False,
     fast_fail=False,
 ) -> Tuple[float, date]:
     t0 = time.monotonic()
     with tqdm(unit="B", unit_scale=True) as pbar:
-        for idx, raw_msmt in enumerate(
-            iter_raw_measurements(
-                ccs=set(country_codes),
-                testnames=testnames,
+
+        def progress_callback(p: MeasurementListProgress):
+            if not pbar.total:
+                pbar.total = p.total_file_entry_size
+            pbar.update(p.current_file_entry_bytes)
+
+        for idx, msmt_dict in enumerate(
+            iter_measurements(
+                probe_cc=probe_cc,
+                test_name=test_name,
                 start_day=day,
                 end_day=day + timedelta(days=1),
+                progress_callback=progress_callback,
             )
         ):
             pbar.set_description(f"idx {idx}")
-            pbar.update(len(raw_msmt))
             if idx < start_at_idx:
                 continue
             try:
-                msmt = load_measurement(raw_msmt)
+                msmt = load_measurement(msmt_dict)
                 base_processor(msmt, db, netinfodb)
                 processor = nettest_processors.get(msmt.test_name, default_processor)
                 processor(
@@ -549,16 +513,16 @@ def process_day(
                     netinfodb,
                 )
             except Exception as exc:
-                with open("bad_msmts.jsonl", "a+") as out_file:
-                    out_file.write(raw_msmt.decode("utf-8"))
-                    out_file.write("\n")
+                with open("bad_msmts.jsonl", "ab+") as out_file:
+                    out_file.write(orjson.dumps(msmt_dict))
+                    out_file.write(b"\n")
                 with open("bad_msmts_fail_log.txt", "a+") as out_file:
                     out_file.write(traceback.format_exc())
                     out_file.write("ENDTB----\n")
                 if fast_fail:
                     raise exc
 
-    if not skip_verdicts:
+    if isinstance(db, ClickhouseConnection) and not skip_verdicts:
         write_verdicts_to_db(
             db,
             generate_website_verdicts(
@@ -590,31 +554,13 @@ def worker(day_queue, args):
     if not isinstance(db, ClickhouseConnection):
         skip_verdicts = True
 
-    testnames = []
-    if args.testname:
-        testnames = [args.testname]
+    test_name = []
+    if args.test_name:
+        test_name = args.test_name.split(",")
 
-    country_codes = []
-    if args.country_code:
-        country_codes = [args.country_code]
-
-    fingerprintdb = FingerprintDB()
-
-    netinfodb = NetinfoDB(
-        datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map)
-    )
-    if args.clickhouse:
-        db = ClickhouseConnection(args.clickhouse)
-    elif args.csv_dir:
-        db = CSVConnection(Path(args.csv_dir))
-
-    testnames = []
-    if args.testname:
-        testnames = [args.testname]
-
-    country_codes = []
-    if args.country_code:
-        country_codes = [args.country_code]
+    probe_cc = []
+    if args.probe_cc:
+        probe_cc = args.probe_cc.split(",")
 
     skip_verdicts = args.skip_verdicts
     if not isinstance(db, ClickhouseConnection):
@@ -625,7 +571,7 @@ def worker(day_queue, args):
         if day == None:
             break
 
-        if args.only_verdicts:
+        if isinstance(db, ClickhouseConnection) and args.only_verdicts:
             write_verdicts_to_db(
                 db,
                 generate_website_verdicts(
@@ -642,8 +588,8 @@ def worker(day_queue, args):
             fingerprintdb,
             netinfodb,
             day,
-            testnames=testnames,
-            country_codes=country_codes,
+            test_name=test_name,
+            probe_cc=probe_cc,
             start_at_idx=args.start_at_idx,
             skip_verdicts=skip_verdicts,
             fast_fail=args.fast_fail,
@@ -668,8 +614,9 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--testname",
+        "--probe-cc",
         type=str,
+        help="two letter country code, can be comma separated for a list (eg. IT,US). If omitted will select process all countries."
     )
     parser.add_argument(
         "--geoip-dir",
@@ -680,8 +627,9 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--country-code",
+        "--test-name",
         type=str,
+        help="test_name you care to process, can be comma separated for a list (eg. web_connectivity,whatsapp). If omitted will select process all test names."
     )
     parser.add_argument(
         "--start-day",
@@ -707,6 +655,12 @@ if __name__ == "__main__":
     parser.add_argument("--skip-verdicts", action="store_true")
     parser.add_argument("--fast-fail", action="store_true")
     args = parser.parse_args()
+
+    if args.csv_dir:
+        log.info(
+            "When generating CSV outputs we currently only support parallelism of 1"
+        )
+        args.parallelism = 1
 
     day_queue = multiprocessing.Queue()
     pool = multiprocessing.Pool(
