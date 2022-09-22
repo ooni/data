@@ -598,6 +598,9 @@ def make_website_tls_verdict(
         ):
             return
 
+        # TODO: this is wrong. We need to consider the baseline to establish TLS
+        # MITM, because the cert might be invalid also from other location (eg.
+        # it expired) and not due to censorship.
         outcome_detail = "tls.mitm"
         return make_verdict_from_obs(
             tls_o,
