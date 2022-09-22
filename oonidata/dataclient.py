@@ -533,9 +533,10 @@ def get_file_entries(
 def iter_measurements(
     start_day: Union[date, str],
     end_day: Union[date, str],
-    from_cans: bool = True,
     probe_cc: Optional[Union[List[str], str]] = None,
     test_name: Optional[Union[List[str], str]] = None,
+    from_cans: bool = True,
+    file_entries: Optional[List[FileEntry]] = None,
     progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
 ) -> Generator[dict, None, None]:
     ccs = set()
@@ -555,14 +556,15 @@ def iter_measurements(
     if isinstance(end_day, str):
         end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
 
-    file_entries = get_file_entries(
-        start_day=start_day,
-        end_day=end_day,
-        ccs=ccs,
-        testnames=testnames,
-        from_cans=from_cans,
-        progress_callback=progress_callback,
-    )
+    if file_entries is None:
+        file_entries = get_file_entries(
+            start_day=start_day,
+            end_day=end_day,
+            ccs=ccs,
+            testnames=testnames,
+            from_cans=from_cans,
+            progress_callback=progress_callback,
+        )
 
     total_file_entry_bytes = sum(map(lambda fe: fe.size, file_entries))
     if progress_callback:
