@@ -426,6 +426,7 @@ def list_file_entries(prefix: Prefix) -> List[FileEntry]:
 
 class ProgressStatus(Enum):
     LISTING = "listing"
+    DOWNLOAD_BEGIN = "download_begin"
     DOWNLOADING = "downloading"
 
 
@@ -453,6 +454,24 @@ def make_listing_progress(
         total_file_entries=total_file_entries,
         current_file_entry_bytes=0,
         total_file_entry_bytes=0,
+    )
+
+
+def make_download_progress(
+    current_file_entry_bytes: int,
+    total_file_entry_bytes: int,
+    current_file_entry_idx: int,
+    total_file_entries: int,
+    progress_status: ProgressStatus = ProgressStatus.DOWNLOADING,
+):
+    return MeasurementListProgress(
+        current_file_entry_idx=current_file_entry_idx,
+        total_file_entries=total_file_entries,
+        current_file_entry_bytes=current_file_entry_bytes,
+        total_file_entry_bytes=total_file_entry_bytes,
+        progress_status=progress_status,
+        total_prefixes=0,
+        current_prefix_idx=0,
     )
 
 
@@ -547,6 +566,17 @@ def iter_measurements(
         progress_callback=progress_callback,
     )
 
+    if progress_callback:
+        progress_callback(
+            make_download_progress(
+                current_file_entry_bytes=0,
+                total_file_entry_bytes=total_file_entry_bytes,
+                current_file_entry_idx=0,
+                total_file_entries=len(file_entries),
+                progress_status=ProgressStatus.DOWNLOAD_BEGIN,
+            )
+        )
+
     current_file_entry_bytes = 0
     for idx, fe in enumerate(file_entries):
         for msmt in fe.stream_measurements():
@@ -559,13 +589,10 @@ def iter_measurements(
         current_file_entry_bytes += fe.size
         if progress_callback:
             progress_callback(
-                MeasurementListProgress(
-                    current_file_entry_idx=idx,
-                    total_file_entries=len(file_entries),
+                make_download_progress(
                     current_file_entry_bytes=current_file_entry_bytes,
                     total_file_entry_bytes=total_file_entry_bytes,
-                    progress_status=ProgressStatus.DOWNLOADING,
-                    total_prefixes=0,
-                    current_prefix_idx=0,
+                    current_file_entry_idx=idx,
+                    total_file_entries=len(file_entries),
                 )
             )
