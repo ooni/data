@@ -136,7 +136,14 @@ def stream_jsonl(body: io.BytesIO) -> Generator[dict, None, None]:
 
 
 def stream_postcan(body: io.BytesIO) -> Generator[dict, None, None]:
-    with tarfile.open(fileobj=body) as tar:
+    # Since some older postcans have the .gz extension, but are actually not
+    # compressed, tar needs to be able to re-seek back to the beginning of the
+    # file in the event of it not finding the gzip magic header when operating
+    # in "transparent compression mode".
+    # When we we fix that in the source data, we might be able to avoid this.
+    read_body = read_to_bytesio(body)
+
+    with tarfile.open(fileobj=read_body) as tar:
         for m in tar:
             if not m.name.endswith(".post"):
                 log.error(f"invalid filename in tar {m.name}")
