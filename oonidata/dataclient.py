@@ -492,7 +492,6 @@ def get_file_entries(
 
     log.debug(f"using prefix list {prefix_list}")
     file_entries = []
-    total_file_entry_size = 0
     prefix_idx = 0
     total_prefixes = len(prefix_list)
 
@@ -517,7 +516,6 @@ def get_file_entries(
                 if from_cans == False and fe.is_can:
                     continue
 
-                total_file_entry_size += fe.size
                 file_entries.append(fe)
             prefix_idx += 1
             if progress_callback:
@@ -529,7 +527,8 @@ def get_file_entries(
                     )
                 )
 
-    return file_entries, total_file_entry_size
+    total_file_entry_bytes = sum(map(lambda fe: fe.size, file_entries))
+    return file_entries, total_file_entry_bytes
 
 
 def iter_measurements(
