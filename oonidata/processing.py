@@ -47,6 +47,7 @@ from oonidata.dataclient import (
     MeasurementListProgress,
     iter_measurements,
     date_interval,
+    ProgressStatus,
 )
 from oonidata.db.connections import (
     DatabaseConnection,
@@ -486,8 +487,18 @@ def process_day(
     with tqdm(unit="B", unit_scale=True) as pbar:
 
         def progress_callback(p: MeasurementListProgress):
-            if not pbar.total:
-                pbar.total = p.total_file_entry_size
+            if p.progress_status == ProgressStatus.LISTING:
+                if not pbar.total:
+                    pbar.total = p.total_prefixes
+                pbar.update(p.current_prefix_idx)
+                pbar.set_description(
+                    f"listed {p.current_prefix_idx}/{p.total_prefixes} prefixes"
+                )
+                return
+
+            if p.progress_status == ProgressStatus.DOWNLOAD_BEGIN:
+                pbar.total = p.total_file_entry_bytes
+                pbar.unit = "B"
             pbar.update(p.current_file_entry_bytes)
 
         for idx, msmt_dict in enumerate(
@@ -616,7 +627,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--probe-cc",
         type=str,
-        help="two letter country code, can be comma separated for a list (eg. IT,US). If omitted will select process all countries."
+        help="two letter country code, can be comma separated for a list (eg. IT,US). If omitted will select process all countries.",
     )
     parser.add_argument(
         "--geoip-dir",
@@ -629,7 +640,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test-name",
         type=str,
-        help="test_name you care to process, can be comma separated for a list (eg. web_connectivity,whatsapp). If omitted will select process all test names."
+        help="test_name you care to process, can be comma separated for a list (eg. web_connectivity,whatsapp). If omitted will select process all test names.",
     )
     parser.add_argument(
         "--start-day",
