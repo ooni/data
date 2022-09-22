@@ -12,6 +12,7 @@ from datetime import date, timedelta, datetime
 
 from dataclasses import dataclass
 
+from enum import Enum
 from typing import Callable, Generator, Set, List, Optional, NamedTuple, Union, Tuple
 
 import boto3
@@ -416,12 +417,22 @@ def list_file_entries(prefix: Prefix) -> List[FileEntry]:
     return [fe for fe in iter_file_entries(prefix)]
 
 
+class ProgressStatus(Enum):
+    LISTING = "listing"
+    DOWNLOADING = "downloading"
+
+
 class MeasurementListProgress(NamedTuple):
+    current_prefix_idx: int
+    total_prefixes: int
+
     current_file_entry_idx: int
     total_file_entries: int
 
+    progress_status: ProgressStatus
+
     current_file_entry_bytes: int
-    total_file_entry_size: int
+    total_file_entry_bytes: int
 
 
 def get_file_entries(
@@ -430,6 +441,7 @@ def get_file_entries(
     ccs: Set[str],
     testnames: Set[str],
     from_cans: bool,
+    progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
 ) -> Tuple[List[FileEntry], int]:
     start_timestamp = datetime.combine(start_day, datetime.min.time())
     end_timestamp = datetime.combine(end_day, datetime.min.time())
@@ -441,6 +453,8 @@ def get_file_entries(
     log.debug(f"using prefix list {prefix_list}")
     file_entries = []
     total_file_entry_size = 0
+    prefix_idx = 0
+    total_prefixes = len(prefix_list)
     with concurrent.futures.ThreadPoolExecutor() as tpe:
         ftrs = []
         for prefix in prefix_list:
@@ -449,7 +463,6 @@ def get_file_entries(
         for future in concurrent.futures.as_completed(ftrs):
             fe_list = future.result()
             for fe in fe_list:
-
                 if not fe.matches_filter(
                     ccs, testnames, start_timestamp, end_timestamp
                 ):
@@ -462,6 +475,19 @@ def get_file_entries(
 
                 total_file_entry_size += fe.size
                 file_entries.append(fe)
+            prefix_idx += 1
+            if progress_callback:
+                progress_callback(
+                    MeasurementListProgress(
+                        current_prefix_idx=prefix_idx,
+                        total_prefixes=total_prefixes,
+                        progress_status=ProgressStatus.LISTING,
+                        current_file_entry_idx=0,
+                        total_file_entries=0,
+                        current_file_entry_bytes=0,
+                        total_file_entry_bytes=0,
+                    )
+                )
 
     return file_entries, total_file_entry_size
 
@@ -491,12 +517,13 @@ def iter_measurements(
     if isinstance(end_day, str):
         end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
 
-    file_entries, total_file_entry_size = get_file_entries(
+    file_entries, total_file_entry_bytes = get_file_entries(
         start_day=start_day,
         end_day=end_day,
         ccs=ccs,
         testnames=testnames,
         from_cans=from_cans,
+        progress_callback=progress_callback,
     )
 
     current_file_entry_bytes = 0
@@ -515,6 +542,9 @@ def iter_measurements(
                     current_file_entry_idx=idx,
                     total_file_entries=len(file_entries),
                     current_file_entry_bytes=current_file_entry_bytes,
-                    total_file_entry_size=total_file_entry_size,
+                    total_file_entry_bytes=total_file_entry_bytes,
+                    progress_status=ProgressStatus.DOWNLOADING,
+                    total_prefixes=0,
+                    current_prefix_idx=0,
                 )
             )
