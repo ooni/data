@@ -442,6 +442,20 @@ class MeasurementListProgress(NamedTuple):
     total_file_entry_bytes: int
 
 
+def make_listing_progress(
+    current_prefix_idx: int, total_prefixes: int, total_file_entries: int
+):
+    return MeasurementListProgress(
+        current_prefix_idx=current_prefix_idx,
+        total_prefixes=total_prefixes,
+        progress_status=ProgressStatus.LISTING,
+        current_file_entry_idx=0,
+        total_file_entries=total_file_entries,
+        current_file_entry_bytes=0,
+        total_file_entry_bytes=0,
+    )
+
+
 def get_file_entries(
     start_day: date,
     end_day: date,
@@ -463,6 +477,14 @@ def get_file_entries(
     prefix_idx = 0
     total_prefixes = len(prefix_list)
 
+    if progress_callback:
+        progress_callback(
+            make_listing_progress(
+                current_prefix_idx=0,
+                total_prefixes=total_prefixes,
+                total_file_entries=0,
+            )
+        )
     with multiprocessing.pool.ThreadPool() as pool:
         for fe_list in pool.imap_unordered(list_file_entries, prefix_list):
             for fe in fe_list:
@@ -481,14 +503,10 @@ def get_file_entries(
             prefix_idx += 1
             if progress_callback:
                 progress_callback(
-                    MeasurementListProgress(
+                    make_listing_progress(
                         current_prefix_idx=prefix_idx,
                         total_prefixes=total_prefixes,
-                        progress_status=ProgressStatus.LISTING,
-                        current_file_entry_idx=0,
-                        total_file_entries=0,
-                        current_file_entry_bytes=0,
-                        total_file_entry_bytes=0,
+                        total_file_entries=len(file_entries),
                     )
                 )
 
