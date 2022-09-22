@@ -5,7 +5,8 @@ from re import L
 from typing import Optional, List, Tuple, Generator, Any, Mapping
 from datetime import datetime, date, timedelta
 
-from requests import request
+from urllib.parse import urlparse
+
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
@@ -18,6 +19,7 @@ from oonidata.observations import (
     TCPObservation,
     TLSObservation,
 )
+from oonidata.dataformat import WebConnectivityControl, WebConnectivity
 from oonidata.db.connections import ClickhouseConnection
 
 import logging
@@ -778,6 +780,94 @@ def make_website_http_verdict(
                 outcome=Outcome.BLOCKED,
                 outcome_detail="http.bodydiff",
             )
+
+
+def make_dns_baseline_from_control(
+    msmt_input: str, control: WebConnectivityControl
+) -> DNSBaseline:
+    domain_name = urlparse(msmt_input).hostname
+
+    assert domain_name is not None, "domain_name is None"
+
+    if not control or not control.dns:
+        return DNSBaseline(domain=domain_name)
+
+    nxdomain_cc_asn = []
+    if control.dns.failure == "dns_nxdomain_error":
+        nxdomain_cc_asn.append(("ZZ", 0))
+
+    ok_cc_asn = []
+    failure_cc_asn = []
+    if control.dns.failure is not None:
+        failure_cc_asn.append(("ZZ", 0))
+    else:
+        ok_cc_asn.append(("ZZ", 0))
+
+    answers_map = {}
+    if control.dns.addrs:
+        answers_map["ZZ"] = [(0, ip) for ip in control.dns.addrs]
+
+    return DNSBaseline(
+        domain=domain_name,
+        answers_map=answers_map,
+        ok_cc_asn=ok_cc_asn,
+        nxdomain_cc_asn=nxdomain_cc_asn,
+        failure_cc_asn=failure_cc_asn,
+    )
+
+
+def make_tcp_baseline_from_control(
+    control: WebConnectivityControl,
+) -> dict[str, TCPBaseline]:
+    if not control or not control.tcp_connect:
+        return {}
+
+    tcp_b_map = {}
+    for key, status in control.tcp_connect.items():
+        if status.failure == None:
+            tcp_b_map[key] = TCPBaseline(address=key, reachable_cc_asn=[("ZZ", 0)])
+        else:
+            tcp_b_map[key] = TCPBaseline(address=key, unreachable_cc_asn=[("ZZ", 0)])
+    return tcp_b_map
+
+
+def make_http_baseline_from_control(
+    msmt: WebConnectivity, control: WebConnectivityControl
+) -> dict[str, HTTPBaseline]:
+    if not control or not control.http_request:
+        return {}
+
+    if not msmt.test_keys.requests:
+        return {}
+
+    http_b_map = {}
+    # We make the baseline apply to every URL in the response chain, XXX evaluate how much this is a good idea
+    for http_transaction in msmt.test_keys.requests:
+        if not http_transaction.request:
+            continue
+
+        url = http_transaction.request.url
+        if control.http_request.failure == None:
+            http_b_map[url] = HTTPBaseline(
+                url=url,
+                response_body_title=control.http_request.title or "",
+                response_body_length=control.http_request.body_length or 0,
+                response_status_code=control.http_request.status_code or 0,
+                response_body_meta_title="",
+                response_body_sha1="",
+                ok_cc_asn=[("ZZ", 0)],
+            )
+        else:
+            http_b_map[url] = HTTPBaseline(
+                url=url,
+                response_body_title="",
+                response_body_length=0,
+                response_status_code=0,
+                response_body_meta_title="",
+                response_body_sha1="",
+                failure_cc_asn=[("ZZ", 0)],
+            )
+    return http_b_map
 
 
 def make_website_verdicts(
