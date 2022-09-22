@@ -70,8 +70,11 @@ def test_get_file_entries():
 
 
 def test_get_file_entries_for_cc():
+    from oonidata.dataclient import ProgressStatus
+
     def progress_callback(p):
         assert p.total_prefixes == 10
+        assert p.progress_status == ProgressStatus.LISTING
 
     fe_list, _ = get_file_entries(
         ccs=set(["IT"]),

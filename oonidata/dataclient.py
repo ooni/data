@@ -7,7 +7,7 @@ import logging
 import lz4.frame
 import shutil
 import orjson
-import concurrent.futures
+import multiprocessing.pool
 from datetime import date, timedelta, datetime
 
 from dataclasses import dataclass
@@ -462,13 +462,9 @@ def get_file_entries(
     total_file_entry_size = 0
     prefix_idx = 0
     total_prefixes = len(prefix_list)
-    with concurrent.futures.ThreadPoolExecutor() as tpe:
-        ftrs = []
-        for prefix in prefix_list:
-            ftrs.append(tpe.submit(list_file_entries, prefix))
 
-        for future in concurrent.futures.as_completed(ftrs):
-            fe_list = future.result()
+    with multiprocessing.pool.ThreadPool() as pool:
+        for fe_list in pool.imap_unordered(list_file_entries, prefix_list):
             for fe in fe_list:
                 if not fe.matches_filter(
                     ccs, testnames, start_timestamp, end_timestamp
