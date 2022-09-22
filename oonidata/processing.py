@@ -490,15 +490,18 @@ def process_day(
             if p.progress_status == ProgressStatus.LISTING:
                 if not pbar.total:
                     pbar.total = p.total_prefixes
-                pbar.update(p.current_prefix_idx)
+                pbar.update(1)
                 pbar.set_description(
-                    f"listed {p.current_prefix_idx}/{p.total_prefixes} prefixes"
+                    f"listed {p.total_file_entries} files in {p.current_prefix_idx}/{p.total_prefixes} prefixes"
                 )
                 return
 
             if p.progress_status == ProgressStatus.DOWNLOAD_BEGIN:
-                pbar.total = p.total_file_entry_bytes
                 pbar.unit = "B"
+                pbar.reset(total=p.total_file_entry_bytes)
+            pbar.set_description(
+                f"downloading {p.current_file_entry_idx}/{p.total_file_entries} files"
+            )
             pbar.update(p.current_file_entry_bytes)
 
         for idx, msmt_dict in enumerate(

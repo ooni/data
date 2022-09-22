@@ -576,7 +576,6 @@ def iter_measurements(
             )
         )
 
-    current_file_entry_bytes = 0
     for idx, fe in enumerate(file_entries):
         for msmt in fe.stream_measurements():
             # Legacy cans don't allow us to pre-filter on the probe_cc, so we do
@@ -585,11 +584,10 @@ def iter_measurements(
                 continue
             yield msmt
 
-        current_file_entry_bytes += fe.size
         if progress_callback:
             progress_callback(
                 make_download_progress(
-                    current_file_entry_bytes=current_file_entry_bytes,
+                    current_file_entry_bytes=fe.size,
                     total_file_entry_bytes=total_file_entry_bytes,
                     current_file_entry_idx=idx,
                     total_file_entries=len(file_entries),
