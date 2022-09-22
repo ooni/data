@@ -339,7 +339,6 @@ class WebConnectivityTestKeys(BaseModel):
 
     client_resolver: Optional[str] = None
 
-    agent: Optional[str] = None
     retries: Optional[int] = None
     socksproxy: Optional[str] = None
 
@@ -347,6 +346,31 @@ class WebConnectivityTestKeys(BaseModel):
 @dataclass
 class WebConnectivity(BaseMeasurement):
     test_keys: WebConnectivityTestKeys
+
+
+@dataclass
+class WhatsappTestKeys(BaseModel):
+    failure: Optional[str] = None
+    failed_operation: Optional[str] = None
+
+    network_events: Optional[List[NetworkEvent]] = None
+    tls_handshakes: Optional[List[TLSHandshake]] = None
+    queries: Optional[List[DNSQuery]] = None
+    tcp_connect: Optional[List[TCPConnect]] = None
+
+    registration_server_failure: Optional[str] = None
+    registration_server_status: Optional[str] = None
+    whatsapp_endpoints_status: Optional[str] = None
+    whatsapp_endpoints_blocked: Optional[List[str]] = None
+    whatsapp_endpoints_dns_inconsistent: Optional[List[str]] = None
+
+    whatsapp_web_failure: Optional[str] = None
+    whatsapp_web_status: Optional[str] = None
+
+
+@dataclass
+class Whatsapp(BaseMeasurement):
+    test_keys: WhatsappTestKeys
 
 
 @dataclass
@@ -400,9 +424,10 @@ nettest_dataformats = {
     "web_connectivity": WebConnectivity,
     "tor": Tor,
     "dnscheck": DNSCheck,
+    "whatsapp": Whatsapp,
 }
 
-SupportedDataformats = Union[WebConnectivity, Tor, DNSCheck, BaseMeasurement]
+SupportedDataformats = Union[WebConnectivity, Tor, DNSCheck, Whatsapp, BaseMeasurement]
 
 
 def load_measurement(msmt: dict) -> SupportedDataformats:
