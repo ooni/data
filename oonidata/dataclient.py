@@ -482,7 +482,7 @@ def get_file_entries(
     testnames: Set[str],
     from_cans: bool,
     progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
-) -> Tuple[List[FileEntry], int]:
+) -> List[FileEntry]:
     start_timestamp = datetime.combine(start_day, datetime.min.time())
     end_timestamp = datetime.combine(end_day, datetime.min.time())
 
@@ -527,8 +527,7 @@ def get_file_entries(
                     )
                 )
 
-    total_file_entry_bytes = sum(map(lambda fe: fe.size, file_entries))
-    return file_entries, total_file_entry_bytes
+    return file_entries
 
 
 def iter_measurements(
@@ -556,7 +555,7 @@ def iter_measurements(
     if isinstance(end_day, str):
         end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
 
-    file_entries, total_file_entry_bytes = get_file_entries(
+    file_entries = get_file_entries(
         start_day=start_day,
         end_day=end_day,
         ccs=ccs,
@@ -565,6 +564,7 @@ def iter_measurements(
         progress_callback=progress_callback,
     )
 
+    total_file_entry_bytes = sum(map(lambda fe: fe.size, file_entries))
     if progress_callback:
         progress_callback(
             make_download_progress(
