@@ -1,3 +1,4 @@
+from asyncio import as_completed
 import io
 import gzip
 import itertools
@@ -6,6 +7,7 @@ import logging
 import lz4.frame
 import shutil
 import orjson
+import concurrent.futures
 from datetime import date, timedelta, datetime
 
 from dataclasses import dataclass
@@ -410,6 +412,10 @@ def iter_file_entries(prefix: Prefix) -> Generator[FileEntry, None, None]:
                 log.error(exc)
 
 
+def list_file_entries(prefix: Prefix) -> List[FileEntry]:
+    return [fe for fe in iter_file_entries(prefix)]
+
+
 class MeasurementListProgress(NamedTuple):
     current_file_entry_idx: int
     total_file_entries: int
@@ -435,19 +441,27 @@ def get_file_entries(
     log.debug(f"using prefix list {prefix_list}")
     file_entries = []
     total_file_entry_size = 0
-    for prefix in prefix_list:
-        for fe in iter_file_entries(prefix):
+    with concurrent.futures.ThreadPoolExecutor() as tpe:
+        ftrs = []
+        for prefix in prefix_list:
+            ftrs.append(tpe.submit(list_file_entries, prefix))
 
-            if not fe.matches_filter(ccs, testnames, start_timestamp, end_timestamp):
-                continue
+        for future in concurrent.futures.as_completed(ftrs):
+            fe_list = future.result()
+            for fe in fe_list:
 
-            if from_cans == True and not fe.is_can:
-                continue
-            if from_cans == False and fe.is_can:
-                continue
+                if not fe.matches_filter(
+                    ccs, testnames, start_timestamp, end_timestamp
+                ):
+                    continue
 
-            total_file_entry_size += fe.size
-            file_entries.append(fe)
+                if from_cans == True and not fe.is_can:
+                    continue
+                if from_cans == False and fe.is_can:
+                    continue
+
+                total_file_entry_size += fe.size
+                file_entries.append(fe)
 
     return file_entries, total_file_entry_size
 
@@ -463,13 +477,13 @@ def iter_measurements(
     ccs = set()
     if probe_cc is not None:
         if isinstance(probe_cc, str):
-            probe_cc = [probe_cc]
+            probe_cc = probe_cc.split(",")
         ccs = set(list(map(lambda x: x.upper(), probe_cc)))
 
     testnames = set()
     if test_name is not None:
         if isinstance(test_name, str):
-            test_name = [test_name]
+            test_name = test_name.split(",")
         testnames = set(list(map(lambda x: x.lower().replace("_", ""), test_name)))
 
     if isinstance(start_day, str):

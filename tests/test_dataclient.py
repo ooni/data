@@ -58,17 +58,27 @@ def test_get_v2_prefixes():
 
 
 def test_get_file_entries():
-    fe_list = list(
-        get_file_entries(
-            ccs=set(),
-            testnames=set(),
-            start_day=date(2021, 1, 1),
-            end_day=date(2021, 1, 2),
-            from_cans=False,
-        )
+    fe_list, _ = get_file_entries(
+        ccs=set(),
+        testnames=set(),
+        start_day=date(2021, 1, 1),
+        end_day=date(2021, 1, 2),
+        from_cans=False,
     )
     # assert len(fe_list) == 1125
     assert len(fe_list) == 3320
+
+
+def test_get_file_entries_for_cc():
+    fe_list, _ = get_file_entries(
+        ccs=set(["IT"]),
+        testnames=set(["webconnectivity"]),
+        start_day=date(2022, 8, 1),
+        end_day=date(2022, 8, 11),
+        from_cans=True,
+    )
+    # assert len(fe_list) == 1125
+    assert len(fe_list) == 454
 
 
 def test_get_can_prefixes():
