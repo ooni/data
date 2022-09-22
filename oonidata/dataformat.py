@@ -85,10 +85,6 @@ class BaseMeasurement(BaseModel):
     probe_cc: str
     probe_ip: Optional[str]
 
-    resolver_asn: Optional[str]
-    resolver_ip: Optional[str]
-    resolver_network_name: Optional[str]
-
     test_name: str
     test_version: str
     test_runtime: float
@@ -97,8 +93,14 @@ class BaseMeasurement(BaseModel):
     software_version: str
 
     test_keys: BaseTestKeys
-    test_helpers: Optional[dict] = None
+
+    resolver_asn: Optional[str] = None
+    resolver_ip: Optional[str] = None
+    resolver_network_name: Optional[str] = None
+
     probe_network_name: Optional[str] = None
+
+    test_helpers: Optional[dict] = None
     data_format_version: Optional[str] = None
     measurement_uid: Optional[str] = None
 
