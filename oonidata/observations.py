@@ -107,7 +107,11 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
     resolver_as_org_name = ""
     resolver_as_cc = ""
 
-    resolver_asn_probe = msmt.resolver_asn or 0
+    resolver_asn_probe = msmt.resolver_asn
+    if resolver_asn_probe is None:
+        resolver_asn_probe = 0
+    else:
+        resolver_asn_probe = int(resolver_asn_probe[2:])
     resolver_as_org_name_probe = msmt.resolver_network_name or ""
     if resolver_ip == "[scrubbed]":
         resolver_asn = resolver_asn_probe
