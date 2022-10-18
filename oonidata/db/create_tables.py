@@ -81,7 +81,6 @@ def create_query_for_observation(obs_class: Type[Observation]) -> Tuple[str, str
         obs_class.__table_name__,
     )
 
-
 def create_query_for_verdict() -> Tuple[str, str]:
     columns = []
     for f in fields(Verdict):
@@ -96,7 +95,7 @@ def create_query_for_verdict() -> Tuple[str, str]:
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
-    ORDER BY (timestamp, verdict_id, measurement_uid)
+    ORDER BY (timestamp, observation_id, measurement_uid)
     SETTINGS index_granularity = 8192;
     """,
         "verdict",
@@ -111,6 +110,19 @@ def main():
         create_query_for_observation(HTTPObservation),
         create_query_for_observation(NettestObservation),
         create_query_for_verdict(),
+        (
+            """
+        CREATE TABLE dns_consistency_tls_baseline (
+            ip String,
+            domain_name String,
+            timestamp Datetime
+        )
+        ENGINE = ReplacingMergeTree
+        ORDER BY (ip, domain_name, timestamp)
+        SETTINGS index_granularity = 8192;
+        """,
+            "dns_consistency_tls_baseline",
+        ),
     ]
     for query, table_name in create_queries:
         print(f"clickhouse-client -q 'DROP TABLE {table_name}';")

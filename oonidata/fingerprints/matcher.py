@@ -38,7 +38,7 @@ class Fingerprint:
                 return False
 
         if self.location_found.startswith("header.") and self.regexp:
-            search_header = self.location_found.lstrip("header.")
+            search_header = self.location_found[len("header.") :]
             header_value = get_first_http_header(
                 search_header, http_response.headers_list_bytes or []
             )

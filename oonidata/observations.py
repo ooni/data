@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
-from typing import Generator, Optional, List, Dict
+from typing import Generator, Optional, List, Dict, Union
 
 from oonidata.dataformat import (
     BaseMeasurement,
@@ -16,6 +16,7 @@ from oonidata.dataformat import (
     NetworkEvent,
     TCPConnect,
     TLSHandshake,
+    WebConnectivity,
 )
 
 from oonidata.datautils import (
@@ -24,7 +25,7 @@ from oonidata.datautils import (
     get_html_title,
     is_ipv4_bogon,
     is_ipv6_bogon,
-    get_certificate_meta
+    get_certificate_meta,
 )
 from oonidata.fingerprints.matcher import FingerprintDB
 from oonidata.netinfo import NetinfoDB
@@ -45,7 +46,8 @@ class Observation(abc.ABC):
     measurement_uid: str
     observation_id: str
 
-    session_id: str
+    input: str
+    report_id: str
 
     timestamp: datetime
 
@@ -64,16 +66,26 @@ class Observation(abc.ABC):
     platform: str
     origin: str
 
-    resolver_asn: int
     resolver_ip: str
+    resolver_asn: int
     resolver_cc: str
     resolver_as_org_name: str
     resolver_as_cc: str
 
+    resolver_is_scrubbed: bool
+
+    # This is the resolver metadata computed by the probe. Once we do some
+    # quality control on them we might consolidate these into a single set of
+    # fields.
+    # If the resolver_is_scrubbed, we will be setting the resolver_* values to
+    # those computed by the probe and resolver_ip will be the empty string.
+    resolver_asn_probe: int
+    resolver_as_org_name_probe: str
+
 
 def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> dict:
     assert msmt.measurement_uid is not None
-    probe_asn = int(msmt.probe_asn.lstrip("AS"))
+    probe_asn = int(msmt.probe_asn[len("AS") :])
     measurement_start_time = datetime.strptime(
         msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S"
     )
@@ -81,10 +93,42 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
 
     resolver_as_info = None
     resolver_ip = msmt.resolver_ip
-    if not resolver_ip and msmt.test_keys and msmt.test_keys.client_resolver:
-        resolver_ip = msmt.test_keys.client_resolver
-    if resolver_ip:
+    client_resolver = None
+    resolver_is_scrubbed = False
+    if msmt.test_keys and msmt.test_keys.client_resolver:
+        client_resolver = msmt.test_keys.client_resolver
+
+    if client_resolver == "[scrubbed]" or resolver_ip == "[scrubbed]":
+        resolver_is_scrubbed = True
+
+    resolver_ip = resolver_ip or client_resolver or ""
+    resolver_cc = ""
+    resolver_asn = 0
+    resolver_as_org_name = ""
+    resolver_as_cc = ""
+
+    resolver_asn_probe = msmt.resolver_asn
+    if resolver_asn_probe is None:
+        resolver_asn_probe = 0
+    else:
+        resolver_asn_probe = int(resolver_asn_probe[2:])
+    resolver_as_org_name_probe = msmt.resolver_network_name or ""
+    if resolver_ip == "[scrubbed]":
+        resolver_asn = resolver_asn_probe
+        resolver_as_org_name = resolver_as_org_name_probe
+        resolver_ip = ""
+
+    if resolver_ip != "":
         resolver_as_info = netinfodb.lookup_ip(measurement_start_time, resolver_ip)
+        if resolver_as_info:
+            resolver_cc = resolver_as_info.cc
+            resolver_asn = resolver_as_info.as_info.asn
+            resolver_as_org_name = resolver_as_info.as_info.as_org_name
+            resolver_as_cc = resolver_as_info.as_info.as_cc
+
+    input_ = msmt.input
+    if isinstance(input_, list):
+        input_ = ":".join(msmt.input)
 
     return dict(
         measurement_uid=msmt.measurement_uid,
@@ -92,7 +136,8 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
         probe_cc=msmt.probe_cc,
         probe_as_org_name=probe_as_info.as_org_name if probe_as_info else "",
         probe_as_cc=probe_as_info.as_cc if probe_as_info else "",
-        session_id=msmt.report_id,
+        report_id=msmt.report_id,
+        input=input_,
         software_name=msmt.software_name,
         software_version=msmt.software_version,
         test_name=msmt.test_name,
@@ -100,13 +145,14 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
         platform=msmt.annotations.get("platform", "unknown"),
         origin=msmt.annotations.get("origin", "unknown"),
         target="",
-        resolver_ip=resolver_ip if resolver_ip else "",
-        resolver_cc=resolver_as_info.cc if resolver_as_info else "",
-        resolver_asn=resolver_as_info.as_info.asn if resolver_as_info else 0,
-        resolver_as_org_name=resolver_as_info.as_info.as_org_name
-        if resolver_as_info
-        else "",
-        resolver_as_cc=resolver_as_info.as_info.as_cc if resolver_as_info else "",
+        resolver_ip=resolver_ip,
+        resolver_cc=resolver_cc,
+        resolver_asn=resolver_asn,
+        resolver_as_org_name=resolver_as_org_name,
+        resolver_as_cc=resolver_as_cc,
+        resolver_asn_probe=resolver_asn_probe,
+        resolver_as_org_name_probe=resolver_as_org_name_probe,
+        resolver_is_scrubbed=resolver_is_scrubbed,
     )
 
 
@@ -136,7 +182,7 @@ class NettestObservation(Observation):
             annotations=msmt.annotations,
             **make_base_observation_meta(msmt, netinfodb),
         )
- 
+
 
 @dataclass
 class HTTPObservation(Observation):
@@ -263,7 +309,7 @@ def make_http_observations(
     msmt: BaseMeasurement,
     requests_list: Optional[List[HTTPTransaction]],
     fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
+    netinfodb: "NetinfoDB",
     target: str = "",
 ) -> Generator[HTTPObservation, None, None]:
     if not requests_list:
@@ -309,7 +355,7 @@ class DNSObservation(Observation):
         answer: Optional[DNSAnswer],
         idx: int,
         fingerprintdb: FingerprintDB,
-        netinfodb: NetinfoDB,
+        netinfodb: "NetinfoDB",
     ) -> "DNSObservation":
         dnso = DNSObservation(
             observation_id=f"{msmt.measurement_uid}_dns_{idx}",
@@ -620,3 +666,55 @@ def make_tls_observations(
         )
         tso.target = target
         yield tso
+
+
+def make_web_connectivity_observations(
+    msmt: WebConnectivity, fingerprintdb: FingerprintDB, netinfodb: NetinfoDB
+) -> Generator[
+    Union[HTTPObservation, TCPObservation, TLSObservation, DNSObservation], None, None
+]:
+    yield from make_http_observations(
+        msmt, msmt.test_keys.requests, fingerprintdb, netinfodb
+    )
+
+    dns_observations = list(
+        make_dns_observations(msmt, msmt.test_keys.queries, fingerprintdb, netinfodb)
+    )
+    ip_to_domain = {
+        str(obs.answer): obs.domain_name
+        for obs in filter(lambda o: o.answer, dns_observations)
+    }
+
+    yield from make_tcp_observations(
+        msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
+    )
+
+    tls_observations = list(
+        make_tls_observations(
+            msmt,
+            msmt.test_keys.tls_handshakes,
+            msmt.test_keys.network_events,
+            netinfodb,
+            ip_to_domain,
+        )
+    )
+
+    yield from tls_observations
+
+    # Here we take dns measurements and compare them to what we see in the tls
+    # data and check for TLS consistency.
+    tls_valid_ip_to_domain = {}
+    for obs in filter(
+        lambda o: o.ip and o.domain_name,
+        tls_observations,
+    ):
+        tls_valid_ip_to_domain[obs.ip] = tls_valid_ip_to_domain.get(obs.ip, {})
+        tls_valid_ip_to_domain[obs.ip][obs.domain_name] = obs.is_certificate_valid
+    enriched_dns_observations = []
+    for dns_obs in dns_observations:
+        if dns_obs.answer:
+            valid_domains = tls_valid_ip_to_domain.get(dns_obs.answer, {})
+            dns_obs.is_tls_consistent = valid_domains.get(dns_obs.domain_name, None)
+        enriched_dns_observations.append(dns_obs)
+
+    yield from enriched_dns_observations

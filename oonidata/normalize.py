@@ -12,7 +12,9 @@ import string
 import uuid
 
 import yaml
+import yaml.parser
 
+from oonidata.dataformat import trivial_id
 
 log = logging.getLogger("normalize")
 
@@ -128,9 +130,7 @@ test_categories = {
 
 regexps = dict(
     ipv4=r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})",
-    hostname=(
-        r"([a-zA-Z0-9](?:(?:[a-zA-Z0-9-]*|(?<!-)\.(?![-.]))*[a-zA-Z0-9]+)?)"
-    ),
+    hostname=(r"([a-zA-Z0-9](?:(?:[a-zA-Z0-9-]*|(?<!-)\.(?![-.]))*[a-zA-Z0-9]+)?)"),
 )
 
 
@@ -237,9 +237,7 @@ def normalize_httpt(entry):
 
     for session in entry["test_keys"].get("requests", []):
         if isinstance(session.get("response"), dict):
-            session["response"]["body"] = normalize_body(
-                session["response"]["body"]
-            )
+            session["response"]["body"] = normalize_body(session["response"]["body"])
             session["response"]["headers"] = normalize_headers(
                 session["response"]["headers"]
             )
@@ -247,9 +245,7 @@ def normalize_httpt(entry):
             session["response"] = {"body": None, "headers": {}}
 
         if isinstance(session.get("request"), dict):
-            session["request"]["body"] = normalize_body(
-                session["request"]["body"]
-            )
+            session["request"]["body"] = normalize_body(session["request"]["body"])
             session["request"]["headers"] = normalize_headers(
                 session["request"]["headers"]
             )
@@ -302,9 +298,7 @@ def normalize_httpt(entry):
     entry["test_keys"]["requests"] += experiment_requests
     entry["test_keys"]["requests"] += control_requests
     if entry["test_keys"].get("headers_diff", None) is not None:
-        entry["test_keys"]["headers_diff"] = list(
-            entry["test_keys"]["headers_diff"]
-        )
+        entry["test_keys"]["headers_diff"] = list(entry["test_keys"]["headers_diff"])
     return entry
 
 
@@ -347,15 +341,9 @@ def normalize_dnst(entry):
     errors = entry["test_keys"].pop("tampering", None)
     if errors:
         entry["test_keys"]["errors"] = errors
-        entry["test_keys"]["successful"] = [
-            e[0] for e in errors if e[1] is False
-        ]
-        entry["test_keys"]["failed"] = [
-            e[0] for e in errors if e[1] is not True
-        ]
-        entry["test_keys"]["inconsistent"] = [
-            e[0] for e in errors if e[1] is True
-        ]
+        entry["test_keys"]["successful"] = [e[0] for e in errors if e[1] is False]
+        entry["test_keys"]["failed"] = [e[0] for e in errors if e[1] is not True]
+        entry["test_keys"]["inconsistent"] = [e[0] for e in errors if e[1] is True]
     elif entry["test_name"] == "dns_consistency":
         entry["test_keys"]["errors"] = {}
         entry["test_keys"]["successful"] = []
@@ -370,9 +358,7 @@ def normalize_dnst(entry):
             query["hostname"] = None
 
         try:
-            query["resolver_hostname"], query["resolver_port"] = query.pop(
-                "resolver"
-            )
+            query["resolver_hostname"], query["resolver_port"] = query.pop("resolver")
         except:
             query["resolver_hostname"], query["resolver_port"] = [None, None]
 
@@ -587,15 +573,27 @@ def iter_yaml_msmt_normalized(data, bucket_tstamp: str, report_fn: str):
     headsha = hashlib.sha1(header)
     # XXX: bad header kills whole bucket
     header = yaml.safe_load(header)
+    if isinstance(header.get("probe_city"), bytes):
+        header["probe_city"] = header["probe_city"].decode(errors="ignore")
+
     # Generates report_id if needed
     if not header.get("report_id"):
         header["report_id"] = generate_report_id(header)
 
-    for off, entry in blobgen:
+    for off, raw_entry in blobgen:
         esha = headsha.copy()
-        esha.update(entry)
-        esha = esha.digest()
-        entry = yaml.safe_load(entry)
+        esha.update(raw_entry)
+        esha_d = esha.digest()
+        try:
+            entry = yaml.safe_load(raw_entry)
+        except yaml.constructor.ConstructorError:
+            rid = header["report_id"]
+            log.info(f"YAML construction error {rid}")
+            entry = None
+        except yaml.parser.ParserError:
+            rid = header["report_id"]
+            log.info(f"YAML parsing error {rid}")
+            entry = None
 
         if not entry:  # e.g. '---\nnull\n...\n'
             continue
@@ -603,19 +601,10 @@ def iter_yaml_msmt_normalized(data, bucket_tstamp: str, report_fn: str):
             header.pop("test_start_time")
         entry.update(header)
         try:
-            yield normalize_entry(entry, bucket_tstamp, report_fn, esha)
+            d = normalize_entry(entry, bucket_tstamp, report_fn, esha_d)
+            msmt_uid = trivial_id(raw_entry, d)
+            d["measurement_uid"] = msmt_uid
+            yield d
         except Exception as e:
-            log.error(str(e), exc_info=1)
+            log.error(f"Skipping measurement: {e}")
             continue
-
-        # try:
-        #    if not entry:  # e.g. '---\nnull\n...\n'
-        #        continue
-        #    if "test_start_time" in entry and "test_start_time" in header:
-        #        header.pop("test_start_time")
-        #    entry.update(header)
-        #    out = normalize_entry(entry, bucket_tstamp, report_fn, esha)
-        #    yield out
-        # except Exception as exc:
-        #    out = normalize_entry(entry, bucket_tstamp, report_fn, esha)
-        #    yield out
