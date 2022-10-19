@@ -16,6 +16,8 @@ from oonidata.verdicts import make_website_dns_verdict
 
 
 def baseline_query_mock(q, q_params):
+    # This pattern of mocking is a bit brittle.
+    # TODO: come up with a better way of mocking these things out
     if "SELECT DISTINCT(ip) FROM obs_tls" in q:
         return [["162.159.137.6"], ["162.159.136.6"], ["2606:4700:7::a29f:8906"]]
     if "SELECT probe_cc, probe_asn, failure, answer FROM obs_dns" in q:
