@@ -44,7 +44,9 @@ def download_file_entry_list(fe_list: List[FileEntry], args):
     """
     total_fe_size = 0
     output_dir = (
-        args.output_dir / fe_list[0].testname / fe_list[0].timestamp.strftime("%Y%m%d")
+        args.output_dir
+        / fe_list[0].testname
+        / fe_list[0].timestamp.strftime("%Y-%m-%d")
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -115,7 +117,7 @@ def sync(args):
             if (
                 args.output_dir
                 / fe.testname
-                / fe.timestamp.strftime("%Y%m%d")
+                / fe.timestamp.strftime("%Y%-m-%d")
                 / make_filename(args, fe)
             ).exists():
                 continue
