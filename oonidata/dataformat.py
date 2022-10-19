@@ -12,7 +12,7 @@ import hashlib
 from base64 import b64decode
 
 from datetime import datetime
-from typing import Optional, Tuple, Union, List, Union
+from typing import Optional, Tuple, Union, List, Union, Dict
 
 from dataclasses import dataclass
 from mashumaro.config import BaseConfig, TO_DICT_ADD_OMIT_NONE_FLAG
@@ -51,6 +51,17 @@ def guess_decode(s: bytes) -> str:
             pass
     log.warning(f"unable to decode '{s}'")
     return s.decode("ascii", "ignore")
+
+
+def maybe_binary_data_to_str(mbd: Union[MaybeBinaryData, dict]) -> str:
+    if isinstance(mbd, BinaryData):
+        return guess_decode(b64decode(mbd.data))
+    elif isinstance(mbd, dict):
+        return guess_decode(b64decode(mbd["data"]))
+    elif isinstance(mbd, str):
+        return mbd
+
+    raise Exception(f"Invalid type {type(mbd)} {mbd}")
 
 
 def maybe_binary_data_to_bytes(mbd: Union[MaybeBinaryData, dict]) -> bytes:
@@ -130,6 +141,7 @@ class BaseMeasurement(BaseModel):
 # tuples in JSON
 HeadersList = List[List[Union[str, MaybeBinaryData]]]
 HeadersListBytes = List[Tuple[str, bytes]]
+HeadersListStr = List[Tuple[str, str]]
 
 
 @dataclass
@@ -146,11 +158,24 @@ class HTTPBase(BaseModel):
     headers_list: Optional[HeadersList] = None
 
     _body_bytes = None
+    _body_str = None
     _headers = None
     _headers_list_bytes = None
+    _headers_list_str = None
 
     @property
-    def body_bytes(self):
+    def body_str(self) -> Optional[str]:
+        if not self.body:
+            return None
+
+        if self._body_str:
+            return self._body_str
+
+        self._body_str = maybe_binary_data_to_str(self.body)
+        return self._body_str
+
+    @property
+    def body_bytes(self) -> Optional[bytes]:
         if not self.body:
             return None
 
@@ -161,7 +186,7 @@ class HTTPBase(BaseModel):
         return self._body_bytes
 
     @property
-    def headers(self):
+    def headers(self) -> Optional[Dict[MaybeBinaryData, MaybeBinaryData]]:
         if not self.headers_list:
             return None
 
@@ -172,7 +197,21 @@ class HTTPBase(BaseModel):
         return self._headers
 
     @property
-    def headers_list_bytes(self):
+    def headers_list_str(self) -> Optional[List[Tuple[str, str]]]:
+        if not self.headers_list:
+            return None
+
+        if self._headers_list_str:
+            return self._headers_list_str
+
+        self._headers_list_str = [
+            (maybe_binary_data_to_str(k), maybe_binary_data_to_str(v))
+            for k, v in self.headers_list
+        ]
+        return self._headers_list_str
+
+    @property
+    def headers_list_bytes(self) -> Optional[List[Tuple[str, bytes]]]:
         if not self.headers_list:
             return None
 
@@ -183,7 +222,7 @@ class HTTPBase(BaseModel):
             (guess_decode(maybe_binary_data_to_bytes(k)), maybe_binary_data_to_bytes(v))
             for k, v in self.headers_list
         ]
-        return self.headers_list_bytes
+        return self._headers_list_bytes
 
     def __post_init__(self):
         if not self.headers_list and self.headers:

@@ -1,5 +1,5 @@
 from datetime import datetime, date, timedelta
-from typing import List, Any
+from typing import List, Any, Union
 from dataclasses import dataclass
 from functools import singledispatch
 import re
@@ -12,7 +12,12 @@ from cryptography.x509.oid import ExtensionOID, NameOID
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 
-from oonidata.dataformat import HeadersListBytes, BinaryData, guess_decode
+from oonidata.dataformat import (
+    HeadersListBytes,
+    HeadersListStr,
+    BinaryData,
+    guess_decode,
+)
 
 
 META_TITLE_REGEXP = re.compile(
@@ -38,7 +43,9 @@ def get_html_title(body: bytes) -> str:
 
 
 def get_first_http_header(
-    header_name: str, header_list: HeadersListBytes, case_sensitive: bool = False
+    header_name: str,
+    header_list: Union[HeadersListBytes, HeadersListStr],
+    case_sensitive: bool = False,
 ) -> bytes:
     if not header_list:
         return b""
