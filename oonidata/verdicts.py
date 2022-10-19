@@ -290,8 +290,7 @@ def make_dns_baseline(
     if isinstance(res, list) and len(res) > 0:
         dns_baseline.tls_consistent_answers = [row[0] for row in res]
 
-    q = """SELECT probe_cc, probe_asn, failure, answer
-    FROM obs_dns
+    q = """SELECT probe_cc, probe_asn, failure, answer FROM obs_dns
     WHERE domain_name = %(domain_name)s 
     AND timestamp >= %(start_day)s
     AND timestamp <= %(end_day)s
