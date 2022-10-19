@@ -155,6 +155,7 @@ class TorInfo(BaseModel):
 class HTTPBase(BaseModel):
     body: MaybeBinaryData = None
     body_is_truncated: Optional[bool] = None
+    headers: Optional[Dict[str, str]] = None
     headers_list: Optional[HeadersList] = None
 
     _body_bytes = None
@@ -186,15 +187,16 @@ class HTTPBase(BaseModel):
         return self._body_bytes
 
     @property
-    def headers(self) -> Optional[Dict[MaybeBinaryData, MaybeBinaryData]]:
-        if not self.headers_list:
+    def headers_str(self) -> Optional[Dict[str, str]]:
+        if not self.headers_list_str:
             return None
+        return {k: v for k, v in self.headers_list_str}
 
-        if self._headers:
-            return self._headers
-
-        self._headers = {k: v for k, v in self.headers_list}
-        return self._headers
+    @property
+    def headers_bytes(self) -> Optional[Dict[str, bytes]]:
+        if not self.headers_list_bytes:
+            return None
+        return {k: v for k, v in self.headers_list_bytes}
 
     @property
     def headers_list_str(self) -> Optional[List[Tuple[str, str]]]:
