@@ -44,7 +44,7 @@ def get_html_title(body: bytes) -> str:
 
 def get_first_http_header(
     header_name: str,
-    header_list: Union[HeadersListBytes, HeadersListStr],
+    header_list: HeadersListBytes,
     case_sensitive: bool = False,
 ) -> bytes:
     if not header_list:
@@ -59,7 +59,30 @@ def get_first_http_header(
 
         if header_name == k:
             return v
+
     return b""
+
+
+# TODO: come up with some nicer way to refactor this stuff so we don't have so much duplicate functions
+def get_first_http_header_str(
+    header_name: str,
+    header_list: HeadersListStr,
+    case_sensitive: bool = False,
+) -> Union[bytes, str, None]:
+    if not header_list:
+        return ""
+
+    if case_sensitive == False:
+        header_name = header_name.lower()
+
+    for k, v in header_list:
+        if case_sensitive == False:
+            k = k.lower()
+
+        if header_name == k:
+            return v
+
+    return ""
 
 
 # This comes from: https://ipinfo.io/bogon and https://publicdata.caida.org/datasets/bogon/bogon-bn-agg/

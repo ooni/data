@@ -21,6 +21,7 @@ from oonidata.dataformat import (
 
 from oonidata.datautils import (
     get_first_http_header,
+    get_first_http_header_str,
     get_html_meta_title,
     get_html_title,
     is_ipv4_bogon,
@@ -295,9 +296,9 @@ class HTTPObservation(Observation):
             # except block below, yet pylint is not able to figure that out.
             # TODO: maybe refactor this handle it better by checking if these are defined
             prev_request = requests_list[idx + 1]  # type: ignore
-            prev_location = get_first_http_header(
-                "location", prev_request.response.headers_list_bytes or []  # type: ignore
-            ).decode("utf-8")
+            prev_location = get_first_http_header_str(
+                "location", prev_request.response.headers_list_str or []  # type: ignore
+            )
             if prev_location == hrro.request_url:
                 hrro.request_redirect_from = prev_request.request.url  # type: ignore
         except (IndexError, UnicodeDecodeError, AttributeError):

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import requests
 
 from oonidata.dataformat import HTTPResponse
-from oonidata.datautils import get_first_http_header
+from oonidata.datautils import get_first_http_header_str
 
 
 @dataclass
@@ -64,13 +64,15 @@ class Fingerprint:
 
         if self.location_found.startswith("header.") and self.regexp:
             search_header = self.location_found[len("header.") :]
-            header_value = get_first_http_header(
+            header_value = get_first_http_header_str(
                 search_header, http_response.headers_list_str or []
             )
-            try:
-                return self.matches_pattern(header_value.decode("utf-8"))
-            except UnicodeDecodeError:
+            if not header_value:
                 return False
+
+            assert isinstance(header_value, str)
+
+            return self.matches_pattern(header_value)
         return False
 
 
