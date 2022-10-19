@@ -128,7 +128,7 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
 
     input_ = msmt.input
     if isinstance(input_, list):
-        input_ = ":".join(msmt.input)
+        input_ = ":".join(input_)
 
     return dict(
         measurement_uid=msmt.measurement_uid,

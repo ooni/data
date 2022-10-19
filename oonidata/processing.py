@@ -649,16 +649,22 @@ if __name__ == "__main__":
         "--start-day",
         type=_parse_date_flag,
         default=date(2022, 1, 1),
+        help=(
+            "the timestamp of the day for which we should start processing data (inclusive). "
+            "Note: this is the upload date, which doesn't necessarily match the measurement date."
+        ),
     )
     parser.add_argument(
         "--end-day",
         type=_parse_date_flag,
         default=date(2022, 1, 2),
+        help="the timestamp of the day for which we should stop processing data, this date is not included.",
     )
     parser.add_argument(
         "--parallelism",
         type=int,
         default=multiprocessing.cpu_count(),
+        help="number of processes to use. Only works when writing to a database.",
     )
     parser.add_argument(
         "--start-at-idx",

@@ -154,7 +154,7 @@ def make_tcp_baseline_map(
     GROUP BY probe_cc, probe_asn, ip, port, failure;
     """
     res = db.execute(q, q_params)
-    if len(res) > 0:
+    if isinstance(res, list) and len(res) > 0:
         for probe_cc, probe_asn, ip, port, failure in res:
             address = f"{ip}:{port}"
             tcp_baseline_map[address] = tcp_baseline_map.get(
@@ -205,7 +205,7 @@ def make_http_baseline_map(
     GROUP BY probe_cc, probe_asn, request_url, failure;
     """
     res = db.execute(q, q_params)
-    if len(res) > 0:
+    if isinstance(res, list) and len(res) > 0:
         for probe_cc, probe_asn, request_url, failure in res:
             http_baseline_map[request_url] = http_baseline_map.get(
                 request_url, HTTPBaseline(request_url)
@@ -231,7 +231,7 @@ def make_http_baseline_map(
     GROUP BY request_url;
     """
     res = db.execute(q, q_params)
-    if len(res) > 0:
+    if isinstance(res, list) and len(res) > 0:
         for (
             request_url,
             response_body_sha1,
@@ -287,7 +287,7 @@ def make_dns_baseline(
     AND timestamp <= %(end_day)s;
     """
     res = db.execute(q, q_params)
-    if len(res) > 0:
+    if isinstance(res, list) and len(res) > 0:
         dns_baseline.tls_consistent_answers = [row[0] for row in res]
 
     q = """SELECT probe_cc, probe_asn, failure, answer
@@ -298,7 +298,7 @@ def make_dns_baseline(
     GROUP BY probe_cc, probe_asn, failure, answer;
     """
     res = db.execute(q, q_params)
-    if len(res) > 0:
+    if isinstance(res, list) and len(res) > 0:
         for probe_cc, probe_asn, failure, ip in res:
             if not failure:
                 dns_baseline.ok_cc_asn.append((probe_cc, probe_asn))
