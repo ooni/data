@@ -411,7 +411,8 @@ def get_can_prefixes(start_day: date, end_day: date) -> List[Prefix]:
 
 
 def iter_file_entries(prefix: Prefix) -> Generator[FileEntry, None, None]:
-    paginator = s3.get_paginator("list_objects_v2")
+    s3_client = create_s3_client()
+    paginator = s3_client.get_paginator("list_objects_v2")
     for r in paginator.paginate(Bucket=prefix.bucket_name, Prefix=prefix.prefix):
         for obj_dict in r.get("Contents", []):
             try:
