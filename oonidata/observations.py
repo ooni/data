@@ -27,7 +27,7 @@ from oonidata.datautils import (
     is_ipv6_bogon,
     get_certificate_meta,
 )
-from oonidata.fingerprints.matcher import FingerprintDB
+from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
 

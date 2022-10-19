@@ -2,7 +2,6 @@ import orjson
 from oonidata.apiclient import get_raw_measurement
 
 from oonidata.dataformat import WebConnectivity, load_measurement
-from oonidata.fingerprints.matcher import FingerprintDB
 
 
 def test_fingerprintdb(fingerprintdb):

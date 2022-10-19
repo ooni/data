@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from oonidata.fingerprints.matcher import FingerprintDB
+from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
 FIXTURE_PATH = Path(os.path.dirname(os.path.realpath(__file__))) / "data"

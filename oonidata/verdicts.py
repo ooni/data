@@ -7,7 +7,7 @@ from datetime import datetime, date, timedelta
 
 from urllib.parse import urlparse
 
-from oonidata.fingerprints.matcher import FingerprintDB
+from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.datautils import one_day_dict
