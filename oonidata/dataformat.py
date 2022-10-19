@@ -8,17 +8,15 @@ See:
 - https://github.com/ooni/spec/tree/master/nettests
 """
 import logging
-import orjson
 import hashlib
 from base64 import b64decode
 
+from datetime import datetime
 from typing import Optional, Tuple, Union, List, Union
 
 from dataclasses import dataclass
 from mashumaro.config import BaseConfig, TO_DICT_ADD_OMIT_NONE_FLAG
 from mashumaro import DataClassDictMixin
-
-from oonidata.utils import trivial_id
 
 
 log = logging.getLogger("oonidata.dataformat")
@@ -64,6 +62,28 @@ def maybe_binary_data_to_bytes(mbd: Union[MaybeBinaryData, dict]) -> bytes:
         return mbd.encode("utf-8")
 
     raise Exception(f"Invalid type {type(mbd)} {mbd}")
+
+
+def trivial_id(raw: bytes, msm: dict) -> str:
+    """Generate a trivial id of the measurement to allow upsert if needed
+    This is used for legacy (before measurement_uid) measurements
+    - Deterministic / stateless with no DB interaction
+    - Malicious/bugged msmts with collisions on report_id/input/test_name lead
+    to different hash values avoiding the collision
+    - Malicious/duplicated msmts that are semantically identical to the "real"
+    one lead to harmless collisions
+    - Sortable by date
+    """
+    VER = "01"
+    h = hashlib.shake_128(raw).hexdigest(15)
+    try:
+        t = msm.get("measurement_start_time") or ""
+        t = datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+        ts = t.strftime("%Y%m%d")
+    except:
+        ts = "00000000"
+    tid = f"{VER}{ts}{h}"
+    return tid
 
 
 @dataclass

@@ -184,7 +184,7 @@ def stream_jsonlz4(body: io.BytesIO):
                 log.error("oldcan: unable to parse json measurement")
                 continue
 
-            msmt_uid = trivial_id(line, msmt)
+            msmt_uid = trivial_id(line, msmt)  # type: ignore due to bad types in lz4
             msmt["measurement_uid"] = msmt_uid
             yield msmt
 
@@ -207,7 +207,7 @@ def stream_oldcan(body: io.BytesIO, s3path: str) -> Generator[dict, None, None]:
     read_body = read_to_bytesio(body)
 
     with lz4.frame.open(read_body) as lz4_file:
-        with tarfile.open(fileobj=lz4_file) as tar:
+        with tarfile.open(fileobj=lz4_file) as tar:  # type: ignore due to bad types in lz4
             for m in tar:
                 in_file = tar.extractfile(m)
                 if in_file is None:
