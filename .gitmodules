@@ -1,3 +1,0 @@
-[submodule "tests/data/historical-geoip"]
-	path = tests/data/historical-geoip
-	url = git@github.com:ooni/historical-geoip.git

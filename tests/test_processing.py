@@ -1,14 +1,15 @@
 from unittest.mock import MagicMock
 
-from oonidata.apiclient import get_raw_measurement
+from oonidata.apiclient import get_measurement_dict
 from oonidata.dataformat import load_measurement
 from oonidata.observations import make_http_observations
 from oonidata.processing import make_observation_row, web_connectivity_processor
 
+
 def test_insert_query_for_observation(fingerprintdb, netinfodb):
 
     http_blocked = load_measurement(
-        get_raw_measurement(
+        get_measurement_dict(
             "20220608T120927Z_webconnectivity_RU_41668_n1_wuoaKW00hbGU12Yw",
             "http://proxy.org/",
         )
@@ -36,9 +37,9 @@ def test_insert_query_for_observation(fingerprintdb, netinfodb):
 
 def test_web_connectivity_processor(fingerprintdb, netinfodb):
     msmt = load_measurement(
-        get_raw_measurement(
+        get_measurement_dict(
             "20220627T131610Z_webconnectivity_GB_5089_n1_hPwPFmWSlBooLToC",
-            "https://ooni.org/"
+            "https://ooni.org/",
         )
     )
     db = MagicMock()

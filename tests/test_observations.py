@@ -1,16 +1,18 @@
+import orjson
 from oonidata.observations import (
     make_http_observations,
     make_dns_observations,
     make_tcp_observations,
     make_tls_observations,
 )
-from oonidata.apiclient import get_raw_measurement
+from oonidata.apiclient import get_measurement_dict
 
-from oonidata.dataformat import load_measurement
+from oonidata.dataformat import WebConnectivity, load_measurement
+
 
 def test_http_observations(fingerprintdb, netinfodb):
     msmt = load_measurement(
-        get_raw_measurement(
+        get_measurement_dict(
             "20220608T131504Z_webconnectivity_AM_49800_n1_AqEZWsh35AuSmwMv",
             "http://hahr.am",
         )
@@ -30,11 +32,12 @@ def test_http_observations(fingerprintdb, netinfodb):
     assert all_http_obs[0].request_url == "https://hahr.am/"
 
     msmt = load_measurement(
-        get_raw_measurement(
+        get_measurement_dict(
             "20220608T154458Z_webconnectivity_AM_49800_n1_Xz3UTlXhINnvPC0o",
             "https://aysor.am",
         )
     )
+    assert isinstance(msmt, WebConnectivity)
     all_dns_obs = [
         obs
         for obs in make_dns_observations(
@@ -80,7 +83,7 @@ def test_http_observations(fingerprintdb, netinfodb):
     assert all_tls_obs[1].port == 443
 
     http_blocked = load_measurement(
-        get_raw_measurement(
+        get_measurement_dict(
             "20220608T120927Z_webconnectivity_RU_41668_n1_wuoaKW00hbGU12Yw",
             "http://proxy.org/",
         )

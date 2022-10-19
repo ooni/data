@@ -32,7 +32,7 @@ from oonidata.observations import (
 )
 from oonidata.dataformat import DNSCheck, load_measurement
 from oonidata.dataformat import BaseMeasurement, WebConnectivity, Tor
-from oonidata.fingerprints.matcher import FingerprintDB
+from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 from oonidata.verdicts import (
     DNSBaseline,
@@ -551,11 +551,8 @@ def process_day(
 
 
 def worker(day_queue, args):
-    fingerprintdb = FingerprintDB()
-
-    netinfodb = NetinfoDB(
-        datadir=Path(args.geoip_dir), as_org_map_path=Path(args.asn_map)
-    )
+    fingerprintdb = FingerprintDB(datadir=args.data_dir, download=False)
+    netinfodb = NetinfoDB(datadir=args.data_dir, download=False)
 
     if args.clickhouse:
         db = ClickhouseConnection(args.clickhouse)
@@ -633,12 +630,8 @@ if __name__ == "__main__":
         help="two letter country code, can be comma separated for a list (eg. IT,US). If omitted will select process all countries.",
     )
     parser.add_argument(
-        "--geoip-dir",
-        type=str,
-    )
-    parser.add_argument(
-        "--asn-map",
-        type=str,
+        "--data-dir",
+        type=Path,
     )
     parser.add_argument(
         "--test-name",
@@ -675,6 +668,10 @@ if __name__ == "__main__":
     parser.add_argument("--skip-verdicts", action="store_true")
     parser.add_argument("--fast-fail", action="store_true")
     args = parser.parse_args()
+
+    # This triggers the download of the required files
+    FingerprintDB(datadir=args.data_dir, download=True)
+    NetinfoDB(datadir=args.data_dir, download=True)
 
     if args.csv_dir:
         log.info(
