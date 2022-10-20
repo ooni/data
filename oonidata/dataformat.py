@@ -9,12 +9,16 @@ See:
 """
 import logging
 import hashlib
+
+from pathlib import Path
 from base64 import b64decode
 
 from datetime import datetime
 from typing import Optional, Tuple, Union, List, Union, Dict
 
 from dataclasses import dataclass
+
+import orjson
 from mashumaro.config import BaseConfig, TO_DICT_ADD_OMIT_NONE_FLAG
 from mashumaro import DataClassDictMixin
 
@@ -491,6 +495,13 @@ nettest_dataformats = {
 SupportedDataformats = Union[WebConnectivity, Tor, DNSCheck, Whatsapp, BaseMeasurement]
 
 
-def load_measurement(msmt: dict) -> SupportedDataformats:
+def load_measurement(
+    msmt: Optional[dict] = None, msmt_path: Optional[Path] = None
+) -> SupportedDataformats:
+    if msmt_path:
+        with msmt_path.open() as in_file:
+            msmt = orjson.loads(in_file.read())
+
+    assert msmt, "either msmt or msmt_path should be set"
     dc = nettest_dataformats.get(msmt["test_name"], BaseMeasurement)
     return dc.from_dict(msmt)
