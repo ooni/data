@@ -59,10 +59,13 @@ class Observation(abc.ABC):
 
     probe_as_org_name: str
     probe_as_cc: str
+    probe_as_name: str
 
     software_name: str
     software_version: str
     test_name: str
+    test_version: str
+
     network_type: str
     platform: str
     origin: str
@@ -137,11 +140,13 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
         probe_cc=msmt.probe_cc,
         probe_as_org_name=probe_as_info.as_org_name if probe_as_info else "",
         probe_as_cc=probe_as_info.as_cc if probe_as_info else "",
+        probe_as_name=probe_as_info.as_name if probe_as_info else "",
         report_id=msmt.report_id,
         input=input_,
         software_name=msmt.software_name,
         software_version=msmt.software_version,
         test_name=msmt.test_name,
+        test_version=msmt.test_version,
         network_type=msmt.annotations.get("network_type", "unknown"),
         platform=msmt.annotations.get("platform", "unknown"),
         origin=msmt.annotations.get("origin", "unknown"),

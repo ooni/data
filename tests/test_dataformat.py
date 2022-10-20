@@ -7,23 +7,23 @@ from oonidata.dataformat import WebConnectivity, load_measurement, HTTPTransacti
 from oonidata.apiclient import get_raw_measurement
 
 
-def test_dataformat_web_connectivity():
-    raw_msmt = get_raw_measurement(
-        "20220607T115805Z_webconnectivity_BR_270374_n1_69vdpoRbUpU1Lwjz",
-        "https://ooni.org/",
+def test_dataformat_web_connectivity(measurements):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20220607115854.978538_BR_webconnectivity_d47c958eb0986d1b"
+        ]
     )
-    msmt = load_measurement(orjson.loads(raw_msmt))
     assert msmt.measurement_start_time.startswith("2022")
     assert isinstance(msmt, WebConnectivity)
     assert msmt.test_keys
     assert msmt.test_keys.requests
     assert len(msmt.test_keys.requests) > 0
 
-    raw_msmt = get_raw_measurement(
-        "20220107T222039Z_webconnectivity_IL_42925_n1_18Kwpmtx9nYVVoeM",
-        "https://ooni.org/",
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20220107222458.184469_IL_webconnectivity_d32af5597d7eeccc"
+        ]
     )
-    msmt = load_measurement(orjson.loads(raw_msmt))
     assert isinstance(msmt, WebConnectivity)
     assert msmt.measurement_start_time.startswith("2022")
     assert msmt.test_keys

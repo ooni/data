@@ -95,17 +95,16 @@ def test_baselines():
     assert len(tcp_baseline_map["162.159.137.6:443"].reachable_cc_asn) == 3
 
 
-def test_website_dns_verdict(fingerprintdb, netinfodb):
+def test_website_dns_verdict(fingerprintdb, netinfodb, measurements):
     day = date(2022, 1, 1)
     domain_name = "ooni.org"
 
     db = make_mock_baselinedb()
 
     msmt = load_measurement(
-        get_measurement_dict(
-            "20220626T215355Z_webconnectivity_IR_206065_n1_aoeFoexkL6onyiqN",
-            "https://thepiratebay.org/",
-        )
+        msmt_path=measurements[
+            "20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"
+        ]
     )
     dns_baseline = make_dns_baseline(day, domain_name, db)
     for dns_o in make_dns_observations(
@@ -118,10 +117,9 @@ def test_website_dns_verdict(fingerprintdb, netinfodb):
         assert verdict.outcome_detail == "dns.blockpage"
 
     msmt = load_measurement(
-        get_measurement_dict(
-            "20220627T134105Z_webconnectivity_DE_3209_n1_OxtDrquootq2Ud5G",
-            "https://thepiratebay.org/",
-        )
+        msmt_path=measurements[
+            "20220627134426.194308_DE_webconnectivity_15675b61ec62e268"
+        ]
     )
     dns_baseline = make_dns_baseline(day, domain_name, db)
     for dns_o in make_dns_observations(
@@ -134,10 +132,9 @@ def test_website_dns_verdict(fingerprintdb, netinfodb):
         assert verdict.outcome_detail == "dns.bogon"
 
     msmt = load_measurement(
-        get_measurement_dict(
-            "20220627T125710Z_webconnectivity_FR_5410_n1_KMkIWk9q4gZRq9gS",
-            "https://thepiratebay.org/",
-        )
+        msmt_path=measurements[
+            "20220627125833.737451_FR_webconnectivity_bca9ad9d3371919a"
+        ]
     )
     dns_baseline = make_dns_baseline(day, domain_name, db)
     for dns_o in make_dns_observations(
@@ -150,10 +147,9 @@ def test_website_dns_verdict(fingerprintdb, netinfodb):
         assert verdict.outcome_detail == "dns.nxdomain"
 
     msmt = load_measurement(
-        get_measurement_dict(
-            "20220625T234722Z_webconnectivity_HU_20845_n1_Kg7ARyGpKG58zIZU",
-            "https://thepiratebay.org/",
-        )
+        msmt_path=measurements[
+            "20220625234824.235023_HU_webconnectivity_3435a5df0e743d39"
+        ]
     )
     dns_baseline = make_dns_baseline(day, domain_name, db)
     for dns_o in make_dns_observations(

@@ -15,7 +15,6 @@ from oonidata.dataclient import (
     get_file_entries,
     iter_measurements,
     FileEntry,
-    ProgressStatus,
 )
 from oonidata.datautils import trim_measurement
 

@@ -6,13 +6,12 @@ from oonidata.observations import make_http_observations
 from oonidata.processing import make_observation_row, web_connectivity_processor
 
 
-def test_insert_query_for_observation(fingerprintdb, netinfodb):
+def test_insert_query_for_observation(fingerprintdb, netinfodb, measurements):
 
     http_blocked = load_measurement(
-        get_measurement_dict(
-            "20220608T120927Z_webconnectivity_RU_41668_n1_wuoaKW00hbGU12Yw",
-            "http://proxy.org/",
-        )
+        msmt_path=measurements[
+            "20220608121828.356206_RU_webconnectivity_80e3fa60eb2cd026"
+        ]
     )
     all_http_obs = [
         obs
@@ -35,12 +34,11 @@ def test_insert_query_for_observation(fingerprintdb, netinfodb):
     assert "request_url" in params
 
 
-def test_web_connectivity_processor(fingerprintdb, netinfodb):
+def test_web_connectivity_processor(fingerprintdb, netinfodb, measurements):
     msmt = load_measurement(
-        get_measurement_dict(
-            "20220627T131610Z_webconnectivity_GB_5089_n1_hPwPFmWSlBooLToC",
-            "https://ooni.org/",
-        )
+        msmt_path=measurements[
+            "20220627131742.081225_GB_webconnectivity_e1e2cf4db492b748"
+        ]
     )
     db = MagicMock()
     db.write_row = MagicMock()

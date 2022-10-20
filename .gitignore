@@ -4,3 +4,4 @@ __pycache__
 /asdata
 /geoip
 /tests/data/datadir/*
+/tests/data/measurements/*
