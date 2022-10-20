@@ -1,9 +1,6 @@
-import sys
 import time
-import argparse
 import logging
 import traceback
-import multiprocessing
 import orjson
 
 from tqdm import tqdm
@@ -47,7 +44,6 @@ from oonidata.verdicts import (
 from oonidata.dataclient import (
     MeasurementListProgress,
     iter_measurements,
-    date_interval,
     ProgressStatus,
 )
 from oonidata.db.connections import (
@@ -173,7 +169,8 @@ def dnscheck_processor(
             dns_observations,
         )
 
-    for lookup in msmt.test_keys.lookups.values():
+    lookup_map = msmt.test_keys.lookups or {}
+    for lookup in lookup_map.values():
         write_observations_to_db(
             db, make_dns_observations(msmt, lookup.queries, fingerprintdb, netinfodb)
         )
@@ -504,6 +501,7 @@ def process_day(
             if p.progress_status == ProgressStatus.DOWNLOAD_BEGIN:
                 pbar.unit = "B"
                 pbar.reset(total=p.total_file_entry_bytes)
+
             pbar.set_description(
                 f"downloading {p.current_file_entry_idx}/{p.total_file_entries} files"
             )
@@ -532,6 +530,7 @@ def process_day(
                     netinfodb,
                 )
             except Exception as exc:
+                log.error(f"failed at idx:{idx} {exc}")
                 with open("bad_msmts.jsonl", "ab+") as out_file:
                     out_file.write(orjson.dumps(msmt_dict))
                     out_file.write(b"\n")
@@ -553,149 +552,3 @@ def process_day(
         )
 
     return time.monotonic() - t0, day
-
-
-def worker(day_queue, args):
-    fingerprintdb = FingerprintDB(datadir=args.data_dir, download=False)
-    netinfodb = NetinfoDB(datadir=args.data_dir, download=False)
-
-    if args.clickhouse:
-        db = ClickhouseConnection(args.clickhouse)
-    elif args.csv_dir:
-        db = CSVConnection(Path(args.csv_dir))
-    else:
-        raise Exception("Missing --csv-dir or --clickhouse")
-
-    skip_verdicts = args.skip_verdicts
-    if not isinstance(db, ClickhouseConnection):
-        skip_verdicts = True
-
-    test_name = []
-    if args.test_name:
-        test_name = args.test_name.split(",")
-
-    probe_cc = []
-    if args.probe_cc:
-        probe_cc = args.probe_cc.split(",")
-
-    skip_verdicts = args.skip_verdicts
-    if not isinstance(db, ClickhouseConnection):
-        skip_verdicts = True
-
-    while True:
-        day = day_queue.get(block=True)
-        if day == None:
-            break
-
-        if isinstance(db, ClickhouseConnection) and args.only_verdicts:
-            write_verdicts_to_db(
-                db,
-                generate_website_verdicts(
-                    args.day,
-                    db,
-                    fingerprintdb,
-                    netinfodb,
-                ),
-            )
-            continue
-
-        process_day(
-            db,
-            fingerprintdb,
-            netinfodb,
-            day,
-            test_name=test_name,
-            probe_cc=probe_cc,
-            start_at_idx=args.start_at_idx,
-            skip_verdicts=skip_verdicts,
-            fast_fail=args.fast_fail,
-        )
-
-
-if __name__ == "__main__":
-    # XXX this is just for temporary testing
-    log.addHandler(logging.StreamHandler())
-    log.setLevel(logging.DEBUG)
-
-    def _parse_date_flag(date_str: str) -> date:
-        return datetime.strptime(date_str, "%Y-%m-%d").date()
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--csv-dir",
-        type=str,
-    )
-    parser.add_argument(
-        "--clickhouse",
-        type=str,
-    )
-    parser.add_argument(
-        "--probe-cc",
-        type=str,
-        help="two letter country code, can be comma separated for a list (eg. IT,US). If omitted will select process all countries.",
-    )
-    parser.add_argument(
-        "--data-dir",
-        type=Path,
-    )
-    parser.add_argument(
-        "--test-name",
-        type=str,
-        help="test_name you care to process, can be comma separated for a list (eg. web_connectivity,whatsapp). If omitted will select process all test names.",
-    )
-    parser.add_argument(
-        "--start-day",
-        type=_parse_date_flag,
-        default=date(2022, 1, 1),
-        help=(
-            "the timestamp of the day for which we should start processing data (inclusive). "
-            "Note: this is the upload date, which doesn't necessarily match the measurement date."
-        ),
-    )
-    parser.add_argument(
-        "--end-day",
-        type=_parse_date_flag,
-        default=date(2022, 1, 2),
-        help="the timestamp of the day for which we should stop processing data, this date is not included.",
-    )
-    parser.add_argument(
-        "--parallelism",
-        type=int,
-        default=multiprocessing.cpu_count(),
-        help="number of processes to use. Only works when writing to a database.",
-    )
-    parser.add_argument(
-        "--start-at-idx",
-        type=int,
-        default=0,
-    )
-    parser.add_argument("--only-verdicts", action="store_true")
-    parser.add_argument("--skip-verdicts", action="store_true")
-    parser.add_argument("--fast-fail", action="store_true")
-    args = parser.parse_args()
-
-    # This triggers the download of the required files
-    FingerprintDB(datadir=args.data_dir, download=True)
-    NetinfoDB(datadir=args.data_dir, download=True)
-
-    if args.csv_dir:
-        log.info(
-            "When generating CSV outputs we currently only support parallelism of 1"
-        )
-        args.parallelism = 1
-
-    day_queue = multiprocessing.Queue()
-    pool = multiprocessing.Pool(
-        processes=args.parallelism, initializer=worker, initargs=(day_queue, args)
-    )
-    for day in date_interval(args.start_day, args.end_day):
-        day_queue.put(day)
-
-    for _ in range(args.parallelism):
-        day_queue.put(None)
-
-    day_queue.close()
-    day_queue.join_thread()
-
-    pool.close()
-    pool.join()

@@ -1,4 +1,7 @@
 import csv
+
+from collections import namedtuple
+from datetime import datetime
 from pprint import pformat
 import logging
 
@@ -12,6 +15,9 @@ class DatabaseConnection:
     def write_row(self, table_name, row):
         log.info(f"Writing to {table_name}")
         log.info(pformat(row))
+
+    def close(self):
+        pass
 
 
 class ClickhouseConnection(DatabaseConnection):
@@ -35,6 +41,9 @@ class ClickhouseConnection(DatabaseConnection):
             raise exc
 
 
+CSVConnectionHandle = namedtuple("CSVConnectionHandle", ["fh", "writer"])
+
+
 class CSVConnection(DatabaseConnection):
     def __init__(self, output_dir):
         self.output_dir = output_dir
@@ -42,9 +51,16 @@ class CSVConnection(DatabaseConnection):
 
     def write_row(self, table_name, row):
         if table_name not in self.open_writers:
-            out_path = (self.output_dir / f"{table_name}.csv").open("w")
-            csv_writer = csv.DictWriter(out_path, fieldnames=list(row.keys()))
+            ts = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+            fh = (self.output_dir / f"{table_name}-{ts}.csv").open("w")
+            csv_writer = csv.DictWriter(fh, fieldnames=list(row.keys()))
             csv_writer.writeheader()
-            self.open_writers[table_name] = csv_writer
+            self.open_writers[table_name] = CSVConnectionHandle(
+                writer=csv_writer, fh=fh
+            )
 
-        self.open_writers[table_name].writerow(row)
+        self.open_writers[table_name].writer.writerow(row)
+
+    def close(self):
+        for handle in self.open_writers.values():
+            handle.fh.close()

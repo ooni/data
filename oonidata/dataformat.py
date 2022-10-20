@@ -103,7 +103,7 @@ def trivial_id(raw: bytes, msm: dict) -> str:
 
 @dataclass
 class BaseTestKeys(BaseModel):
-    client_resolver: Optional[str]
+    client_resolver: Optional[str] = None
 
 
 @dataclass
@@ -451,7 +451,7 @@ class URLGetterTestKeys(BaseTestKeys):
 
 @dataclass
 class DNSCheckTestKeys(BaseTestKeys):
-    lookups: dict[str, URLGetterTestKeys]
+    lookups: Optional[dict[str, URLGetterTestKeys]] = None
     bootstrap: Optional[URLGetterTestKeys] = None
     bootstrap_failure: Optional[str] = None
 
