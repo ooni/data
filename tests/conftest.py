@@ -73,6 +73,11 @@ SAMPLE_MEASUREMENTS = [
         "20220625T234722Z_webconnectivity_HU_20845_n1_Kg7ARyGpKG58zIZU",
         "https://thepiratebay.org/",
     ),
+    (
+        "20220924222854.036406_IR_webconnectivity_7aedefe4aaac824c",
+        "20220924T215758Z_webconnectivity_IR_206065_n1_2CRoWBNJkWc7VyAs",
+        "https://doh.dns.apple.com/dns-query?dns=q80BAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB",
+    ),
 ]
 
 
