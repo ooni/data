@@ -29,6 +29,7 @@ from oonidata.observations import (
     make_tcp_observations,
     make_tls_observations,
     make_web_connectivity_observations,
+    make_ip_to_domain,
 )
 from oonidata.dataformat import DNSCheck, load_measurement
 from oonidata.dataformat import BaseMeasurement, WebConnectivity, Tor
@@ -166,10 +167,7 @@ def dnscheck_processor(
                 msmt, msmt.test_keys.bootstrap.queries, fingerprintdb, netinfodb
             )
         )
-        ip_to_domain = {
-            str(obs.answer): obs.domain_name
-            for obs in filter(lambda o: o.answer, dns_observations)
-        }
+        ip_to_domain = make_ip_to_domain(dns_observations)
         write_observations_to_db(
             db,
             dns_observations,
@@ -221,7 +219,9 @@ def domains_in_a_day(
     if probe_cc:
         q += "AND probe_cc = %(probe_cc)s"
         params["probe_cc"] = probe_cc
-    return [res[0] for res in db.execute(q, params)]
+    res = db.execute(q, params)
+    assert isinstance(res, list)
+    return [row[0] for row in res]
 
 
 def dns_observations_by_session(
@@ -253,8 +253,10 @@ def dns_observations_by_session(
     # Put all the DNS observations from the same testing session into a list and yield it
     dns_obs_session = []
     last_obs_session_id = None
-    for res in db.execute(q, q_params):
-        obs_dict = {field_names[idx]: val for idx, val in enumerate(res)}
+    res = db.execute(q, q_params)
+    assert isinstance(res, list)
+    for rows in res:
+        obs_dict = {field_names[idx]: val for idx, val in enumerate(rows)}
         dns_obs = DNSObservation(**obs_dict)
 
         if last_obs_session_id and last_obs_session_id != dns_obs.report_id:
@@ -292,8 +294,10 @@ def observations_in_session(
     q_params["domain_name"] = domain_name
     q_params["report_id"] = report_id
 
-    for res in db.execute(q, q_params):
-        obs_dict = {field_names[idx]: val for idx, val in enumerate(res)}
+    res = db.execute(q, q_params)
+    assert isinstance(res, list)
+    for rows in res:
+        obs_dict = {field_names[idx]: val for idx, val in enumerate(rows)}
         observation_list.append(obs_class(**obs_dict))
     return observation_list
 
@@ -402,6 +406,7 @@ def get_extra_dns_consistency_tls_baseline(
         "SELECT DISTINCT ip FROM dns_consistency_tls_baseline WHERE ip IN %(ip_list)s AND domain_name = %(domain_name)s",
         {"ip_list": list(missing_answers), "domain_name": domain_name},
     )
+    assert isinstance(res, list)
     for row in res:
         missing_answers.discard(row[0])
         new_tls_consistent_ips.append(row[0])

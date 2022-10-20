@@ -1,7 +1,7 @@
 import sys
 from typing import Optional
 import requests
-
+from urllib.parse import urlparse, parse_qs
 
 def print_sample_line(report_id: str, input: Optional[str]):
     params = params = {"report_id": report_id}
@@ -61,15 +61,24 @@ def print_samples():
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: sample_measurement.py report_id [input]")
+        print("Usage: sample_measurement.py report_id | explorer_url [input]")
         sys.exit(1)
 
     input = None
     report_id = sys.argv[1]
     if len(sys.argv) > 2:
         input = sys.argv[2]
-    print_sample_line(report_id, input)
+
+    if "explorer.ooni.org" in report_id:
+        p = urlparse(report_id)
+        report_id = p.path.split("/")[-1]
+        qs = parse_qs(p.query)
+        if "input" in qs:
+            input = qs["input"][0]
+
+    uid = print_sample_line(report_id, input)
+    print(f'measurements["{uid}"]')
 
 
 if __name__ == "__main__":
-    print_samples()
+    main()

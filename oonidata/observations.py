@@ -605,7 +605,8 @@ class TLSObservation(Observation):
                 p = urlsplit("//" + tls_network_events[0].address)
                 tlso.ip = p.hostname
                 tlso.port = p.port
-                tlso.domain_name = ip_to_domain.get(tlso.ip or "", "")
+                if tlso.ip and tlso.ip in ip_to_domain:
+                    tlso.domain_name = ip_to_domain[tlso.ip]
 
             tlso.tls_handshake_time = tls_network_events[-1].t - tls_network_events[0].t
             tlso.tls_handshake_read_count = 0
@@ -674,6 +675,31 @@ def make_tls_observations(
         yield tso
 
 
+def make_ip_to_domain(dns_observations: List[DNSObservation]) -> Dict[str, str]:
+    ip_to_domain = {}
+    for obs in dns_observations:
+        # TODO: do we want to filter out also CNAMEs?
+        if not obs.answer:
+            continue
+        # TODO: this is only really valid for web_connectivity and even there it
+        # only works if there isn't a redirect chain with domains that map to
+        # different domains.
+        # What we should do is make this into a list and then figure out which
+        # is the relevant domain for a particular resolution by looking at other data.
+        # Better yet, this should be marked inside of the measurement itself.
+        # TODO(sbs): what happens in the engine if I encounter in a redirect chain something like:
+        # https://example.com/ -> https://www.example.com/ where both
+        # www.example.com and example.com map to the same IP 1.2.3.4?
+        # Will we record perform two tcp_connect measurements or only one?
+        # If it's two we need to tell which one is pertaining to one or the other.
+        # If it's one, then we need to make changes in the base dataformat so
+        # that we can express that a single tcp_connect experiment is pertaining
+        # to two different domains.
+        assert obs.answer not in ip_to_domain, "multiple resolutions for the same IP"
+        ip_to_domain[obs.answer] = obs.domain_name
+    return ip_to_domain
+
+
 def make_web_connectivity_observations(
     msmt: WebConnectivity, fingerprintdb: FingerprintDB, netinfodb: NetinfoDB
 ) -> Generator[
@@ -686,11 +712,7 @@ def make_web_connectivity_observations(
     dns_observations = list(
         make_dns_observations(msmt, msmt.test_keys.queries, fingerprintdb, netinfodb)
     )
-    ip_to_domain = {
-        str(obs.answer): obs.domain_name
-        for obs in filter(lambda o: o.answer, dns_observations)
-    }
-
+    ip_to_domain = make_ip_to_domain(dns_observations)
     yield from make_tcp_observations(
         msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
     )
