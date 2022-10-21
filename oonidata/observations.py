@@ -695,7 +695,10 @@ def make_ip_to_domain(dns_observations: List[DNSObservation]) -> Dict[str, str]:
         # If it's one, then we need to make changes in the base dataformat so
         # that we can express that a single tcp_connect experiment is pertaining
         # to two different domains.
-        assert obs.answer not in ip_to_domain, "multiple resolutions for the same IP"
+        if obs.answer in ip_to_domain:
+            log.error(
+                f"multiple resolutions for the same IP {obs.answer}:{obs.domain_name}"
+            )
         ip_to_domain[obs.answer] = obs.domain_name
     return ip_to_domain
 
