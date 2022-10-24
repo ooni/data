@@ -78,6 +78,26 @@ SAMPLE_MEASUREMENTS = [
         "20220924T215758Z_webconnectivity_IR_206065_n1_2CRoWBNJkWc7VyAs",
         "https://doh.dns.apple.com/dns-query?dns=q80BAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB",
     ),
+    (
+        "20221020235950.432819_NL_signal_27b05458f186a906",
+        "20221020T235949Z_signal_NL_13127_n1_3OMvDeaFEYRUpmMQ",
+        None,
+    ),
+    (
+        "20221016235944.266268_GB_signal_1265ff650ee17b44",
+        "20221016T235943Z_signal_GB_2856_n1_sFk2dryEB6FQDSqM",
+        None,
+    ),
+    (
+        "20210926222047.205897_UZ_signal_95fab4a2e669573f",
+        "20210926T222024Z_signal_UZ_201767_n1_DRRr4WJQ5hKHYhs2",
+        None,
+    ),
+    (
+        "20221018174612.488229_IR_signal_f8640b28061bec06",
+        "20221018T174538Z_signal_IR_44244_n1_aCmeIoeeYLKBkyxo",
+        None,
+    ),
 ]
 
 
