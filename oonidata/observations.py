@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
 from typing import Callable, Generator, Optional, List, Dict, Tuple, Union
-from oonidata.blockingevents import SIGNAL_PEM_STORE
+from oonidata.dataformat import SIGNAL_PEM_STORE
 
 from oonidata.dataformat import (
     BaseMeasurement,

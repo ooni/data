@@ -12,7 +12,7 @@ from oonidata.cli.process import run_process
 log = logging.getLogger("oonidata")
 
 log.addHandler(logging.StreamHandler())
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 
 
 def _parse_date_flag(date_str: str) -> date:
@@ -115,11 +115,6 @@ def main():
     parser_process.add_argument("--skip-verdicts", action="store_true")
     parser_process.add_argument("--fast-fail", action="store_true")
     parser_process.set_defaults(func=run_process)
-    args = parser.parse_args()
-
-    if not args.clickhouse and not args.csv_dir:
-        log.error("either --clickhouse or --csv-dir should be specified")
-        sys.exit(1)
 
     args = parser.parse_args()
     sys.exit(args.func(args))
