@@ -91,6 +91,7 @@ class BlockingEvent:
 
     observation_ids: List[str]
     outcomes: List[Outcome]
+    ok_confidence: float
 
     anomaly: bool
     confirmed: bool
@@ -281,16 +282,17 @@ def make_signal_blocking_event(
                     )
                 )
 
-    if len(outcomes) == 0:
-        outcomes.append(
-            Outcome(
-                outcome_type=OutcomeType.OK,
-                outcome_subject=f"Signal Messenger",
-                outcome_detail=f"ok",
-                outcome_meta={},
-                confidence=0.9,
-            )
+    # This is an upper bound, which means we might be over-estimating blocking
+    ok_confidence = 1 - max(map(lambda o: o.confidence, outcomes), default=0)
+    outcomes.append(
+        Outcome(
+            outcome_type=OutcomeType.OK,
+            outcome_subject=f"Signal Messenger",
+            outcome_detail=f"ok",
+            outcome_meta={},
+            confidence=ok_confidence,
         )
+    )
 
     # TODO: add support for validating if the HTTP responses are also consistent
     return SignalBlockingEvent(
@@ -298,5 +300,6 @@ def make_signal_blocking_event(
         observation_ids=observation_ids,
         anomaly=anomaly,
         confirmed=confirmed,
+        ok_confidence=ok_confidence,
         **make_base_event_meta(nt_obs),
     )
