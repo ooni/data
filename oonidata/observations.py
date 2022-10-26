@@ -1,3 +1,4 @@
+from base64 import b64decode
 import hashlib
 import abc
 import logging
@@ -5,7 +6,8 @@ import logging
 from dataclasses import dataclass, field
 from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
-from typing import Generator, Optional, List, Dict, Union
+from typing import Callable, Generator, Optional, List, Dict, Tuple, Union
+from oonidata.dataformat import SIGNAL_PEM_STORE
 
 from oonidata.dataformat import (
     BaseMeasurement,
@@ -14,12 +16,15 @@ from oonidata.dataformat import (
     HTTPTransaction,
     Failure,
     NetworkEvent,
+    Signal,
     TCPConnect,
     TLSHandshake,
     WebConnectivity,
 )
 
 from oonidata.datautils import (
+    InvalidCertificateChain,
+    TLSCertStore,
     get_first_http_header,
     get_first_http_header_str,
     get_html_meta_title,
@@ -59,10 +64,13 @@ class Observation(abc.ABC):
 
     probe_as_org_name: str
     probe_as_cc: str
+    probe_as_name: str
 
     software_name: str
     software_version: str
     test_name: str
+    test_version: str
+
     network_type: str
     platform: str
     origin: str
@@ -137,11 +145,13 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
         probe_cc=msmt.probe_cc,
         probe_as_org_name=probe_as_info.as_org_name if probe_as_info else "",
         probe_as_cc=probe_as_info.as_cc if probe_as_info else "",
+        probe_as_name=probe_as_info.as_name if probe_as_info else "",
         report_id=msmt.report_id,
         input=input_,
         software_name=msmt.software_name,
         software_version=msmt.software_version,
         test_name=msmt.test_name,
+        test_version=msmt.test_version,
         network_type=msmt.annotations.get("network_type", "unknown"),
         platform=msmt.annotations.get("platform", "unknown"),
         origin=msmt.annotations.get("origin", "unknown"),
@@ -549,6 +559,7 @@ class TLSObservation(Observation):
     end_entity_certificate_san_list: List[str] = field(default_factory=list)
     end_entity_certificate_not_valid_after: Optional[datetime] = None
     end_entity_certificate_not_valid_before: Optional[datetime] = None
+    peer_certificates: List[bytes] = field(default_factory=list)
     certificate_chain_length: Optional[int] = None
 
     tls_handshake_read_count: Optional[int] = None
@@ -566,6 +577,8 @@ class TLSObservation(Observation):
         idx: int,
         ip_to_domain: Dict[str, str],
         netinfodb: NetinfoDB,
+        cert_store: Optional[TLSCertStore] = None,
+        validate_domain: Callable[[str, str, List[str]], bool] = lambda x, y, z: True,
     ) -> "TLSObservation":
         tlso = TLSObservation(
             observation_id=f"{msmt.measurement_uid}_tls_{idx}",
@@ -584,23 +597,14 @@ class TLSObservation(Observation):
             tlso.ip = p.hostname
             tlso.port = p.port
 
-        if tls_h.no_tls_verify == False:
-            if tlso.failure in (
-                "ssl_invalid_hostname",
-                "ssl_unknown_authority",
-                "ssl_invalid_certificate",
-            ):
-                tlso.is_certificate_valid = False
-            elif not tlso.failure:
-                tlso.is_certificate_valid = True
-
         tls_network_events = find_tls_handshake_network_events(tls_h, network_events)
         if tls_network_events:
             if tls_network_events[0].address:
                 p = urlsplit("//" + tls_network_events[0].address)
                 tlso.ip = p.hostname
                 tlso.port = p.port
-                tlso.domain_name = ip_to_domain.get(tlso.ip or "", "")
+                if tlso.ip and tlso.ip in ip_to_domain:
+                    tlso.domain_name = ip_to_domain[tlso.ip]
 
             tlso.tls_handshake_time = tls_network_events[-1].t - tls_network_events[0].t
             tlso.tls_handshake_read_count = 0
@@ -624,6 +628,13 @@ class TLSObservation(Observation):
                     )
 
         if tls_h.peer_certificates:
+            try:
+                tlso.peer_certificates = list(
+                    map(lambda c: b64decode(c.data), tls_h.peer_certificates)
+                )
+            except Exception:
+                log.error("failed to decode peer_certificates")
+
             tlso.certificate_chain_length = len(tls_h.peer_certificates)
             try:
                 cert_meta = get_certificate_meta(tls_h.peer_certificates[0])
@@ -647,6 +658,27 @@ class TLSObservation(Observation):
                     f"Failed to extract certificate meta for {msmt.measurement_uid}"
                 )
 
+        if cert_store and tlso.peer_certificates:
+            try:
+                cn, san_list = cert_store.validate_cert_chain(
+                    tlso.timestamp, tlso.peer_certificates
+                )
+                tlso.is_certificate_valid = validate_domain(
+                    tlso.server_name, cn, san_list
+                )
+            except InvalidCertificateChain:
+                tlso.is_certificate_valid = False
+
+        elif tls_h.no_tls_verify == False:
+            if tlso.failure in (
+                "ssl_invalid_hostname",
+                "ssl_unknown_authority",
+                "ssl_invalid_certificate",
+            ):
+                tlso.is_certificate_valid = False
+            elif not tlso.failure:
+                tlso.is_certificate_valid = True
+
         return tlso
 
 
@@ -656,17 +688,43 @@ def make_tls_observations(
     network_events: Optional[List[NetworkEvent]],
     netinfodb: NetinfoDB,
     ip_to_domain: Dict[str, str] = {},
-    target: str = "",
+    cert_store: Optional[TLSCertStore] = None,
 ) -> Generator[TLSObservation, None, None]:
     if not tls_handshakes:
         return
 
     for idx, tls_h in enumerate(tls_handshakes):
-        tso = TLSObservation.from_measurement(
-            msmt, tls_h, network_events, idx, ip_to_domain, netinfodb
+        yield TLSObservation.from_measurement(
+            msmt, tls_h, network_events, idx, ip_to_domain, netinfodb, cert_store
         )
-        tso.target = target
-        yield tso
+
+
+def make_ip_to_domain(dns_observations: List[DNSObservation]) -> Dict[str, str]:
+    ip_to_domain = {}
+    for obs in dns_observations:
+        # TODO: do we want to filter out also CNAMEs?
+        if not obs.answer:
+            continue
+        # TODO: this is only really valid for web_connectivity and even there it
+        # only works if there isn't a redirect chain with domains that map to
+        # different domains.
+        # What we should do is make this into a list and then figure out which
+        # is the relevant domain for a particular resolution by looking at other data.
+        # Better yet, this should be marked inside of the measurement itself.
+        # TODO(sbs): what happens in the engine if I encounter in a redirect chain something like:
+        # https://example.com/ -> https://www.example.com/ where both
+        # www.example.com and example.com map to the same IP 1.2.3.4?
+        # Will we record perform two tcp_connect measurements or only one?
+        # If it's two we need to tell which one is pertaining to one or the other.
+        # If it's one, then we need to make changes in the base dataformat so
+        # that we can express that a single tcp_connect experiment is pertaining
+        # to two different domains.
+        if obs.answer in ip_to_domain:
+            log.error(
+                f"multiple resolutions for the same IP {obs.answer}:{obs.domain_name}"
+            )
+        ip_to_domain[obs.answer] = obs.domain_name
+    return ip_to_domain
 
 
 def make_web_connectivity_observations(
@@ -681,11 +739,7 @@ def make_web_connectivity_observations(
     dns_observations = list(
         make_dns_observations(msmt, msmt.test_keys.queries, fingerprintdb, netinfodb)
     )
-    ip_to_domain = {
-        str(obs.answer): obs.domain_name
-        for obs in filter(lambda o: o.answer, dns_observations)
-    }
-
+    ip_to_domain = make_ip_to_domain(dns_observations)
     yield from make_tcp_observations(
         msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
     )
@@ -719,3 +773,52 @@ def make_web_connectivity_observations(
         enriched_dns_observations.append(dns_obs)
 
     yield from enriched_dns_observations
+
+
+def make_signal_observations(
+    msmt: Signal, fingerprintdb: FingerprintDB, netinfodb: NetinfoDB
+) -> Tuple[
+    List[DNSObservation],
+    List[TCPObservation],
+    List[TLSObservation],
+    List[HTTPObservation],
+]:
+    cert_store = TLSCertStore(SIGNAL_PEM_STORE)
+    http_observations = list(
+        make_http_observations(msmt, msmt.test_keys.requests, fingerprintdb, netinfodb)
+    )
+
+    dns_observations = list(
+        make_dns_observations(msmt, msmt.test_keys.queries, fingerprintdb, netinfodb)
+    )
+    ip_to_domain = make_ip_to_domain(dns_observations)
+    tcp_observations = list(
+        make_tcp_observations(msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain)
+    )
+
+    tls_observations = list(
+        make_tls_observations(
+            msmt,
+            msmt.test_keys.tls_handshakes,
+            msmt.test_keys.network_events,
+            netinfodb,
+            ip_to_domain,
+            cert_store,
+        )
+    )
+
+    # Because we are using certificate pinning for Signal, if we got a
+    # successful TLS handshake with some endpoint, it's bound to be TLS
+    # consistent.
+    tls_consistency_map = {}
+    for tls_obs in tls_observations:
+        if tls_obs.ip and tls_obs.domain_name:
+            tls_consistency_map[tls_obs.ip] = tls_obs.is_certificate_valid
+
+    enriched_dns_observations = []
+    for dns_obs in dns_observations:
+        if dns_obs.answer:
+            dns_obs.is_tls_consistent = tls_consistency_map.get(dns_obs.answer, None)
+        enriched_dns_observations.append(dns_obs)
+
+    return dns_observations, tcp_observations, tls_observations, http_observations

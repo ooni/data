@@ -9,12 +9,16 @@ See:
 """
 import logging
 import hashlib
+
+from pathlib import Path
 from base64 import b64decode
 
 from datetime import datetime
 from typing import Optional, Tuple, Union, List, Union, Dict
 
 from dataclasses import dataclass
+
+import orjson
 from mashumaro.config import BaseConfig, TO_DICT_ADD_OMIT_NONE_FLAG
 from mashumaro import DataClassDictMixin
 
@@ -99,7 +103,7 @@ def trivial_id(raw: bytes, msm: dict) -> str:
 
 @dataclass
 class BaseTestKeys(BaseModel):
-    client_resolver: Optional[str]
+    client_resolver: Optional[str] = None
 
 
 @dataclass
@@ -410,7 +414,7 @@ class WebConnectivity(BaseMeasurement):
 
 
 @dataclass
-class WhatsappTestKeys(BaseModel):
+class WhatsappTestKeys(BaseTestKeys):
     failure: Optional[str] = None
     failed_operation: Optional[str] = None
 
@@ -418,6 +422,7 @@ class WhatsappTestKeys(BaseModel):
     tls_handshakes: Optional[List[TLSHandshake]] = None
     queries: Optional[List[DNSQuery]] = None
     tcp_connect: Optional[List[TCPConnect]] = None
+    requests: Optional[List[HTTPTransaction]] = None
 
     registration_server_failure: Optional[str] = None
     registration_server_status: Optional[str] = None
@@ -434,6 +439,86 @@ class Whatsapp(BaseMeasurement):
     test_keys: WhatsappTestKeys
 
 
+SIGNAL_ROOT_CA_OLD = """-----BEGIN CERTIFICATE-----
+MIID7zCCAtegAwIBAgIJAIm6LatK5PNiMA0GCSqGSIb3DQEBBQUAMIGNMQswCQYD
+VQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5j
+aXNjbzEdMBsGA1UECgwUT3BlbiBXaGlzcGVyIFN5c3RlbXMxHTAbBgNVBAsMFE9w
+ZW4gV2hpc3BlciBTeXN0ZW1zMRMwEQYDVQQDDApUZXh0U2VjdXJlMB4XDTEzMDMy
+NTIyMTgzNVoXDTIzMDMyMzIyMTgzNVowgY0xCzAJBgNVBAYTAlVTMRMwEQYDVQQI
+DApDYWxpZm9ybmlhMRYwFAYDVQQHDA1TYW4gRnJhbmNpc2NvMR0wGwYDVQQKDBRP
+cGVuIFdoaXNwZXIgU3lzdGVtczEdMBsGA1UECwwUT3BlbiBXaGlzcGVyIFN5c3Rl
+bXMxEzARBgNVBAMMClRleHRTZWN1cmUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw
+ggEKAoIBAQDBSWBpOCBDF0i4q2d4jAXkSXUGpbeWugVPQCjaL6qD9QDOxeW1afvf
+Po863i6Crq1KDxHpB36EwzVcjwLkFTIMeo7t9s1FQolAt3mErV2U0vie6Ves+yj6
+grSfxwIDAcdsKmI0a1SQCZlr3Q1tcHAkAKFRxYNawADyps5B+Zmqcgf653TXS5/0
+IPPQLocLn8GWLwOYNnYfBvILKDMItmZTtEbucdigxEA9mfIvvHADEbteLtVgwBm9
+R5vVvtwrD6CCxI3pgH7EH7kMP0Od93wLisvn1yhHY7FuYlrkYqdkMvWUrKoASVw4
+jb69vaeJCUdU+HCoXOSP1PQcL6WenNCHAgMBAAGjUDBOMB0GA1UdDgQWBBQBixjx
+P/s5GURuhYa+lGUypzI8kDAfBgNVHSMEGDAWgBQBixjxP/s5GURuhYa+lGUypzI8
+kDAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBBQUAA4IBAQB+Hr4hC56m0LvJAu1R
+K6NuPDbTMEN7/jMojFHxH4P3XPFfupjR+bkDq0pPOU6JjIxnrD1XD/EVmTTaTVY5
+iOheyv7UzJOefb2pLOc9qsuvI4fnaESh9bhzln+LXxtCrRPGhkxA1IMIo3J/s2WF
+/KVYZyciu6b4ubJ91XPAuBNZwImug7/srWvbpk0hq6A6z140WTVSKtJG7EP41kJe
+/oF4usY5J7LPkxK3LWzMJnb5EIJDmRvyH8pyRwWg6Qm6qiGFaI4nL8QU4La1x2en
+4DGXRaLMPRwjELNgQPodR38zoCMuA8gHZfZYYoZ7D7Q1wNUiVHcxuFrEeBaYJbLE
+rwLV
+-----END CERTIFICATE-----""".encode(
+    "ascii"
+)
+
+SIGNAL_ROOT_CA_NEW = """-----BEGIN CERTIFICATE-----
+MIIEjDCCAnSgAwIBAgITV+dgmSk1+75Wwn/Mjz8f+gQ9qTANBgkqhkiG9w0BAQsF
+ADB1MQswCQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQGA1UEBxMN
+TW91bnRhaW4gVmlldzEeMBwGA1UEChMVU2lnbmFsIE1lc3NlbmdlciwgTExDMRkw
+FwYDVQQDExBTaWduYWwgTWVzc2VuZ2VyMB4XDTIyMDgyMzE2NTIxMVoXDTIzMDky
+MzIyNDA1NlowADCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALf8th0A
+N5TFsvvdfaSP1WyCMn5Ql81IF5D0pXrdE9fGDz5AaeAbCazxXU8tnjZiUr4a/BGD
+h3ZxORHXJ2SA3HA2UFG+qHik59QNGkY4Jv4emTM5QLw0fcsGRgJnzb7A60LRoxGs
+17jxD1zyVl/SXn/Ql3cvBrHjxPzJ6NcQG4Pek7YieH2xiMP794QUu0XJYlBx0uvx
+xOI3qpw5c6oNORGY8hlwWzbv+sqvShXhteOlkzluKtIqpL8+NV206JIqLkaKFjB7
+To14TSFF3tYxxsHYwDhRKPatqYpbebx3iCo0H33dL0gjoUtdvRgsdHqnUQXSqoRH
+cUYCIPs3FivKNrcCAwEAAaOBiTCBhjATBgNVHSUEDDAKBggrBgEFBQcDATAMBgNV
+HRMBAf8EAjAAMB0GA1UdDgQWBBSidZq+TLJkcDuNV5j1KbOm/l+dhjAfBgNVHSME
+GDAWgBS180vG5dZL0OWAa4xQw2dbvLHzcTAhBgNVHREBAf8EFzAVghNzZnUudm9p
+cC5zaWduYWwub3JnMA0GCSqGSIb3DQEBCwUAA4ICAQCDchlftHXUm3sFWL86GKUs
+w7nxOiJDZYR+xIVGbsUarBolEsZZkYjTDB427ZjgBS+Nfhhbrw4k2LMarkxf2TQX
+aelPHRa5xNPVfkrN8xw4fv/8TLE9GSjKlrNJm1EoTZL5CYWQU+qe4CuKfAJU6h8l
+xIkcik61aCeNLQoaI1L3V8tPXmmqMWpsnZmFg6YLGeMTLs4skdFqgLOnx9EF2jgO
+7EAJ9HcrgSPirQeuDJKhamaLtQiqIQR8L3H4YG1FDiuOeto6f1LRCIqjH1Mye1BM
+33Qg/VilLQIWp8+C4GJZ0+LO1cfatNh8tkDbrwMzUeA1nLEZHMlgXE05z00euNlQ
+0+evTmJzWRKJHugPnA3vvdzy4lbYvYWaXs8pACrVpESui8I+v6jdH814lOxpDwNH
+bPrxfOxhIxfFiVttCl3AQZBLJM6M0ty6/Q7bYsdNT23jKMl0AmDhj9qn/7dzYcVi
+vI0XKaaJl4ov3IDbuMe0oZWhoLwzPuWxxkWDjTb8ngDnWZT1o5dAR9fltr38m42N
+uA/SkxghiAMmvkC8nhEJ7yT2hme+rozPZSp1SSEDViDkA4KnnQpMcNiotCQpNOe7
+YfA9uSnjHjZloRTPUgtkKQ3u8ZZprFQlS2jDE18BRGdh24V5OsCbMvFPtrEsjG4H
+5xvkiIV0FpbMk4Gj8I4Hbw==
+-----END CERTIFICATE-----""".encode(
+    "ascii"
+)
+
+SIGNAL_PEM_STORE = (SIGNAL_ROOT_CA_OLD, SIGNAL_ROOT_CA_NEW)
+
+
+@dataclass
+class SignalTestKeys(BaseTestKeys):
+    failure: Optional[str] = None
+    failed_operation: Optional[str] = None
+
+    network_events: Optional[List[NetworkEvent]] = None
+    tls_handshakes: Optional[List[TLSHandshake]] = None
+    queries: Optional[List[DNSQuery]] = None
+    tcp_connect: Optional[List[TCPConnect]] = None
+    requests: Optional[List[HTTPTransaction]] = None
+
+    signal_backend_status: Optional[str] = None
+    signal_backend_failure: Optional[str] = None
+
+
+@dataclass
+class Signal(BaseMeasurement):
+    test_keys: SignalTestKeys
+
+
 @dataclass
 class URLGetterTestKeys(BaseTestKeys):
     failure: Failure = None
@@ -447,7 +532,7 @@ class URLGetterTestKeys(BaseTestKeys):
 
 @dataclass
 class DNSCheckTestKeys(BaseTestKeys):
-    lookups: dict[str, URLGetterTestKeys]
+    lookups: Optional[dict[str, URLGetterTestKeys]] = None
     bootstrap: Optional[URLGetterTestKeys] = None
     bootstrap_failure: Optional[str] = None
 
@@ -486,11 +571,19 @@ nettest_dataformats = {
     "tor": Tor,
     "dnscheck": DNSCheck,
     "whatsapp": Whatsapp,
+    "signal": Signal,
 }
 
 SupportedDataformats = Union[WebConnectivity, Tor, DNSCheck, Whatsapp, BaseMeasurement]
 
 
-def load_measurement(msmt: dict) -> SupportedDataformats:
+def load_measurement(
+    msmt: Optional[dict] = None, msmt_path: Optional[Path] = None
+) -> SupportedDataformats:
+    if msmt_path:
+        with msmt_path.open() as in_file:
+            msmt = orjson.loads(in_file.read())
+
+    assert msmt, "either msmt or msmt_path should be set"
     dc = nettest_dataformats.get(msmt["test_name"], BaseMeasurement)
     return dc.from_dict(msmt)

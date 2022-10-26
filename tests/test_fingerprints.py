@@ -4,14 +4,11 @@ from oonidata.apiclient import get_raw_measurement
 from oonidata.dataformat import WebConnectivity, load_measurement
 
 
-def test_fingerprintdb(fingerprintdb):
+def test_fingerprintdb(fingerprintdb, measurements):
     dns_blocked = load_measurement(
-        orjson.loads(
-            get_raw_measurement(
-                "20220608T122003Z_webconnectivity_IR_58224_n1_AcrDNmCaHeCbDoNj",
-                "https://www.youtube.com/",
-            )
-        )
+        msmt_path=measurements[
+            "20220608122138.241075_IR_webconnectivity_c4240e52c7ca025f"
+        ]
     )
     assert isinstance(dns_blocked, WebConnectivity)
     assert dns_blocked.test_keys.queries is not None
@@ -23,12 +20,9 @@ def test_fingerprintdb(fingerprintdb):
     assert "IR" in match.expected_countries
 
     http_blocked = load_measurement(
-        orjson.loads(
-            get_raw_measurement(
-                "20220608T120927Z_webconnectivity_RU_41668_n1_wuoaKW00hbGU12Yw",
-                "http://proxy.org/",
-            )
-        )
+        msmt_path=measurements[
+            "20220608121828.356206_RU_webconnectivity_80e3fa60eb2cd026"
+        ]
     )
     assert isinstance(http_blocked, WebConnectivity)
     assert http_blocked.test_keys.requests is not None

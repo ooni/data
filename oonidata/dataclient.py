@@ -1,4 +1,3 @@
-from asyncio import as_completed
 import io
 import gzip
 import itertools
@@ -13,7 +12,7 @@ from datetime import date, timedelta, datetime
 from dataclasses import dataclass
 
 from enum import Enum
-from typing import Callable, Generator, Set, List, Optional, NamedTuple, Union, Tuple
+from typing import Callable, Generator, Set, List, Optional, NamedTuple, Union
 
 import boto3
 from botocore import UNSIGNED as botoSigUNSIGNED

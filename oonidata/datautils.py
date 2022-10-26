@@ -1,16 +1,22 @@
 from datetime import datetime, date, timedelta
-from typing import List, Any, Union
+import logging
+from multiprocessing.sharedctypes import Value
+from typing import Dict, Iterable, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass
-from functools import singledispatch
+from functools import partial, singledispatch
 import re
 import ipaddress
 
 from base64 import b64decode
 
+from OpenSSL.crypto import load_certificate, FILETYPE_PEM, FILETYPE_ASN1
+from OpenSSL.crypto import X509Store, X509StoreContext
+
 from cryptography import x509
 from cryptography.x509.oid import ExtensionOID, NameOID
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hashes, serialization
+
 
 from oonidata.dataformat import (
     HeadersListBytes,
@@ -19,6 +25,8 @@ from oonidata.dataformat import (
     guess_decode,
 )
 
+
+log = logging.getLogger("oonidata.datautils")
 
 META_TITLE_REGEXP = re.compile(
     b'<meta.*?property="og:title".*?content="(.*?)"', re.IGNORECASE | re.DOTALL
@@ -236,7 +244,7 @@ def get_common_name(cert_name: x509.Name) -> str:
     return ""
 
 
-def get_alternative_names(cert: x509.Certificate) -> List[str]:
+def get_san_list(cert: x509.Certificate) -> List[str]:
     try:
         ext = cert.extensions.get_extension_for_oid(
             ExtensionOID.SUBJECT_ALTERNATIVE_NAME
@@ -249,6 +257,7 @@ def get_alternative_names(cert: x509.Certificate) -> List[str]:
 
 def get_certificate_meta(peer_cert: BinaryData) -> CertificateMeta:
     raw_cert = b64decode(peer_cert.data)
+    assert raw_cert, "either peer_cert or raw_cert must be specified"
     cert = x509.load_der_x509_certificate(raw_cert, default_backend())
 
     return CertificateMeta(
@@ -257,11 +266,116 @@ def get_certificate_meta(peer_cert: BinaryData) -> CertificateMeta:
         issuer_common_name=get_common_name(cert.issuer),
         subject=cert.subject.rfc4514_string(),
         subject_common_name=get_common_name(cert.subject),
-        san_list=get_alternative_names(cert),
+        san_list=get_san_list(cert),
         not_valid_before=cert.not_valid_before,
         not_valid_after=cert.not_valid_after,
         fingerprint=cert.fingerprint(hashes.SHA256()).hex(),
     )
+
+
+class InvalidCertificateChain(ValueError):
+    pass
+
+
+class TLSCertStore:
+    def __init__(self, pem_cert_store: Iterable[bytes] = []):
+        self._store: Dict[x509.Name, x509.Certificate] = {}
+        for pem_cert in pem_cert_store:
+            self.add_cert_to_store(pem_cert)
+
+    def add_cert_to_store(self, pem_cert: bytes):
+        root_cert = x509.load_pem_x509_certificate(pem_cert)
+
+        if root_cert.issuer in self._store:
+            log.error(f"duplicate cert {root_cert.issuer} in store {self._store}")
+            return
+
+        self._store[root_cert.issuer] = root_cert
+
+    def validate_cert_chain(
+        self, timestamp: datetime, certificate_chain: List[bytes]
+    ) -> Tuple[str, List[str]]:
+        """
+        Validate a certificate chain provided as a list of bytes in DER format
+        against a set of trust anchors (`pem_cert_store`).
+        The pem_cert_store should be a list of bytes of root certificates in PEM
+        format.
+
+        The user of this function needs to implement their own logic for verifying
+        if the returned SAN list and common name matches the expectations.
+
+        It's important to highlight that this function doesn't make any sort of
+        strong security guarantees and doesn't take into account the many
+        nuances and edge cases that MUST be considered if you care to have a
+        secure certificate chain validation function as per:
+        https://www.rfc-editor.org/rfc/rfc5280#section-6
+
+        Returns:
+            (common_name, List[SAN list])
+
+        Raises:
+            InvalidCertificateChain if the certificate is not valid
+        """
+        # The cert chain as `x509.Certificates` object. The first item in the list
+        # is the leaf node of the chain.
+        cert_chain = list(
+            map(
+                partial(x509.load_der_x509_certificate, backend=default_backend),
+                certificate_chain,
+            )
+        )
+
+        try:
+            issuing_root = self._store[cert_chain[-1].issuer]
+        except KeyError:
+            raise InvalidCertificateChain(
+                f"missing issuing_root {cert_chain[-1].issuer.rfc4514_string()} in cert store"
+            )
+
+        store = X509Store()
+        store.set_time(timestamp)
+        store.add_cert(
+            load_certificate(
+                FILETYPE_PEM,
+                issuing_root.public_bytes(encoding=serialization.Encoding.PEM),
+            )
+        )
+        for cert in reversed(certificate_chain):
+            pcert = x509.load_der_x509_certificate(cert)
+            if pcert.subject == issuing_root.issuer:
+                # Skip certificates that are already in the store and hence are
+                # considered trusted.
+                # XXX: From a security perspective this might go wrong in some ways,
+                # but we aren't really aiming for a secure implementation.
+                continue
+
+            unstrusted_cert = load_certificate(FILETYPE_ASN1, cert)
+            store_ctx = X509StoreContext(store, unstrusted_cert)
+
+            try:
+                store_ctx.verify_certificate()
+            except Exception as exc:
+                log.error(f"failed to verify i={pcert.issuer} s={pcert.subject} {exc}")
+                log.error(f"using i={issuing_root.issuer} s={issuing_root.subject}")
+                raise InvalidCertificateChain(
+                    f"failed to verify i={pcert.issuer} s={pcert.subject} {exc}"
+                    f"using i={issuing_root.issuer} s={issuing_root.subject}"
+                )
+
+            store.add_cert(unstrusted_cert)
+
+        san_list = get_san_list(cert_chain[0])
+        common_name = get_common_name(cert_chain[0].subject)
+        return common_name, san_list
+
+
+def validate_cert_chain(
+    timestamp: datetime,
+    certificate_chain: List[bytes],
+    pem_cert_store: Iterable[bytes],
+) -> Tuple[str, List[str]]:
+    store = TLSCertStore(pem_cert_store)
+    return store.validate_cert_chain(timestamp, certificate_chain)
 
 
 # Taken from:
