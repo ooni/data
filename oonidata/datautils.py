@@ -1,7 +1,6 @@
 from datetime import datetime, date, timedelta
 import logging
-from multiprocessing.sharedctypes import Value
-from typing import Dict, Iterable, List, Any, Optional, Tuple, Union
+from typing import Iterable, List, Any, Tuple, Union, Mapping
 from dataclasses import dataclass
 from functools import partial, singledispatch
 import re
@@ -279,7 +278,7 @@ class InvalidCertificateChain(ValueError):
 
 class TLSCertStore:
     def __init__(self, pem_cert_store: Iterable[bytes] = []):
-        self._store: Dict[x509.Name, x509.Certificate] = {}
+        self._store: Mapping[x509.Name, x509.Certificate] = {}
         for pem_cert in pem_cert_store:
             self.add_cert_to_store(pem_cert)
 
@@ -405,7 +404,7 @@ def _(json_list: list, max_string_size: int):
     return json_list
 
 
-def one_day_dict(day: date) -> dict[str, Any]:
+def one_day_dict(day: date) -> Mapping[str, Any]:
     start_day = datetime(year=day.year, month=day.month, day=day.day)
     end_day = start_day + timedelta(days=1)
     return {"start_day": start_day, "end_day": end_day}

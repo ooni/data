@@ -10,8 +10,7 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 from dataclasses import asdict, fields
 
-from collections.abc import Iterable
-from typing import Tuple, List, Generator, Type, TypeVar, Any, Optional, Union
+from typing import Tuple, List, Generator, Type, TypeVar, Optional, Union, Iterable
 
 from oonidata.datautils import one_day_dict, is_ip_bogon
 from oonidata.observations import (
