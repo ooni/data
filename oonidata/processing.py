@@ -131,7 +131,6 @@ def tor_processor(
                 target_msmt.network_events,
                 netinfodb,
                 ip_to_domain,
-                target=target_id,
             ),
         )
 
