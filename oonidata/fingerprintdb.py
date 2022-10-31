@@ -1,11 +1,9 @@
-import pkgutil
 import re
-import io
 import csv
 
 from pathlib import Path
 from collections import OrderedDict
-from typing import Optional, List
+from typing import Optional, List, Mapping
 from dataclasses import dataclass, field
 
 import requests
@@ -76,7 +74,7 @@ class Fingerprint:
         return False
 
 
-def _load_fingerprints(filepath: Path) -> OrderedDict[str, Fingerprint]:
+def _load_fingerprints(filepath: Path) -> Mapping[str, Fingerprint]:
     fingerprints = OrderedDict()
 
     with filepath.open() as in_file:

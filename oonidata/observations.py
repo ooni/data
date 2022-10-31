@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
-from typing import Callable, Generator, Optional, List, Dict, Tuple, Union
+from typing import Callable, Generator, Optional, List, Tuple, Union, Mapping
 from oonidata.dataformat import SIGNAL_PEM_STORE
 
 from oonidata.dataformat import (
@@ -179,7 +179,7 @@ class NettestObservation(Observation):
     __table_name__ = "obs_nettest"
 
     test_runtime: float
-    annotations: dict[str, str]
+    annotations: Mapping[str, str]
 
     @staticmethod
     def from_measurement(
@@ -458,7 +458,7 @@ class TCPObservation(Observation):
         msmt: BaseMeasurement,
         res: TCPConnect,
         idx: int,
-        ip_to_domain: Dict[str, str],
+        ip_to_domain: Mapping[str, str],
         netinfodb: NetinfoDB,
     ) -> "TCPObservation":
         tcpo = TCPObservation(
@@ -486,7 +486,7 @@ def make_tcp_observations(
     msmt: BaseMeasurement,
     tcp_connect: Optional[List[TCPConnect]],
     netinfodb: NetinfoDB,
-    ip_to_domain: Dict[str, str] = {},
+    ip_to_domain: Mapping[str, str] = {},
     target: str = "",
 ) -> Generator[TCPObservation, None, None]:
     if not tcp_connect:
@@ -575,7 +575,7 @@ class TLSObservation(Observation):
         tls_h: TLSHandshake,
         network_events: Optional[List[NetworkEvent]],
         idx: int,
-        ip_to_domain: Dict[str, str],
+        ip_to_domain: Mapping[str, str],
         netinfodb: NetinfoDB,
         cert_store: Optional[TLSCertStore] = None,
         validate_domain: Callable[[str, str, List[str]], bool] = lambda x, y, z: True,
@@ -687,7 +687,7 @@ def make_tls_observations(
     tls_handshakes: Optional[List[TLSHandshake]],
     network_events: Optional[List[NetworkEvent]],
     netinfodb: NetinfoDB,
-    ip_to_domain: Dict[str, str] = {},
+    ip_to_domain: Mapping[str, str] = {},
     cert_store: Optional[TLSCertStore] = None,
 ) -> Generator[TLSObservation, None, None]:
     if not tls_handshakes:
@@ -699,7 +699,7 @@ def make_tls_observations(
         )
 
 
-def make_ip_to_domain(dns_observations: List[DNSObservation]) -> Dict[str, str]:
+def make_ip_to_domain(dns_observations: List[DNSObservation]) -> Mapping[str, str]:
     ip_to_domain = {}
     for obs in dns_observations:
         # TODO: do we want to filter out also CNAMEs?

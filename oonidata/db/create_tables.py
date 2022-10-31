@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from typing import Optional, Tuple, List, Any, Type
+from typing import Optional, Tuple, List, Any, Type, Mapping
 from dataclasses import fields
 from oonidata.observations import (
     NettestObservation,
@@ -55,7 +55,7 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Outcome:
         return "String"
 
-    if t == dict[str, str]:
+    if t == Mapping[str, str]:
         return "Map(String, String)"
 
     raise Exception(f"Unhandled type {t}")
@@ -80,6 +80,7 @@ def create_query_for_observation(obs_class: Type[Observation]) -> Tuple[str, str
     """,
         obs_class.__table_name__,
     )
+
 
 def create_query_for_verdict() -> Tuple[str, str]:
     columns = []

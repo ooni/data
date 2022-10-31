@@ -1,7 +1,6 @@
 from datetime import datetime, date, timedelta
 import logging
-from multiprocessing.sharedctypes import Value
-from typing import Dict, Iterable, List, Any, Optional, Tuple, Union
+from typing import Iterable, List, Any, Tuple, Union, Dict
 from dataclasses import dataclass
 from functools import partial, singledispatch
 import re
@@ -405,7 +404,7 @@ def _(json_list: list, max_string_size: int):
     return json_list
 
 
-def one_day_dict(day: date) -> dict[str, Any]:
+def one_day_dict(day: date) -> Dict[str, Any]:
     start_day = datetime(year=day.year, month=day.month, day=day.day)
     end_day = start_day + timedelta(days=1)
     return {"start_day": start_day, "end_day": end_day}

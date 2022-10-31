@@ -1,9 +1,8 @@
 import ipaddress
 from dataclasses import dataclass, field
 from enum import Enum
-from re import L
-from typing import Optional, List, Tuple, Generator, Any, Mapping
-from datetime import datetime, date, timedelta
+from typing import Optional, List, Tuple, Generator, Any, Mapping, Dict
+from datetime import datetime, date
 
 from urllib.parse import urlparse
 
@@ -142,7 +141,7 @@ class TCPBaseline:
 
 def make_tcp_baseline_map(
     day: date, domain_name: str, db: ClickhouseConnection
-) -> dict[str, TCPBaseline]:
+) -> Mapping[str, TCPBaseline]:
     tcp_baseline_map = {}
     q_params = one_day_dict(day)
     q_params["domain_name"] = domain_name
@@ -192,7 +191,7 @@ def maybe_get_first(l: list, default_value: Any = None) -> Optional[Any]:
 
 def make_http_baseline_map(
     day: date, domain_name: str, db: ClickhouseConnection
-) -> dict[str, HTTPBaseline]:
+) -> Mapping[str, HTTPBaseline]:
     http_baseline_map = {}
 
     q_params = one_day_dict(day)
@@ -269,7 +268,7 @@ class DNSBaseline:
     failure_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
     ok_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
     tls_consistent_answers: List[str] = field(default_factory=list)
-    answers_map: dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
+    answers_map: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
 
 
 def make_dns_baseline(
@@ -817,7 +816,7 @@ def make_dns_baseline_from_control(
 
 def make_tcp_baseline_from_control(
     control: WebConnectivityControl,
-) -> dict[str, TCPBaseline]:
+) -> Mapping[str, TCPBaseline]:
     if not control or not control.tcp_connect:
         return {}
 
@@ -832,7 +831,7 @@ def make_tcp_baseline_from_control(
 
 def make_http_baseline_from_control(
     msmt: WebConnectivity, control: WebConnectivityControl
-) -> dict[str, HTTPBaseline]:
+) -> Mapping[str, HTTPBaseline]:
     if not control or not control.http_request:
         return {}
 
@@ -875,10 +874,10 @@ def make_website_verdicts(
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
     tcp_o_list: List[TCPObservation],
-    tcp_b_map: dict[str, TCPBaseline],
+    tcp_b_map: Mapping[str, TCPBaseline],
     tls_o_list: List[TLSObservation],
     http_o_list: List[HTTPObservation],
-    http_b_map: dict[str, HTTPBaseline],
+    http_b_map: Mapping[str, HTTPBaseline],
 ) -> Generator[Verdict, None, List[str]]:
     """
     make_website_verdicts will yield many verdicts given some observations
