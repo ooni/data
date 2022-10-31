@@ -1,8 +1,8 @@
 import ipaddress
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, List, Tuple, Generator, Any, Mapping
-from datetime import datetime, date, timedelta
+from typing import Optional, List, Tuple, Generator, Any, Mapping, Dict
+from datetime import datetime, date
 
 from urllib.parse import urlparse
 
@@ -268,7 +268,7 @@ class DNSBaseline:
     failure_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
     ok_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
     tls_consistent_answers: List[str] = field(default_factory=list)
-    answers_map: Mapping[str, List[Tuple[str, str]]] = field(default_factory=dict)
+    answers_map: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
 
 
 def make_dns_baseline(
