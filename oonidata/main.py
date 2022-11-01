@@ -6,6 +6,7 @@ import sys
 from datetime import date, timedelta, datetime
 from typing import List
 
+from oonidata import __version__
 from oonidata.cli.sync import run_sync
 from oonidata.cli.process import run_process
 
@@ -63,6 +64,7 @@ def arg_probe_cc(p: argparse.ArgumentParser):
 def main():
     parser = argparse.ArgumentParser("OONI Data tools")
     parser.set_defaults(func=lambda r: parser.print_usage())
+    parser.add_argument("--version", action="store_true")
 
     subparsers = parser.add_subparsers()
 
@@ -117,6 +119,10 @@ def main():
     parser_process.set_defaults(func=run_process)
 
     args = parser.parse_args()
+    if args.version:
+        print(__version__)
+        sys.exit(0)
+
     sys.exit(args.func(args))
 
 
