@@ -113,8 +113,6 @@ def main():
     arg_test_name(parser_process)
     arg_start_day(parser_process)
     arg_end_day(parser_process)
-    parser_process.add_argument("--only-verdicts", action="store_true")
-    parser_process.add_argument("--skip-verdicts", action="store_true")
     parser_process.add_argument("--fast-fail", action="store_true")
     parser_process.set_defaults(func=run_process)
 

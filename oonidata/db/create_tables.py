@@ -10,7 +10,11 @@ from oonidata.observations import (
     TLSObservation,
     HTTPObservation,
 )
-from oonidata.verdicts import Outcome, Verdict
+from oonidata.experiments.experiment_result import (
+    BlockingType,
+    ExperimentResult,
+    BlockingEvent,
+)
 
 
 def typing_to_clickhouse(t: Any) -> str:
@@ -41,19 +45,35 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == float:
         return "Float64"
 
+    if t == dict:
+        return "JSON"
+
     if t == Optional[float]:
         return "Nullable(Float64)"
 
-    if t == List[str]:
+    if t == List[str] or t == List[bytes]:
         return "Array(String)"
+
     if t == Optional[List[str]]:
         return "Nullable(Array(String))"
 
     if t == Optional[List[Tuple[str, bytes]]]:
         return "Nullable(Array(Array(String)))"
 
-    if t == Outcome:
+    if t == BlockingType:
         return "String"
+
+    if t == List[BlockingEvent]:
+        columns = []
+        for name, type in BlockingEvent.__annotations__.items():
+            type_str = typing_to_clickhouse(type)
+            columns.append(f"         {name} {type_str}")
+        columns_str = ",\n".join(columns)
+
+        s = "Nested (\n"
+        s += columns_str
+        s += "\n     )"
+        return s
 
     if t == Mapping[str, str]:
         return "Map(String, String)"
@@ -82,9 +102,9 @@ def create_query_for_observation(obs_class: Type[Observation]) -> Tuple[str, str
     )
 
 
-def create_query_for_verdict() -> Tuple[str, str]:
+def create_query_for_experiment_result() -> Tuple[str, str]:
     columns = []
-    for f in fields(Verdict):
+    for f in fields(ExperimentResult):
         type_str = typing_to_clickhouse(f.type)
         columns.append(f"     {f.name} {type_str}")
 
@@ -92,14 +112,14 @@ def create_query_for_verdict() -> Tuple[str, str]:
 
     return (
         f"""
-    CREATE TABLE verdict (
+    CREATE TABLE experiment_result (
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
     ORDER BY (timestamp, observation_id, measurement_uid)
     SETTINGS index_granularity = 8192;
     """,
-        "verdict",
+        "experiment_result",
     )
 
 
@@ -110,7 +130,7 @@ def main():
         create_query_for_observation(TLSObservation),
         create_query_for_observation(HTTPObservation),
         create_query_for_observation(NettestObservation),
-        create_query_for_verdict(),
+        create_query_for_experiment_result(),
         (
             """
         CREATE TABLE dns_consistency_tls_baseline (

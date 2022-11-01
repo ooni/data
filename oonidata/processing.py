@@ -16,10 +16,7 @@ from oonidata.datautils import one_day_dict, is_ip_bogon
 from oonidata.observations import (
     NettestObservation,
     DNSObservation,
-    HTTPObservation,
     Observation,
-    TCPObservation,
-    TLSObservation,
     make_http_observations,
     make_dns_observations,
     make_tcp_observations,
@@ -31,14 +28,6 @@ from oonidata.dataformat import DNSCheck, load_measurement
 from oonidata.dataformat import BaseMeasurement, WebConnectivity, Tor
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
-from oonidata.verdicts import (
-    DNSBaseline,
-    Verdict,
-    make_dns_baseline,
-    make_http_baseline_map,
-    make_tcp_baseline_map,
-    make_website_verdicts,
-)
 
 from oonidata.dataclient import (
     MeasurementListProgress,
@@ -62,25 +51,12 @@ def make_observation_row(observation: Observation) -> dict:
     return asdict(observation)
 
 
-def make_verdict_row(v: Verdict) -> dict:
-    row = asdict(v)
-    # XXX come up with a cleaner solution to this
-    row["outcome"] = row["outcome"].value
-    return row
-
-
 def write_observations_to_db(
     db: DatabaseConnection, observations: Iterable[Observation]
 ) -> None:
     for obs in observations:
         row = make_observation_row(obs)
         db.write_row(obs.__table_name__, row)
-
-
-def write_verdicts_to_db(db: DatabaseConnection, verdicts: Iterable[Verdict]) -> None:
-    for v in verdicts:
-        row = make_verdict_row(v)
-        db.write_row("verdict", row)
 
 
 def default_processor(
@@ -297,174 +273,6 @@ def observations_in_session(
     return observation_list
 
 
-def websites_observation_group(
-    day: date,
-    domain_name: str,
-    db: ClickhouseConnection,
-    probe_cc: Optional[str] = None,
-) -> Generator[
-    Tuple[
-        List[DNSObservation],
-        List[TCPObservation],
-        List[TLSObservation],
-        List[HTTPObservation],
-    ],
-    None,
-    None,
-]:
-    for dns_obs_list in dns_observations_by_session(day, domain_name, db, probe_cc):
-        report_id = dns_obs_list[0].report_id
-        tcp_o_list = observations_in_session(
-            day,
-            domain_name,
-            TCPObservation,
-            report_id,
-            db,
-        )
-        tls_o_list = observations_in_session(
-            day,
-            domain_name,
-            TLSObservation,
-            report_id,
-            db,
-        )
-        http_o_list = observations_in_session(
-            day,
-            domain_name,
-            HTTPObservation,
-            report_id,
-            db,
-        )
-
-        # Drop all verdicts related to this session from the database.
-        # XXX this should probably be refactored to be closer to the place where
-        # we do the insert, but will require quite a bit of reorganizing of the
-        # logic in here.
-        db.execute(
-            "ALTER TABLE verdict DELETE WHERE report_id = %(report_id)s",
-            {"report_id": report_id},
-        )
-        yield dns_obs_list, tcp_o_list, tls_o_list, http_o_list
-
-
-import certifi
-import ssl
-import socket
-
-
-def is_tls_valid(ip, hostname):
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.load_verify_locations(certifi.where())
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
-        sock.settimeout(1)
-        with context.wrap_socket(sock, server_hostname=hostname) as conn:
-            try:
-                conn.connect((ip, 443))
-            # TODO: do we care to distinguish these values?
-            except ssl.SSLCertVerificationError:
-                return False
-            except ssl.SSLError:
-                return False
-            except socket.timeout:
-                return False
-            except socket.error:
-                return False
-            except:
-                return False
-    return True
-
-
-def get_extra_dns_consistency_tls_baseline(
-    dns_baseline: DNSBaseline,
-    dns_o_list: List[DNSObservation],
-    db: ClickhouseConnection,
-) -> List[str]:
-    domain_name = dns_o_list[0].domain_name
-    missing_answers = set(map(lambda a: a.answer, dns_o_list))
-    for a in list(missing_answers):
-        if a is None:
-            missing_answers.discard(a)
-            continue
-
-        try:
-            if is_ip_bogon(a):
-                missing_answers.discard(a)
-        except ValueError:
-            missing_answers.discard(a)
-
-    for a in dns_baseline.tls_consistent_answers:
-        missing_answers.discard(a)
-
-    new_tls_consistent_ips = []
-    res = db.execute(
-        "SELECT DISTINCT ip FROM dns_consistency_tls_baseline WHERE ip IN %(ip_list)s AND domain_name = %(domain_name)s",
-        {"ip_list": list(missing_answers), "domain_name": domain_name},
-    )
-    assert isinstance(res, list)
-    for row in res:
-        missing_answers.discard(row[0])
-        new_tls_consistent_ips.append(row[0])
-
-    rows_to_write = []
-    for ip in missing_answers:
-        timestamp = datetime.now()
-        if is_tls_valid(ip, domain_name):
-            rows_to_write.append((ip, domain_name, timestamp))
-            new_tls_consistent_ips.append(ip)
-
-    if len(rows_to_write) > 0:
-        db.execute(
-            "INSERT INTO dns_consistency_tls_baseline (ip, domain_name, timestamp) VALUES",
-            rows_to_write,
-        )
-    return new_tls_consistent_ips
-
-
-def generate_website_verdicts(
-    day: date,
-    db: ClickhouseConnection,
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
-    probe_cc: Optional[str] = None,
-):
-    with logging_redirect_tqdm():
-        for domain_name in tqdm(domains_in_a_day(day, db, probe_cc)):
-            log.debug(f"Generating verdicts for {domain_name}")
-            dns_baseline = make_dns_baseline(day, domain_name, db)
-            http_baseline_map = make_http_baseline_map(day, domain_name, db)
-            tcp_baseline_map = make_tcp_baseline_map(day, domain_name, db)
-
-            for (
-                dns_o_list,
-                tcp_o_list,
-                tls_o_list,
-                http_o_list,
-            ) in websites_observation_group(day, domain_name, db, probe_cc=probe_cc):
-                extra_tls_consistent_answers = get_extra_dns_consistency_tls_baseline(
-                    dns_baseline, dns_o_list, db
-                )
-                dns_baseline.tls_consistent_answers = list(
-                    set(
-                        list(dns_baseline.tls_consistent_answers)
-                        + extra_tls_consistent_answers
-                    )
-                )
-                yield from make_website_verdicts(
-                    dns_o_list,
-                    dns_baseline,
-                    fingerprintdb,
-                    netinfodb,
-                    tcp_o_list,
-                    tcp_baseline_map,
-                    tls_o_list,
-                    http_o_list,
-                    http_baseline_map,
-                )
-
-
-verdict_generators = [generate_website_verdicts]
-
 nettest_processors = {
     "web_connectivity": web_connectivity_processor,
     "dnscheck": dnscheck_processor,
@@ -480,7 +288,6 @@ def process_day(
     test_name=[],
     probe_cc=[],
     start_at_idx=0,
-    skip_verdicts=False,
     fast_fail=False,
 ) -> Tuple[float, date]:
     t0 = time.monotonic()
@@ -537,16 +344,5 @@ def process_day(
                     out_file.write("ENDTB----\n")
                 if fast_fail:
                     raise exc
-
-    if isinstance(db, ClickhouseConnection) and not skip_verdicts:
-        write_verdicts_to_db(
-            db,
-            generate_website_verdicts(
-                day,
-                db,
-                fingerprintdb,
-                netinfodb,
-            ),
-        )
 
     return time.monotonic() - t0, day
