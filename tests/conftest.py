@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+from click.testing import CliRunner
+
 import pytest
 
 import orjson
@@ -102,7 +104,12 @@ SAMPLE_MEASUREMENTS = [
 
 
 @pytest.fixture
-def fingerprintdb():
+def datadir():
+    return DATA_DIR
+
+
+@pytest.fixture
+def fingerprintdb(datadir):
     return FingerprintDB(
         datadir=DATA_DIR,
         download=True,
@@ -131,3 +138,8 @@ def measurements():
         with sampled_measurements[msmt_uid].open("wb") as out_file:
             out_file.write(orjson.dumps(msmt))
     return sampled_measurements
+
+
+@pytest.fixture
+def cli_runner():
+    return CliRunner()
