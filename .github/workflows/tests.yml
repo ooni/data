@@ -35,6 +35,9 @@ jobs:
         run: |
           curl -fsS https://install.python-poetry.org | python - --preview -y
 
+      - name: Add poetry to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - name: Set up cache
         uses: actions/cache@v3
         id: cache
