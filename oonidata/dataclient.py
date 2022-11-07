@@ -475,14 +475,37 @@ def make_download_progress(
     )
 
 
+CSVList = Optional[Union[List[str], str]]
+
+
+def testnames_set(test_name: CSVList) -> Set[str]:
+    if test_name is not None:
+        if isinstance(test_name, str):
+            test_name = test_name.split(",")
+        return set(list(map(lambda x: x.lower().replace("_", ""), test_name)))
+    return set()
+
+
+def ccs_set(probe_cc: CSVList) -> Set[str]:
+    if probe_cc is not None:
+        if isinstance(probe_cc, str):
+            probe_cc = probe_cc.split(",")
+        return set(list(map(lambda x: x.upper(), probe_cc)))
+    return set()
+
+
 def get_file_entries(
     start_day: date,
     end_day: date,
-    ccs: Set[str],
-    testnames: Set[str],
+    probe_cc: CSVList,
+    test_name: CSVList,
     from_cans: bool,
     progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
 ) -> List[FileEntry]:
+
+    ccs = ccs_set(probe_cc)
+    testnames = testnames_set(test_name)
+
     start_timestamp = datetime.combine(start_day, datetime.min.time())
     end_timestamp = datetime.combine(end_day, datetime.min.time())
 
@@ -533,23 +556,13 @@ def get_file_entries(
 def iter_measurements(
     start_day: Union[date, str],
     end_day: Union[date, str],
-    probe_cc: Optional[Union[List[str], str]] = None,
-    test_name: Optional[Union[List[str], str]] = None,
+    probe_cc: CSVList = None,
+    test_name: CSVList = None,
     from_cans: bool = True,
     file_entries: Optional[List[FileEntry]] = None,
     progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
 ) -> Generator[dict, None, None]:
-    ccs = set()
-    if probe_cc is not None:
-        if isinstance(probe_cc, str):
-            probe_cc = probe_cc.split(",")
-        ccs = set(list(map(lambda x: x.upper(), probe_cc)))
-
-    testnames = set()
-    if test_name is not None:
-        if isinstance(test_name, str):
-            test_name = test_name.split(",")
-        testnames = set(list(map(lambda x: x.lower().replace("_", ""), test_name)))
+    ccs = ccs_set(probe_cc)
 
     if isinstance(start_day, str):
         start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
@@ -560,8 +573,8 @@ def iter_measurements(
         file_entries = get_file_entries(
             start_day=start_day,
             end_day=end_day,
-            ccs=ccs,
-            testnames=testnames,
+            test_name=test_name,
+            probe_cc=probe_cc,
             from_cans=from_cans,
             progress_callback=progress_callback,
         )
