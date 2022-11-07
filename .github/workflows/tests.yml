@@ -46,5 +46,8 @@ jobs:
         run: poetry install
 
       - name: Run all tests
-        run: poetry run pytest -q tests
+        run: poetry run pytest --cov=./ --cov-report=xml -q tests
+
+      - name: Upload coverage to codecov
+        uses: codecov/codecov-action@v3
 

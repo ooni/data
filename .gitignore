@@ -1,5 +1,5 @@
 __pycache__
-/.coverage
+/coverage
 /tests/data/datadir/*
 /tests/data/measurements/*
 /dist
