@@ -14,7 +14,7 @@ from pathlib import Path
 from base64 import b64decode
 
 from datetime import datetime
-from typing import Optional, Tuple, Union, List, Union, Mapping
+from typing import Optional, Tuple, Union, List, Union, Dict
 
 from dataclasses import dataclass
 
@@ -108,7 +108,7 @@ class BaseTestKeys(BaseModel):
 
 @dataclass
 class BaseMeasurement(BaseModel):
-    annotations: Mapping[str, str]
+    annotations: Dict[str, str]
 
     input: Union[str, List[str], None]
     report_id: str
@@ -159,7 +159,7 @@ class TorInfo(BaseModel):
 class HTTPBase(BaseModel):
     body: MaybeBinaryData = None
     body_is_truncated: Optional[bool] = None
-    headers: Optional[Mapping[str, str]] = None
+    headers: Optional[Dict[str, str]] = None
     headers_list: Optional[HeadersList] = None
 
     _body_bytes = None
@@ -191,13 +191,13 @@ class HTTPBase(BaseModel):
         return self._body_bytes
 
     @property
-    def headers_str(self) -> Optional[Mapping[str, str]]:
+    def headers_str(self) -> Optional[Dict[str, str]]:
         if not self.headers_list_str:
             return None
         return {k: v for k, v in self.headers_list_str}
 
     @property
-    def headers_bytes(self) -> Optional[Mapping[str, bytes]]:
+    def headers_bytes(self) -> Optional[Dict[str, bytes]]:
         if not self.headers_list_bytes:
             return None
         return {k: v for k, v in self.headers_list_bytes}
@@ -350,7 +350,7 @@ class WebConnectivityControlHTTPRequest(BaseModel):
     body_length: Optional[int] = None
     failure: Failure = None
     title: Optional[str] = None
-    headers: Optional[Mapping[str, str]] = None
+    headers: Optional[Dict[str, str]] = None
     status_code: Optional[int] = None
 
 
@@ -368,7 +368,7 @@ class WebConnectivityControlTCPConnectStatus(BaseModel):
 
 @dataclass
 class WebConnectivityControl(BaseModel):
-    tcp_connect: Optional[Mapping[str, WebConnectivityControlTCPConnectStatus]] = None
+    tcp_connect: Optional[Dict[str, WebConnectivityControlTCPConnectStatus]] = None
     http_request: Optional[WebConnectivityControlHTTPRequest] = None
     dns: Optional[WebConnectivityControlDNS] = None
 
@@ -539,7 +539,7 @@ class URLGetterTestKeys(BaseTestKeys):
 
 @dataclass
 class DNSCheckTestKeys(BaseTestKeys):
-    lookups: Optional[Mapping[str, URLGetterTestKeys]] = None
+    lookups: Optional[Dict[str, URLGetterTestKeys]] = None
     bootstrap: Optional[URLGetterTestKeys] = None
     bootstrap_failure: Optional[str] = None
 
@@ -565,7 +565,7 @@ class TorTestTarget(BaseModel):
 
 @dataclass
 class TorTestKeys(BaseModel):
-    targets: Mapping[str, TorTestTarget]
+    targets: Dict[str, TorTestTarget]
 
 
 @dataclass

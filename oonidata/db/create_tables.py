@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from typing import Optional, Tuple, List, Any, Type, Mapping
+from typing import Optional, Tuple, List, Any, Type, Mapping, Dict
 from dataclasses import fields
 from oonidata.observations import (
     NettestObservation,
@@ -21,7 +21,7 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == str:
         return "String"
 
-    if t == Optional[str] or t == Optional[bytes]:
+    if t in (Optional[str], Optional[bytes]):
         return "Nullable(String)"
 
     if t == int:
@@ -51,7 +51,7 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Optional[float]:
         return "Nullable(Float64)"
 
-    if t == List[str] or t == List[bytes]:
+    if t in (List[str], List[bytes]):
         return "Array(String)"
 
     if t == Optional[List[str]]:
@@ -75,7 +75,7 @@ def typing_to_clickhouse(t: Any) -> str:
         s += "\n     )"
         return s
 
-    if t == Mapping[str, str]:
+    if t in (Mapping[str, str], Dict[str, str]):
         return "Map(String, String)"
 
     raise Exception(f"Unhandled type {t}")

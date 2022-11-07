@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from datetime import date
 import logging
 
-from typing import Any, Dict, Mapping, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List
 from urllib.parse import urlparse
 from oonidata.dataformat import WebConnectivity, WebConnectivityControl
 from oonidata.datautils import one_day_dict
@@ -21,7 +21,7 @@ class TCPControl:
 
 def make_tcp_control_map(
     day: date, domain_name: str, db: ClickhouseConnection
-) -> Mapping[str, TCPControl]:
+) -> Dict[str, TCPControl]:
     tcp_control_map = {}
     q_params = one_day_dict(day)
     q_params["domain_name"] = domain_name
@@ -69,7 +69,7 @@ def maybe_get_first(l: list, default_value: Any = None) -> Optional[Any]:
 
 def make_http_control_map(
     day: date, domain_name: str, db: ClickhouseConnection
-) -> Mapping[str, HTTPControl]:
+) -> Dict[str, HTTPControl]:
     http_control_map = {}
 
     q_params = one_day_dict(day)
@@ -231,7 +231,7 @@ def make_dns_control_from_wc(
 
 def make_tcp_control_from_wc(
     control: WebConnectivityControl,
-) -> Mapping[str, TCPControl]:
+) -> Dict[str, TCPControl]:
     if not control or not control.tcp_connect:
         return {}
 
@@ -246,7 +246,7 @@ def make_tcp_control_from_wc(
 
 def make_http_control_from_wc(
     msmt: WebConnectivity, control: WebConnectivityControl
-) -> Mapping[str, HTTPControl]:
+) -> Dict[str, HTTPControl]:
     if not control or not control.http_request:
         return {}
 

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import ipaddress
 from enum import Enum
-from typing import Optional, List, Tuple, Generator, Mapping
+from typing import Optional, List, Tuple, Dict
 from oonidata.experiments.control import DNSControl, HTTPControl, TCPControl
 from oonidata.experiments.experiment_result import (
     BlockingEvent,
@@ -527,10 +527,10 @@ def make_website_experiment_result(
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
     tcp_o_list: List[TCPObservation],
-    tcp_ctrl_map: Mapping[str, TCPControl],
+    tcp_ctrl_map: Dict[str, TCPControl],
     tls_o_list: List[TLSObservation],
     http_o_list: List[HTTPObservation],
-    http_ctrl_map: Mapping[str, HTTPControl],
+    http_ctrl_map: Dict[str, HTTPControl],
 ) -> WebsiteExperimentResult:
     """
     make_website_verdicts will yield many verdicts given some observations
