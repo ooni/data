@@ -57,7 +57,7 @@ def guess_decode(s: bytes) -> str:
     return s.decode("ascii", "ignore")
 
 
-def maybe_binary_data_to_str(mbd: Union[MaybeBinaryData, dict]) -> str:
+def maybe_binary_data_to_str(mbd: Union[MaybeBinaryData, Dict]) -> str:
     if isinstance(mbd, BinaryData):
         return guess_decode(b64decode(mbd.data))
     elif isinstance(mbd, dict):
@@ -68,7 +68,7 @@ def maybe_binary_data_to_str(mbd: Union[MaybeBinaryData, dict]) -> str:
     raise Exception(f"Invalid type {type(mbd)} {mbd}")
 
 
-def maybe_binary_data_to_bytes(mbd: Union[MaybeBinaryData, dict]) -> bytes:
+def maybe_binary_data_to_bytes(mbd: Union[MaybeBinaryData, Dict]) -> bytes:
     if isinstance(mbd, BinaryData):
         return b64decode(mbd.data)
     elif isinstance(mbd, dict):
@@ -79,7 +79,7 @@ def maybe_binary_data_to_bytes(mbd: Union[MaybeBinaryData, dict]) -> bytes:
     raise Exception(f"Invalid type {type(mbd)} {mbd}")
 
 
-def trivial_id(raw: bytes, msm: dict) -> str:
+def trivial_id(raw: bytes, msm: Dict) -> str:
     """Generate a trivial id of the measurement to allow upsert if needed
     This is used for legacy (before measurement_uid) measurements
     - Deterministic / stateless with no DB interaction
@@ -135,7 +135,7 @@ class BaseMeasurement(BaseModel):
 
     probe_network_name: Optional[str] = None
 
-    test_helpers: Optional[dict] = None
+    test_helpers: Optional[Dict] = None
     data_format_version: Optional[str] = None
     measurement_uid: Optional[str] = None
 
