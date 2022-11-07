@@ -5,9 +5,7 @@ from oonidata.db.connections import CSVConnection, ClickhouseConnection
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 from oonidata.processing import (
-    generate_website_verdicts,
     process_day,
-    write_verdicts_to_db,
 )
 
 
@@ -25,27 +23,10 @@ def worker(day_queue, args):
     else:
         raise Exception("Missing --csv-dir or --clickhouse")
 
-    skip_verdicts = args.skip_verdicts
-    if not isinstance(db, ClickhouseConnection):
-        skip_verdicts = True
-
     while True:
         day = day_queue.get(block=True)
         if day == None:
             break
-
-        if isinstance(db, ClickhouseConnection) and args.only_verdicts:
-            write_verdicts_to_db(
-                db,
-                generate_website_verdicts(
-                    args.day,
-                    db,
-                    fingerprintdb,
-                    netinfodb,
-                ),
-            )
-            continue
-
         process_day(
             db,
             fingerprintdb,
@@ -54,7 +35,6 @@ def worker(day_queue, args):
             test_name=args.test_name,
             probe_cc=args.probe_cc,
             start_at_idx=args.start_at_idx,
-            skip_verdicts=skip_verdicts,
             fast_fail=args.fast_fail,
         )
 

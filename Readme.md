@@ -49,35 +49,97 @@ graph TD
     MsmtProcessor --> HTTPObservations
 ```
 
+
 The `measurement_processor` stage can be run either in a streaming fashion as
 measurements are uploaded to the collector or in batch mode by reprocessing
 existing raw measurements.
 
-### Verdict generation
-
-A verdict is the result of interpreting one or more network observations
-collected within a particular testing session. For example, a verdict could
-conceptually look like "we think there's interference with TLS handshakes
-to 8.8.4.4:443 using dns.google as the SNI in country ZZ and AS0".
-
-An important component to verdict generation is having some form of baseline to
-establish some ground truth. This is necessary in order to establish if the
-network condition we are seeing is a result of the target being offline vs it
-being the result of blocking.
-
-The data flow of the verdict generation pipeline looks as follows:
 ```mermaid
-graph TD
-    IPInfoDB[(IPInfoDB)] --> VerdictGenerator
-    FingerprintDB[(FingerprintDB)] --> VerdictGenerator
+graph LR
+    P((Probe)) --> M{{Measurement}}
+    BE --> P
+    M --> PL[(Analysis)]
+    PL --> O{{Observations}}
+    O --> PL
+    PL --> BE{{ExperimentResult}}
+    BE --> E((Explorer))
+    O --> E
+```
 
-    Observations --> GrouperTimeTarget[/"GROUP BY time_interval, target"/]
-    GrouperTimeTarget --> BaselineGenerator{{"baseline_generator()"}}
-    GrouperTimeTarget --> GrouperSession[/"GROUP BY session_id"/]
-    BaselineGenerator --> Baselines
-    Baselines --> VerdictGenerator
-    GrouperSession --> VerdictGenerator{{"verdict_generator()"}}
-    VerdictGenerator --> Verdicts
+### ExperimentResult generation
+
+The data flow of the blocking event generation pipeline looks as follows:
+```mermaid
+classDiagram
+    direction RL
+
+    ExperimentResult --* WebsiteExperimentResult
+    ExperimentResult --* WhatsAppExperimentResult
+
+    ExperimentResult : +String measurement_uid
+    ExperimentResult : +datetime timestamp
+    ExperimentResult : +int probe_asn
+    ExperimentResult : +String probe_cc
+    ExperimentResult : +String network_type
+    ExperimentResult : +struct resolver
+    ExperimentResult : +List[str] observation_ids
+    ExperimentResult : +List[BlockingEvent] blocking_events
+    ExperimentResult : +float ok_confidence
+
+    ExperimentResult : +bool anomaly
+    ExperimentResult : +bool confirmed
+
+    class WebsiteExperimentResult {
+      +String domain_name
+      +String website_name
+    }
+
+    class WhatsAppExperimentResult {
+        +float web_ok_confidence
+        +String web_blocking_detail
+
+        +float registration_ok_confidence
+        +String registration_blocking_detail
+
+        +float endpoints_ok_confidence
+        +String endpoints_blocking_detail
+    }
+
+    class BlockingEvent {
+        blocking_type: +BlockingType
+        blocking_subject: +String
+        blocking_detail: +String
+        blocking_meta: +json
+        confidence: +float
+    }
+
+    class BlockingType {
+        <<enumeration>>
+        OK
+        BLOCKED
+        NATIONAL_BLOCK
+        ISP_BLOCK
+        LOCAL_BLOCK
+        SERVER_SIDE_BLOCK
+        DOWN
+        THROTTLING
+    }
+```
+
+```mermaid
+graph
+    M{{Measurement}} --> OGEN[[observationGen]]
+    OGEN --> |many| O{{Observations}}
+    O --> CGEN[[controlGen]]
+    O --> ODB[(ObservationDB)]
+    ODB --> CGEN
+    CGEN --> |many| CTRL{{Controls}}
+    CTRL --> A[[Analysis]]
+    FDB[(FingerprintDB)] --> A
+    NDB[(NetInfoDB)] --> A
+    O --> A
+    A --> |one| ER{{ExperimentResult}}
+    ER --> |many| BE{{BlockingEvents}}
 ```
 
 Some precautions need to be taken when running the `verdict_generator()` in
