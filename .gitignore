@@ -1,7 +1,8 @@
 __pycache__
 /.coverage
-/output
-/asdata
-/geoip
 /tests/data/datadir/*
 /tests/data/measurements/*
+/dist
+/datadir
+/output
+/attic
