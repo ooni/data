@@ -59,8 +59,8 @@ def test_get_v2_prefixes():
 
 def test_get_file_entries():
     fe_list = get_file_entries(
-        ccs=set(),
-        testnames=set(),
+        probe_cc=None,
+        test_name=None,
         start_day=date(2021, 1, 1),
         end_day=date(2021, 1, 2),
         from_cans=False,
@@ -77,8 +77,8 @@ def test_get_file_entries_for_cc():
         assert p.progress_status == ProgressStatus.LISTING
 
     fe_list = get_file_entries(
-        ccs=set(["IT"]),
-        testnames=set(["webconnectivity"]),
+        probe_cc="IT",
+        test_name="webconnectivity",
         start_day=date(2022, 8, 1),
         end_day=date(2022, 8, 11),
         from_cans=True,
