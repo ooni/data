@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-
+from datetime import date
 from click.testing import CliRunner
 
 import pytest
@@ -9,6 +9,7 @@ import orjson
 
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
+from oonidata.dataclient import sync_measurements
 from oonidata.apiclient import get_measurement_dict, get_raw_measurement
 
 FIXTURE_PATH = Path(os.path.dirname(os.path.realpath(__file__))) / "data"
@@ -100,6 +101,11 @@ SAMPLE_MEASUREMENTS = [
         "20221018T174538Z_signal_IR_44244_n1_aCmeIoeeYLKBkyxo",
         None,
     ),
+    (
+        "20221013000000.517636_US_dnscheck_bfd6d991e70afa0e",
+        "20221012T235950Z_dnscheck_US_10396_n1_EhBJEeRzCdMRTLDH",
+        "dot://dns.quad9.net/",
+    ),
 ]
 
 
@@ -122,6 +128,21 @@ def netinfodb():
         datadir=DATA_DIR,
         download=True,
     )
+
+
+@pytest.fixture
+def raw_measurements():
+    output_dir = FIXTURE_PATH / "raw_measurements"
+    if (output_dir / "signal" / "2022-10-01").exists():
+        return output_dir
+    sync_measurements(
+        output_dir=output_dir,
+        probe_cc=["IT"],
+        test_name=["web_connectivity", "signal"],
+        start_day=date(2022, 10, 1),
+        end_day=date(2022, 10, 2),
+    )
+    return output_dir
 
 
 @pytest.fixture

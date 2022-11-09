@@ -10,7 +10,17 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 from dataclasses import asdict, fields
 
-from typing import Tuple, List, Generator, Type, TypeVar, Optional, Union, Iterable
+from typing import (
+    Tuple,
+    List,
+    Generator,
+    Type,
+    TypeVar,
+    Optional,
+    Union,
+    Iterable,
+    Dict,
+)
 
 from oonidata.datautils import one_day_dict, is_ip_bogon
 from oonidata.observations import (
@@ -280,6 +290,23 @@ nettest_processors = {
 }
 
 
+def process_msmt_dict(
+    msmt_dict: Dict,
+    db: Union[ClickhouseConnection, CSVConnection],
+    netinfodb: NetinfoDB,
+    fingerprintdb: FingerprintDB,
+):
+    msmt = load_measurement(msmt_dict)
+    base_processor(msmt, db, netinfodb)
+    processor = nettest_processors.get(msmt.test_name, default_processor)
+    processor(
+        msmt,
+        db,
+        fingerprintdb,
+        netinfodb,
+    )
+
+
 def process_day(
     db: Union[ClickhouseConnection, CSVConnection],
     fingerprintdb: FingerprintDB,
@@ -325,14 +352,11 @@ def process_day(
             if idx < start_at_idx:
                 continue
             try:
-                msmt = load_measurement(msmt_dict)
-                base_processor(msmt, db, netinfodb)
-                processor = nettest_processors.get(msmt.test_name, default_processor)
-                processor(
-                    msmt,
-                    db,
-                    fingerprintdb,
-                    netinfodb,
+                process_msmt_dict(
+                    msmt_dict=msmt_dict,
+                    db=db,
+                    netinfodb=netinfodb,
+                    fingerprintdb=fingerprintdb
                 )
             except Exception as exc:
                 log.error(f"failed at idx:{idx} {exc}")

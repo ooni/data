@@ -6,8 +6,12 @@ import logging
 import lz4.frame
 import shutil
 import orjson
+import multiprocessing
 import multiprocessing.pool
+from pathlib import Path
 from datetime import date, timedelta, datetime
+from collections import defaultdict
+from functools import partial
 
 from dataclasses import dataclass
 
@@ -18,6 +22,9 @@ import boto3
 from botocore import UNSIGNED as botoSigUNSIGNED
 from botocore.config import Config as botoConfig
 
+from tqdm.contrib.logging import tqdm_logging_redirect
+
+from oonidata.datautils import trim_measurement
 from oonidata.normalize import iter_yaml_msmt_normalized
 from oonidata.dataformat import trivial_id
 
@@ -261,14 +268,6 @@ class FileEntry:
             return False
 
         return True
-
-    def log_download(self) -> None:
-        s = self.size / 1024 / 1024
-        d = "M"
-        if s < 1:
-            s = self.size / 1024
-            d = "K"
-        print(f"Downloading can {self.s3path} size {s:.1f} {d}B")
 
     def stream_measurements(self):
         body = s3.get_object(Bucket=self.bucket_name, Key=self.s3path)["Body"]
@@ -608,3 +607,131 @@ def iter_measurements(
                     total_file_entries=len(file_entries),
                 )
             )
+
+
+def make_filename(max_string_size: Optional[int], fe: FileEntry) -> str:
+    flags = ""
+    if max_string_size:
+        flags = f"_max{max_string_size}"
+    ts = fe.timestamp.strftime("%Y%m%d%H")
+    filename = f"{ts}_{fe.probe_cc}_{fe.testname}{flags}.jsonl.gz"
+    return filename
+
+
+def download_file_entry_list(
+    fe_list: List[FileEntry],
+    output_dir: Path,
+    probe_cc: List[str],
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    max_string_size: Optional[int],
+):
+    """
+    Download a list of file entries to the output dir.
+
+    It assumes that the list of file entries in the list are all pertinent to
+    the same testname, probe_cc, hour tuple
+    """
+    total_fe_size = 0
+    output_dir = (
+        output_dir / fe_list[0].testname / fe_list[0].timestamp.strftime("%Y-%m-%d")
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = output_dir / make_filename(max_string_size, fe_list[0])
+
+    with gzip.open(output_path.with_suffix(".tmp"), "wb") as out_file:
+        for fe in fe_list:
+            assert fe.testname == fe_list[0].testname
+            assert fe.timestamp == fe_list[0].timestamp
+            assert fe.probe_cc == fe_list[0].probe_cc
+            total_fe_size += fe.size
+
+        for msmt_dict in iter_measurements(
+            start_day=start_day,
+            end_day=end_day,
+            probe_cc=probe_cc,
+            test_name=test_name,
+            file_entries=fe_list,
+        ):
+            if max_string_size:
+                msmt_dict = trim_measurement(msmt_dict, max_string_size)
+            out_file.write(orjson.dumps(msmt_dict))
+            out_file.write(b"\n")
+
+    output_path.with_suffix(".tmp").rename(output_path)
+    return total_fe_size
+
+
+def sync_measurements(
+    output_dir: Path,
+    probe_cc: List[str],
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    max_string_size: Optional[int] = None,
+):
+    with tqdm_logging_redirect(unit_scale=True) as pbar:
+
+        def cb_list_fe(p):
+            if p.current_prefix_idx == 0:
+                pbar.total = p.total_prefixes
+                pbar.update(0)
+                pbar.set_description("starting prefix listing")
+                return
+            pbar.update(1)
+            pbar.set_description(
+                f"listed {p.total_file_entries} files in {p.current_prefix_idx}/{p.total_prefixes} prefixes"
+            )
+
+        all_file_entries = get_file_entries(
+            start_day=start_day,
+            end_day=end_day,
+            test_name=test_name,
+            probe_cc=probe_cc,
+            from_cans=True,
+            progress_callback=cb_list_fe,
+        )
+
+        total_fe_size = 0
+        to_download_fe = defaultdict(list)
+        for fe in all_file_entries:
+            dst_path = (
+                output_dir
+                / fe.testname
+                / fe.timestamp.strftime("%Y-%m-%d")
+                / make_filename(max_string_size, fe)
+            )
+            if dst_path.exists():
+                continue
+
+            ts = fe.timestamp.strftime("%Y%m%d%H")
+            # We group based on this key, so each process is writing to the same file.
+            # Each raw folder can have multiple files on a given hour
+            key = f"{ts}-{fe.testname}-{fe.probe_cc}"
+            to_download_fe[key].append(fe)
+            total_fe_size += fe.size
+
+        pbar.unit = "B"
+        pbar.reset(total=total_fe_size)
+        pbar.set_description("downloading files")
+        download_count = 0
+        with multiprocessing.Pool() as pool:
+            for fe_size in pool.imap_unordered(
+                partial(
+                    download_file_entry_list,
+                    output_dir=output_dir,
+                    probe_cc=probe_cc,
+                    test_name=test_name,
+                    start_day=start_day,
+                    end_day=end_day,
+                    max_string_size=max_string_size,
+                ),
+                to_download_fe.values(),
+            ):
+                download_count += 1
+                pbar.update(fe_size)
+                pbar.set_description(
+                    f"downloaded {download_count}/{len(to_download_fe)}"
+                )

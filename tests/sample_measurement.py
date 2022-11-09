@@ -3,6 +3,7 @@ from typing import Optional
 import requests
 from urllib.parse import urlparse, parse_qs
 
+
 def print_sample_line(report_id: str, input: Optional[str]):
     params = params = {"report_id": report_id}
     if input:
