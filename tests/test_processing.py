@@ -1,12 +1,14 @@
 from unittest.mock import MagicMock
 
 from oonidata.dataformat import WebConnectivity, load_measurement
-from oonidata.observations import make_http_observations
+from oonidata.observations import (
+    make_http_observations,
+    make_web_connectivity_observations,
+    make_dnscheck_observations,
+)
 from oonidata.dataclient import stream_jsonl
 from oonidata.processing import (
     make_observation_row,
-    web_connectivity_processor,
-    dnscheck_processor,
     process_msmt_dict,
 )
 
@@ -47,16 +49,8 @@ def test_web_connectivity_processor(fingerprintdb, netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    db = MagicMock()
-    db.write_row = MagicMock()
 
-    web_connectivity_processor(msmt, db, fingerprintdb, netinfodb)
-    for call in db.write_row.call_args_list:
-        table_name, row = call[0]
-        if table_name == "obs_tls":
-            assert row["is_certificate_valid"] == True and row["domain_name"]
-        if table_name == "obs_dns":
-            assert row["is_tls_consistent"] == True
+    make_web_connectivity_observations(msmt, fingerprintdb, netinfodb)
 
 
 def test_benchmark_web_connectivity(benchmark, measurements, fingerprintdb, netinfodb):
@@ -69,9 +63,8 @@ def test_benchmark_web_connectivity(benchmark, measurements, fingerprintdb, neti
         ]
     )
     benchmark(
-        web_connectivity_processor,
+        make_web_connectivity_observations,
         msmt=msmt,
-        db=db,
         netinfodb=netinfodb,
         fingerprintdb=fingerprintdb,
     )
@@ -85,9 +78,8 @@ def test_benchmark_dnscheck(benchmark, measurements, fingerprintdb, netinfodb):
         msmt_path=measurements["20221013000000.517636_US_dnscheck_bfd6d991e70afa0e"]
     )
     benchmark(
-        dnscheck_processor,
+        make_dnscheck_observations,
         msmt=msmt,
-        db=db,
         netinfodb=netinfodb,
         fingerprintdb=fingerprintdb,
     )

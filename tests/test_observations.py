@@ -7,7 +7,7 @@ from oonidata.observations import (
     make_ip_to_domain,
 )
 
-from oonidata.observations import TCPObservation, TLSObservation
+from oonidata.observations import TCPObservation, TLSObservation, DNSObservation
 from oonidata.dataformat import WebConnectivity, load_measurement
 
 
@@ -18,29 +18,23 @@ def test_wc_v5_observations(fingerprintdb, netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    tcp_obs = list(
-        filter(
-            lambda x: isinstance(x, TCPObservation),
-            make_web_connectivity_observations(
-                msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
-            ),
-        )
+    dns_obs, tcp_obs, tls_obs, http_obs = make_web_connectivity_observations(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
     )
+    assert isinstance(tcp_obs[0], TCPObservation)
     assert len(tcp_obs) == 13
 
-    tls_obs = list(
-        filter(
-            lambda x: isinstance(x, TLSObservation),
-            make_web_connectivity_observations(
-                msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
-            ),
-        )
-    )
     for obs in tls_obs:
         assert isinstance(obs, TLSObservation)
         assert obs.server_name == obs.domain_name
-
     assert len(tls_obs) == 6
+
+    for obs in dns_obs:
+        assert isinstance(obs, DNSObservation)
+        assert obs.domain_name == "doh.dns.apple.com"
+    assert len(dns_obs) == 3
+
+    assert len(http_obs) == 0
 
 
 def test_http_observations(fingerprintdb, netinfodb, measurements):
