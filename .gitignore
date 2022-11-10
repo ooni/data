@@ -2,6 +2,7 @@ __pycache__
 /.coverage*
 /coverage.xml
 /tests/data/datadir/*
+/tests/data/raw_measurements/*
 /tests/data/measurements/*
 /dist
 /datadir

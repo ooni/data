@@ -13,11 +13,20 @@ from dataclasses import dataclass
 import xml.etree.ElementTree as ET
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
+
 import maxminddb
 
 from oonidata.datautils import is_ip_bogon
 
 log = logging.getLogger("oonidata.processing")
+
+
+retry_strategy = Retry(total=4, backoff_factor=0.1)
+
+req_session = requests.Session()
+req_session.mount("http://", HTTPAdapter(max_retries=retry_strategy))
+req_session.mount("https://", HTTPAdapter(max_retries=retry_strategy))
 
 
 def file_sha1_hexdigest(filepath: Path):
@@ -36,7 +45,7 @@ IAItem = namedtuple("IAItem", ["identifier", "filename", "sha1"])
 
 def list_all_ia_items(identifier: str) -> List[IAItem]:
     ia_items = []
-    resp = requests.get(
+    resp = req_session.get(
         f"https://archive.org/download/{identifier}/{identifier}_files.xml"
     )
     if resp.status_code == 404:
@@ -59,7 +68,7 @@ def list_all_ia_items(identifier: str) -> List[IAItem]:
 
 def download_ia_item(ia_item: IAItem, output_path: Path):
     url = f"https://archive.org/download/{ia_item.identifier}/{ia_item.filename}"
-    with requests.get(url, stream=True) as resp:
+    with req_session.get(url, stream=True) as resp:
         resp.raise_for_status()
         with output_path.with_suffix(".tmp").open("wb") as out_file:
             for b in resp.iter_content(chunk_size=2**16):

@@ -4,25 +4,31 @@ import traceback
 import orjson
 
 from tqdm import tqdm
-from tqdm.contrib.logging import logging_redirect_tqdm
 
-from datetime import datetime, date, timedelta
-from pathlib import Path
+from datetime import date, timedelta
 from dataclasses import asdict, fields
 
-from typing import Tuple, List, Generator, Type, TypeVar, Optional, Union, Iterable
+from typing import (
+    Tuple,
+    List,
+    Generator,
+    Type,
+    TypeVar,
+    Optional,
+    Union,
+    Iterable,
+    Dict,
+)
 
 from oonidata.datautils import one_day_dict, is_ip_bogon
 from oonidata.observations import (
     NettestObservation,
     DNSObservation,
     Observation,
-    make_http_observations,
-    make_dns_observations,
-    make_tcp_observations,
-    make_tls_observations,
+    make_tor_observations,
+    make_signal_observations,
     make_web_connectivity_observations,
-    make_ip_to_domain,
+    make_dnscheck_observations,
 )
 from oonidata.dataformat import DNSCheck, load_measurement
 from oonidata.dataformat import BaseMeasurement, WebConnectivity, Tor
@@ -57,126 +63,6 @@ def write_observations_to_db(
     for obs in observations:
         row = make_observation_row(obs)
         db.write_row(obs.__table_name__, row)
-
-
-def default_processor(
-    msmt: BaseMeasurement,
-    db: DatabaseConnection,
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
-) -> None:
-    print(f"Ignoring {msmt}")
-
-
-def tor_processor(
-    msmt: Tor,
-    db: DatabaseConnection,
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
-) -> None:
-
-    ip_to_domain = {}
-    for target_id, target_msmt in msmt.test_keys.targets.items():
-        write_observations_to_db(
-            db,
-            make_http_observations(
-                msmt, target_msmt.requests, fingerprintdb, netinfodb, target=target_id
-            ),
-        )
-
-        write_observations_to_db(
-            db,
-            make_dns_observations(
-                msmt, target_msmt.queries, fingerprintdb, netinfodb, target=target_id
-            ),
-        )
-
-        write_observations_to_db(
-            db,
-            make_tcp_observations(
-                msmt, target_msmt.tcp_connect, netinfodb, ip_to_domain, target=target_id
-            ),
-        )
-
-        write_observations_to_db(
-            db,
-            make_tls_observations(
-                msmt,
-                target_msmt.tls_handshakes,
-                target_msmt.network_events,
-                netinfodb,
-                ip_to_domain,
-            ),
-        )
-
-
-def web_connectivity_processor(
-    msmt: WebConnectivity,
-    db: DatabaseConnection,
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
-) -> None:
-    write_observations_to_db(
-        db,
-        make_web_connectivity_observations(
-            msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
-        ),
-    )
-
-
-def dnscheck_processor(
-    msmt: DNSCheck,
-    db: DatabaseConnection,
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
-) -> None:
-    ip_to_domain = {}
-    if msmt.test_keys.bootstrap:
-        dns_observations = list(
-            make_dns_observations(
-                msmt, msmt.test_keys.bootstrap.queries, fingerprintdb, netinfodb
-            )
-        )
-        ip_to_domain = make_ip_to_domain(dns_observations)
-        write_observations_to_db(
-            db,
-            dns_observations,
-        )
-
-    lookup_map = msmt.test_keys.lookups or {}
-    for lookup in lookup_map.values():
-        write_observations_to_db(
-            db, make_dns_observations(msmt, lookup.queries, fingerprintdb, netinfodb)
-        )
-
-        write_observations_to_db(
-            db,
-            make_http_observations(msmt, lookup.requests, fingerprintdb, netinfodb),
-        )
-
-        write_observations_to_db(
-            db,
-            make_tcp_observations(msmt, lookup.tcp_connect, netinfodb, ip_to_domain),
-        )
-
-        write_observations_to_db(
-            db,
-            make_tls_observations(
-                msmt,
-                lookup.tls_handshakes,
-                lookup.network_events,
-                netinfodb,
-                ip_to_domain,
-            ),
-        )
-
-
-def base_processor(
-    msmt: BaseMeasurement,
-    db: DatabaseConnection,
-    netinfodb: NetinfoDB,
-) -> None:
-    write_observations_to_db(db, [NettestObservation.from_measurement(msmt, netinfodb)])
 
 
 def domains_in_a_day(
@@ -273,11 +159,46 @@ def observations_in_session(
     return observation_list
 
 
-nettest_processors = {
-    "web_connectivity": web_connectivity_processor,
-    "dnscheck": dnscheck_processor,
-    "tor": tor_processor,
+def nettest_processor(
+    msmt: DNSCheck,
+    db: DatabaseConnection,
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
+) -> None:
+    for obs_group in make_dnscheck_observations(msmt, fingerprintdb, netinfodb):
+        write_observations_to_db(db, obs_group)
+
+
+def generic_processor(
+    msmt: BaseMeasurement,
+    db: DatabaseConnection,
+    netinfodb: NetinfoDB,
+) -> None:
+    write_observations_to_db(db, [NettestObservation.from_measurement(msmt, netinfodb)])
+
+
+nettest_make_obs_map = {
+    "web_connectivity": make_web_connectivity_observations,
+    "dnscheck": make_dnscheck_observations,
+    "tor": make_tor_observations,
+    "signal": make_signal_observations,
 }
+
+
+def process_msmt_dict(
+    msmt_dict: Dict,
+    db: Union[ClickhouseConnection, CSVConnection],
+    netinfodb: NetinfoDB,
+    fingerprintdb: FingerprintDB,
+):
+    msmt = load_measurement(msmt_dict)
+    generic_processor(msmt, db, netinfodb)
+
+    if msmt.test_name in nettest_make_obs_map:
+        for obs_group in nettest_make_obs_map[msmt.test_name](
+            msmt, fingerprintdb, netinfodb
+        ):
+            write_observations_to_db(db, obs_group)
 
 
 def process_day(
@@ -325,14 +246,11 @@ def process_day(
             if idx < start_at_idx:
                 continue
             try:
-                msmt = load_measurement(msmt_dict)
-                base_processor(msmt, db, netinfodb)
-                processor = nettest_processors.get(msmt.test_name, default_processor)
-                processor(
-                    msmt,
-                    db,
-                    fingerprintdb,
-                    netinfodb,
+                process_msmt_dict(
+                    msmt_dict=msmt_dict,
+                    db=db,
+                    netinfodb=netinfodb,
+                    fingerprintdb=fingerprintdb,
                 )
             except Exception as exc:
                 log.error(f"failed at idx:{idx} {exc}")

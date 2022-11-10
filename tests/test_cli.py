@@ -25,11 +25,11 @@ def test_sync(cli_runner, tmp_path: Path):
     assert len(list((tmp_path / "telegram" / "2022-01-01").iterdir())) == 24
 
 
-def test_process(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
+def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
     result = cli_runner.invoke(
         cli,
         [
-            "process",
+            "mkobs",
             "--probe-cc",
             "BA",
             "--start-day",

@@ -257,8 +257,14 @@ class HTTPTransaction(BaseModel):
     request: Optional[HTTPRequest] = None
     response: Optional[HTTPResponse] = None
 
-    t: Optional[float] = None
+    network: Optional[str] = None
+    address: Optional[str] = None
+    alpn: Optional[str] = None
+
     transaction_id: Optional[int] = None
+
+    t: Optional[float] = None
+    t0: Optional[float] = None
 
     def response_sha1(self) -> str:
         if self.response and self.response.body_bytes:
@@ -271,16 +277,18 @@ class DNSAnswer(BaseModel):
     answer_type: str
     asn: Optional[int] = None
     as_org_name: Optional[str] = None
-    expiration_limit: Optional[str] = None
     hostname: Optional[str] = None
     ipv4: Optional[str] = None
     ipv6: Optional[str] = None
+    ttl: Optional[int] = None
+
+    # Deprecated
+    expiration_limit: Optional[str] = None
     minimum_ttl: Optional[str] = None
     refresh_interval: Optional[str] = None
     responsible_name: Optional[str] = None
     retry_interval: Optional[str] = None
     serial_number: Optional[str] = None
-    ttl: Optional[int] = None
 
 
 @dataclass
@@ -289,15 +297,22 @@ class DNSQuery(BaseModel):
     query_type: str
 
     failure: Failure = None
-    dial_id: Optional[int] = None
     engine: Optional[str] = None
 
-    # XXX: Map resolver_hostname and resolver_port to this
+    answers: Optional[List[DNSAnswer]] = None
+
+    raw_response: Optional[str] = None
+    rcode: Optional[int] = None
+
     resolver_address: Optional[str] = None
-    t: Optional[float] = None
+
     transaction_id: Optional[int] = None
 
-    answers: Optional[List[DNSAnswer]] = None
+    t: Optional[float] = None
+    t0: Optional[float] = None
+
+    # Deprecated field
+    dial_id: Optional[int] = None
 
 
 @dataclass
@@ -313,22 +328,42 @@ class TCPConnect(BaseModel):
     port: int
     status: TCPConnectStatus
 
+    transaction_id: Optional[int] = None
+
     t: Optional[float] = None
+    t0: Optional[float] = None
+
+    # Deprecated fields
+    conn_id: Optional[int] = None
+    dial_id: Optional[int] = None
 
 
 @dataclass
 class TLSHandshake(BaseModel):
-    failure: Failure = None
-    peer_certificates: Optional[List[BinaryData]] = None
+    network: Optional[str] = None
     address: Optional[str] = None
     cipher_suite: Optional[str] = None
+
+    failure: Failure = None
+    so_error: Failure = None
+
     negotiated_protocol: Optional[str] = None
+
     no_tls_verify: Optional[bool] = None
+    peer_certificates: Optional[List[BinaryData]] = None
+
     server_name: Optional[str] = None
-    t: Optional[float] = None
+
     tags: Optional[List[str]] = None
     tls_version: Optional[str] = None
+
+    t: Optional[float] = None
+    t0: Optional[float] = None
+
     transaction_id: Optional[int] = None
+
+    # Deprecated
+    conn_id: Optional[int] = None
 
 
 @dataclass
@@ -337,11 +372,13 @@ class NetworkEvent(BaseModel):
     t: float
     failure: Failure = None
     address: Optional[str] = None
-    dial_id: Optional[int] = None
     num_bytes: Optional[int] = None
     proto: Optional[str] = None
     tags: Optional[List[str]] = None
     transaction_id: Optional[str] = None
+
+    # Deprecated fields
+    dial_id: Optional[int] = None
     conn_id: Optional[int] = None
 
 
@@ -504,6 +541,12 @@ Lrsybb0z5gg8w7ZblEuB9zOW9M3l60DXuJO6l7g+deV6P96rv2unHS8UlvWiVWDy
 )
 
 SIGNAL_PEM_STORE = (SIGNAL_ROOT_CA_OLD, SIGNAL_ROOT_CA_NEW)
+
+
+@dataclass
+class TCPTTestKeys(BaseTestKeys):
+    received: Optional[List[MaybeBinaryData]] = None
+    sent: Optional[List[MaybeBinaryData]] = None
 
 
 @dataclass
