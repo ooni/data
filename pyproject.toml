@@ -29,6 +29,9 @@ snakeviz = ">=2.1.1"
 mypy = ">=0.961"
 pytest-benchmark = "^4.0.0"
 
+[tool.poetry.scripts]
+oonidata = 'oonidata.cli:cli'
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
