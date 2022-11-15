@@ -109,7 +109,7 @@ SAMPLE_MEASUREMENTS = [
 ]
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def datadir():
     return DATA_DIR
 
@@ -117,7 +117,7 @@ def datadir():
 @pytest.fixture(scope="session")
 def fingerprintdb(datadir):
     return FingerprintDB(
-        datadir=DATA_DIR,
+        datadir=datadir,
         download=True,
     )
 
