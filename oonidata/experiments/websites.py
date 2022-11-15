@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import ipaddress
 from enum import Enum
 from typing import Optional, List, Tuple, Dict
+from urllib.parse import urlparse
 from oonidata.experiments.control import DNSControl, HTTPControl, TCPControl
 from oonidata.experiments.experiment_result import (
     BlockingEvent,
@@ -128,12 +129,14 @@ def make_website_tcp_blocking_event(
         }
         if reachable_count > unreachable_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
-            confidence = reachable_count / (reachable_count + unreachable_count + 1)
+            confidence = (
+                reachable_count / (reachable_count + unreachable_count + 1) * 0.9
+            )
             blocking_type = BlockingType.BLOCKED
         elif unreachable_count > reachable_count:
-            confidence = (unreachable_count + 1) / (
-                reachable_count + unreachable_count + 1
-            )
+            confidence = (
+                (unreachable_count + 1) / (reachable_count + unreachable_count + 1)
+            ) * 0.9
             blocking_type = BlockingType.BLOCKED
 
         # TODO: should we bump up the confidence in the case of connection_reset?
@@ -524,13 +527,13 @@ def make_website_experiment_result(
     nt_o: NettestObservation,
     dns_o_list: List[DNSObservation],
     dns_ctrl: DNSControl,
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
     tcp_o_list: List[TCPObservation],
     tcp_ctrl_map: Dict[str, TCPControl],
     tls_o_list: List[TLSObservation],
     http_o_list: List[HTTPObservation],
     http_ctrl_map: Dict[str, HTTPControl],
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
 ) -> WebsiteExperimentResult:
     """
     make_website_verdicts will yield many verdicts given some observations
@@ -594,7 +597,20 @@ def make_website_experiment_result(
 
     if tcp_o_list:
         for tcp_o in tcp_o_list:
+            dns_blocked_answers = list(
+                map(
+                    lambda be: be.blocking_meta["ip"],
+                    filter(
+                        lambda be: (be.confidence > 0.6) and "ip" in be.blocking_meta,
+                        dns_blocking_events,
+                    ),
+                )
+            )
             observation_ids.append(tcp_o.observation_id)
+            # We ignore TCP observations pertaining to DNS answers that are DNS
+            # inconsistent answers.
+            if tcp_o.ip in dns_blocked_answers:
+                continue
             assert (
                 domain_name == tcp_o.domain_name
             ), f"Inconsistent domain_name in tcp_o {tcp_o.domain_name}"
@@ -634,10 +650,17 @@ def make_website_experiment_result(
 
     # TODO: Should we be including this also BlockingType.DOWN,SERVER_SIDE_BLOCK or not?
     ok_confidence = 1 - max(
-        filter(
-            lambda be: be.blocking_type
-            not in (BlockingType.OK, BlockingType.DOWN, BlockingType.SERVER_SIDE_BLOCK),
-            blocking_events,
+        map(
+            lambda be: be.confidence,
+            filter(
+                lambda be: be.blocking_type
+                not in (
+                    BlockingType.OK,
+                    BlockingType.DOWN,
+                    BlockingType.SERVER_SIDE_BLOCK,
+                ),
+                blocking_events,
+            ),
         )
     )
 
@@ -645,10 +668,13 @@ def make_website_experiment_result(
     anomaly = False
     if ok_confidence == 0:
         confirmed = True
-    if ok_confidence > 0.6:
+    if ok_confidence < 0.6:
         anomaly = True
 
+    domain_name = urlparse(nt_o.input).hostname or ""
     return WebsiteExperimentResult(
+        domain_name=domain_name,
+        website_name=domain_name,
         blocking_events=blocking_events,
         observation_ids=observation_ids,
         anomaly=anomaly,

@@ -10,16 +10,23 @@ from oonidata.dataformat import (
 from oonidata.datautils import validate_cert_chain
 from oonidata.experiments.control import (
     make_dns_control,
+    make_dns_control_from_wc,
+    make_http_control_from_wc,
     make_http_control_map,
+    make_tcp_control_from_wc,
     make_tcp_control_map,
 )
 from oonidata.experiments.experiment_result import BlockingType
 from oonidata.experiments.signal import make_signal_experiment_result
-from oonidata.experiments.websites import make_website_dns_blocking_event
+from oonidata.experiments.websites import (
+    make_website_dns_blocking_event,
+    make_website_experiment_result,
+)
 from oonidata.observations import (
     make_dns_observations,
     make_signal_observations,
     NettestObservation,
+    make_web_connectivity_observations,
 )
 
 
@@ -132,7 +139,7 @@ def test_signal(fingerprintdb, netinfodb, measurements):
     assert blocking_event.confirmed == True
 
 
-def baseline_query_mock(q, q_params):
+def ctrl_query_mock(q, q_params):
     # This pattern of mocking is a bit brittle.
     # TODO: come up with a better way of mocking these things out
     if "SELECT DISTINCT(ip) FROM obs_tls" in q:
@@ -191,11 +198,11 @@ def baseline_query_mock(q, q_params):
 def make_mock_ctrldb():
     db = MagicMock()
     db.execute = MagicMock()
-    db.execute.side_effect = baseline_query_mock
+    db.execute.side_effect = ctrl_query_mock
     return db
 
 
-def test_baselines():
+def test_controls():
     day = date(2022, 1, 1)
     domain_name = "ooni.org"
     db = make_mock_ctrldb()
@@ -281,3 +288,42 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
         )
         assert blocking_event.blocking_type == BlockingType.OK
         break
+
+
+def test_website_experiment_result(fingerprintdb, netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"
+        ]
+    )
+    assert isinstance(msmt, WebConnectivity)
+    nt_o = NettestObservation.from_measurement(msmt, netinfodb=netinfodb)
+    (
+        dns_o_list,
+        tcp_o_list,
+        tls_o_list,
+        http_o_list,
+    ) = make_web_connectivity_observations(msmt, fingerprintdb, netinfodb)
+
+    assert msmt.test_keys.control
+    assert isinstance(msmt.input, str)
+    dns_ctrl = make_dns_control_from_wc(
+        msmt_input=msmt.input, control=msmt.test_keys.control
+    )
+    http_ctrl_map = make_http_control_from_wc(msmt=msmt, control=msmt.test_keys.control)
+    tcp_ctrl_map = make_tcp_control_from_wc(control=msmt.test_keys.control)
+
+    experiment_result = make_website_experiment_result(
+        nt_o,
+        dns_o_list,
+        dns_ctrl,
+        tcp_o_list,
+        tcp_ctrl_map,
+        tls_o_list,
+        http_o_list,
+        http_ctrl_map,
+        fingerprintdb,
+        netinfodb,
+    )
+    assert experiment_result.anomaly == True
+    assert len(experiment_result.blocking_events) == 1
