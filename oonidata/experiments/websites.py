@@ -124,8 +124,8 @@ def make_website_tcp_blocking_event(
         reachable_count = len(tcp_b.reachable_cc_asn)
         unreachable_count = len(unreachable_cc_asn)
         blocking_meta = {
-            "unreachable_count": unreachable_count,
-            "reachable_count": reachable_count,
+            "unreachable_count": str(unreachable_count),
+            "reachable_count": str(reachable_count),
         }
         if reachable_count > unreachable_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
@@ -181,7 +181,7 @@ def make_website_dns_blocking_event(
             blocking_type=blocking_type,
             blocking_subject=blocking_subject,
             blocking_detail="dns.inconsistent.blockpage",
-            blocking_meta={"ip": dns_o.answer},
+            blocking_meta={"ip": dns_o.answer or ""},
             confidence=confidence,
         )
 
@@ -190,7 +190,7 @@ def make_website_dns_blocking_event(
             blocking_type=BlockingType.BLOCKED,
             blocking_subject=blocking_subject,
             blocking_detail="dns.inconsistent.bogon",
-            blocking_meta={"ip": dns_o.answer},
+            blocking_meta={"ip": dns_o.answer or ""},
             confidence=0.9,
         )
 
@@ -239,7 +239,7 @@ def make_website_dns_blocking_event(
             blocking_type=blocking_type,
             blocking_subject=blocking_subject,
             blocking_detail=blocking_detail,
-            blocking_meta={"ip": dns_o.answer},
+            blocking_meta={"ip": dns_o.answer or ""},
             confidence=0.9,
         )
 
@@ -248,7 +248,7 @@ def make_website_dns_blocking_event(
             blocking_type=BlockingType.BLOCKED,
             blocking_subject=blocking_subject,
             blocking_detail="dns.inconsistent.tls_mismatch",
-            blocking_meta={"ip": dns_o.answer, "why": "tls_inconsistent"},
+            blocking_meta={"ip": dns_o.answer or "", "why": "tls_inconsistent"},
             confidence=0.9,
         )
 
@@ -280,7 +280,7 @@ def make_website_dns_blocking_event(
                 blocking_type=BlockingType.BLOCKED,
                 blocking_subject=blocking_subject,
                 blocking_detail=blocking_detail,
-                blocking_meta={"ip": dns_o.answer, "why": "tls_inconsistent"},
+                blocking_meta={"ip": dns_o.answer or "", "why": "tls_inconsistent"},
                 confidence=0.9,
             )
 
@@ -289,7 +289,7 @@ def make_website_dns_blocking_event(
         blocking_type=BlockingType.OK,
         blocking_subject=blocking_subject,
         blocking_detail="dns.ok",
-        blocking_meta={"ip": dns_o.answer},
+        blocking_meta={"ip": dns_o.answer or ""},
         confidence=0.8,
     )
 

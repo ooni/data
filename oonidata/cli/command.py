@@ -15,6 +15,7 @@ from oonidata.dataclient import (
     sync_measurements,
 )
 from oonidata.db.connections import CSVConnection, ClickhouseConnection
+from oonidata.db.create_tables import create_queries
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 from oonidata.processing import process_day
@@ -163,10 +164,25 @@ def processing_worker(
 @click.option(
     "--parallelism",
     type=int,
+    default=multiprocessing.cpu_count() + 2,
     help="number of processes to use. Only works when writing to a database",
 )
 @click.option("--start-at-idx", type=int, default=0)
-@click.option("--fast-fail", default=False)
+@click.option(
+    "--fast-fail",
+    is_flag=True,
+    help="should we fail immediately when we encounter an error?",
+)
+@click.option(
+    "--create-tables",
+    is_flag=True,
+    help="should we attempt to create the required clickhouse tables",
+)
+@click.option(
+    "--drop-tables",
+    is_flag=True,
+    help="should we drop tables before creating them",
+)
 def mkobs(
     probe_cc: List[str],
     test_name: List[str],
@@ -178,18 +194,35 @@ def mkobs(
     parallelism: int,
     start_at_idx: int,
     fast_fail: bool,
+    create_tables: bool,
+    drop_tables: bool,
 ):
     """
     Make observations for OONI measurements and write them into clickhouse or a CSV file
     """
-    FingerprintDB(datadir=data_dir, download=True)
-    NetinfoDB(datadir=data_dir, download=True)
-
     if csv_dir:
         click.echo(
             "When generating CSV outputs we currently only support parallelism of 1"
         )
         parallelism = 1
+
+    if create_tables:
+        if not clickhouse:
+            click.echo("--clickhouse needs to be specified when creating tables")
+            return 1
+        if drop_tables:
+            click.confirm(
+                "Are you sure you want to drop the tables before creation?", abort=True
+            )
+
+        db = ClickhouseConnection(clickhouse)
+        for query, table_name in create_queries:
+            if drop_tables:
+                db.execute(f"DROP TABLE IF EXISTS {table_name};")
+            db.execute(query)
+
+    FingerprintDB(datadir=data_dir, download=True)
+    NetinfoDB(datadir=data_dir, download=True)
 
     day_queue = multiprocessing.Queue()
     pool = multiprocessing.Pool(

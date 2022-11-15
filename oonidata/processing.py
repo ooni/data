@@ -20,7 +20,7 @@ from typing import (
     Dict,
 )
 
-from oonidata.datautils import one_day_dict, is_ip_bogon
+from oonidata.datautils import one_day_dict
 from oonidata.observations import (
     NettestObservation,
     DNSObservation,
@@ -31,7 +31,7 @@ from oonidata.observations import (
     make_dnscheck_observations,
 )
 from oonidata.dataformat import DNSCheck, load_measurement
-from oonidata.dataformat import BaseMeasurement, WebConnectivity, Tor
+from oonidata.dataformat import BaseMeasurement
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
@@ -253,11 +253,17 @@ def process_day(
                     fingerprintdb=fingerprintdb,
                 )
             except Exception as exc:
+                # This is a bit sketchy, we ought to eventually move it to some
+                # better logging function
                 log.error(f"failed at idx:{idx} {exc}")
-                with open("bad_msmts.jsonl", "ab+") as out_file:
+                with open(
+                    f"bad_msmts-{day.strftime('%Y%m%d')}.jsonl", "ab+"
+                ) as out_file:
                     out_file.write(orjson.dumps(msmt_dict))
                     out_file.write(b"\n")
-                with open("bad_msmts_fail_log.txt", "a+") as out_file:
+                with open(
+                    f"bad_msmts_fail_log-{day.strftime('%Y%m%d')}.txt", "a+"
+                ) as out_file:
                     out_file.write(traceback.format_exc())
                     out_file.write("ENDTB----\n")
                 if fast_fail:

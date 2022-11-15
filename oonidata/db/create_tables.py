@@ -116,35 +116,37 @@ def create_query_for_experiment_result() -> Tuple[str, str]:
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
-    ORDER BY (timestamp, observation_id, measurement_uid)
+    ORDER BY (measurement_uid)
     SETTINGS index_granularity = 8192;
     """,
         "experiment_result",
     )
 
 
+create_queries = [
+    create_query_for_observation(DNSObservation),
+    create_query_for_observation(TCPObservation),
+    create_query_for_observation(TLSObservation),
+    create_query_for_observation(HTTPObservation),
+    create_query_for_observation(NettestObservation),
+    create_query_for_experiment_result(),
+    (
+        """
+    CREATE TABLE dns_consistency_tls_baseline (
+        ip String,
+        domain_name String,
+        timestamp Datetime
+    )
+    ENGINE = ReplacingMergeTree
+    ORDER BY (ip, domain_name, timestamp)
+    SETTINGS index_granularity = 8192;
+    """,
+        "dns_consistency_tls_baseline",
+    ),
+]
+
+
 def main():
-    create_queries = [
-        create_query_for_observation(DNSObservation),
-        create_query_for_observation(TCPObservation),
-        create_query_for_observation(TLSObservation),
-        create_query_for_observation(HTTPObservation),
-        create_query_for_observation(NettestObservation),
-        create_query_for_experiment_result(),
-        (
-            """
-        CREATE TABLE dns_consistency_tls_baseline (
-            ip String,
-            domain_name String,
-            timestamp Datetime
-        )
-        ENGINE = ReplacingMergeTree
-        ORDER BY (ip, domain_name, timestamp)
-        SETTINGS index_granularity = 8192;
-        """,
-            "dns_consistency_tls_baseline",
-        ),
-    ]
     for query, table_name in create_queries:
         print(f"clickhouse-client -q 'DROP TABLE {table_name}';")
         print("cat <<EOF | clickhouse-client -nm")

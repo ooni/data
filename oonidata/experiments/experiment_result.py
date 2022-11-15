@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, NamedTuple
+from typing import List, Optional, NamedTuple, Mapping
 from enum import Enum
 from datetime import datetime
 from dataclasses import dataclass
@@ -53,7 +53,7 @@ class BlockingEvent(NamedTuple):
     blocking_type: BlockingType
     blocking_subject: str
     blocking_detail: str
-    blocking_meta: dict
+    blocking_meta: Mapping[str, str]
     confidence: float
 
 
