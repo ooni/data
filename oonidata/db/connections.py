@@ -16,6 +16,10 @@ class DatabaseConnection:
         log.info(f"Writing to {table_name}")
         log.info(pformat(row))
 
+    def write_rows(self, table_name, rows):
+        log.info(f"Writing to {table_name}")
+        log.info(pformat(rows))
+
     def close(self):
         pass
 
@@ -29,6 +33,17 @@ class ClickhouseConnection(DatabaseConnection):
     def execute(self, *args, **kwargs):
         # log.debug(f"execute {args} {kwargs}")
         return self.client.execute(*args, **kwargs)
+
+    def write_rows(self, table_name, rows):
+        # TODO remove this function
+        fields = ", ".join(rows[0].keys())
+        query_str = f"INSERT INTO {table_name} ({fields}) VALUES"
+        try:
+            self.client.execute(query_str, rows)
+        except Exception as exc:
+            log.error(f"Failed to write rows")
+            log.error(pformat(rows))
+            raise exc
 
     def write_row(self, table_name, row):
         fields = ", ".join(row.keys())

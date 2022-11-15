@@ -1,3 +1,4 @@
+from collections import defaultdict
 import time
 import logging
 import traceback
@@ -30,7 +31,7 @@ from oonidata.observations import (
     make_web_connectivity_observations,
     make_dnscheck_observations,
 )
-from oonidata.dataformat import DNSCheck, load_measurement
+from oonidata.dataformat import load_measurement
 from oonidata.dataformat import BaseMeasurement
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
@@ -58,11 +59,17 @@ def make_observation_row(observation: Observation) -> dict:
 
 
 def write_observations_to_db(
-    db: DatabaseConnection, observations: Iterable[Observation]
+    db: DatabaseConnection, observations: List[Observation]
 ) -> None:
+    if len(observations) == 0:
+        return
+
+    table_name = observations[0].__table_name__
+    rows = []
     for obs in observations:
-        row = make_observation_row(obs)
-        db.write_row(obs.__table_name__, row)
+        assert table_name == obs.__table_name__, "inconsistent table name in group"
+        rows.append(make_observation_row(obs))
+    db.write_rows(table_name, rows)
 
 
 def domains_in_a_day(
@@ -157,16 +164,6 @@ def observations_in_session(
         obs_dict = {field_names[idx]: val for idx, val in enumerate(rows)}
         observation_list.append(obs_class(**obs_dict))
     return observation_list
-
-
-def nettest_processor(
-    msmt: DNSCheck,
-    db: DatabaseConnection,
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
-) -> None:
-    for obs_group in make_dnscheck_observations(msmt, fingerprintdb, netinfodb):
-        write_observations_to_db(db, obs_group)
 
 
 def generic_processor(
