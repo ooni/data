@@ -114,7 +114,7 @@ def datadir():
     return DATA_DIR
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def fingerprintdb(datadir):
     return FingerprintDB(
         datadir=DATA_DIR,
@@ -122,7 +122,7 @@ def fingerprintdb(datadir):
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def netinfodb():
     return NetinfoDB(
         datadir=DATA_DIR,
@@ -130,7 +130,7 @@ def netinfodb():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def raw_measurements():
     output_dir = FIXTURE_PATH / "raw_measurements"
     if (output_dir / "signal" / "2022-10-01").exists():
@@ -145,7 +145,7 @@ def raw_measurements():
     return output_dir
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def measurements():
     measurement_dir = FIXTURE_PATH / "measurements"
     measurement_dir.mkdir(parents=True, exist_ok=True)
