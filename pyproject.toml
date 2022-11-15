@@ -28,6 +28,7 @@ black = ">=22.3.0"
 snakeviz = ">=2.1.1"
 mypy = ">=0.961"
 pytest-benchmark = "^4.0.0"
+pytest-profiling = "^1.7.0"
 
 [tool.poetry.scripts]
 oonidata = 'oonidata.cli:cli'

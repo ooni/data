@@ -107,7 +107,7 @@ def make_website_tcp_blocking_event(
     tcp_o: TCPObservation, tcp_b: TCPControl
 ) -> BlockingEvent:
     blocking_type = BlockingType.OK
-    blocking_detail = "ok"
+    blocking_detail = "tcp.ok"
     blocking_subject = f"{tcp_o.ip}:{tcp_o.port}"
     blocking_meta = {}
     confidence = 1.0
@@ -288,35 +288,16 @@ def make_website_dns_blocking_event(
     return BlockingEvent(
         blocking_type=BlockingType.OK,
         blocking_subject=blocking_subject,
-        blocking_detail="ok",
+        blocking_detail="dns.ok",
         blocking_meta={"ip": dns_o.answer},
         confidence=0.8,
     )
 
 
-def make_website_tls_blocking_event(
-    tls_o: TLSObservation, prev_be: List[BlockingEvent]
-) -> Optional[BlockingEvent]:
+def make_website_tls_blocking_event(tls_o: TLSObservation) -> BlockingEvent:
     blocking_subject = tls_o.domain_name
 
     if tls_o.is_certificate_valid == False:
-        # We only consider it to be a TLS level verdict in cases when there is a
-        # certificate mismatch, but there was no DNS inconsistency.
-        # If the DNS was inconsistent, we will just count the DNS verdict
-        if (
-            len(
-                list(
-                    filter(
-                        lambda v: v.blocking_detail.startswith("dns.")
-                        and v.blocking_meta.get("ip") == tls_o.ip,
-                        prev_be,
-                    )
-                )
-            )
-            > 0
-        ):
-            return
-
         # TODO: this is wrong. We need to consider the baseline to establish TLS
         # MITM, because the cert might be invalid also from other location (eg.
         # it expired) and not due to censorship.
@@ -329,20 +310,6 @@ def make_website_tls_blocking_event(
         )
 
     elif tls_o.failure:
-        if (
-            len(
-                list(
-                    filter(
-                        lambda v: v.blocking_detail.startswith("tcp.")
-                        and v.blocking_subject == f"{tls_o.ip}:443",
-                        prev_be,
-                    )
-                )
-            )
-            > 0
-        ):
-            return
-
         # We only consider it to be a TLS level verdict if we haven't seen any
         # blocks in TCP
         blocking_detail = f"tls.{tls_o.failure}"
@@ -367,7 +334,7 @@ def make_website_tls_blocking_event(
     return BlockingEvent(
         blocking_type=BlockingType.OK,
         blocking_subject=blocking_subject,
-        blocking_detail="ok",
+        blocking_detail="tls.ok",
         blocking_meta={},
         confidence=1.0,
     )
@@ -376,7 +343,6 @@ def make_website_tls_blocking_event(
 def make_website_http_blocking_event(
     http_o: HTTPObservation,
     http_ctrl: HTTPControl,
-    prev_be: List[BlockingEvent],
     fingerprintdb: FingerprintDB,
 ) -> Optional[BlockingEvent]:
     blocking_subject = http_o.request_url
@@ -384,7 +350,7 @@ def make_website_http_blocking_event(
     ok_be = BlockingEvent(
         blocking_type=BlockingType.OK,
         blocking_subject=blocking_subject,
-        blocking_detail="ok",
+        blocking_detail="http.ok",
         blocking_meta={},
         confidence=0.8,
     )
@@ -394,44 +360,6 @@ def make_website_http_blocking_event(
         detail_prefix = "https."
 
     if http_o.failure:
-        # For HTTP requests we ignore cases in which we detected the blocking
-        # already to be happening via DNS or TCP.
-        if not http_o.request_is_encrypted and (
-            len(
-                list(
-                    filter(
-                        lambda v: v.blocking_detail.startswith("dns.")
-                        or (
-                            v.blocking_detail.startswith("tcp.")
-                            and v.blocking_subject.endswith(":80")
-                        ),
-                        prev_be,
-                    )
-                )
-            )
-            > 0
-        ):
-            return
-
-        # Similarly for HTTPS we ignore cases when the block is done via TLS or TCP
-        if http_o.request_is_encrypted and (
-            len(
-                list(
-                    filter(
-                        lambda v: v.blocking_detail.startswith("dns.")
-                        or (
-                            v.blocking_detail.startswith("tcp.")
-                            and v.blocking_subject.endswith(":443")
-                        )
-                        or v.blocking_detail.startswith("tls."),
-                        prev_be,
-                    )
-                )
-            )
-            > 0
-        ):
-            return
-
         failure_cc_asn = list(http_ctrl.failure_cc_asn)
         try:
             failure_cc_asn.remove((http_o.probe_cc, http_o.probe_asn))
@@ -595,17 +523,20 @@ def make_website_experiment_result(
     for dns_be in dns_blocking_events:
         blocking_events.append(dns_be)
 
+    dns_blocked_answers = list(
+        map(
+            lambda be: be.blocking_meta["ip"],
+            filter(
+                lambda be: be.blocking_type != BlockingType.OK
+                and (be.confidence > 0.6)
+                and "ip" in be.blocking_meta,
+                dns_blocking_events,
+            ),
+        )
+    )
+    tcp_blocked_ips = []
     if tcp_o_list:
         for tcp_o in tcp_o_list:
-            dns_blocked_answers = list(
-                map(
-                    lambda be: be.blocking_meta["ip"],
-                    filter(
-                        lambda be: (be.confidence > 0.6) and "ip" in be.blocking_meta,
-                        dns_blocking_events,
-                    ),
-                )
-            )
             observation_ids.append(tcp_o.observation_id)
             # We ignore TCP observations pertaining to DNS answers that are DNS
             # inconsistent answers.
@@ -615,41 +546,57 @@ def make_website_experiment_result(
                 domain_name == tcp_o.domain_name
             ), f"Inconsistent domain_name in tcp_o {tcp_o.domain_name}"
             tcp_ctrl = tcp_ctrl_map.get(f"{tcp_o.ip}:{tcp_o.port}")
-            tcp_be = (
-                make_website_tcp_blocking_event(tcp_o, tcp_ctrl) if tcp_ctrl else None
-            )
-            if tcp_be:
+            if tcp_ctrl:
+                tcp_be = make_website_tcp_blocking_event(tcp_o, tcp_ctrl)
                 blocking_events.append(tcp_be)
+                if tcp_be.blocking_type == BlockingType.BLOCKED:
+                    tcp_blocked_ips.append(tcp_o.ip)
 
+    tls_blocked_ips = []
     if tls_o_list:
         for tls_o in tls_o_list:
+            # We ignore things that are already blocked by DNS or TCP
+            if tls_o.ip in tcp_blocked_ips + dns_blocked_answers:
+                continue
             observation_ids.append(tls_o.observation_id)
             assert (
                 domain_name == tls_o.domain_name
             ), f"Inconsistent domain_name in tls_o {tls_o.domain_name}"
-            tls_be = make_website_tls_blocking_event(tls_o, blocking_events)
-            if tls_be:
-                blocking_events.append(tls_be)
+            tls_be = make_website_tls_blocking_event(tls_o)
+            blocking_events.append(tls_be)
+            if tls_be.blocking_type == BlockingType.BLOCKED:
+                tls_blocked_ips.append(tls_o.ip)
 
     if http_o_list:
         for http_o in http_o_list:
+            # For HTTP requests we ignore cases in which we detected the blocking
+            # already to be happening via DNS or TCP.
+            if (
+                not http_o.request_is_encrypted
+                and len(tcp_blocked_ips + dns_blocked_answers) > 0
+            ):
+                continue
+
+            # For HTTPS requests we ignore cases in which we detected the blocking via DNS, TCP or TLS
+            if (
+                http_o.request_is_encrypted
+                and len(tcp_blocked_ips + dns_blocked_answers + tls_blocked_ips) > 0
+            ):
+                continue
+
             observation_ids.append(http_o.observation_id)
             assert (
                 domain_name == http_o.domain_name
             ), f"Inconsistent domain_name in http_o {http_o.domain_name}"
             http_ctrl = http_ctrl_map.get(http_o.request_url)
-            http_be = (
-                make_website_http_blocking_event(
-                    http_o, http_ctrl, blocking_events, fingerprintdb
+            if http_ctrl:
+                http_be = make_website_http_blocking_event(
+                    http_o, http_ctrl, fingerprintdb
                 )
-                if http_ctrl
-                else None
-            )
-            if http_be:
                 blocking_events.append(http_be)
 
     # TODO: Should we be including this also BlockingType.DOWN,SERVER_SIDE_BLOCK or not?
-    ok_confidence = 1 - max(
+    nok_blocking_confidence = list(
         map(
             lambda be: be.confidence,
             filter(
@@ -663,6 +610,22 @@ def make_website_experiment_result(
             ),
         )
     )
+    ok_blocking_confidence = list(
+        map(
+            lambda be: be.confidence,
+            filter(
+                lambda be: be.blocking_type == BlockingType.OK,
+                blocking_events,
+            ),
+        )
+    )
+
+    ok_confidence = 0.5
+    if len(ok_blocking_confidence) > 0:
+        ok_confidence = min(ok_blocking_confidence)
+
+    if len(nok_blocking_confidence) > 0:
+        ok_confidence = 1 - max(nok_blocking_confidence)
 
     confirmed = False
     anomaly = False

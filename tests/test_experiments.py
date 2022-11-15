@@ -290,12 +290,8 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
         break
 
 
-def test_website_experiment_result(fingerprintdb, netinfodb, measurements):
-    msmt = load_measurement(
-        msmt_path=measurements[
-            "20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"
-        ]
-    )
+def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
+    msmt = load_measurement(msmt_path=msmt_path)
     assert isinstance(msmt, WebConnectivity)
     nt_o = NettestObservation.from_measurement(msmt, netinfodb=netinfodb)
     (
@@ -313,7 +309,7 @@ def test_website_experiment_result(fingerprintdb, netinfodb, measurements):
     http_ctrl_map = make_http_control_from_wc(msmt=msmt, control=msmt.test_keys.control)
     tcp_ctrl_map = make_tcp_control_from_wc(control=msmt.test_keys.control)
 
-    experiment_result = make_website_experiment_result(
+    return make_website_experiment_result(
         nt_o,
         dns_o_list,
         dns_ctrl,
@@ -325,5 +321,31 @@ def test_website_experiment_result(fingerprintdb, netinfodb, measurements):
         fingerprintdb,
         netinfodb,
     )
+
+
+def test_website_experiment_result_blocked(
+    fingerprintdb, netinfodb, measurements, benchmark
+):
+    experiment_result = benchmark(
+        make_experiment_result_from_wc_ctrl,
+        measurements["20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"],
+        fingerprintdb,
+        netinfodb,
+    )
     assert experiment_result.anomaly == True
     assert len(experiment_result.blocking_events) == 1
+
+
+def test_website_experiment_result_ok(
+    fingerprintdb, netinfodb, measurements, benchmark
+):
+    experiment_result = benchmark(
+        make_experiment_result_from_wc_ctrl,
+        measurements["20220608132401.787399_AM_webconnectivity_2285fc373f62729e"],
+        fingerprintdb,
+        netinfodb,
+    )
+    assert experiment_result.anomaly == False
+    for be in experiment_result.blocking_events:
+        assert be.blocking_type == BlockingType.OK
+    assert len(experiment_result.blocking_events) == 4

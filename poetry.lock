@@ -190,6 +190,14 @@ python-versions = ">=3.7"
 test = ["pytest (>=6)"]
 
 [[package]]
+name = "gprof2dot"
+version = "2022.7.29"
+description = "Generate a dot graph from the output of several profilers."
+category = "dev"
+optional = false
+python-versions = ">=2.7"
+
+[[package]]
 name = "idna"
 version = "3.4"
 description = "Internationalized Domain Names in Applications (IDNA)"
@@ -459,6 +467,22 @@ pytest = ">=4.6"
 testing = ["fields", "hunter", "process-tests", "six", "pytest-xdist", "virtualenv"]
 
 [[package]]
+name = "pytest-profiling"
+version = "1.7.0"
+description = "Profiling plugin for py.test"
+category = "dev"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+gprof2dot = "*"
+pytest = "*"
+six = "*"
+
+[package.extras]
+tests = ["pytest-virtualenv"]
+
+[[package]]
 name = "python-dateutil"
 version = "2.8.2"
 description = "Extensions to the standard Python datetime module"
@@ -650,7 +674,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "flake8 
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7,<4"
-content-hash = "a8ba1f2e86245bb3f60c2b74844918ddeeae86e1a1dfd6772c464a8c6992cf78"
+content-hash = "a0a8d7bd12ff37e5dbcbfa66d81dd977049fb2515b037e42a81cdda5ba421977"
 
 [metadata.files]
 attrs = []
@@ -670,6 +694,7 @@ colorama = []
 coverage = []
 cryptography = []
 exceptiongroup = []
+gprof2dot = []
 idna = []
 importlib-metadata = []
 iniconfig = [
@@ -710,6 +735,7 @@ pyparsing = [
 pytest = []
 pytest-benchmark = []
 pytest-cov = []
+pytest-profiling = []
 python-dateutil = [
     {file = "python-dateutil-2.8.2.tar.gz", hash = "sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86"},
     {file = "python_dateutil-2.8.2-py2.py3-none-any.whl", hash = "sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9"},
