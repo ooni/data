@@ -3,10 +3,21 @@ import hashlib
 import abc
 import logging
 
+import dataclasses
 from dataclasses import dataclass, field
 from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
-from typing import Callable, Generator, Optional, List, Tuple, Union, Dict
+from typing import (
+    Callable,
+    Generator,
+    Generic,
+    Optional,
+    List,
+    Tuple,
+    TypeVar,
+    Union,
+    Dict,
+)
 from oonidata.dataformat import SIGNAL_PEM_STORE, DNSCheck, Tor
 
 from oonidata.dataformat import (
@@ -32,6 +43,7 @@ from oonidata.datautils import (
     is_ipv4_bogon,
     is_ipv6_bogon,
     get_certificate_meta,
+    removeprefix,
 )
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
@@ -254,6 +266,8 @@ class HTTPObservation(Observation):
     response_matches_blockpage: bool = False
     response_matches_false_positive: bool = False
 
+    transaction_id: Optional[int] = None
+
     @property
     def request_is_encrypted(self):
         return self.request_url.startswith("https://")
@@ -298,6 +312,7 @@ class HTTPObservation(Observation):
             failure=normalize_failure(http_transaction.failure),
             timestamp=make_timestamp(msmt, http_transaction.t),
             target=target,
+            transaction_id=http_transaction.transaction_id,
             **make_base_observation_meta(msmt, netinfodb),
         )
 
@@ -602,7 +617,7 @@ class TLSObservation(Observation):
     failure: Failure
 
     server_name: str
-    tls_version: str
+    version: str
     cipher_suite: str
 
     ip: Optional[str] = None
@@ -626,12 +641,12 @@ class TLSObservation(Observation):
     peer_certificates: List[bytes] = field(default_factory=list)
     certificate_chain_length: Optional[int] = None
 
-    tls_handshake_read_count: Optional[int] = None
-    tls_handshake_write_count: Optional[int] = None
-    tls_handshake_read_bytes: Optional[float] = None
-    tls_handshake_write_bytes: Optional[float] = None
-    tls_handshake_last_operation: Optional[str] = None
-    tls_handshake_time: Optional[float] = None
+    handshake_read_count: Optional[int] = None
+    handshake_write_count: Optional[int] = None
+    handshake_read_bytes: Optional[float] = None
+    handshake_write_bytes: Optional[float] = None
+    handshake_last_operation: Optional[str] = None
+    handshake_time: Optional[float] = None
 
     transaction_id: Optional[int] = None
 
@@ -652,7 +667,7 @@ class TLSObservation(Observation):
             timestamp=make_timestamp(msmt, tls_h.t),
             server_name=tls_h.server_name if tls_h.server_name else "",
             domain_name=tls_h.server_name if tls_h.server_name else "",
-            tls_version=tls_h.tls_version if tls_h.tls_version else "",
+            version=tls_h.tls_version if tls_h.tls_version else "",
             cipher_suite=tls_h.cipher_suite if tls_h.cipher_suite else "",
             end_entity_certificate_san_list=[],
             failure=normalize_failure(tls_h.failure),
@@ -675,26 +690,24 @@ class TLSObservation(Observation):
                 if tlso.ip and tlso.ip in ip_to_domain:
                     tlso.domain_name = ip_to_domain[tlso.ip]
 
-            tlso.tls_handshake_time = tls_network_events[-1].t - tls_network_events[0].t
-            tlso.tls_handshake_read_count = 0
-            tlso.tls_handshake_write_count = 0
-            tlso.tls_handshake_read_bytes = 0
-            tlso.tls_handshake_write_bytes = 0
+            tlso.handshake_time = tls_network_events[-1].t - tls_network_events[0].t
+            tlso.handshake_read_count = 0
+            tlso.handshake_write_count = 0
+            tlso.handshake_read_bytes = 0
+            tlso.handshake_write_bytes = 0
             for ne in tls_network_events:
                 if ne.operation == "write":
                     if ne.num_bytes:
-                        tlso.tls_handshake_write_count += 1
-                        tlso.tls_handshake_write_bytes += ne.num_bytes
-                    tlso.tls_handshake_last_operation = (
-                        f"write_{tlso.tls_handshake_write_count}"
+                        tlso.handshake_write_count += 1
+                        tlso.handshake_write_bytes += ne.num_bytes
+                    tlso.handshake_last_operation = (
+                        f"write_{tlso.handshake_write_count}"
                     )
                 elif ne.operation == "read" and ne.num_bytes:
                     if ne.num_bytes:
-                        tlso.tls_handshake_read_count += 1
-                        tlso.tls_handshake_read_bytes += ne.num_bytes
-                    tlso.tls_handshake_last_operation = (
-                        f"read_{tlso.tls_handshake_read_count}"
-                    )
+                        tlso.handshake_read_count += 1
+                        tlso.handshake_read_bytes += ne.num_bytes
+                    tlso.handshake_last_operation = f"read_{tlso.handshake_read_count}"
 
         if tls_h.peer_certificates:
             try:
@@ -780,6 +793,289 @@ def make_tls_observations(
             )
         )
     return obs_tls
+
+
+@dataclass
+class ChainedObservation(Observation):
+    domain_name: Optional[str] = None
+
+    transaction_id: Optional[int] = None
+
+    ip: Optional[str] = None
+    port: Optional[int] = None
+
+    ip_asn: Optional[int] = None
+    ip_as_org_name: Optional[str] = None
+    ip_as_cc: Optional[str] = None
+    ip_cc: Optional[str] = None
+
+    # DNS related observation
+    dns_query_type: Optional[str] = None
+    dns_failure: Failure = None
+    dns_engine: Optional[str] = None
+    dns_engine_resolver_address: Optional[str] = None
+
+    dns_answer_type: Optional[str] = None
+    dns_answer: Optional[str] = None
+    dns_answer_asn: Optional[int] = None
+    dns_answer_as_org_name: Optional[str] = None
+    dns_answer_as_cc: Optional[str] = None
+    dns_answer_cc: Optional[str] = None
+    dns_answer_is_bogon: Optional[bool] = None
+
+    dns_fingerprint_id: Optional[str] = None
+    dns_fingerprint_country_consistent: Optional[bool] = None
+
+    dns_is_tls_consistent: Optional[bool] = None
+
+    # TCP related observation
+    tcp_failure: Optional[Failure] = None
+
+    # TLS related observation
+    tls_failure: Optional[Failure] = None
+
+    tls_server_name: Optional[str] = None
+    tls_version: Optional[str] = None
+    tls_cipher_suite: Optional[str] = None
+    tls_is_certificate_valid: Optional[bool] = None
+
+    tls_end_entity_certificate_fingerprint: Optional[str] = None
+    tls_end_entity_certificate_subject: Optional[str] = None
+    tls_end_entity_certificate_subject_common_name: Optional[str] = None
+    tls_end_entity_certificate_issuer: Optional[str] = None
+    tls_end_entity_certificate_issuer_common_name: Optional[str] = None
+    tls_end_entity_certificate_san_list: List[str] = field(default_factory=list)
+    tls_end_entity_certificate_not_valid_after: Optional[datetime] = None
+    tls_end_entity_certificate_not_valid_before: Optional[datetime] = None
+    tls_certificate_chain_length: Optional[int] = None
+
+    tls_handshake_read_count: Optional[int] = None
+    tls_handshake_write_count: Optional[int] = None
+    tls_handshake_read_bytes: Optional[float] = None
+    tls_handshake_write_bytes: Optional[float] = None
+    tls_handshake_last_operation: Optional[str] = None
+    tls_handshake_time: Optional[float] = None
+
+    # HTTP related observation
+    http_request_url: Optional[str] = None
+
+    http_network: Optional[str] = None
+    http_alpn: Optional[str] = None
+
+    http_failure: Failure = None
+
+    http_request_body_length: Optional[int] = None
+    http_request_method: Optional[str] = None
+
+    http_response_fingerprints: List[str] = field(default_factory=list)
+
+    http_runtime: Optional[float] = None
+
+    http_response_body_length: Optional[int] = None
+    http_response_body_is_truncated: Optional[bool] = None
+    http_response_body_sha1: Optional[str] = None
+    http_response_body_title: Optional[str] = None
+    http_response_body_meta_title: Optional[str] = None
+
+    http_response_status_code: Optional[int] = None
+    http_response_header_location: Optional[bytes] = None
+    http_response_header_server: Optional[bytes] = None
+    http_request_redirect_from: Optional[str] = None
+    http_request_body_is_truncated: Optional[bool] = None
+
+    http_fingerprint_country_consistent: Optional[bool] = None
+    http_response_matches_blockpage: bool = False
+    http_response_matches_false_positive: bool = False
+
+
+def maybe_set_chained_fields(
+    src_obs: Union[
+        DNSObservation, TCPObservation, TLSObservation, HTTPObservation, None
+    ],
+    chained: ChainedObservation,
+    prefix: str,
+):
+    if not src_obs:
+        return
+    for f in dataclasses.fields(chained):
+        if f.name.startswith(prefix):
+            src_field_name = removeprefix(f.name, prefix)
+            setattr(chained, f.name, getattr(src_obs, src_field_name))
+
+
+def make_chained_observation(
+    dns_o: Optional[DNSObservation] = None,
+    tcp_o: Optional[TCPObservation] = None,
+    tls_o: Optional[TLSObservation] = None,
+    http_o: Optional[HTTPObservation] = None,
+) -> ChainedObservation:
+    assert (
+        dns_o or tcp_o or tls_o or http_o
+    ), "dns_o or tcp_o or tls_o or http_o should be not null"
+    base_o = dns_o or tcp_o or tls_o or http_o
+
+    # XXX This is terrible, but doing it better will probably require some
+    # smarter refactoring. Need to come up with a better was of handling this.
+    base_dict = dataclasses.asdict(base_o)
+    chained_dict = {}
+    for field in dataclasses.fields(Observation):
+        chained_dict[field.name] = base_dict[field.name]
+
+    chained = ChainedObservation(**chained_dict)
+    chained.ip = (
+        (dns_o and dns_o.answer)
+        or (tcp_o and tcp_o.ip)
+        or (tls_o and tls_o.ip)
+        or (http_o and http_o.ip)
+    )
+    chained.port = (
+        (tcp_o and tcp_o.port) or (tls_o and tls_o.port) or (http_o and http_o.port)
+    )
+    chained.ip_asn = (tcp_o and tcp_o.ip_asn) or (tls_o and tls_o.ip_asn)
+    chained.ip_as_org_name = (tcp_o and tcp_o.ip_as_org_name) or (
+        tls_o and tls_o.ip_as_org_name
+    )
+    chained.ip_as_cc = (tcp_o and tcp_o.ip_as_cc) or (tls_o and tls_o.ip_as_cc)
+    chained.ip_cc = (tcp_o and tcp_o.ip_cc) or (tls_o and tls_o.ip_cc)
+    chained.transaction_id = (
+        (dns_o and dns_o.transaction_id)
+        or (tcp_o and tcp_o.transaction_id)
+        or (tls_o and tls_o.transaction_id)
+        or (http_o and http_o.transaction_id)
+    )
+
+    maybe_set_chained_fields(dns_o, chained, "dns_")
+    maybe_set_chained_fields(tcp_o, chained, "tcp_")
+    maybe_set_chained_fields(tls_o, chained, "tls_")
+    maybe_set_chained_fields(http_o, chained, "http_")
+    return chained
+
+
+def find_observation_by_transaction_id(
+    transaction_id: Optional[int],
+    obs_list: Union[List[TCPObservation], List[TLSObservation], List[HTTPObservation]],
+) -> Optional[Union[TCPObservation, TLSObservation, HTTPObservation]]:
+    found_obs = None
+    if not transaction_id:
+        return found_obs
+    for obs in obs_list:
+        if obs.transaction_id == transaction_id:
+            # XXX maybe in the future we can remove this
+            assert found_obs is None, f"{obs} with duplicate transaction_id"
+            found_obs = obs
+    return found_obs
+
+
+def find_observation_by_ip(
+    ip: Optional[str],
+    obs_list: Union[List[TCPObservation], List[TLSObservation], List[HTTPObservation]],
+) -> Optional[Union[TCPObservation, TLSObservation, HTTPObservation]]:
+    found_obs = None
+    for obs in obs_list:
+        if ip == obs.ip:
+            # XXX maybe in the future we can remove this
+            assert found_obs is None, f"{obs} with duplicate ip:port combo"
+            found_obs = obs
+    return found_obs
+
+
+def find_relevant_observations(
+    transaction_id: Optional[int],
+    ip: Optional[str],
+    tcp_observations: Optional[List[TCPObservation]] = None,
+    tls_observations: Optional[List[TLSObservation]] = None,
+    http_observations: Optional[List[HTTPObservation]] = None,
+) -> Tuple[
+    Optional[TCPObservation], Optional[TLSObservation], Optional[HTTPObservation]
+]:
+    found_tcp_obs = None
+    found_tls_obs = None
+    found_http_obs = None
+    if tcp_observations:
+        found_tcp_obs = find_observation_by_transaction_id(
+            transaction_id, tcp_observations
+        )
+
+    if tls_observations:
+        found_tls_obs = find_observation_by_transaction_id(
+            transaction_id, tls_observations
+        )
+    if http_observations:
+        found_http_obs = find_observation_by_transaction_id(
+            transaction_id, http_observations
+        )
+
+    if not found_tcp_obs and tcp_observations and ip:
+        found_tcp_obs = find_observation_by_ip(ip, tcp_observations)
+    if not found_tls_obs and tls_observations and ip:
+        found_tls_obs = find_observation_by_ip(ip, tls_observations)
+    if not found_http_obs and http_observations and ip:
+        found_http_obs = find_observation_by_ip(ip, http_observations)
+
+    assert found_tls_obs is None or isinstance(found_tls_obs, TLSObservation)
+    assert found_tcp_obs is None or isinstance(found_tcp_obs, TCPObservation)
+    assert found_http_obs is None or isinstance(found_http_obs, HTTPObservation)
+
+    return found_tcp_obs, found_tls_obs, found_http_obs
+
+
+def consume_chained_observations(
+    dns_observations: List[DNSObservation],
+    tcp_observations: List[TCPObservation],
+    tls_observations: List[TLSObservation],
+    http_observations: List[HTTPObservation],
+) -> List[ChainedObservation]:
+    obs_chain = []
+    # TODO: surely there is some way to refactor this into a better pattern
+    for dns_o in dns_observations:
+        tcp_o, tls_o, http_o = find_relevant_observations(
+            transaction_id=dns_o.transaction_id,
+            ip=dns_o.answer,
+            tcp_observations=tcp_observations,
+            tls_observations=tls_observations,
+            http_observations=http_observations,
+        )
+        obs_chain.append(
+            make_chained_observation(
+                dns_o=dns_o, tcp_o=tcp_o, tls_o=tls_o, http_o=http_o
+            )
+        )
+        if tcp_o:
+            tcp_observations.remove(tcp_o)
+        if tls_o:
+            tls_observations.remove(tls_o)
+        if http_o:
+            http_observations.remove(http_o)
+
+    for tcp_o in tcp_observations:
+        _, tls_o, http_o = find_relevant_observations(
+            transaction_id=tcp_o.transaction_id,
+            ip=tcp_o.ip,
+            tls_observations=tls_observations,
+            http_observations=http_observations,
+        )
+        if tls_o:
+            tls_observations.remove(tls_o)
+        if http_o:
+            http_observations.remove(http_o)
+        obs_chain.append(
+            make_chained_observation(tcp_o=tcp_o, tls_o=tls_o, http_o=http_o)
+        )
+
+    for tls_o in tls_observations:
+        _, _, http_o = find_relevant_observations(
+            transaction_id=tls_o.transaction_id,
+            ip=tls_o.ip,
+            http_observations=http_observations,
+        )
+        if http_o:
+            http_observations.remove(http_o)
+        obs_chain.append(make_chained_observation(tls_o=tls_o, http_o=http_o))
+
+    for http_o in http_observations:
+        obs_chain.append(make_chained_observation(http_o=http_o))
+
+    return obs_chain
 
 
 def make_ip_to_domain(dns_observations: List[DNSObservation]) -> Dict[str, str]:
@@ -948,7 +1244,7 @@ def make_dnscheck_observations(
             msmt, lookup.queries, fingerprintdb, netinfodb
         )
 
-        http_observations = make_http_observations(
+        http_observations += make_http_observations(
             msmt, lookup.requests, fingerprintdb, netinfodb
         )
 

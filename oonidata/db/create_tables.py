@@ -9,6 +9,7 @@ from oonidata.observations import (
     TCPObservation,
     TLSObservation,
     HTTPObservation,
+    ChainedObservation,
 )
 from oonidata.experiments.experiment_result import (
     BlockingType,
@@ -129,6 +130,7 @@ create_queries = [
     create_query_for_observation(TLSObservation),
     create_query_for_observation(HTTPObservation),
     create_query_for_observation(NettestObservation),
+    create_query_for_observation(ChainedObservation),
     create_query_for_experiment_result(),
     (
         """

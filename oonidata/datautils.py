@@ -408,3 +408,7 @@ def one_day_dict(day: date) -> Dict[str, Any]:
     start_day = datetime(year=day.year, month=day.month, day=day.day)
     end_day = start_day + timedelta(days=1)
     return {"start_day": start_day, "end_day": end_day}
+
+
+def removeprefix(s: str, prefix: str):
+    return s[len(prefix) :]

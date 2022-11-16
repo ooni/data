@@ -1,4 +1,5 @@
 from oonidata.observations import (
+    consume_chained_observations,
     make_http_observations,
     make_dns_observations,
     make_tcp_observations,
@@ -100,10 +101,10 @@ def test_http_observations(fingerprintdb, netinfodb, measurements):
         )
     ]
     assert len(all_tls_obs) == 2
-    assert all_tls_obs[0].tls_handshake_time
-    assert all_tls_obs[0].tls_handshake_time > 0
-    assert all_tls_obs[0].tls_handshake_last_operation
-    assert all_tls_obs[0].tls_handshake_last_operation.startswith("write_")
+    assert all_tls_obs[0].handshake_time
+    assert all_tls_obs[0].handshake_time > 0
+    assert all_tls_obs[0].handshake_last_operation
+    assert all_tls_obs[0].handshake_last_operation.startswith("write_")
     assert all_tls_obs[0].ip == "172.67.187.120"
     assert all_tls_obs[0].port == 443
 
@@ -128,3 +129,50 @@ def test_http_observations(fingerprintdb, netinfodb, measurements):
     ]
     assert all_http_obs[0].response_matches_blockpage == True
     assert all_http_obs[0].fingerprint_country_consistent == True
+
+
+def test_wc_v5_observations_chained(fingerprintdb, netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20220924222854.036406_IR_webconnectivity_7aedefe4aaac824c"
+        ]
+    )
+    assert isinstance(msmt, WebConnectivity)
+    dns_obs, tcp_obs, tls_obs, http_obs = make_web_connectivity_observations(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    chained_observations = consume_chained_observations(
+        dns_obs, tcp_obs, tls_obs, http_obs
+    )
+    # TODO: there is something weird here.
+    # Both DNS query answers are labeled with
+    # transaction_id=2.
+    # transaction_id=3 is mapped to one of these two with transaction_id=2, it's
+    # unclear to me if that is a bug in the because it's unclear where the TCP
+    # transaction with ID 3 got it's data from.
+
+    # XXX commented out, see above comment
+    # transaction_ids = list(map(lambda o: o.transaction_id, chained_observations))
+    # assert len(transaction_ids) == len(set(transaction_ids))
+    assert len(chained_observations) == 15
+
+
+def test_wc_observations_chained(fingerprintdb, netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20220608121828.356206_RU_webconnectivity_80e3fa60eb2cd026"
+        ]
+    )
+    assert isinstance(msmt, WebConnectivity)
+    dns_obs, tcp_obs, tls_obs, http_obs = make_web_connectivity_observations(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    chained_observations = consume_chained_observations(
+        dns_obs, tcp_obs, tls_obs, http_obs
+    )
+
+    # Check if DNS and TCP connect observations are being linked together
+    assert (
+        len(list(filter(lambda o: o.ip == "188.186.154.79", chained_observations))) == 1
+    )
+    assert len(chained_observations) == 4

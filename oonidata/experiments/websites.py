@@ -315,7 +315,7 @@ def make_website_tls_blocking_event(tls_o: TLSObservation) -> BlockingEvent:
         blocking_detail = f"tls.{tls_o.failure}"
         confidence = 0.5
 
-        if tls_o.tls_handshake_read_count == 0 and tls_o.tls_handshake_write_count == 1:
+        if tls_o.handshake_read_count == 0 and tls_o.handshake_write_count == 1:
             # This means we just wrote the TLS ClientHello, let's give it a bit
             # more confidence in it being a block
             confidence = 0.7
