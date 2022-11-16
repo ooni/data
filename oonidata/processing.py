@@ -53,7 +53,7 @@ def make_observation_row(observation: Observation) -> dict:
 
 
 def write_observations_to_db(
-    db: DatabaseConnection, observations: List[ChainedObservation]
+    db: DatabaseConnection, bucket_date: str, observations: List[ChainedObservation]
 ) -> None:
     if len(observations) == 0:
         return
@@ -62,6 +62,7 @@ def write_observations_to_db(
     rows = []
     for obs in observations:
         assert table_name == obs.__table_name__, "inconsistent table name in group"
+        obs.bucket_date = bucket_date
         rows.append(make_observation_row(obs))
     db.write_rows(table_name, rows)
 
@@ -98,6 +99,7 @@ def process_day(
     fast_fail=False,
 ) -> Tuple[float, date]:
     t0 = time.monotonic()
+    bucket_date = day.strftime("%Y-%m-%d")
     with tqdm(unit="B", unit_scale=True) as pbar:
 
         def progress_callback(p: MeasurementListProgress):
@@ -119,8 +121,6 @@ def process_day(
             )
             pbar.update(p.current_file_entry_bytes)
 
-        buf_flush_rate = 1_000
-        obs_buffer = []
         for idx, msmt_dict in enumerate(
             iter_measurements(
                 probe_cc=probe_cc,
@@ -140,10 +140,7 @@ def process_day(
                     fingerprintdb=fingerprintdb,
                 )
                 if obs:
-                    obs_buffer += obs
-                if len(obs_buffer) == buf_flush_rate:
-                    write_observations_to_db(db, obs_buffer)
-                    obs_buffer = []
+                    write_observations_to_db(db, bucket_date, obs)
             except Exception as exc:
                 # This is a bit sketchy, we ought to eventually move it to some
                 # better logging function
@@ -159,8 +156,6 @@ def process_day(
                     out_file.write(traceback.format_exc())
                     out_file.write("ENDTB----\n")
                 if fast_fail:
-                    write_observations_to_db(db, obs_buffer)
                     raise exc
-        write_observations_to_db(db, obs_buffer)
 
     return time.monotonic() - t0, day

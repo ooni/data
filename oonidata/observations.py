@@ -9,12 +9,9 @@ from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
 from typing import (
     Callable,
-    Generator,
-    Generic,
     Optional,
     List,
     Tuple,
-    TypeVar,
     Union,
     Dict,
 )
@@ -122,6 +119,8 @@ class Observation(abc.ABC):
     resolver_asn_probe: int
     resolver_as_org_name_probe: str
 
+    bucket_date: str
+
 
 def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> dict:
     assert msmt.measurement_uid is not None
@@ -194,6 +193,7 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
         resolver_asn_probe=resolver_asn_probe,
         resolver_as_org_name_probe=resolver_as_org_name_probe,
         resolver_is_scrubbed=resolver_is_scrubbed,
+        bucket_date="",
     )
 
 
@@ -820,7 +820,7 @@ def make_tls_observations(
 
 @dataclass
 class ChainedObservation(Observation):
-    __table_name__ = "chained_observations"
+    __table_name__ = "obs_chained"
 
     domain_name: Optional[str] = None
 
