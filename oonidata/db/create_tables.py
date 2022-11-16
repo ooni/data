@@ -92,7 +92,7 @@ def create_query_for_observation(obs_class: Type[Observation]) -> Tuple[str, str
 
     return (
         f"""
-    CREATE TABLE {obs_class.__table_name__} (
+    CREATE TABLE IF NOT EXISTS {obs_class.__table_name__} (
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
@@ -113,7 +113,7 @@ def create_query_for_experiment_result() -> Tuple[str, str]:
 
     return (
         f"""
-    CREATE TABLE experiment_result (
+    CREATE TABLE IF NOT EXISTS experiment_result (
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
@@ -132,19 +132,6 @@ create_queries = [
     create_query_for_observation(NettestObservation),
     create_query_for_observation(ChainedObservation),
     create_query_for_experiment_result(),
-    (
-        """
-    CREATE TABLE dns_consistency_tls_baseline (
-        ip String,
-        domain_name String,
-        timestamp Datetime
-    )
-    ENGINE = ReplacingMergeTree
-    ORDER BY (ip, domain_name, timestamp)
-    SETTINGS index_granularity = 8192;
-    """,
-        "dns_consistency_tls_baseline",
-    ),
 ]
 
 
