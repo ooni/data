@@ -604,10 +604,12 @@ def find_tls_handshake_network_events(
         if ne.operation == "connect":
             current_event_window = []
         current_event_window.append(ne)
-        # We identify the network_event for the given TLS handshake based on the
-        # fact that the timestamp on tls_handshake_done event is the same as the
-        # tls_handshake time
         if ne.operation == "tls_handshake_done":
+            # We identify the network_event for the given TLS handshake based on the
+            # fact that the timestamp on tls_handshake_done event is the same as the
+            # tls_handshake time.
+            # In case of duplicates we also look for the index of the tls
+            # handshake inside of the list of event windows.
             if ne.t == tls_handshake.t:
                 matched_event_windows.append(len(all_event_windows))
             current_event_window += network_events_until_connect(network_events[idx:])
@@ -621,9 +623,8 @@ def find_tls_handshake_network_events(
     # If that doesn't work, then we just bail.
     if len(matched_event_windows) == 1:
         return all_event_windows[matched_event_windows[0]]
-    elif len(matched_event_windows) > 1:
-        if src_idx in matched_event_windows:
-            return all_event_windows[matched_event_windows[src_idx]]
+    elif len(matched_event_windows) > 1 and src_idx in matched_event_windows:
+        return all_event_windows[src_idx]
 
     return None
 
