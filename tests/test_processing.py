@@ -7,10 +7,7 @@ from oonidata.observations import (
     make_dnscheck_observations,
 )
 from oonidata.dataclient import stream_jsonl
-from oonidata.processing import (
-    make_observation_row,
-    process_msmt_dict,
-)
+from oonidata.processing import make_observation_row, make_observations
 
 
 def test_insert_query_for_observation(fingerprintdb, netinfodb, measurements):
@@ -86,15 +83,11 @@ def test_benchmark_dnscheck(benchmark, measurements, fingerprintdb, netinfodb):
 
 
 def test_full_processing(raw_measurements, fingerprintdb, netinfodb):
-    db = MagicMock()
-    db.write_row = MagicMock()
-
     for msmt_path in raw_measurements.glob("*/*/*.jsonl.gz"):
         with msmt_path.open("rb") as in_file:
             for msmt_dict in stream_jsonl(in_file):
-                process_msmt_dict(
+                make_observations(
                     msmt_dict=msmt_dict,
-                    db=db,
                     netinfodb=netinfodb,
                     fingerprintdb=fingerprintdb,
                 )
