@@ -157,6 +157,9 @@ def test_wc_v5_observations_chained(fingerprintdb, netinfodb, measurements):
     assert len(chained_observations) == 15
 
 
+# TODO:
+# Investigate why this is failing:
+# https://explorer.ooni.org/measurement/20221003T005456Z_webconnectivity_IR_44244_n1_efHx49XR5Na6XLQ2?input=https://raw.githubusercontent.com/ooni/spec/master/README.md
 def test_wc_observations_chained(fingerprintdb, netinfodb, measurements):
     msmt = load_measurement(
         msmt_path=measurements[

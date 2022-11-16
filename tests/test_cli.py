@@ -45,7 +45,4 @@ def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
         ],
     )
     assert result.exit_code == 0
-    assert len(list(tmp_path.iterdir())) == 5
-    tls_obs_csv = list(tmp_path.glob("obs_tls*.csv"))
-    assert len(tls_obs_csv) == 1
-    assert len(tls_obs_csv[0].open().readlines()) == 420
+    assert len(list(tmp_path.iterdir())) == 1
