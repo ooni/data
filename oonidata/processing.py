@@ -74,20 +74,16 @@ nettest_make_obs_map = {
 }
 
 
-def process_msmt_dict(
+def make_observations(
     msmt_dict: Dict,
-    db: Union[ClickhouseConnection, CSVConnection],
     netinfodb: NetinfoDB,
     fingerprintdb: FingerprintDB,
 ):
     msmt = load_measurement(msmt_dict)
 
     if msmt.test_name in nettest_make_obs_map:
-        write_observations_to_db(
-            db,
-            consume_chained_observations(
-                *nettest_make_obs_map[msmt.test_name](msmt, fingerprintdb, netinfodb)
-            ),
+        return consume_chained_observations(
+            *nettest_make_obs_map[msmt.test_name](msmt, fingerprintdb, netinfodb)
         )
 
 
@@ -123,6 +119,8 @@ def process_day(
             )
             pbar.update(p.current_file_entry_bytes)
 
+        buf_flush_rate = 1_000
+        obs_buffer = []
         for idx, msmt_dict in enumerate(
             iter_measurements(
                 probe_cc=probe_cc,
@@ -136,12 +134,16 @@ def process_day(
             if idx < start_at_idx:
                 continue
             try:
-                process_msmt_dict(
+                obs = make_observations(
                     msmt_dict=msmt_dict,
-                    db=db,
                     netinfodb=netinfodb,
                     fingerprintdb=fingerprintdb,
                 )
+                if obs:
+                    obs_buffer += obs
+                if len(obs_buffer) == buf_flush_rate:
+                    write_observations_to_db(db, obs_buffer)
+                    obs_buffer = []
             except Exception as exc:
                 # This is a bit sketchy, we ought to eventually move it to some
                 # better logging function
@@ -157,6 +159,8 @@ def process_day(
                     out_file.write(traceback.format_exc())
                     out_file.write("ENDTB----\n")
                 if fast_fail:
+                    write_observations_to_db(db, obs_buffer)
                     raise exc
+        write_observations_to_db(db, obs_buffer)
 
     return time.monotonic() - t0, day
