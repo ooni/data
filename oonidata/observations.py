@@ -589,10 +589,15 @@ def network_events_until_connect(
 
 
 def find_tls_handshake_network_events(
-    tls_handshake: TLSHandshake, network_events: Optional[List[NetworkEvent]]
+    tls_handshake: TLSHandshake,
+    src_idx: int,
+    network_events: Optional[List[NetworkEvent]],
 ) -> Optional[List[NetworkEvent]]:
     if not network_events:
         return None
+
+    all_event_windows = []
+    matched_event_windows = []
 
     current_event_window = []
     for idx, ne in enumerate(network_events):
@@ -602,9 +607,24 @@ def find_tls_handshake_network_events(
         # We identify the network_event for the given TLS handshake based on the
         # fact that the timestamp on tls_handshake_done event is the same as the
         # tls_handshake time
-        if ne.operation == "tls_handshake_done" and ne.t == tls_handshake.t:
+        if ne.operation == "tls_handshake_done":
+            if ne.t == tls_handshake.t:
+                matched_event_windows.append(len(all_event_windows))
             current_event_window += network_events_until_connect(network_events[idx:])
-            return current_event_window
+            all_event_windows.append(current_event_window)
+
+    # We do this because there are cases such as
+    # https://explorer.ooni.org/measurement/20221114T002124Z_webconnectivity_BR_27699_n1_knqvcofoEIxHMpzj?input=https://cdt.org/
+    # where there are conflicts in the end time of the event window, so in order
+    # to handle that we assume that the relative ordering of the network_events
+    # is correct.
+    # If that doesn't work, then we just bail.
+    if len(matched_event_windows) == 1:
+        return all_event_windows[matched_event_windows[0]]
+    elif len(matched_event_windows) > 1:
+        if src_idx in matched_event_windows:
+            return all_event_windows[matched_event_windows[src_idx]]
+
     return None
 
 
@@ -681,7 +701,9 @@ class TLSObservation(Observation):
             tlso.ip = p.hostname
             tlso.port = p.port
 
-        tls_network_events = find_tls_handshake_network_events(tls_h, network_events)
+        tls_network_events = find_tls_handshake_network_events(
+            tls_h, idx, network_events
+        )
         if tls_network_events:
             if tls_network_events[0].address:
                 p = urlsplit("//" + tls_network_events[0].address)
@@ -797,6 +819,8 @@ def make_tls_observations(
 
 @dataclass
 class ChainedObservation(Observation):
+    __table_name__ = "chained_observations"
+
     domain_name: Optional[str] = None
 
     transaction_id: Optional[int] = None

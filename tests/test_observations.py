@@ -176,3 +176,21 @@ def test_wc_observations_chained(fingerprintdb, netinfodb, measurements):
         len(list(filter(lambda o: o.ip == "188.186.154.79", chained_observations))) == 1
     )
     assert len(chained_observations) == 4
+
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20221114002335.786418_BR_webconnectivity_6b203219ec4ded0e"
+        ]
+    )
+    assert isinstance(msmt, WebConnectivity)
+    dns_obs, tcp_obs, tls_obs, http_obs = make_web_connectivity_observations(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    chained_observations = consume_chained_observations(
+        dns_obs, tcp_obs, tls_obs, http_obs
+    )
+
+    assert (
+        len(list(filter(lambda o: o.ip == "172.67.16.69", chained_observations))) == 1
+    )
+    assert len(chained_observations) == 4

@@ -37,11 +37,6 @@ SAMPLE_MEASUREMENTS = [
         "https://aysor.am",
     ),
     (
-        "20220608121828.356206_RU_webconnectivity_80e3fa60eb2cd026",
-        "20220608T120927Z_webconnectivity_RU_41668_n1_wuoaKW00hbGU12Yw",
-        "http://proxy.org/",
-    ),
-    (
         "20220608122138.241075_IR_webconnectivity_c4240e52c7ca025f",
         "20220608T122003Z_webconnectivity_IR_58224_n1_AcrDNmCaHeCbDoNj",
         "https://www.youtube.com/",
@@ -105,6 +100,11 @@ SAMPLE_MEASUREMENTS = [
         "20221013000000.517636_US_dnscheck_bfd6d991e70afa0e",
         "20221012T235950Z_dnscheck_US_10396_n1_EhBJEeRzCdMRTLDH",
         "dot://dns.quad9.net/",
+    ),
+    (
+        "20221114002335.786418_BR_webconnectivity_6b203219ec4ded0e",
+        "20221114T002124Z_webconnectivity_BR_27699_n1_knqvcofoEIxHMpzj",
+        "https://cdt.org/",
     ),
 ]
 

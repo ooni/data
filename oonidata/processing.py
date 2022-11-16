@@ -12,27 +12,21 @@ from dataclasses import asdict, fields
 from typing import (
     Tuple,
     List,
-    Generator,
     Type,
-    TypeVar,
-    Optional,
     Union,
-    Iterable,
     Dict,
 )
 
-from oonidata.datautils import one_day_dict
 from oonidata.observations import (
-    NettestObservation,
-    DNSObservation,
+    ChainedObservation,
     Observation,
     make_tor_observations,
     make_signal_observations,
     make_web_connectivity_observations,
     make_dnscheck_observations,
+    consume_chained_observations,
 )
 from oonidata.dataformat import load_measurement
-from oonidata.dataformat import BaseMeasurement
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
@@ -59,7 +53,7 @@ def make_observation_row(observation: Observation) -> dict:
 
 
 def write_observations_to_db(
-    db: DatabaseConnection, observations: List[Observation]
+    db: DatabaseConnection, observations: List[ChainedObservation]
 ) -> None:
     if len(observations) == 0:
         return
@@ -70,108 +64,6 @@ def write_observations_to_db(
         assert table_name == obs.__table_name__, "inconsistent table name in group"
         rows.append(make_observation_row(obs))
     db.write_rows(table_name, rows)
-
-
-def domains_in_a_day(
-    day: date, db: ClickhouseConnection, probe_cc: Optional[str]
-) -> List[str]:
-    q = """SELECT DISTINCT(domain_name) FROM obs_dns
-    WHERE timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s
-    """
-    params = one_day_dict(day)
-    if probe_cc:
-        q += "AND probe_cc = %(probe_cc)s"
-        params["probe_cc"] = probe_cc
-    res = db.execute(q, params)
-    assert isinstance(res, list)
-    return [row[0] for row in res]
-
-
-def dns_observations_by_session(
-    day: date,
-    domain_name: str,
-    db: ClickhouseConnection,
-    probe_cc: Optional[str] = None,
-) -> Generator[List[DNSObservation], None, None]:
-    # I wish I had an ORM...
-    field_names = observation_field_names(DNSObservation)
-
-    q_params = one_day_dict(day)
-    q_params["domain_name"] = domain_name
-
-    q = "SELECT "
-    q += ",\n".join(field_names)
-    q += """
-    FROM obs_dns
-    WHERE domain_name = %(domain_name)s
-    AND timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s
-    """
-    if probe_cc:
-        q += "AND probe_cc = %(probe_cc)s\n"
-        q_params["probe_cc"] = probe_cc
-
-    q += "ORDER BY report_id, measurement_uid;"
-
-    # Put all the DNS observations from the same testing session into a list and yield it
-    dns_obs_session = []
-    last_obs_session_id = None
-    res = db.execute(q, q_params)
-    assert isinstance(res, list)
-    for rows in res:
-        obs_dict = {field_names[idx]: val for idx, val in enumerate(rows)}
-        dns_obs = DNSObservation(**obs_dict)
-
-        if last_obs_session_id and last_obs_session_id != dns_obs.report_id:
-            yield dns_obs_session
-            dns_obs_session = [dns_obs]
-            last_obs_session_id = dns_obs.report_id
-        else:
-            dns_obs_session.append(dns_obs)
-    if len(dns_obs_session) > 0:
-        yield dns_obs_session
-
-
-T = TypeVar("T", bound="Observation")
-
-
-def observations_in_session(
-    day: date,
-    domain_name: str,
-    obs_class: Type[T],
-    report_id: str,
-    db: ClickhouseConnection,
-) -> List[T]:
-    observation_list = []
-    field_names = observation_field_names(obs_class)
-    q = "SELECT "
-    q += ",\n".join(field_names)
-    q += " FROM " + obs_class.__table_name__
-    q += """
-    WHERE domain_name = %(domain_name)s
-    AND timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s
-    AND report_id = %(report_id)s;
-    """
-    q_params = one_day_dict(day)
-    q_params["domain_name"] = domain_name
-    q_params["report_id"] = report_id
-
-    res = db.execute(q, q_params)
-    assert isinstance(res, list)
-    for rows in res:
-        obs_dict = {field_names[idx]: val for idx, val in enumerate(rows)}
-        observation_list.append(obs_class(**obs_dict))
-    return observation_list
-
-
-def generic_processor(
-    msmt: BaseMeasurement,
-    db: DatabaseConnection,
-    netinfodb: NetinfoDB,
-) -> None:
-    write_observations_to_db(db, [NettestObservation.from_measurement(msmt, netinfodb)])
 
 
 nettest_make_obs_map = {
@@ -189,13 +81,14 @@ def process_msmt_dict(
     fingerprintdb: FingerprintDB,
 ):
     msmt = load_measurement(msmt_dict)
-    generic_processor(msmt, db, netinfodb)
 
     if msmt.test_name in nettest_make_obs_map:
-        for obs_group in nettest_make_obs_map[msmt.test_name](
-            msmt, fingerprintdb, netinfodb
-        ):
-            write_observations_to_db(db, obs_group)
+        write_observations_to_db(
+            db,
+            consume_chained_observations(
+                *nettest_make_obs_map[msmt.test_name](msmt, fingerprintdb, netinfodb)
+            ),
+        )
 
 
 def process_day(
