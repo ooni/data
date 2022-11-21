@@ -86,10 +86,6 @@ class ResponseArchiver:
     def __exit__(self, type, value, traceback):
         self.close()
 
-    @property
-    def archive_path(self) -> pathlib.Path:
-        return self.dst_dir / f"ooniresponses-{self.archive_idx}.warc.gz"
-
     def is_already_archived(self, response_body_sha1):
         res = self.db.execute(
             "SELECT response_body_sha1 FROM oonibodies_archive WHERE response_body_sha1 = %(response_body_sha1)s",
@@ -105,10 +101,7 @@ class ResponseArchiver:
         if not http_transaction.request or not http_transaction.response:
             return
 
-        self._lock.acquire()
-        if self._fh.tell() > self.max_archive_size:
-            self.open_next_archive()
-        self._lock.release()
+        self.maybe_open_next_archive()
 
         status_code = http_transaction.response.code or 0
         status_str = http.client.responses.get(status_code, "Unknown")
@@ -143,15 +136,26 @@ class ResponseArchiver:
             [[response_body_sha1, self.archive_path.name, self.record_idx]],
         )
 
+    @property
+    def archive_path(self) -> pathlib.Path:
+        return self.dst_dir / f"ooniresponses-{self.archive_idx}.warc.gz"
+
     def open(self):
         assert self._fh is None, "Attempting to open an already open FH"
         self._fh = self.archive_path.open("wb")
         self._warc_writer = WARCWriter(self._fh, gzip=True)
 
-    def open_next_archive(self):
-        self.close()
-        self.archive_idx += 1
-        self.open()
+    def maybe_open_next_archive(self):
+        assert self._fh is not None
+
+        self._lock.acquire()
+
+        if self._fh.tell() > self.max_archive_size:
+            self.close()
+            self.archive_idx += 1
+            self.open()
+
+        self._lock.release()
 
     def close(self):
         assert self._fh is not None, "Attempting to close an unopen archiver"
