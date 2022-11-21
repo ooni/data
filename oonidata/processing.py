@@ -160,6 +160,7 @@ class ResponseArchiver:
     def close(self):
         assert self._fh is not None, "Attempting to close an unopen archiver"
         self._fh.close()
+        self._fh = None
 
 
 def process_day(
