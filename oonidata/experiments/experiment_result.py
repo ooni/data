@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 
 from oonidata.observations import (
-    Observation,
+    MeasurementMeta,
 )
 
 log = logging.getLogger("oonidata.events")
@@ -86,12 +86,12 @@ class ExperimentResult:
     confirmed: bool
 
 
-def make_base_result_meta(obs: Observation) -> dict:
+def make_base_result_meta(obs: MeasurementMeta) -> dict:
     return dict(
         measurement_uid=obs.measurement_uid,
         report_id=obs.report_id,
         input=obs.input,
-        timestamp=obs.timestamp,
+        timestamp=obs.measurement_start_time,
         probe_asn=obs.probe_asn,
         probe_cc=obs.probe_cc,
         probe_as_org_name=obs.probe_as_org_name,

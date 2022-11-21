@@ -433,6 +433,7 @@ class TCPObservation:
     ip: str
     port: int
 
+    success: bool
     failure: Failure
 
     transaction_id: Optional[int] = None
@@ -447,6 +448,7 @@ class TCPObservation:
             ip=res.ip,
             port=res.port,
             failure=normalize_failure(res.status.failure),
+            success=res.status.success,
             transaction_id=res.transaction_id,
         )
 
@@ -692,6 +694,9 @@ class WebObservation(MeasurementMeta):
     target_id: Optional[str] = None
     hostname: Optional[str] = None
 
+    observation_id: Optional[str] = None
+    bucket_date: Optional[str] = None
+
     transaction_id: Optional[int] = None
 
     ip: Optional[str] = None
@@ -718,6 +723,7 @@ class WebObservation(MeasurementMeta):
 
     # TCP related observation
     tcp_failure: Optional[Failure] = None
+    tcp_success: Optional[bool] = None
 
     # TLS related observation
     tls_failure: Optional[Failure] = None
@@ -766,6 +772,17 @@ class WebObservation(MeasurementMeta):
     http_response_header_server: Optional[bytes] = None
     http_request_redirect_from: Optional[str] = None
     http_request_body_is_truncated: Optional[bool] = None
+
+    # All of these fields are added as part of a post-processing stage
+    pp_http_response_fingerprints: List[str] = field(default_factory=list)
+    pp_http_fingerprint_country_consistent: Optional[bool] = None
+    pp_http_response_matches_blockpage: bool = False
+    pp_http_response_matches_false_positive: bool = False
+    pp_http_response_body_title: Optional[str] = None
+    pp_http_response_body_meta_title: Optional[str] = None
+
+    pp_dns_fingerprint_id: Optional[str] = None
+    pp_dns_fingerprint_country_consistent: Optional[bool] = None
 
 
 def maybe_set_web_fields(

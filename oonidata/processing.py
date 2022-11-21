@@ -12,7 +12,6 @@ import dataclasses
 from typing import (
     Tuple,
     List,
-    Type,
     Union,
     Dict,
 )
@@ -23,7 +22,6 @@ from oonidata.observations import (
     make_signal_observations,
     make_web_connectivity_observations,
     make_dnscheck_observations,
-    consume_web_observations,
 )
 from oonidata.dataformat import load_measurement
 from oonidata.fingerprintdb import FingerprintDB
