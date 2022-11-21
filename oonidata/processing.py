@@ -6,14 +6,14 @@ import traceback
 from base64 import b32decode
 import http.client
 
+from threading import Lock
+
 from datetime import date, timedelta
 import dataclasses
 
 from typing import (
-    Tuple,
     List,
     Union,
-    Dict,
 )
 
 import orjson
@@ -62,6 +62,7 @@ class ResponseArchiver:
         self.record_idx = 0
         self._fh = None
         self._warc_writer = None
+        self._lock = Lock()
         self.max_archive_size = 100_000_000
 
     def _init_idx(self):
@@ -104,8 +105,10 @@ class ResponseArchiver:
         if not http_transaction.request or not http_transaction.response:
             return
 
+        self._lock.acquire()
         if self._fh.tell() > self.max_archive_size:
             self.open_next_archive()
+        self._lock.release()
 
         status_code = http_transaction.response.code or 0
         status_str = http.client.responses.get(status_code, "Unknown")

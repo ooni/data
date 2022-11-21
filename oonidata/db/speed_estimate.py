@@ -3,7 +3,7 @@ from clickhouse_driver import Client
 
 
 def get_count(client) -> int:
-    res = client.execute("SELECT COUNT(DISTINCT measurement_uid) FROM obs_chained;")
+    res = client.execute("SELECT COUNT(DISTINCT measurement_uid) FROM obs_web;")
     return int(res[0][0])
 
 
