@@ -230,8 +230,10 @@ class HTTPObservation:
     failure: Failure
 
     request_body_length: int
-    # request_headers_list: Optional[List[Tuple[str, bytes]]]
     request_method: str
+    request_headers_list: Optional[List[Tuple[str, bytes]]] = field(
+        default_factory=list
+    )
 
     ip: Optional[str] = None
     port: Optional[int] = None
@@ -244,7 +246,9 @@ class HTTPObservation:
     response_body_bytes: Optional[bytes] = None
 
     response_status_code: Optional[int] = None
-    # response_headers_list: Optional[List[Tuple[str, bytes]]]
+    response_headers_list: Optional[List[Tuple[str, bytes]]] = field(
+        default_factory=list
+    )
     response_header_location: Optional[bytes] = None
     response_header_server: Optional[bytes] = None
     request_redirect_from: Optional[str] = None
@@ -281,7 +285,7 @@ class HTTPObservation:
             request_url=http_transaction.request.url,
             hostname=parsed_url.hostname or "",
             request_body_is_truncated=http_transaction.request.body_is_truncated,
-            # hrro.request_headers_list = http_transaction.request.headers_list_bytes
+            request_headers_list=http_transaction.request.headers_list_bytes,
             request_method=http_transaction.request.method or "",
             request_body_length=len(http_transaction.request.body_bytes)
             if http_transaction.request.body_bytes
@@ -314,7 +318,7 @@ class HTTPObservation:
             hrro.response_body_bytes = http_transaction.response.body_bytes
 
         hrro.response_status_code = http_transaction.response.code
-        # hrro.response_headers_list = http_transaction.response.headers_list_bytes
+        hrro.response_headers_list = http_transaction.response.headers_list_bytes
 
         hrro.response_header_location = get_first_http_header(
             "location", http_transaction.response.headers_list_bytes or []
@@ -545,6 +549,7 @@ class TLSObservation:
     end_entity_certificate_not_valid_before: Optional[datetime] = None
     peer_certificates: List[bytes] = field(default_factory=list)
     certificate_chain_length: Optional[int] = None
+    certificate_chain_fingerprints: List[str] = field(default_factory=list)
 
     handshake_read_count: Optional[int] = None
     handshake_write_count: Optional[int] = None
@@ -611,6 +616,13 @@ class TLSObservation:
             try:
                 tlso.peer_certificates = list(
                     map(lambda c: b64decode(c.data), tls_h.peer_certificates)
+                )
+            except Exception:
+                log.error("failed to decode peer_certificates")
+
+            try:
+                tlso.certificate_chain_fingerprints = list(
+                    map(lambda d: hashlib.sha256(d).hexdigest(), tlso.peer_certificates)
                 )
             except Exception:
                 log.error("failed to decode peer_certificates")
@@ -742,6 +754,7 @@ class WebObservation(MeasurementMeta):
     tls_end_entity_certificate_not_valid_after: Optional[datetime] = None
     tls_end_entity_certificate_not_valid_before: Optional[datetime] = None
     tls_certificate_chain_length: Optional[int] = None
+    tls_certificate_chain_fingerprints: List[str] = field(default_factory=list)
 
     tls_handshake_read_count: Optional[int] = None
     tls_handshake_write_count: Optional[int] = None

@@ -122,6 +122,13 @@ def create_query_for_experiment_result() -> Tuple[str, str]:
 create_queries = [
     create_query_for_observation(WebObservation),
     create_query_for_experiment_result(),
+    """
+    CREATE TABLE IF NOT EXISTS oonibodies_archive (
+        response_body_sha1 String,
+        archive_filename String,
+        record_idx UInt32
+    ) ENGINE = EmbeddedRocksDB PRIMARY KEY(response_body_sha1)
+    """,
 ]
 
 

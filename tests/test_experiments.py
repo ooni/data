@@ -23,7 +23,6 @@ from oonidata.experiments.websites import (
     make_website_experiment_result,
 )
 from oonidata.observations import (
-    make_dns_observations,
     make_signal_observations,
     make_web_connectivity_observations,
 )

@@ -1,3 +1,5 @@
+import gzip
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from oonidata.dataformat import WebConnectivity, load_measurement
@@ -7,7 +9,7 @@ from oonidata.observations import (
     make_dnscheck_observations,
 )
 from oonidata.dataclient import stream_jsonl
-from oonidata.processing import make_observations
+from oonidata.processing import make_observations, ResponseArchiver
 
 
 def test_insert_query_for_observation(measurements):
@@ -77,3 +79,24 @@ def test_full_processing(raw_measurements, netinfodb):
                     msmt_dict=msmt_dict,
                     netinfodb=netinfodb,
                 )
+
+
+def test_archive_http_transaction(measurements, tmpdir):
+    db = MagicMock()
+    db.write_row = MagicMock()
+
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20220627131742.081225_GB_webconnectivity_e1e2cf4db492b748"
+        ]
+    )
+    assert isinstance(msmt, WebConnectivity)
+    assert msmt.test_keys.requests
+    dst_dir = Path(tmpdir)
+    with ResponseArchiver(db, dst_dir=dst_dir) as archiver:
+        for http_transaction in msmt.test_keys.requests:
+            archiver.archive_http_transaction(http_transaction=http_transaction)
+
+    assert len(list(dst_dir.glob("*.warc.gz"))) == 1
+    with gzip.open(dst_dir / "ooniresponses-0.warc.gz", "rb") as in_file:
+        assert b"Run OONI Probe to detect internet censorship" in in_file.read()

@@ -1,10 +1,10 @@
-from collections import defaultdict
+import io
+import pathlib
 import time
 import logging
 import traceback
-import orjson
-
-from tqdm import tqdm
+from base64 import b32decode
+import http.client
 
 from datetime import date, timedelta
 import dataclasses
@@ -16,6 +16,11 @@ from typing import (
     Dict,
 )
 
+import orjson
+from tqdm import tqdm
+from warcio.warcwriter import WARCWriter
+from warcio.statusandheaders import StatusAndHeaders
+
 from oonidata.observations import (
     WebObservation,
     make_tor_observations,
@@ -23,7 +28,7 @@ from oonidata.observations import (
     make_web_connectivity_observations,
     make_dnscheck_observations,
 )
-from oonidata.dataformat import load_measurement
+from oonidata.dataformat import load_measurement, HTTPTransaction
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
@@ -62,6 +67,107 @@ nettest_make_obs_map = {
     "tor": make_tor_observations,
     "signal": make_signal_observations,
 }
+
+
+class ResponseArchiver:
+    def __init__(self, db: DatabaseConnection, dst_dir: pathlib.Path):
+        self.db = db
+        self.dst_dir = dst_dir
+        self.archive_idx = self._init_idx()
+        self.record_idx = 0
+        self._fh = None
+        self._warc_writer = None
+        self.max_archive_size = 100_000_000
+
+    def _init_idx(self):
+        try:
+            return (
+                max(
+                    map(
+                        lambda x: int(x.name.split("-")[-1].split(".")[0]),
+                        self.dst_dir.glob("*.warc.gz"),
+                    )
+                )
+                + 1
+            )
+        except ValueError:
+            return 0
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.close()
+
+    @property
+    def archive_path(self) -> pathlib.Path:
+        return self.dst_dir / f"ooniresponses-{self.archive_idx}.warc.gz"
+
+    def is_already_archived(self, response_body_sha1):
+        res = self.db.execute(
+            "SELECT archive_name FROM oonibodies_archive WHERE response_body_sha1 = %(response_body_sha1);",
+            dict(response_body_sha1=response_body_sha1),
+        )
+        return res and len(res) > 0
+
+    def archive_http_transaction(self, http_transaction: HTTPTransaction):
+        assert (
+            self._warc_writer is not None and self._fh is not None
+        ), "you must call open before you can begin archiving"
+
+        if not http_transaction.request or not http_transaction.response:
+            return
+
+        if self._fh.tell() > self.max_archive_size:
+            self.open_next_archive()
+
+        status_code = http_transaction.response.code or 0
+        status_str = http.client.responses.get(status_code, "Unknown")
+        protocol_v = "HTTP/1.1"
+        http_headers = StatusAndHeaders(
+            f"{status_code} {status_str}",
+            http_transaction.response.headers_list_bytes,
+            protocol=protocol_v,
+        )
+        payload = None
+        if http_transaction.response.body_bytes:
+            payload = io.BytesIO(http_transaction.response.body_bytes)
+        record = self._warc_writer.create_warc_record(
+            http_transaction.request.url,
+            "response",
+            http_headers=http_headers,
+            payload=payload,
+        )
+        digest_alg, digest_b32 = record.rec_headers.get_header(
+            "WARC-Payload-Digest"
+        ).split(":")
+        assert digest_alg == "sha1", "using wrong algorithm to create digest"
+        response_body_sha1 = b32decode(digest_b32).hex()
+
+        if self.is_already_archived(response_body_sha1):
+            return
+
+        self._warc_writer.write_record(record)
+        self.record_idx += 1
+        self.db.execute(
+            "INSERT INTO oonibodies_archive (response_body_sha1, archive_filename, record_idx) VALUES",
+            [response_body_sha1, self.archive_path.name, self.record_idx],
+        )
+
+    def open(self):
+        assert self._fh is None, "Attempting to open an already open FH"
+        self._fh = self.archive_path.open("wb")
+        self._warc_writer = WARCWriter(self._fh, gzip=True)
+
+    def open_next_archive(self):
+        self.close()
+        self.archive_idx += 1
+        self.open()
+
+    def close(self):
+        assert self._fh is not None, "Attempting to close an unopen archiver"
+        self._fh.close()
 
 
 def make_observations(

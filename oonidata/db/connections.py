@@ -12,6 +12,9 @@ class DatabaseConnection:
     def __init__(self):
         self.client = None
 
+    def execute(self, *args, **kwargs):
+        pass
+
     def write_rows(self, table_name, rows):
         log.info(f"Writing to {table_name}")
         log.info(pformat(rows))
