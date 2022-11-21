@@ -21,15 +21,8 @@ from tqdm import tqdm
 from warcio.warcwriter import WARCWriter
 from warcio.statusandheaders import StatusAndHeaders
 
-from oonidata.observations import (
-    WebObservation,
-    make_tor_observations,
-    make_signal_observations,
-    make_web_connectivity_observations,
-    make_dnscheck_observations,
-)
+from oonidata.observations import WebObservation, make_observations
 from oonidata.dataformat import load_measurement, HTTPTransaction
-from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.dataclient import (
@@ -59,14 +52,6 @@ def write_observations_to_db(
         obs.bucket_date = bucket_date
         rows.append(dataclasses.asdict(obs))
     db.write_rows(table_name, rows)
-
-
-nettest_make_obs_map = {
-    "web_connectivity": make_web_connectivity_observations,
-    "dnscheck": make_dnscheck_observations,
-    "tor": make_tor_observations,
-    "signal": make_signal_observations,
-}
 
 
 class ResponseArchiver:
@@ -106,7 +91,7 @@ class ResponseArchiver:
 
     def is_already_archived(self, response_body_sha1):
         res = self.db.execute(
-            "SELECT archive_name FROM oonibodies_archive WHERE response_body_sha1 = %(response_body_sha1);",
+            "SELECT response_body_sha1 FROM oonibodies_archive WHERE response_body_sha1 = %(response_body_sha1)s",
             dict(response_body_sha1=response_body_sha1),
         )
         return res and len(res) > 0
@@ -127,7 +112,7 @@ class ResponseArchiver:
         protocol_v = "HTTP/1.1"
         http_headers = StatusAndHeaders(
             f"{status_code} {status_str}",
-            http_transaction.response.headers_list_bytes,
+            http_transaction.response.headers_list_bytes or [],
             protocol=protocol_v,
         )
         payload = None
@@ -152,7 +137,7 @@ class ResponseArchiver:
         self.record_idx += 1
         self.db.execute(
             "INSERT INTO oonibodies_archive (response_body_sha1, archive_filename, record_idx) VALUES",
-            [response_body_sha1, self.archive_path.name, self.record_idx],
+            [[response_body_sha1, self.archive_path.name, self.record_idx]],
         )
 
     def open(self):
@@ -170,16 +155,6 @@ class ResponseArchiver:
         self._fh.close()
 
 
-def make_observations(
-    msmt_dict: Dict,
-    netinfodb: NetinfoDB,
-):
-    msmt = load_measurement(msmt_dict)
-
-    if msmt.test_name in nettest_make_obs_map:
-        return nettest_make_obs_map[msmt.test_name](msmt, netinfodb)
-
-
 def process_day(
     db: Union[ClickhouseConnection, CSVConnection],
     netinfodb: NetinfoDB,
@@ -188,7 +163,7 @@ def process_day(
     probe_cc=[],
     start_at_idx=0,
     fast_fail=False,
-) -> Tuple[float, date]:
+):
     t0 = time.monotonic()
     bucket_date = day.strftime("%Y-%m-%d")
     with tqdm(unit="B", unit_scale=True) as pbar:
@@ -225,12 +200,13 @@ def process_day(
             if idx < start_at_idx:
                 continue
             try:
-                obs = make_observations(
-                    msmt_dict=msmt_dict,
-                    netinfodb=netinfodb,
+                msmt = load_measurement(msmt_dict)
+                write_observations_to_db(
+                    db=db,
+                    bucket_date=bucket_date,
+                    observations=make_observations(msmt, netinfodb=netinfodb),
                 )
-                if obs:
-                    write_observations_to_db(db, bucket_date, obs)
+                yield msmt
             except Exception as exc:
                 # This is a bit sketchy, we ought to eventually move it to some
                 # better logging function

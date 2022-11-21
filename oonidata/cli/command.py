@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 from pathlib import Path
+import traceback
 from typing import List, Optional
 from datetime import date, timedelta, datetime
 from typing import List, Optional
@@ -12,11 +13,12 @@ from oonidata.dataclient import (
     date_interval,
     sync_measurements,
 )
+from oonidata.dataformat import WebConnectivity
 from oonidata.db.connections import CSVConnection, ClickhouseConnection
 from oonidata.db.create_tables import create_queries
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
-from oonidata.processing import process_day
+from oonidata.processing import ResponseArchiver, process_day
 
 
 log = logging.getLogger("oonidata")
@@ -110,6 +112,7 @@ def sync(
 
 def processing_worker(
     day_queue: multiprocessing.Queue,
+    archiver_queue: multiprocessing.Queue,
     data_dir: Path,
     probe_cc: List[str],
     test_name: List[str],
@@ -118,7 +121,6 @@ def processing_worker(
     start_at_idx: int,
     fast_fail: bool,
 ):
-    fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
 
     if clickhouse:
@@ -132,7 +134,7 @@ def processing_worker(
         day = day_queue.get(block=True)
         if day == None:
             break
-        process_day(
+        for msmt in process_day(
             db=db,
             netinfodb=netinfodb,
             day=day,
@@ -140,7 +142,31 @@ def processing_worker(
             probe_cc=probe_cc,
             start_at_idx=start_at_idx,
             fast_fail=fast_fail,
-        )
+        ):
+            if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
+                archiver_queue.put(msmt.test_keys.requests)
+
+    db.close()
+
+
+def archiver_worker(
+    archiver_queue: multiprocessing.Queue,
+    dst_dir: Path,
+    clickhouse: Optional[str],
+):
+    db = ClickhouseConnection(clickhouse)
+
+    with ResponseArchiver(db, dst_dir=dst_dir) as archiver:
+        while True:
+            requests = archiver_queue.get(block=True)
+            if requests == None:
+                break
+            try:
+                for http_transaction in requests:
+                    archiver.archive_http_transaction(http_transaction=http_transaction)
+            except Exception:
+                log.error(f"failed to process {requests}")
+                log.error(traceback.format_exc())
 
     db.close()
 
@@ -158,6 +184,7 @@ def processing_worker(
     required=True,
     help="data directory to store fingerprint and geoip databases",
 )
+@click.option("--archives-dir", type=Path)
 @click.option(
     "--parallelism",
     type=int,
@@ -188,6 +215,7 @@ def mkobs(
     csv_dir: Optional[Path],
     clickhouse: Optional[str],
     data_dir: Path,
+    archives_dir: Optional[Path],
     parallelism: int,
     start_at_idx: int,
     fast_fail: bool,
@@ -222,11 +250,13 @@ def mkobs(
     NetinfoDB(datadir=data_dir, download=True)
 
     day_queue = multiprocessing.Queue()
+    archiver_queue = multiprocessing.Queue()
     pool = multiprocessing.Pool(
         processes=parallelism,
         initializer=processing_worker,
         initargs=(
             day_queue,
+            archiver_queue,
             data_dir,
             probe_cc,
             test_name,
@@ -236,6 +266,13 @@ def mkobs(
             fast_fail,
         ),
     )
+
+    archiver_process = None
+    if archives_dir:
+        archiver_process = multiprocessing.Process(
+            target=archiver_worker, args=(archiver_queue, archives_dir, clickhouse)
+        )
+        archiver_process.start()
     for day in date_interval(start_day, end_day):
         day_queue.put(day)
 
@@ -247,6 +284,16 @@ def mkobs(
 
     pool.close()
     pool.join()
+
+    # Send close signal to the archiver process
+    archiver_queue.put(None)
+
+    archiver_queue.close()
+    archiver_queue.join_thread()
+
+    if archiver_process:
+        archiver_process.close()
+        archiver_process.join()
 
 
 if __name__ == "__main__":

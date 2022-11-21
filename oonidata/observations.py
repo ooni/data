@@ -1118,3 +1118,15 @@ def make_tor_observations(
         )
 
     return web_obs_list
+
+nettest_make_obs_map = {
+    "web_connectivity": make_web_connectivity_observations,
+    "dnscheck": make_dnscheck_observations,
+    "tor": make_tor_observations,
+    "signal": make_signal_observations,
+}
+
+def make_observations(msmt, netinfodb: NetinfoDB):
+    if msmt.test_name in nettest_make_obs_map:
+        return nettest_make_obs_map[msmt.test_name](msmt, netinfodb)
+    return []

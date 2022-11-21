@@ -5,11 +5,12 @@ from unittest.mock import MagicMock
 from oonidata.dataformat import WebConnectivity, load_measurement
 from oonidata.observations import (
     make_http_observations,
+    make_observations,
     make_web_connectivity_observations,
     make_dnscheck_observations,
 )
 from oonidata.dataclient import stream_jsonl
-from oonidata.processing import make_observations, ResponseArchiver
+from oonidata.processing import ResponseArchiver
 
 
 def test_insert_query_for_observation(measurements):
@@ -75,8 +76,9 @@ def test_full_processing(raw_measurements, netinfodb):
     for msmt_path in raw_measurements.glob("*/*/*.jsonl.gz"):
         with msmt_path.open("rb") as in_file:
             for msmt_dict in stream_jsonl(in_file):
+                msmt = load_measurement(msmt_dict)
                 make_observations(
-                    msmt_dict=msmt_dict,
+                    msmt=msmt,
                     netinfodb=netinfodb,
                 )
 
