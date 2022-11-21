@@ -1,5 +1,6 @@
 from base64 import b64decode
 import hashlib
+import ipaddress
 import logging
 
 import dataclasses
@@ -827,19 +828,23 @@ def make_web_observation(
     ), "dns_o or tcp_o or tls_o or http_o should be not null"
 
     web_obs = WebObservation(target_id=target_id, **dataclasses.asdict(msmt_meta))
+    dns_ip = None
+    if dns_o and dns_o.answer:
+        try:
+            ipaddress.ip_address(dns_o.answer)
+            dns_ip = dns_o.answer
+        except ValueError:
+            pass
     web_obs.ip = (
-        (dns_o and dns_o.answer)
-        or (tcp_o and tcp_o.ip)
-        or (tls_o and tls_o.ip)
-        or (http_o and http_o.ip)
+        dns_ip or (tcp_o and tcp_o.ip) or (tls_o and tls_o.ip) or (http_o and http_o.ip)
     )
     web_obs.port = (
         (tcp_o and tcp_o.port) or (tls_o and tls_o.port) or (http_o and http_o.port)
     )
     web_obs.hostname = (dns_o and dns_o.hostname) or (http_o and http_o.hostname)
     if web_obs.ip:
-        ip_info = netinfodb.lookup_ip(web_obs.measurement_start_time, web_obs.ip)
         web_obs.ip_is_bogon = is_ip_bogon(web_obs.ip)
+        ip_info = netinfodb.lookup_ip(web_obs.measurement_start_time, web_obs.ip)
         if ip_info:
             web_obs.ip_cc = ip_info.cc
             web_obs.ip_asn = ip_info.as_info.asn
@@ -1119,12 +1124,14 @@ def make_tor_observations(
 
     return web_obs_list
 
+
 nettest_make_obs_map = {
     "web_connectivity": make_web_connectivity_observations,
     "dnscheck": make_dnscheck_observations,
     "tor": make_tor_observations,
     "signal": make_signal_observations,
 }
+
 
 def make_observations(msmt, netinfodb: NetinfoDB):
     if msmt.test_name in nettest_make_obs_map:
