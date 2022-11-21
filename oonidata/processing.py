@@ -7,7 +7,7 @@ import orjson
 from tqdm import tqdm
 
 from datetime import date, timedelta
-from dataclasses import asdict, fields
+import dataclasses
 
 from typing import (
     Tuple,
@@ -18,13 +18,12 @@ from typing import (
 )
 
 from oonidata.observations import (
-    ChainedObservation,
-    Observation,
+    WebObservation,
     make_tor_observations,
     make_signal_observations,
     make_web_connectivity_observations,
     make_dnscheck_observations,
-    consume_chained_observations,
+    consume_web_observations,
 )
 from oonidata.dataformat import load_measurement
 from oonidata.fingerprintdb import FingerprintDB
@@ -44,16 +43,8 @@ from oonidata.db.connections import (
 log = logging.getLogger("oonidata.processing")
 
 
-def observation_field_names(obs_class: Type[Observation]) -> List[str]:
-    return list(map(lambda dc: dc.name, fields(obs_class)))
-
-
-def make_observation_row(observation: Observation) -> dict:
-    return asdict(observation)
-
-
 def write_observations_to_db(
-    db: DatabaseConnection, bucket_date: str, observations: List[ChainedObservation]
+    db: DatabaseConnection, bucket_date: str, observations: List[WebObservation]
 ) -> None:
     if len(observations) == 0:
         return
@@ -63,7 +54,7 @@ def write_observations_to_db(
     for obs in observations:
         assert table_name == obs.__table_name__, "inconsistent table name in group"
         obs.bucket_date = bucket_date
-        rows.append(make_observation_row(obs))
+        rows.append(dataclasses.asdict(obs))
     db.write_rows(table_name, rows)
 
 
@@ -78,19 +69,15 @@ nettest_make_obs_map = {
 def make_observations(
     msmt_dict: Dict,
     netinfodb: NetinfoDB,
-    fingerprintdb: FingerprintDB,
 ):
     msmt = load_measurement(msmt_dict)
 
     if msmt.test_name in nettest_make_obs_map:
-        return consume_chained_observations(
-            *nettest_make_obs_map[msmt.test_name](msmt, fingerprintdb, netinfodb)
-        )
+        return nettest_make_obs_map[msmt.test_name](msmt, netinfodb)
 
 
 def process_day(
     db: Union[ClickhouseConnection, CSVConnection],
-    fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
     day: date,
     test_name=[],
@@ -137,7 +124,6 @@ def process_day(
                 obs = make_observations(
                     msmt_dict=msmt_dict,
                     netinfodb=netinfodb,
-                    fingerprintdb=fingerprintdb,
                 )
                 if obs:
                     write_observations_to_db(db, bucket_date, obs)

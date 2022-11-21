@@ -1,6 +1,5 @@
 from base64 import b64decode
 import hashlib
-import abc
 import logging
 
 import dataclasses
@@ -13,8 +12,10 @@ from typing import (
     List,
     Tuple,
     Union,
-    Dict,
 )
+
+from tabulate import tabulate
+
 from oonidata.dataformat import SIGNAL_PEM_STORE, DNSCheck, Tor
 
 from oonidata.dataformat import (
@@ -35,14 +36,10 @@ from oonidata.datautils import (
     TLSCertStore,
     get_first_http_header,
     get_first_http_header_str,
-    get_html_meta_title,
-    get_html_title,
-    is_ipv4_bogon,
-    is_ipv6_bogon,
+    is_ip_bogon,
     get_certificate_meta,
     removeprefix,
 )
-from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
 
@@ -73,19 +70,33 @@ def normalize_failure(failure: Failure):
     return failure
 
 
+def maybe_elipse(s, max_len=16):
+    if isinstance(s, str) and len(s) > max_len:
+        return s[:max_len] + "…"
+    return s
+
+
+def print_nice(obs):
+    rows = []
+    meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
+    headers = [f.name for f in dataclasses.fields(obs[0])]
+    headers = list(filter(lambda k: k not in meta_fields, headers))
+    for o in obs:
+        rows.append([maybe_elipse(getattr(o, k)) for k in headers])
+    headers = [maybe_elipse(h, 5) for h in headers]
+    print(tabulate(rows, headers=headers))
+
+
 @dataclass
-class Observation(abc.ABC):
-    __table_name__ = "obs"
+class MeasurementMeta:
+    __table_name__ = "obs_generic"
 
     measurement_uid: str
-    observation_id: str
 
-    input: str
+    input: Optional[str]
     report_id: str
 
-    timestamp: datetime
-
-    target: str
+    measurement_start_time: datetime
 
     probe_asn: int
     probe_cc: str
@@ -122,7 +133,9 @@ class Observation(abc.ABC):
     bucket_date: str
 
 
-def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> dict:
+def make_measurement_meta(
+    msmt: BaseMeasurement, netinfodb: NetinfoDB
+) -> MeasurementMeta:
     assert msmt.measurement_uid is not None
     probe_asn = int(msmt.probe_asn[len("AS") :])
     measurement_start_time = datetime.strptime(
@@ -130,7 +143,6 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
     )
     probe_as_info = netinfodb.lookup_asn(measurement_start_time, probe_asn)
 
-    resolver_as_info = None
     resolver_ip = msmt.resolver_ip
     client_resolver = None
     resolver_is_scrubbed = False
@@ -169,7 +181,7 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
     if isinstance(input_, list):
         input_ = ":".join(input_)
 
-    return dict(
+    return MeasurementMeta(
         measurement_uid=msmt.measurement_uid,
         probe_asn=probe_asn,
         probe_cc=msmt.probe_cc,
@@ -194,6 +206,7 @@ def make_base_observation_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> d
         resolver_as_org_name_probe=resolver_as_org_name_probe,
         resolver_is_scrubbed=resolver_is_scrubbed,
         bucket_date="",
+        measurement_start_time=measurement_start_time,
     )
 
 
@@ -205,32 +218,10 @@ def make_timestamp(msmt: BaseMeasurement, t: Optional[float] = None):
 
 
 @dataclass
-class NettestObservation(Observation):
-    __table_name__ = "obs_nettest"
+class HTTPObservation:
+    timestamp: datetime
 
-    test_runtime: float
-    annotations: Dict[str, str]
-
-    @staticmethod
-    def from_measurement(
-        msmt: BaseMeasurement,
-        netinfodb: NetinfoDB,
-    ) -> "NettestObservation":
-        return NettestObservation(
-            observation_id=f"{msmt.measurement_uid}_nettest",
-            timestamp=make_timestamp(msmt),
-            test_runtime=msmt.test_runtime,
-            annotations=msmt.annotations,
-            target="",
-            **make_base_observation_meta(msmt, netinfodb),
-        )
-
-
-@dataclass
-class HTTPObservation(Observation):
-    __table_name__ = "obs_http"
-
-    domain_name: str
+    hostname: str
     request_url: str
 
     network: str
@@ -242,8 +233,6 @@ class HTTPObservation(Observation):
     # request_headers_list: Optional[List[Tuple[str, bytes]]]
     request_method: str
 
-    response_fingerprints: List[str]
-
     ip: Optional[str] = None
     port: Optional[int] = None
 
@@ -252,8 +241,7 @@ class HTTPObservation(Observation):
     response_body_length: Optional[int] = None
     response_body_is_truncated: Optional[bool] = None
     response_body_sha1: Optional[str] = None
-    response_body_title: Optional[str] = None
-    response_body_meta_title: Optional[str] = None
+    response_body_bytes: Optional[bytes] = None
 
     response_status_code: Optional[int] = None
     # response_headers_list: Optional[List[Tuple[str, bytes]]]
@@ -261,10 +249,6 @@ class HTTPObservation(Observation):
     response_header_server: Optional[bytes] = None
     request_redirect_from: Optional[str] = None
     request_body_is_truncated: Optional[bool] = None
-
-    fingerprint_country_consistent: Optional[bool] = None
-    response_matches_blockpage: bool = False
-    response_matches_false_positive: bool = False
 
     transaction_id: Optional[int] = None
 
@@ -275,12 +259,9 @@ class HTTPObservation(Observation):
     @staticmethod
     def from_measurement(
         msmt: BaseMeasurement,
-        netinfodb: NetinfoDB,
+        requests_list: List[HTTPTransaction],
         idx: int,
-        requests_list: Optional[List[HTTPTransaction]],
         http_transaction: HTTPTransaction,
-        fingerprintdb: FingerprintDB,
-        target: str = "",
     ) -> Optional["HTTPObservation"]:
         if not http_transaction.request:
             # This is a very malformed request, we don't consider it a valid
@@ -297,23 +278,19 @@ class HTTPObservation(Observation):
 
         parsed_url = urlparse(http_transaction.request.url)
         hrro = HTTPObservation(
-            observation_id=f"{msmt.measurement_uid}_http_{idx}",
             request_url=http_transaction.request.url,
-            domain_name=parsed_url.hostname or "",
+            hostname=parsed_url.hostname or "",
             request_body_is_truncated=http_transaction.request.body_is_truncated,
             # hrro.request_headers_list = http_transaction.request.headers_list_bytes
             request_method=http_transaction.request.method or "",
             request_body_length=len(http_transaction.request.body_bytes)
             if http_transaction.request.body_bytes
             else 0,
-            response_fingerprints=[],
             network=network,
             alpn=http_transaction.alpn,
             failure=normalize_failure(http_transaction.failure),
             timestamp=make_timestamp(msmt, http_transaction.t),
-            target=target,
             transaction_id=http_transaction.transaction_id,
-            **make_base_observation_meta(msmt, netinfodb),
         )
 
         if http_transaction.address:
@@ -329,27 +306,12 @@ class HTTPObservation(Observation):
 
         hrro.response_body_is_truncated = http_transaction.response.body_is_truncated
 
-        fp_matches = fingerprintdb.match_http(http_transaction.response)
-        for fp in fp_matches:
-            if fp.scope == "fp":
-                hrro.response_matches_false_positive = True
-            else:
-                hrro.response_matches_blockpage = True
-            if fp.expected_countries and msmt.probe_cc in fp.expected_countries:
-                hrro.fingerprint_country_consistent = True
-            hrro.response_fingerprints.append(fp.name)
-
         if http_transaction.response.body_bytes:
             hrro.response_body_length = len(http_transaction.response.body_bytes)
             hrro.response_body_sha1 = hashlib.sha1(
                 http_transaction.response.body_bytes
             ).hexdigest()
-            hrro.response_body_title = get_html_title(
-                http_transaction.response.body_bytes
-            )
-            hrro.response_body_meta_title = get_html_meta_title(
-                http_transaction.response.body_bytes
-            )
+            hrro.response_body_bytes = http_transaction.response.body_bytes
 
         hrro.response_status_code = http_transaction.response.code
         # hrro.response_headers_list = http_transaction.response.headers_list_bytes
@@ -362,11 +324,7 @@ class HTTPObservation(Observation):
         )
 
         try:
-            # We add type: ignore in here, because requests_lists is an optional
-            # field and the fact it might not be defined is handled by the
-            # except block below, yet pylint is not able to figure that out.
-            # TODO: maybe refactor this handle it better by checking if these are defined
-            prev_request = requests_list[idx + 1]  # type: ignore
+            prev_request = requests_list[idx + 1]
             prev_location = get_first_http_header_str(
                 "location", prev_request.response.headers_list_str or []  # type: ignore
             )
@@ -380,9 +338,6 @@ class HTTPObservation(Observation):
 def make_http_observations(
     msmt: BaseMeasurement,
     requests_list: Optional[List[HTTPTransaction]],
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
-    target: str = "",
 ) -> List[HTTPObservation]:
     obs_list = []
     if not requests_list:
@@ -390,7 +345,10 @@ def make_http_observations(
 
     for idx, http_transaction in enumerate(requests_list):
         httpo = HTTPObservation.from_measurement(
-            msmt, netinfodb, idx, requests_list, http_transaction, fingerprintdb, target
+            msmt=msmt,
+            idx=idx,
+            requests_list=requests_list,
+            http_transaction=http_transaction,
         )
         if httpo:
             obs_list.append(httpo)
@@ -398,10 +356,10 @@ def make_http_observations(
 
 
 @dataclass
-class DNSObservation(Observation):
-    __table_name__ = "obs_dns"
+class DNSObservation:
+    timestamp: datetime
 
-    domain_name: str
+    hostname: str
 
     query_type: str
     failure: Failure
@@ -412,14 +370,6 @@ class DNSObservation(Observation):
     answer: Optional[str] = None
     answer_asn: Optional[int] = None
     answer_as_org_name: Optional[str] = None
-    answer_as_cc: Optional[str] = None
-    answer_cc: Optional[str] = None
-    answer_is_bogon: Optional[bool] = None
-
-    fingerprint_id: Optional[str] = None
-    fingerprint_country_consistent: Optional[bool] = None
-
-    is_tls_consistent: Optional[bool] = None
 
     transaction_id: Optional[int] = None
 
@@ -428,22 +378,15 @@ class DNSObservation(Observation):
         msmt: BaseMeasurement,
         query: DNSQuery,
         answer: Optional[DNSAnswer],
-        idx: int,
-        fingerprintdb: FingerprintDB,
-        netinfodb: NetinfoDB,
-        target: str = "",
     ) -> "DNSObservation":
         dnso = DNSObservation(
-            observation_id=f"{msmt.measurement_uid}_dns_{idx}",
             engine=query.engine,
             engine_resolver_address=query.resolver_address,
             query_type=query.query_type,
-            domain_name=query.hostname,
+            hostname=query.hostname,
             failure=normalize_failure(query.failure),
             timestamp=make_timestamp(msmt, query.t),
-            target=target,
             transaction_id=query.transaction_id,
-            **make_base_observation_meta(msmt, netinfodb),
         )
 
         if not answer:
@@ -452,40 +395,20 @@ class DNSObservation(Observation):
         dnso.answer_type = answer.answer_type
         if answer.ipv4:
             dnso.answer = answer.ipv4
-            dnso.answer_is_bogon = is_ipv4_bogon(answer.ipv4)
         elif answer.ipv6:
             dnso.answer = answer.ipv6
-            dnso.answer_is_bogon = is_ipv6_bogon(answer.ipv6)
         elif answer.hostname:
             dnso.answer = answer.hostname
 
-        if answer.ipv4 or answer.ipv6:
-            # This is guaranteed to be the correct type since we set it's value
-            # based on answer.ipv4 or answer.ipv6 being set in the previous
-            # blocks
-            answer_meta = netinfodb.lookup_ip(dnso.timestamp, dnso.answer)  # type: ignore
-            if answer_meta:
-                dnso.answer_asn = answer_meta.as_info.asn
-                dnso.answer_as_cc = answer_meta.as_info.as_cc
-                dnso.answer_as_org_name = answer_meta.as_info.as_org_name
-                dnso.answer_cc = answer_meta.cc
+        dnso.answer_as_org_name = answer.as_org_name or ""
+        dnso.answer_asn = answer.asn or 0
 
-        matched_fingerprint = fingerprintdb.match_dns(dnso.answer)
-        if matched_fingerprint:
-            dnso.fingerprint_id = matched_fingerprint.name
-            if matched_fingerprint.expected_countries:
-                dnso.fingerprint_country_consistent = (
-                    msmt.probe_cc in matched_fingerprint.expected_countries
-                )
         return dnso
 
 
 def make_dns_observations(
     msmt: BaseMeasurement,
     queries: Optional[List[DNSQuery]],
-    fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
-    target: str = "",
 ) -> List[DNSObservation]:
     obs_dns = []
     if not queries:
@@ -497,31 +420,20 @@ def make_dns_observations(
         if not answer_list:
             answer_list = [None]
         for answer in answer_list:
-            obs_dns.append(
-                DNSObservation.from_measurement(
-                    msmt, query, answer, idx, fingerprintdb, netinfodb, target
-                )
-            )
+            obs_dns.append(DNSObservation.from_measurement(msmt, query, answer))
             idx += 1
 
     return obs_dns
 
 
 @dataclass
-class TCPObservation(Observation):
-    __table_name__ = "obs_tcp"
-
-    domain_name: str
+class TCPObservation:
+    timestamp: datetime
 
     ip: str
     port: int
 
     failure: Failure
-
-    ip_asn: Optional[int] = None
-    ip_as_org_name: Optional[str] = None
-    ip_as_cc: Optional[str] = None
-    ip_cc: Optional[str] = None
 
     transaction_id: Optional[int] = None
 
@@ -529,30 +441,14 @@ class TCPObservation(Observation):
     def from_measurement(
         msmt: BaseMeasurement,
         res: TCPConnect,
-        idx: int,
-        ip_to_domain: Dict[str, str],
-        netinfodb: NetinfoDB,
-        target: str,
     ) -> "TCPObservation":
         tcpo = TCPObservation(
-            observation_id=f"{msmt.measurement_uid}_tcp_{idx}",
             timestamp=make_timestamp(msmt, res.t),
             ip=res.ip,
             port=res.port,
             failure=normalize_failure(res.status.failure),
-            domain_name=ip_to_domain.get(res.ip, ""),
-            target=target,
             transaction_id=res.transaction_id,
-            **make_base_observation_meta(msmt, netinfodb),
         )
-
-        ip_info = netinfodb.lookup_ip(tcpo.timestamp, res.ip)
-        if ip_info:
-            tcpo.ip_asn = ip_info.as_info.asn
-            tcpo.ip_as_org_name = ip_info.as_info.as_org_name
-            tcpo.ip_as_cc = ip_info.as_info.as_cc
-
-            tcpo.ip_cc = ip_info.cc
 
         return tcpo
 
@@ -560,20 +456,13 @@ class TCPObservation(Observation):
 def make_tcp_observations(
     msmt: BaseMeasurement,
     tcp_connect: Optional[List[TCPConnect]],
-    netinfodb: NetinfoDB,
-    ip_to_domain: Dict[str, str] = {},
-    target: str = "",
 ) -> List[TCPObservation]:
     obs_tcp = []
     if not tcp_connect:
         return obs_tcp
 
-    for idx, res in enumerate(tcp_connect):
-        obs_tcp.append(
-            TCPObservation.from_measurement(
-                msmt, res, idx, ip_to_domain, netinfodb, target
-            )
-        )
+    for res in tcp_connect:
+        obs_tcp.append(TCPObservation.from_measurement(msmt, res))
     return obs_tcp
 
 
@@ -630,10 +519,8 @@ def find_tls_handshake_network_events(
 
 
 @dataclass
-class TLSObservation(Observation):
-    __table_name__ = "obs_tls"
-
-    domain_name: str
+class TLSObservation:
+    timestamp: datetime
 
     failure: Failure
 
@@ -643,11 +530,6 @@ class TLSObservation(Observation):
 
     ip: Optional[str] = None
     port: Optional[int] = None
-
-    ip_asn: Optional[int] = None
-    ip_as_org_name: Optional[str] = None
-    ip_as_cc: Optional[str] = None
-    ip_cc: Optional[str] = None
 
     is_certificate_valid: Optional[bool] = None
 
@@ -677,24 +559,17 @@ class TLSObservation(Observation):
         tls_h: TLSHandshake,
         network_events: Optional[List[NetworkEvent]],
         idx: int,
-        ip_to_domain: Dict[str, str],
-        netinfodb: NetinfoDB,
         cert_store: Optional[TLSCertStore] = None,
         validate_domain: Callable[[str, str, List[str]], bool] = lambda x, y, z: True,
-        target: str = "",
     ) -> "TLSObservation":
         tlso = TLSObservation(
-            observation_id=f"{msmt.measurement_uid}_tls_{idx}",
             timestamp=make_timestamp(msmt, tls_h.t),
             server_name=tls_h.server_name if tls_h.server_name else "",
-            domain_name=tls_h.server_name if tls_h.server_name else "",
             version=tls_h.tls_version if tls_h.tls_version else "",
             cipher_suite=tls_h.cipher_suite if tls_h.cipher_suite else "",
             end_entity_certificate_san_list=[],
             failure=normalize_failure(tls_h.failure),
-            target=target,
             transaction_id=tls_h.transaction_id,
-            **make_base_observation_meta(msmt, netinfodb),
         )
 
         if tls_h.address:
@@ -710,8 +585,6 @@ class TLSObservation(Observation):
                 p = urlsplit("//" + tls_network_events[0].address)
                 tlso.ip = p.hostname
                 tlso.port = p.port
-                if tlso.ip and tlso.ip in ip_to_domain:
-                    tlso.domain_name = ip_to_domain[tlso.ip]
 
             tlso.handshake_time = tls_network_events[-1].t - tls_network_events[0].t
             tlso.handshake_read_count = 0
@@ -791,11 +664,8 @@ def make_tls_observations(
     msmt: BaseMeasurement,
     tls_handshakes: Optional[List[TLSHandshake]],
     network_events: Optional[List[NetworkEvent]],
-    netinfodb: NetinfoDB,
-    ip_to_domain: Dict[str, str] = {},
     cert_store: Optional[TLSCertStore] = None,
     validate_domain: Callable[[str, str, List[str]], bool] = lambda x, y, z: True,
-    target: str = "",
 ) -> List[TLSObservation]:
     obs_tls = []
     if not tls_handshakes:
@@ -804,25 +674,23 @@ def make_tls_observations(
     for idx, tls_h in enumerate(tls_handshakes):
         obs_tls.append(
             TLSObservation.from_measurement(
-                msmt,
-                tls_h,
-                network_events,
-                idx,
-                ip_to_domain,
-                netinfodb,
-                cert_store,
-                validate_domain,
-                target,
+                msmt=msmt,
+                tls_h=tls_h,
+                idx=idx,
+                network_events=network_events,
+                cert_store=cert_store,
+                validate_domain=validate_domain,
             )
         )
     return obs_tls
 
 
 @dataclass
-class ChainedObservation(Observation):
-    __table_name__ = "obs_chained"
+class WebObservation(MeasurementMeta):
+    __table_name__ = "obs_web"
 
-    domain_name: Optional[str] = None
+    target_id: Optional[str] = None
+    hostname: Optional[str] = None
 
     transaction_id: Optional[int] = None
 
@@ -833,6 +701,7 @@ class ChainedObservation(Observation):
     ip_as_org_name: Optional[str] = None
     ip_as_cc: Optional[str] = None
     ip_cc: Optional[str] = None
+    ip_is_bogon: Optional[bool] = None
 
     # DNS related observation
     dns_query_type: Optional[str] = None
@@ -842,16 +711,10 @@ class ChainedObservation(Observation):
 
     dns_answer_type: Optional[str] = None
     dns_answer: Optional[str] = None
+    # These should match those in the IP field, but are the annotations coming
+    # from the probe
     dns_answer_asn: Optional[int] = None
     dns_answer_as_org_name: Optional[str] = None
-    dns_answer_as_cc: Optional[str] = None
-    dns_answer_cc: Optional[str] = None
-    dns_answer_is_bogon: Optional[bool] = None
-
-    dns_fingerprint_id: Optional[str] = None
-    dns_fingerprint_country_consistent: Optional[bool] = None
-
-    dns_is_tls_consistent: Optional[bool] = None
 
     # TCP related observation
     tcp_failure: Optional[Failure] = None
@@ -892,15 +755,11 @@ class ChainedObservation(Observation):
     http_request_body_length: Optional[int] = None
     http_request_method: Optional[str] = None
 
-    http_response_fingerprints: List[str] = field(default_factory=list)
-
     http_runtime: Optional[float] = None
 
     http_response_body_length: Optional[int] = None
     http_response_body_is_truncated: Optional[bool] = None
     http_response_body_sha1: Optional[str] = None
-    http_response_body_title: Optional[str] = None
-    http_response_body_meta_title: Optional[str] = None
 
     http_response_status_code: Optional[int] = None
     http_response_header_location: Optional[bytes] = None
@@ -908,16 +767,12 @@ class ChainedObservation(Observation):
     http_request_redirect_from: Optional[str] = None
     http_request_body_is_truncated: Optional[bool] = None
 
-    http_fingerprint_country_consistent: Optional[bool] = None
-    http_response_matches_blockpage: bool = False
-    http_response_matches_false_positive: bool = False
 
-
-def maybe_set_chained_fields(
+def maybe_set_web_fields(
     src_obs: Union[
         DNSObservation, TCPObservation, TLSObservation, HTTPObservation, None
     ],
-    chained: ChainedObservation,
+    chained: WebObservation,
     prefix: str,
 ):
     if not src_obs:
@@ -928,80 +783,68 @@ def maybe_set_chained_fields(
             setattr(chained, f.name, getattr(src_obs, src_field_name))
 
 
-def make_chained_observation(
+def make_web_observation(
+    msmt_meta: MeasurementMeta,
+    netinfodb: NetinfoDB,
     dns_o: Optional[DNSObservation] = None,
     tcp_o: Optional[TCPObservation] = None,
     tls_o: Optional[TLSObservation] = None,
     http_o: Optional[HTTPObservation] = None,
-) -> ChainedObservation:
+    target_id: Optional[str] = None,
+) -> WebObservation:
     assert (
         dns_o or tcp_o or tls_o or http_o
     ), "dns_o or tcp_o or tls_o or http_o should be not null"
-    base_o = dns_o or tcp_o or tls_o or http_o
 
-    # XXX This is terrible, but doing it better will probably require some
-    # smarter refactoring. Need to come up with a better was of handling this.
-    base_dict = dataclasses.asdict(base_o)
-    chained_dict = {}
-    for field in dataclasses.fields(Observation):
-        chained_dict[field.name] = base_dict[field.name]
-
-    chained = ChainedObservation(**chained_dict)
-    chained.ip = (
+    web_obs = WebObservation(target_id=target_id, **dataclasses.asdict(msmt_meta))
+    web_obs.ip = (
         (dns_o and dns_o.answer)
         or (tcp_o and tcp_o.ip)
         or (tls_o and tls_o.ip)
         or (http_o and http_o.ip)
     )
-    chained.port = (
+    web_obs.port = (
         (tcp_o and tcp_o.port) or (tls_o and tls_o.port) or (http_o and http_o.port)
     )
-    chained.ip_asn = (tcp_o and tcp_o.ip_asn) or (tls_o and tls_o.ip_asn)
-    chained.ip_as_org_name = (tcp_o and tcp_o.ip_as_org_name) or (
-        tls_o and tls_o.ip_as_org_name
-    )
-    chained.ip_as_cc = (tcp_o and tcp_o.ip_as_cc) or (tls_o and tls_o.ip_as_cc)
-    chained.ip_cc = (tcp_o and tcp_o.ip_cc) or (tls_o and tls_o.ip_cc)
-    chained.transaction_id = (
-        (dns_o and dns_o.transaction_id)
-        or (tcp_o and tcp_o.transaction_id)
-        or (tls_o and tls_o.transaction_id)
-        or (http_o and http_o.transaction_id)
-    )
+    web_obs.hostname = (dns_o and dns_o.hostname) or (http_o and http_o.hostname)
+    if web_obs.ip:
+        ip_info = netinfodb.lookup_ip(web_obs.measurement_start_time, web_obs.ip)
+        web_obs.ip_is_bogon = is_ip_bogon(web_obs.ip)
+        if ip_info:
+            web_obs.ip_cc = ip_info.cc
+            web_obs.ip_asn = ip_info.as_info.asn
+            web_obs.ip_as_org_name = ip_info.as_info.as_org_name
+            web_obs.ip_as_cc = ip_info.as_info.as_cc
 
-    maybe_set_chained_fields(dns_o, chained, "dns_")
-    maybe_set_chained_fields(tcp_o, chained, "tcp_")
-    maybe_set_chained_fields(tls_o, chained, "tls_")
-    maybe_set_chained_fields(http_o, chained, "http_")
-    return chained
+    maybe_set_web_fields(dns_o, web_obs, "dns_")
+    maybe_set_web_fields(tcp_o, web_obs, "tcp_")
+    maybe_set_web_fields(tls_o, web_obs, "tls_")
+    maybe_set_web_fields(http_o, web_obs, "http_")
+    return web_obs
 
 
 def find_observation_by_transaction_id(
     transaction_id: Optional[int],
     obs_list: Union[List[TCPObservation], List[TLSObservation], List[HTTPObservation]],
 ) -> Optional[Union[TCPObservation, TLSObservation, HTTPObservation]]:
-    found_obs = None
     if not transaction_id:
-        return found_obs
+        return None
     for obs in obs_list:
         if obs.transaction_id == transaction_id:
-            # XXX maybe in the future we can remove this
-            assert found_obs is None, f"{obs} with duplicate transaction_id"
-            found_obs = obs
-    return found_obs
+            # TODO: do we care that there may be collisions in this?
+            return obs
+    return None
 
 
 def find_observation_by_ip(
     ip: Optional[str],
     obs_list: Union[List[TCPObservation], List[TLSObservation], List[HTTPObservation]],
 ) -> Optional[Union[TCPObservation, TLSObservation, HTTPObservation]]:
-    found_obs = None
     for obs in obs_list:
         if ip == obs.ip:
-            # XXX maybe in the future we can remove this
-            assert found_obs is None, f"{obs} with duplicate ip:port combo"
-            found_obs = obs
-    return found_obs
+            # TODO: do we care that there may be collisions in this?
+            return obs
+    return None
 
 
 def find_relevant_observations(
@@ -1044,13 +887,16 @@ def find_relevant_observations(
     return found_tcp_obs, found_tls_obs, found_http_obs
 
 
-def consume_chained_observations(
-    dns_observations: List[DNSObservation],
-    tcp_observations: List[TCPObservation],
-    tls_observations: List[TLSObservation],
-    http_observations: List[HTTPObservation],
-) -> List[ChainedObservation]:
-    obs_chain = []
+def consume_web_observations(
+    msmt_meta: MeasurementMeta,
+    netinfodb: NetinfoDB,
+    dns_observations: List[DNSObservation] = [],
+    tcp_observations: List[TCPObservation] = [],
+    tls_observations: List[TLSObservation] = [],
+    http_observations: List[HTTPObservation] = [],
+    target_id: Optional[str] = None,
+) -> List[WebObservation]:
+    web_obs_list = []
     # TODO: surely there is some way to refactor this into a better pattern
     for dns_o in dns_observations:
         tcp_o, tls_o, http_o = find_relevant_observations(
@@ -1060,9 +906,15 @@ def consume_chained_observations(
             tls_observations=tls_observations,
             http_observations=http_observations,
         )
-        obs_chain.append(
-            make_chained_observation(
-                dns_o=dns_o, tcp_o=tcp_o, tls_o=tls_o, http_o=http_o
+        web_obs_list.append(
+            make_web_observation(
+                msmt_meta=msmt_meta,
+                netinfodb=netinfodb,
+                dns_o=dns_o,
+                tcp_o=tcp_o,
+                tls_o=tls_o,
+                http_o=http_o,
+                target_id=target_id,
             )
         )
         if tcp_o:
@@ -1083,8 +935,15 @@ def consume_chained_observations(
             tls_observations.remove(tls_o)
         if http_o:
             http_observations.remove(http_o)
-        obs_chain.append(
-            make_chained_observation(tcp_o=tcp_o, tls_o=tls_o, http_o=http_o)
+        web_obs_list.append(
+            make_web_observation(
+                msmt_meta=msmt_meta,
+                netinfodb=netinfodb,
+                tcp_o=tcp_o,
+                tls_o=tls_o,
+                http_o=http_o,
+                target_id=target_id,
+            )
         )
 
     for tls_o in tls_observations:
@@ -1095,227 +954,137 @@ def consume_chained_observations(
         )
         if http_o:
             http_observations.remove(http_o)
-        obs_chain.append(make_chained_observation(tls_o=tls_o, http_o=http_o))
+        web_obs_list.append(
+            make_web_observation(
+                msmt_meta=msmt_meta,
+                netinfodb=netinfodb,
+                tls_o=tls_o,
+                http_o=http_o,
+                target_id=target_id,
+            )
+        )
 
     for http_o in http_observations:
-        obs_chain.append(make_chained_observation(http_o=http_o))
-
-    return obs_chain
-
-
-def make_ip_to_domain(dns_observations: List[DNSObservation]) -> Dict[str, str]:
-    ip_to_domain = {}
-    for obs in dns_observations:
-        # TODO: do we want to filter out also CNAMEs?
-        if not obs.answer:
-            continue
-        # TODO: this is only really valid for web_connectivity and even there it
-        # only works if there isn't a redirect chain with domains that map to
-        # different domains.
-        # What we should do is make this into a list and then figure out which
-        # is the relevant domain for a particular resolution by looking at other data.
-        # Better yet, this should be marked inside of the measurement itself.
-        # TODO(sbs): what happens in the engine if I encounter in a redirect chain something like:
-        # https://example.com/ -> https://www.example.com/ where both
-        # www.example.com and example.com map to the same IP 1.2.3.4?
-        # Will we record perform two tcp_connect measurements or only one?
-        # If it's two we need to tell which one is pertaining to one or the other.
-        # If it's one, then we need to make changes in the base dataformat so
-        # that we can express that a single tcp_connect experiment is pertaining
-        # to two different domains.
-        if obs.answer in ip_to_domain:
-            log.error(
-                f"multiple resolutions for the same IP {obs.answer}:{obs.domain_name}"
+        web_obs_list.append(
+            make_web_observation(
+                msmt_meta=msmt_meta,
+                netinfodb=netinfodb,
+                http_o=http_o,
+                target_id=target_id,
             )
-        ip_to_domain[obs.answer] = obs.domain_name
-    return ip_to_domain
+        )
+
+    return web_obs_list
 
 
 def make_web_connectivity_observations(
     msmt: WebConnectivity,
-    fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
-    target: str = "",
-) -> Tuple[
-    List[DNSObservation],
-    List[TCPObservation],
-    List[TLSObservation],
-    List[HTTPObservation],
-]:
-    http_observations = make_http_observations(
-        msmt, msmt.test_keys.requests, fingerprintdb, netinfodb, target
-    )
+) -> List[WebObservation]:
+    msmt_meta = make_measurement_meta(msmt=msmt, netinfodb=netinfodb)
 
-    dns_observations = make_dns_observations(
-        msmt, msmt.test_keys.queries, fingerprintdb, netinfodb
-    )
-    ip_to_domain = make_ip_to_domain(dns_observations)
-    tcp_observations = make_tcp_observations(
-        msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
-    )
-
+    http_observations = make_http_observations(msmt, msmt.test_keys.requests)
+    dns_observations = make_dns_observations(msmt, msmt.test_keys.queries)
+    tcp_observations = make_tcp_observations(msmt, msmt.test_keys.tcp_connect)
     tls_observations = make_tls_observations(
         msmt,
         msmt.test_keys.tls_handshakes,
         msmt.test_keys.network_events,
-        netinfodb,
-        ip_to_domain,
     )
-
-    # Here we take dns measurements and compare them to what we see in the tls
-    # data and check for TLS consistency.
-    tls_valid_ip_to_domain = {}
-    for obs in filter(
-        lambda o: o.ip and o.domain_name,
-        tls_observations,
-    ):
-        tls_valid_ip_to_domain[obs.ip] = tls_valid_ip_to_domain.get(obs.ip, {})
-        tls_valid_ip_to_domain[obs.ip][obs.domain_name] = obs.is_certificate_valid
-    enriched_dns_observations = []
-    for dns_obs in dns_observations:
-        if dns_obs.answer:
-            valid_domains = tls_valid_ip_to_domain.get(dns_obs.answer, {})
-            dns_obs.is_tls_consistent = valid_domains.get(dns_obs.domain_name, None)
-        enriched_dns_observations.append(dns_obs)
-
-    return (
-        enriched_dns_observations,
-        tcp_observations,
-        tls_observations,
-        http_observations,
+    return consume_web_observations(
+        msmt_meta=msmt_meta,
+        netinfodb=netinfodb,
+        dns_observations=dns_observations,
+        tcp_observations=tcp_observations,
+        tls_observations=tls_observations,
+        http_observations=http_observations,
     )
 
 
 def make_signal_observations(
-    msmt: Signal, fingerprintdb: FingerprintDB, netinfodb: NetinfoDB
-) -> Tuple[
-    List[DNSObservation],
-    List[TCPObservation],
-    List[TLSObservation],
-    List[HTTPObservation],
-]:
+    msmt: Signal, netinfodb: NetinfoDB
+) -> List[WebObservation]:
     cert_store = TLSCertStore(SIGNAL_PEM_STORE)
-    http_observations = make_http_observations(
-        msmt, msmt.test_keys.requests, fingerprintdb, netinfodb
+
+    msmt_meta = make_measurement_meta(msmt=msmt, netinfodb=netinfodb)
+
+    dns_observations = make_dns_observations(msmt, msmt.test_keys.queries)
+    tcp_observations = make_tcp_observations(msmt, msmt.test_keys.tcp_connect)
+    tls_observations = make_tls_observations(
+        msmt,
+        msmt.test_keys.tls_handshakes,
+        msmt.test_keys.network_events,
+        cert_store,
     )
+    http_observations = make_http_observations(msmt, msmt.test_keys.requests)
 
-    dns_observations = make_dns_observations(
-        msmt, msmt.test_keys.queries, fingerprintdb, netinfodb
-    )
-
-    ip_to_domain = make_ip_to_domain(dns_observations)
-    tcp_observations = make_tcp_observations(
-        msmt, msmt.test_keys.tcp_connect, netinfodb, ip_to_domain
-    )
-
-    tls_observations = list(
-        make_tls_observations(
-            msmt,
-            msmt.test_keys.tls_handshakes,
-            msmt.test_keys.network_events,
-            netinfodb,
-            ip_to_domain,
-            cert_store,
-        )
-    )
-
-    # Because we are using certificate pinning for Signal, if we got a
-    # successful TLS handshake with some endpoint, it's bound to be TLS
-    # consistent.
-    tls_consistency_map = {}
-    for tls_obs in tls_observations:
-        if tls_obs.ip and tls_obs.domain_name:
-            tls_consistency_map[tls_obs.ip] = tls_obs.is_certificate_valid
-
-    enriched_dns_observations = []
-    for dns_obs in dns_observations:
-        if dns_obs.answer:
-            dns_obs.is_tls_consistent = tls_consistency_map.get(dns_obs.answer, None)
-        enriched_dns_observations.append(dns_obs)
-
-    return (
-        enriched_dns_observations,
-        tcp_observations,
-        tls_observations,
-        http_observations,
+    return consume_web_observations(
+        msmt_meta=msmt_meta,
+        netinfodb=netinfodb,
+        dns_observations=dns_observations,
+        tcp_observations=tcp_observations,
+        tls_observations=tls_observations,
+        http_observations=http_observations,
     )
 
 
 def make_dnscheck_observations(
     msmt: DNSCheck,
-    fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
-) -> Tuple[
-    List[DNSObservation],
-    List[TCPObservation],
-    List[TLSObservation],
-    List[HTTPObservation],
-]:
-    dns_observations = []
-    http_observations = []
-    tcp_observations = []
-    tls_observations = []
+) -> List[WebObservation]:
+    web_obs_list = []
 
-    ip_to_domain = {}
+    msmt_meta = make_measurement_meta(msmt=msmt, netinfodb=netinfodb)
+
     if msmt.test_keys.bootstrap:
-        dns_observations += make_dns_observations(
-            msmt, msmt.test_keys.bootstrap.queries, fingerprintdb, netinfodb
+        web_obs_list += consume_web_observations(
+            msmt_meta=msmt_meta,
+            netinfodb=netinfodb,
+            dns_observations=make_dns_observations(
+                msmt, msmt.test_keys.bootstrap.queries
+            ),
         )
-        ip_to_domain = make_ip_to_domain(dns_observations)
 
     lookup_map = msmt.test_keys.lookups or {}
     for lookup in lookup_map.values():
-        dns_observations += make_dns_observations(
-            msmt, lookup.queries, fingerprintdb, netinfodb
+        web_obs_list += consume_web_observations(
+            msmt_meta=msmt_meta,
+            netinfodb=netinfodb,
+            dns_observations=make_dns_observations(msmt, lookup.queries),
+            http_observations=make_http_observations(msmt, lookup.requests),
+            tcp_observations=make_tcp_observations(msmt, lookup.tcp_connect),
+            tls_observations=make_tls_observations(
+                msmt, lookup.tls_handshakes, lookup.network_events
+            ),
         )
 
-        http_observations += make_http_observations(
-            msmt, lookup.requests, fingerprintdb, netinfodb
-        )
-
-        tcp_observations += make_tcp_observations(
-            msmt, lookup.tcp_connect, netinfodb, ip_to_domain
-        )
-
-        tls_observations += make_tls_observations(
-            msmt, lookup.tls_handshakes, lookup.network_events, netinfodb, ip_to_domain
-        )
-
-    return dns_observations, tcp_observations, tls_observations, http_observations
+    return web_obs_list
 
 
 def make_tor_observations(
     msmt: Tor,
-    fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
-) -> Tuple[
-    List[DNSObservation],
-    List[TCPObservation],
-    List[TLSObservation],
-    List[HTTPObservation],
-]:
-    dns_observations = []
-    http_observations = []
-    tcp_observations = []
-    tls_observations = []
+) -> List[WebObservation]:
+    web_obs_list = []
+    msmt_meta = make_measurement_meta(msmt=msmt, netinfodb=netinfodb)
 
-    ip_to_domain = {}
     for target_id, target_msmt in msmt.test_keys.targets.items():
-        http_observations += make_http_observations(
-            msmt, target_msmt.requests, fingerprintdb, netinfodb, target=target_id
-        )
-        dns_observations += make_dns_observations(
-            msmt, target_msmt.queries, fingerprintdb, netinfodb, target=target_id
-        )
-        tcp_observations += make_tcp_observations(
-            msmt, target_msmt.tcp_connect, netinfodb, ip_to_domain, target=target_id
-        )
-        tls_observations += make_tls_observations(
+        http_observations = make_http_observations(msmt, target_msmt.requests)
+        dns_observations = make_dns_observations(msmt, target_msmt.queries)
+        tcp_observations = make_tcp_observations(msmt, target_msmt.tcp_connect)
+        tls_observations = make_tls_observations(
             msmt,
             target_msmt.tls_handshakes,
             target_msmt.network_events,
-            netinfodb,
-            ip_to_domain,
+        )
+        web_obs_list += consume_web_observations(
+            msmt_meta=msmt_meta,
+            netinfodb=netinfodb,
+            dns_observations=dns_observations,
+            tcp_observations=tcp_observations,
+            tls_observations=tls_observations,
+            http_observations=http_observations,
+            target_id=target_id,
         )
 
-    return dns_observations, tcp_observations, tls_observations, http_observations
+    return web_obs_list

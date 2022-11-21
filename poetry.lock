@@ -573,6 +573,17 @@ python-versions = "*"
 tornado = ">=2.0"
 
 [[package]]
+name = "tabulate"
+version = "0.9.0"
+description = "Pretty-print tabular data"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+
+[package.extras]
+widechars = ["wcwidth"]
+
+[[package]]
 name = "tomli"
 version = "2.0.1"
 description = "A lil' TOML parser"
@@ -674,7 +685,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "flake8 
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7,<4"
-content-hash = "a0a8d7bd12ff37e5dbcbfa66d81dd977049fb2515b037e42a81cdda5ba421977"
+content-hash = "64810c7c20dbcc8c37604616ea2b66a7fdb2c2dee8e2ae5bde2fac353f368a46"
 
 [metadata.files]
 attrs = []
@@ -793,6 +804,7 @@ snakeviz = [
     {file = "snakeviz-2.1.1-py2.py3-none-any.whl", hash = "sha256:931142dc927101c9a4b6e89bc0577ff1a3d1886b483a04e6af70c31d2c3dce19"},
     {file = "snakeviz-2.1.1.tar.gz", hash = "sha256:0d96c006304f095cb4b3fb7ed98bb866ca35a7ca4ab9020bbc27d295ee4c94d9"},
 ]
+tabulate = []
 tomli = [
     {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
     {file = "tomli-2.0.1.tar.gz", hash = "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"},

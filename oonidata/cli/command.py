@@ -1,5 +1,3 @@
-import sys
-import gzip
 import logging
 import multiprocessing
 from pathlib import Path
@@ -135,10 +133,9 @@ def processing_worker(
         if day == None:
             break
         process_day(
-            db,
-            fingerprintdb,
-            netinfodb,
-            day,
+            db=db,
+            netinfodb=netinfodb,
+            day=day,
             test_name=test_name,
             probe_cc=probe_cc,
             start_at_idx=start_at_idx,

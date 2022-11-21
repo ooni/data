@@ -3,13 +3,8 @@ from datetime import datetime
 from typing import Optional, Tuple, List, Any, Type, Mapping, Dict
 from dataclasses import fields
 from oonidata.observations import (
-    NettestObservation,
-    Observation,
-    DNSObservation,
-    TCPObservation,
-    TLSObservation,
-    HTTPObservation,
-    ChainedObservation,
+    MeasurementMeta,
+    WebObservation,
 )
 from oonidata.experiments.experiment_result import (
     BlockingType,
@@ -82,7 +77,7 @@ def typing_to_clickhouse(t: Any) -> str:
     raise Exception(f"Unhandled type {t}")
 
 
-def create_query_for_observation(obs_class: Type[Observation]) -> Tuple[str, str]:
+def create_query_for_observation(obs_class: Type[MeasurementMeta]) -> Tuple[str, str]:
     columns = []
     for f in fields(obs_class):
         type_str = typing_to_clickhouse(f.type)
@@ -125,12 +120,7 @@ def create_query_for_experiment_result() -> Tuple[str, str]:
 
 
 create_queries = [
-    create_query_for_observation(DNSObservation),
-    create_query_for_observation(TCPObservation),
-    create_query_for_observation(TLSObservation),
-    create_query_for_observation(HTTPObservation),
-    create_query_for_observation(NettestObservation),
-    create_query_for_observation(ChainedObservation),
+    create_query_for_observation(WebObservation),
     create_query_for_experiment_result(),
 ]
 
