@@ -47,4 +47,4 @@ def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
         ],
     )
     assert result.exit_code == 0
-    assert len(list(tmp_path.iterdir())) == 1
+    assert len(list(tmp_path.iterdir())) == 2

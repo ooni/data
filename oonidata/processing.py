@@ -470,32 +470,35 @@ def processing_worker(
 
         day_queue.task_done()
 
-    db.close()
+    try:
+        db.close()
+    except Exception:
+        log.error("failed to flush database", exc_info=True)
 
 
 def archiver_worker(
     archiver_queue: multiprocessing.Queue,
     dst_dir: pathlib.Path,
-    clickhouse: Optional[str],
     log_level: int,
 ):
     log.setLevel(log_level)
-    db = ClickhouseConnection(clickhouse)
-
-    with ResponseArchiver(dst_dir=dst_dir) as archiver:
-        while True:
-            requests = archiver_queue.get(block=True)
-            if requests == None:
+    try:
+        with ResponseArchiver(dst_dir=dst_dir) as archiver:
+            while True:
+                requests = archiver_queue.get(block=True)
+                if requests == None:
+                    archiver_queue.task_done()
+                    break
+                try:
+                    for http_transaction in requests:
+                        archiver.archive_http_transaction(
+                            http_transaction=http_transaction
+                        )
+                except Exception:
+                    log.error(f"failed to process {requests}", exc_info=True)
                 archiver_queue.task_done()
-                break
-            try:
-                for http_transaction in requests:
-                    archiver.archive_http_transaction(http_transaction=http_transaction)
-            except Exception:
-                log.error(f"failed to process {requests}", exc_info=True)
-            archiver_queue.task_done()
-
-    db.close()
+    except:
+        log.error("failed in response archiver", exc_info=True)
 
 
 def start_observation_maker(
@@ -520,7 +523,7 @@ def start_observation_maker(
         archiver_queue = multiprocessing.JoinableQueue()
         archiver_process = multiprocessing.Process(
             target=archiver_worker,
-            args=(archiver_queue, archives_dir, clickhouse, log_level),
+            args=(archiver_queue, archives_dir, log_level),
         )
         archiver_process.start()
 
