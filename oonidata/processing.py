@@ -72,29 +72,24 @@ def write_observations_to_db(
 
 
 class ResponseArchiver:
-    def __init__(self, db: DatabaseConnection, dst_dir: pathlib.Path):
+    def __init__(
+        self,
+        db: DatabaseConnection,
+        dst_dir: pathlib.Path,
+        max_archive_size=100_000_000,
+        host_suffix="oonidata",
+    ):
         self.db = db
         self.dst_dir = dst_dir
-        self.archive_idx = self._init_idx()
+        self.host_suffix = host_suffix
+        self.max_archive_size = max_archive_size
+        self.start_time = int(time.time())
+        self.serial = 0
         self.record_idx = 0
+
         self._fh = None
         self._warc_writer = None
         self._lock = Lock()
-        self.max_archive_size = 100_000_000
-
-    def _init_idx(self):
-        try:
-            return (
-                max(
-                    map(
-                        lambda x: int(x.name.split("-")[-1].split(".")[0]),
-                        self.dst_dir.glob("*.warc.gz"),
-                    )
-                )
-                + 1
-            )
-        except ValueError:
-            return 0
 
     def __enter__(self):
         self.open()
@@ -155,10 +150,12 @@ class ResponseArchiver:
 
     @property
     def archive_path(self) -> pathlib.Path:
-        return self.dst_dir / f"ooniresponses-{self.archive_idx}.warc.gz"
+        return self.dst_dir / f"ooniresponses-{self.start_time}-{self.serial}.warc.gz"
 
     def open(self):
-        assert self._fh is None, "Attempting to open an already open FH"
+        assert self._fh is None, "attempting to open an already open FH"
+        assert not self.archive_path.exists(), f"{self.archive_path} already exists"
+
         self._fh = self.archive_path.open("wb")
         self._warc_writer = WARCWriter(self._fh, gzip=True)
 
@@ -169,7 +166,7 @@ class ResponseArchiver:
 
         if self._fh.tell() > self.max_archive_size:
             self.close()
-            self.archive_idx += 1
+            self.serial += 1
             self.open()
 
         self._lock.release()

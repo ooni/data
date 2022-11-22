@@ -266,7 +266,6 @@ def mkobs(
             fast_fail,
         ),
     )
-
     archiver_process = None
     if archives_dir:
         archiver_process = multiprocessing.Process(
@@ -285,11 +284,14 @@ def mkobs(
     pool.close()
     pool.join()
 
+    log.info(f"Finished joining worker queue")
     # Send close signal to the archiver process
     archiver_queue.put(None)
 
     archiver_queue.close()
     archiver_queue.join_thread()
+
+    log.info(f"Finished joining archiver queue")
 
     if archiver_process:
         archiver_process.close()
