@@ -1,4 +1,5 @@
 from collections import defaultdict
+import hashlib
 import io
 import pathlib
 import time
@@ -9,10 +10,11 @@ import http.client
 
 from threading import Lock
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import dataclasses
 
 from typing import (
+    Any,
     Dict,
     List,
     Tuple,
@@ -56,6 +58,7 @@ def make_db_rows(
         # TODO: should probably come up with a better ID, but this will work for
         # the time being.
         obs.observation_id = f"{obs.measurement_uid}_{idx}"
+        obs.created_at = datetime.utcnow()
         rows.append(dataclasses.asdict(obs))
 
     return table_name, rows
@@ -71,12 +74,47 @@ def write_observations_to_db(
     db.write_rows(table_name, rows)
 
 
+class BufferredRowWriter:
+    def __init__(self, db: DatabaseConnection, buffer_size: int = 10_000):
+        self.db = db
+        self.buffer_size = buffer_size
+        self.row_buffer_map = defaultdict(list)
+        self.fields_map = {}
+
+    def write_rows(self, table_name: str, rows: List[Dict[str, Any]]):
+        if len(rows) == 0:
+            return
+
+        if table_name not in self.fields_map:
+            self.fields_map[table_name] = rows[0].keys()
+
+        self.row_buffer_map[table_name] += list(
+            map(lambda row: [row[k] for k in self.fields_map[table_name]], rows)
+        )
+        if len(self.row_buffer_map[table_name]) > self.buffer_size:
+            self.flush(table_name)
+
+    def flush_all(self):
+        for table_name in self.row_buffer_map.keys():
+            self.flush(table_name=table_name)
+
+    def flush(self, table_name):
+        rows = self.row_buffer_map[table_name]
+        if len(rows) > 0:
+            self.db.write_rows(
+                table_name=table_name,
+                rows=rows,
+                fields=self.fields_map[table_name],
+            )
+            self.row_buffer_map[table_name] = []
+
+
 class ResponseArchiver:
     def __init__(
         self,
         db: DatabaseConnection,
         dst_dir: pathlib.Path,
-        max_archive_size=100_000_000,
+        max_archive_size=10_000_000,
         host_suffix="oonidata",
     ):
         self.db = db
@@ -138,6 +176,13 @@ class ResponseArchiver:
         assert digest_alg == "sha1", "using wrong algorithm to create digest"
         response_body_sha1 = b32decode(digest_b32).hex()
 
+        if http_transaction.response.body_bytes:
+            # TODO: remove this sanity check once we figure out it's working as intended
+            assert (
+                hashlib.sha1(http_transaction.response.body_bytes).hexdigest()
+                == response_body_sha1
+            ), "inconsistent body hash"
+
         if self.is_already_archived(response_body_sha1):
             return
 
@@ -188,6 +233,7 @@ def process_day(
 ):
     t0 = time.monotonic()
     bucket_date = day.strftime("%Y-%m-%d")
+    row_writer = BufferredRowWriter(db=db, buffer_size=10_000)
 
     with tqdm(unit="B", unit_scale=True) as pbar:
 
@@ -210,8 +256,6 @@ def process_day(
             )
             pbar.update(p.current_file_entry_bytes)
 
-        row_buffer_map = defaultdict(list)
-        ROW_BUFFER_SIZE = 10_000
         for idx, msmt_dict in enumerate(
             iter_measurements(
                 probe_cc=probe_cc,
@@ -230,12 +274,7 @@ def process_day(
                     bucket_date=bucket_date,
                     observations=make_observations(msmt, netinfodb=netinfodb),
                 )
-                row_buffer_map[table_name] += rows
-                if len(row_buffer_map[table_name]) > ROW_BUFFER_SIZE:
-                    db.write_rows(
-                        table_name=table_name, rows=row_buffer_map[table_name]
-                    )
-                    row_buffer_map[table_name] = []
+                row_writer.write_rows(table_name=table_name, rows=rows)
                 yield msmt
             except Exception as exc:
                 # This is a bit sketchy, we ought to eventually move it to some
@@ -252,12 +291,10 @@ def process_day(
                     out_file.write(traceback.format_exc())
                     out_file.write("ENDTB----\n")
 
-                for table_name, rows in row_buffer_map.items():
-                    db.write_rows(table_name=table_name, rows=rows)
-
                 if fast_fail:
+                    row_writer.flush_all()
                     raise exc
 
-    for table_name, rows in row_buffer_map.items():
-        db.write_rows(table_name=table_name, rows=rows)
+    row_writer.flush_all()
+
     return time.monotonic() - t0, day

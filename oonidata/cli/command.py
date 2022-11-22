@@ -133,6 +133,7 @@ def processing_worker(
     while True:
         day = day_queue.get(block=True)
         if day == None:
+            day_queue.task_done()
             break
         for msmt in process_day(
             db=db,
@@ -145,6 +146,7 @@ def processing_worker(
         ):
             if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
                 archiver_queue.put(msmt.test_keys.requests)
+        day_queue.task_done()
 
     db.close()
 
@@ -160,6 +162,7 @@ def archiver_worker(
         while True:
             requests = archiver_queue.get(block=True)
             if requests == None:
+                archiver_queue.task_done()
                 break
             try:
                 for http_transaction in requests:
@@ -167,6 +170,7 @@ def archiver_worker(
             except Exception:
                 log.error(f"failed to process {requests}")
                 log.error(traceback.format_exc())
+            archiver_queue.task_done()
 
     db.close()
 
@@ -249,8 +253,8 @@ def mkobs(
     FingerprintDB(datadir=data_dir, download=True)
     NetinfoDB(datadir=data_dir, download=True)
 
-    day_queue = multiprocessing.Queue()
-    archiver_queue = multiprocessing.Queue()
+    day_queue = multiprocessing.JoinableQueue()
+    archiver_queue = multiprocessing.JoinableQueue()
     pool = multiprocessing.Pool(
         processes=parallelism,
         initializer=processing_worker,
@@ -279,19 +283,16 @@ def mkobs(
         day_queue.put(None)
 
     day_queue.close()
-    day_queue.join_thread()
+    day_queue.join()
 
-    pool.close()
-    pool.join()
-
-    log.info(f"Finished joining worker queue")
-    # Send close signal to the archiver process
+    # Singal the archiver we have put everything in it
     archiver_queue.put(None)
 
     archiver_queue.close()
-    archiver_queue.join_thread()
+    archiver_queue.join()
 
-    log.info(f"Finished joining archiver queue")
+    pool.close()
+    pool.join()
 
     if archiver_process:
         archiver_process.close()

@@ -15,7 +15,7 @@ class DatabaseConnection:
     def execute(self, *args, **kwargs):
         pass
 
-    def write_rows(self, table_name, rows):
+    def write_rows(self, table_name, rows, fields=None):
         log.info(f"Writing to {table_name}")
         log.info(pformat(rows))
 
@@ -34,8 +34,9 @@ class ClickhouseConnection(DatabaseConnection):
         # log.debug(f"execute {args} {kwargs}")
         return self.client.execute(*args, **kwargs)
 
-    def write_rows(self, table_name, rows):
-        fields = ", ".join(rows[0].keys())
+    def write_rows(self, table_name, rows, fields=None):
+        if not fields:
+            fields = ", ".join(rows[0].keys())
         query_str = f"INSERT INTO {table_name} ({fields}) VALUES"
         try:
             self.client.execute(query_str, rows)

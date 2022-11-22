@@ -704,12 +704,14 @@ def make_tls_observations(
 class WebObservation(MeasurementMeta):
     __table_name__ = "obs_web"
 
+    # These fields are added by the processor
     observation_id: str = ""
+    bucket_date: Optional[str] = None
+    created_at: Optional[datetime] = None
+    post_processed_at: Optional[datetime] = None
 
     target_id: Optional[str] = None
     hostname: Optional[str] = None
-
-    bucket_date: Optional[str] = None
 
     transaction_id: Optional[int] = None
 
