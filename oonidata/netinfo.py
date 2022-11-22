@@ -11,6 +11,7 @@ from collections import OrderedDict, namedtuple
 from dataclasses import dataclass
 
 import xml.etree.ElementTree as ET
+import orjson
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -107,7 +108,7 @@ class NetinfoDB:
 
         try:
             with (self.ip2country_as_dir / "all_as_org_map.json").open() as in_file:
-                self.as_org_map = json.load(in_file)
+                self.as_org_map = orjson.loads(in_file.read())
         except FileNotFoundError:
             log.error("unable to find all_as_org_map.json. Try setting download = True")
             raise
