@@ -806,15 +806,24 @@ def maybe_set_web_fields(
     src_obs: Union[
         DNSObservation, TCPObservation, TLSObservation, HTTPObservation, None
     ],
-    chained: WebObservation,
+    web_obs: WebObservation,
     prefix: str,
+    field_names: Tuple[str],
 ):
+    # TODO: the fact we have to do this is an artifact of the original
+    # one-observation per type model. Once we decide we don't want to go for
+    # that, the rest of the code can be refactored to not make use of that
+    # anymore and we shouldn't need this anymore.
     if not src_obs:
         return
-    for f in dataclasses.fields(chained):
-        if f.name.startswith(prefix):
-            src_field_name = removeprefix(f.name, prefix)
-            setattr(chained, f.name, getattr(src_obs, src_field_name))
+
+    for fname in field_names:
+        if fname.startswith(prefix):
+            src_field_name = removeprefix(fname, prefix)
+            setattr(web_obs, fname, getattr(src_obs, src_field_name))
+
+
+WEB_OBS_FIELDS = tuple(f.name for f in dataclasses.fields(WebObservation))
 
 
 def make_web_observation(
@@ -854,10 +863,18 @@ def make_web_observation(
             web_obs.ip_as_org_name = ip_info.as_info.as_org_name
             web_obs.ip_as_cc = ip_info.as_info.as_cc
 
-    maybe_set_web_fields(dns_o, web_obs, "dns_")
-    maybe_set_web_fields(tcp_o, web_obs, "tcp_")
-    maybe_set_web_fields(tls_o, web_obs, "tls_")
-    maybe_set_web_fields(http_o, web_obs, "http_")
+    maybe_set_web_fields(
+        src_obs=dns_o, prefix="dns_", web_obs=web_obs, field_names=WEB_OBS_FIELDS
+    )
+    maybe_set_web_fields(
+        src_obs=tcp_o, prefix="tcp_", web_obs=web_obs, field_names=WEB_OBS_FIELDS
+    )
+    maybe_set_web_fields(
+        src_obs=tls_o, prefix="tls_", web_obs=web_obs, field_names=WEB_OBS_FIELDS
+    )
+    maybe_set_web_fields(
+        src_obs=http_o, prefix="http_", web_obs=web_obs, field_names=WEB_OBS_FIELDS
+    )
     return web_obs
 
 
