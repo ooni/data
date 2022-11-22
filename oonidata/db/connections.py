@@ -58,13 +58,13 @@ class CSVConnection(DatabaseConnection):
 
     def write_rows(self, table_name, rows, fields=None):
         if not fields:
-            fields = rows[0].keys()
+            fields = list(rows[0].keys())
 
         if table_name not in self.open_writers:
             ts = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
             fh = (self.output_dir / f"{table_name}-{ts}.csv").open("w")
-            csv_writer = csv.DictWriter(fh, fieldnames=fields)
-            csv_writer.writeheader()
+            csv_writer = csv.writer(fh)
+            csv_writer.writerow(fields)
             self.open_writers[table_name] = CSVConnectionHandle(
                 writer=csv_writer, fh=fh
             )
