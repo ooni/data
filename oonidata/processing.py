@@ -1,7 +1,9 @@
 from collections import defaultdict
 import hashlib
 import io
+import multiprocessing
 import pathlib
+import signal
 import time
 import logging
 import traceback
@@ -17,21 +19,22 @@ from typing import (
     Any,
     Dict,
     List,
+    Optional,
     Tuple,
     Union,
 )
 
-import orjson
 from tqdm import tqdm
 from warcio.warcwriter import WARCWriter
 from warcio.statusandheaders import StatusAndHeaders
 
 from oonidata.observations import WebObservation, make_observations
-from oonidata.dataformat import load_measurement, HTTPTransaction
+from oonidata.dataformat import WebConnectivity, load_measurement, HTTPTransaction
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.dataclient import (
     MeasurementListProgress,
+    date_interval,
     iter_measurements,
     ProgressStatus,
 )
@@ -202,7 +205,10 @@ class ResponseArchiver:
 
     @property
     def archive_path(self) -> pathlib.Path:
-        return self.dst_dir / f"ooniresponses-{self.start_time}-{self.serial}-{self.machine_id}.warc.gz"
+        return (
+            self.dst_dir
+            / f"ooniresponses-{self.start_time}-{self.serial}-{self.machine_id}.warc.gz"
+        )
 
     def maybe_open(self):
         if self._fh is not None:
@@ -278,6 +284,8 @@ def process_day(
             pbar.set_description(f"idx {idx}")
             if idx < start_at_idx:
                 continue
+
+            msmt = None
             try:
                 msmt = load_measurement(msmt_dict)
                 table_name, rows = make_db_rows(
@@ -287,19 +295,16 @@ def process_day(
                 row_writer.write_rows(table_name=table_name, rows=rows)
                 yield msmt
             except Exception as exc:
-                # This is a bit sketchy, we ought to eventually move it to some
-                # better logging function
-                log.error(f"failed at idx:{idx} {exc}")
-                with open(
-                    f"bad_msmts-{day.strftime('%Y%m%d')}.jsonl", "ab+"
-                ) as out_file:
-                    out_file.write(orjson.dumps(msmt_dict))
-                    out_file.write(b"\n")
-                with open(
-                    f"bad_msmts_fail_log-{day.strftime('%Y%m%d')}.txt", "a+"
-                ) as out_file:
-                    out_file.write(traceback.format_exc())
-                    out_file.write("ENDTB----\n")
+                log.error(f"Failed at idx: {idx}")
+                if msmt:
+                    msmt_str = msmt.report_id
+                    if msmt.input:
+                        msmt_str += f"?input={msmt.input}"
+                    log.error(f"msmt: {msmt_str}")
+                log.error(exc)
+                log.error("--BEGIN-TRACEBACK--")
+                log.error(traceback.format_exc())
+                log.error("--END-TRACEBACK--")
 
                 if fast_fail:
                     row_writer.flush_all()
@@ -308,3 +313,130 @@ def process_day(
     row_writer.flush_all()
 
     return time.monotonic() - t0, day
+
+
+def processing_worker(
+    day_queue: multiprocessing.JoinableQueue,
+    archiver_queue: Optional[multiprocessing.JoinableQueue],
+    data_dir: pathlib.Path,
+    probe_cc: List[str],
+    test_name: List[str],
+    clickhouse: Optional[str],
+    csv_dir: Optional[str],
+    start_at_idx: int,
+    fast_fail: bool,
+):
+    netinfodb = NetinfoDB(datadir=data_dir, download=False)
+
+    if clickhouse:
+        db = ClickhouseConnection(clickhouse)
+    elif csv_dir:
+        db = CSVConnection(csv_dir)
+    else:
+        raise Exception("Missing --csv-dir or --clickhouse")
+
+    while True:
+        day = day_queue.get(block=True)
+        if day == None:
+            day_queue.task_done()
+            break
+        for msmt in process_day(
+            db=db,
+            netinfodb=netinfodb,
+            day=day,
+            test_name=test_name,
+            probe_cc=probe_cc,
+            start_at_idx=start_at_idx,
+            fast_fail=fast_fail,
+        ):
+            if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
+                if archiver_queue:
+                    archiver_queue.put(msmt.test_keys.requests)
+
+        day_queue.task_done()
+
+    db.close()
+
+
+def archiver_worker(
+    archiver_queue: multiprocessing.Queue,
+    dst_dir: pathlib.Path,
+    clickhouse: Optional[str],
+):
+    db = ClickhouseConnection(clickhouse)
+
+    with ResponseArchiver(db, dst_dir=dst_dir) as archiver:
+        while True:
+            requests = archiver_queue.get(block=True)
+            if requests == None:
+                archiver_queue.task_done()
+                break
+            try:
+                for http_transaction in requests:
+                    archiver.archive_http_transaction(http_transaction=http_transaction)
+            except Exception:
+                log.error(f"failed to process {requests}")
+                log.error(traceback.format_exc())
+            archiver_queue.task_done()
+
+    db.close()
+
+
+def start_observation_maker(
+    probe_cc: List[str],
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    csv_dir: Optional[pathlib.Path],
+    clickhouse: Optional[str],
+    data_dir: pathlib.Path,
+    archives_dir: Optional[pathlib.Path],
+    parallelism: int,
+    start_at_idx: int,
+    fast_fail: bool,
+):
+    day_queue = multiprocessing.JoinableQueue()
+
+    archiver_queue = None
+    archiver_process = None
+    if archives_dir:
+        archiver_queue = multiprocessing.JoinableQueue()
+        archiver_process = multiprocessing.Process(
+            target=archiver_worker, args=(archiver_queue, archives_dir, clickhouse)
+        )
+        archiver_process.start()
+
+    pool = multiprocessing.Pool(
+        processes=parallelism,
+        initializer=processing_worker,
+        initargs=(
+            day_queue,
+            archiver_queue,
+            data_dir,
+            probe_cc,
+            test_name,
+            clickhouse,
+            csv_dir,
+            start_at_idx,
+            fast_fail,
+        ),
+    )
+    for day in date_interval(start_day, end_day):
+        day_queue.put(day)
+
+    for _ in range(parallelism):
+        day_queue.put(None)
+
+    day_queue.join()
+    pool.close()
+
+    log.info("waiting for the worker processes to finish")
+    pool.join()
+
+    log.info("shutting down the archiving process")
+    if archiver_process and archiver_queue:
+        # Singal the archiver we have put everything in it
+        archiver_queue.put(None)
+        archiver_queue.join()
+        archiver_process.join()
+        archiver_process.close()

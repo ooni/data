@@ -10,15 +10,12 @@ import click
 
 from oonidata import __version__
 from oonidata.dataclient import (
-    date_interval,
     sync_measurements,
 )
-from oonidata.dataformat import WebConnectivity
-from oonidata.db.connections import CSVConnection, ClickhouseConnection
+from oonidata.db.connections import ClickhouseConnection
 from oonidata.db.create_tables import create_queries
-from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
-from oonidata.processing import ResponseArchiver, process_day
+from oonidata.processing import start_observation_maker
 
 
 log = logging.getLogger("oonidata")
@@ -69,9 +66,13 @@ end_day_option = click.option(
 
 
 @click.group()
+@click.option("--error-log-file", type=Path)
 @click.version_option(__version__)
-def cli():
-    pass
+def cli(error_log_file: Path):
+    if error_log_file:
+        logging.basicConfig(
+            filename=error_log_file, encoding="utf-8", level=logging.ERROR
+        )
 
 
 @cli.command()
@@ -108,72 +109,6 @@ def sync(
         end_day=end_day,
         max_string_size=max_string_size,
     )
-
-
-def processing_worker(
-    day_queue: multiprocessing.JoinableQueue,
-    archiver_queue: Optional[multiprocessing.JoinableQueue],
-    data_dir: Path,
-    probe_cc: List[str],
-    test_name: List[str],
-    clickhouse: Optional[str],
-    csv_dir: Optional[str],
-    start_at_idx: int,
-    fast_fail: bool,
-):
-    netinfodb = NetinfoDB(datadir=data_dir, download=False)
-
-    if clickhouse:
-        db = ClickhouseConnection(clickhouse)
-    elif csv_dir:
-        db = CSVConnection(csv_dir)
-    else:
-        raise Exception("Missing --csv-dir or --clickhouse")
-
-    while True:
-        day = day_queue.get(block=True)
-        if day == None:
-            day_queue.task_done()
-            break
-        for msmt in process_day(
-            db=db,
-            netinfodb=netinfodb,
-            day=day,
-            test_name=test_name,
-            probe_cc=probe_cc,
-            start_at_idx=start_at_idx,
-            fast_fail=fast_fail,
-        ):
-            if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
-                if archiver_queue:
-                    archiver_queue.put(msmt.test_keys.requests)
-        day_queue.task_done()
-
-    db.close()
-
-
-def archiver_worker(
-    archiver_queue: multiprocessing.Queue,
-    dst_dir: Path,
-    clickhouse: Optional[str],
-):
-    db = ClickhouseConnection(clickhouse)
-
-    with ResponseArchiver(db, dst_dir=dst_dir) as archiver:
-        while True:
-            requests = archiver_queue.get(block=True)
-            if requests == None:
-                archiver_queue.task_done()
-                break
-            try:
-                for http_transaction in requests:
-                    archiver.archive_http_transaction(http_transaction=http_transaction)
-            except Exception:
-                log.error(f"failed to process {requests}")
-                log.error(traceback.format_exc())
-            archiver_queue.task_done()
-
-    db.close()
 
 
 @cli.command()
@@ -251,53 +186,21 @@ def mkobs(
                 db.execute(f"DROP TABLE IF EXISTS {table_name};")
             db.execute(query)
 
-    FingerprintDB(datadir=data_dir, download=True)
     NetinfoDB(datadir=data_dir, download=True)
 
-    day_queue = multiprocessing.JoinableQueue()
-
-    archiver_queue = None
-    archiver_process = None
-    if archives_dir:
-        archiver_queue = multiprocessing.JoinableQueue()
-        archiver_process = multiprocessing.Process(
-            target=archiver_worker, args=(archiver_queue, archives_dir, clickhouse)
-        )
-        archiver_process.start()
-
-    pool = multiprocessing.Pool(
-        processes=parallelism,
-        initializer=processing_worker,
-        initargs=(
-            day_queue,
-            archiver_queue,
-            data_dir,
-            probe_cc,
-            test_name,
-            clickhouse,
-            csv_dir,
-            start_at_idx,
-            fast_fail,
-        ),
+    start_observation_maker(
+        probe_cc=probe_cc,
+        test_name=test_name,
+        start_day=start_day,
+        end_day=end_day,
+        csv_dir=csv_dir,
+        clickhouse=clickhouse,
+        data_dir=data_dir,
+        archives_dir=archives_dir,
+        parallelism=parallelism,
+        start_at_idx=start_at_idx,
+        fast_fail=fast_fail,
     )
-    for day in date_interval(start_day, end_day):
-        day_queue.put(day)
-
-    for _ in range(parallelism):
-        day_queue.put(None)
-
-    day_queue.join()
-    pool.close()
-    log.info("waiting for the worker processes to finish")
-    pool.join()
-
-    log.info("shutting down the archiving process")
-    if archiver_process and archiver_queue:
-        # Singal the archiver we have put everything in it
-        archiver_queue.put(None)
-        archiver_queue.join()
-        archiver_process.join()
-        archiver_process.close()
 
 
 if __name__ == "__main__":
