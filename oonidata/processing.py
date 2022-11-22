@@ -285,7 +285,9 @@ def fingerprint_hunter_worker(
     archive_queue: multiprocessing.JoinableQueue,
     sqlite_path: pathlib.Path,
     datadir: pathlib.Path,
+    log_level: int,
 ):
+    log.setLevel(log_level)
     db_conn = sqlite3.connect(sqlite_path)
     fingerprintdb = FingerprintDB(datadir=datadir)
 
@@ -327,6 +329,7 @@ def start_fingerprint_hunter(
     archives_dir: pathlib.Path,
     data_dir: pathlib.Path,
     parallelism: int,
+    log_level: int = logging.INFO,
 ):
     archive_queue = multiprocessing.JoinableQueue()
 
@@ -334,11 +337,7 @@ def start_fingerprint_hunter(
     pool = multiprocessing.Pool(
         processes=parallelism,
         initializer=fingerprint_hunter_worker,
-        initargs=(
-            archive_queue,
-            sqlite_path,
-            data_dir,
-        ),
+        initargs=(archive_queue, sqlite_path, data_dir, log_level),
     )
     for archive_path in archives_dir.glob("*.warc.gz"):
         archive_queue.put(archive_path)
@@ -410,16 +409,12 @@ def process_day(
                 row_writer.write_rows(table_name=table_name, rows=rows)
                 yield msmt
             except Exception as exc:
-                log.error(f"Failed at idx: {idx}")
+                msmt_str = ""
                 if msmt:
                     msmt_str = msmt.report_id
                     if msmt.input:
                         msmt_str += f"?input={msmt.input}"
-                    log.error(f"msmt: {msmt_str}")
-                log.error(exc)
-                log.error("--BEGIN-TRACEBACK--")
-                log.error(traceback.format_exc())
-                log.error("--END-TRACEBACK--")
+                log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
 
                 if fast_fail:
                     row_writer.flush_all()
@@ -440,7 +435,9 @@ def processing_worker(
     csv_dir: Optional[str],
     start_at_idx: int,
     fast_fail: bool,
+    log_level: int = logging.INFO,
 ):
+    log.setLevel(log_level)
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
 
     if clickhouse:
@@ -455,18 +452,21 @@ def processing_worker(
         if day == None:
             day_queue.task_done()
             break
-        for msmt in process_day(
-            db=db,
-            netinfodb=netinfodb,
-            day=day,
-            test_name=test_name,
-            probe_cc=probe_cc,
-            start_at_idx=start_at_idx,
-            fast_fail=fast_fail,
-        ):
-            if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
-                if archiver_queue:
-                    archiver_queue.put(msmt.test_keys.requests)
+        try:
+            for msmt in process_day(
+                db=db,
+                netinfodb=netinfodb,
+                day=day,
+                test_name=test_name,
+                probe_cc=probe_cc,
+                start_at_idx=start_at_idx,
+                fast_fail=fast_fail,
+            ):
+                if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
+                    if archiver_queue:
+                        archiver_queue.put(msmt.test_keys.requests)
+        except Exception:
+            log.error(f"failed to process {day}", exc_info=True)
 
         day_queue.task_done()
 
@@ -477,7 +477,9 @@ def archiver_worker(
     archiver_queue: multiprocessing.Queue,
     dst_dir: pathlib.Path,
     clickhouse: Optional[str],
+    log_level: int,
 ):
+    log.setLevel(log_level)
     db = ClickhouseConnection(clickhouse)
 
     with ResponseArchiver(dst_dir=dst_dir) as archiver:
@@ -490,8 +492,7 @@ def archiver_worker(
                 for http_transaction in requests:
                     archiver.archive_http_transaction(http_transaction=http_transaction)
             except Exception:
-                log.error(f"failed to process {requests}")
-                log.error(traceback.format_exc())
+                log.error(f"failed to process {requests}", exc_info=True)
             archiver_queue.task_done()
 
     db.close()
@@ -509,6 +510,7 @@ def start_observation_maker(
     parallelism: int,
     start_at_idx: int,
     fast_fail: bool,
+    log_level: int = logging.INFO,
 ):
     day_queue = multiprocessing.JoinableQueue()
 
@@ -517,7 +519,8 @@ def start_observation_maker(
     if archives_dir:
         archiver_queue = multiprocessing.JoinableQueue()
         archiver_process = multiprocessing.Process(
-            target=archiver_worker, args=(archiver_queue, archives_dir, clickhouse)
+            target=archiver_worker,
+            args=(archiver_queue, archives_dir, clickhouse, log_level),
         )
         archiver_process.start()
 
@@ -534,6 +537,7 @@ def start_observation_maker(
             csv_dir,
             start_at_idx,
             fast_fail,
+            log_level,
         ),
     )
     for day in date_interval(start_day, end_day):
@@ -542,10 +546,10 @@ def start_observation_maker(
     for _ in range(parallelism):
         day_queue.put(None)
 
-    log.info("waiting for the day queue to finish")
+    log.debug("waiting for the day queue to finish")
     day_queue.join()
 
-    log.info("waiting for the pool to close")
+    log.debug("waiting for the pool to close")
     pool.close()
 
     log.info("waiting for the worker processes to finish")
