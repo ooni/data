@@ -214,9 +214,17 @@ def is_ipv6_bogon(ip: str) -> bool:
 
 
 def is_ip_bogon(ip: str) -> bool:
-    ipaddr = ipaddress.ip_address(ip)
-    if any([ipaddr in ip_range for ip_range in bogon_ipv4_ranges + bogon_ipv6_ranges]):
-        return True
+    try:
+        ipaddr = ipaddress.ip_address(ip)
+        if any(
+            [ipaddr in ip_range for ip_range in bogon_ipv4_ranges + bogon_ipv6_ranges]
+        ):
+            return True
+    except ValueError:
+        # This that aren't IP addresses are not bogons either
+        # TODO: probably remove this once we figure out why this is happening in
+        # some of the data
+        return False
     return False
 
 

@@ -1,3 +1,4 @@
+from collections import defaultdict
 import io
 import pathlib
 import time
@@ -12,7 +13,9 @@ from datetime import date, timedelta
 import dataclasses
 
 from typing import (
+    Dict,
     List,
+    Tuple,
     Union,
 )
 
@@ -39,21 +42,32 @@ from oonidata.db.connections import (
 log = logging.getLogger("oonidata.processing")
 
 
+def make_db_rows(
+    bucket_date: str, observations: List[WebObservation]
+) -> Tuple[str, List[Dict]]:
+    if len(observations) == 0:
+        return "", []
+
+    table_name = observations[0].__table_name__
+    rows = []
+    for idx, obs in enumerate(observations):
+        obs.bucket_date = bucket_date
+        assert table_name == obs.__table_name__, "inconsistent group of observations"
+        # TODO: should probably come up with a better ID, but this will work for
+        # the time being.
+        obs.observation_id = f"{obs.measurement_uid}_{idx}"
+        rows.append(dataclasses.asdict(obs))
+
+    return table_name, rows
+
+
 def write_observations_to_db(
     db: DatabaseConnection, bucket_date: str, observations: List[WebObservation]
 ) -> None:
     if len(observations) == 0:
         return
 
-    table_name = observations[0].__table_name__
-    rows = []
-    for idx, obs in enumerate(observations):
-        assert table_name == obs.__table_name__, "inconsistent table name in group"
-        obs.bucket_date = bucket_date
-        # TODO: should probably come up with a better ID, but this will work for
-        # the time being.
-        obs.observation_id = f"{obs.measurement_uid}_{idx}"
-        rows.append(dataclasses.asdict(obs))
+    table_name, rows = make_db_rows(bucket_date=bucket_date, observations=observations)
     db.write_rows(table_name, rows)
 
 
@@ -177,6 +191,7 @@ def process_day(
 ):
     t0 = time.monotonic()
     bucket_date = day.strftime("%Y-%m-%d")
+
     with tqdm(unit="B", unit_scale=True) as pbar:
 
         def progress_callback(p: MeasurementListProgress):
@@ -198,7 +213,8 @@ def process_day(
             )
             pbar.update(p.current_file_entry_bytes)
 
-        row_buffer = []
+        row_buffer_map = defaultdict(list)
+        ROW_BUFFER_SIZE = 10_000
         for idx, msmt_dict in enumerate(
             iter_measurements(
                 probe_cc=probe_cc,
@@ -213,14 +229,16 @@ def process_day(
                 continue
             try:
                 msmt = load_measurement(msmt_dict)
-                row_buffer += make_observations(msmt, netinfodb=netinfodb)
-                if len(row_buffer) > 10_000:
-                    write_observations_to_db(
-                        db=db,
-                        bucket_date=bucket_date,
-                        observations=row_buffer,
+                table_name, rows = make_db_rows(
+                    bucket_date=bucket_date,
+                    observations=make_observations(msmt, netinfodb=netinfodb),
+                )
+                row_buffer_map[table_name] += rows
+                if len(row_buffer_map[table_name]) > ROW_BUFFER_SIZE:
+                    db.write_rows(
+                        table_name=table_name, rows=row_buffer_map[table_name]
                     )
-                    row_buffer = []
+                    row_buffer_map[table_name] = []
                 yield msmt
             except Exception as exc:
                 # This is a bit sketchy, we ought to eventually move it to some
@@ -236,17 +254,13 @@ def process_day(
                 ) as out_file:
                     out_file.write(traceback.format_exc())
                     out_file.write("ENDTB----\n")
-                write_observations_to_db(
-                    db=db,
-                    bucket_date=bucket_date,
-                    observations=row_buffer,
-                )
+
+                for table_name, rows in row_buffer_map.items():
+                    db.write_rows(table_name=table_name, rows=rows)
+
                 if fast_fail:
                     raise exc
 
-    write_observations_to_db(
-        db=db,
-        bucket_date=bucket_date,
-        observations=row_buffer,
-    )
+    for table_name, rows in row_buffer_map.items():
+        db.write_rows(table_name=table_name, rows=rows)
     return time.monotonic() - t0, day
