@@ -86,11 +86,13 @@ class BufferredRowWriter:
             return
 
         if table_name not in self.fields_map:
-            self.fields_map[table_name] = rows[0].keys()
+            self.fields_map[table_name] = tuple(rows[0].keys())
 
-        self.row_buffer_map[table_name] += list(
-            map(lambda row: [row[k] for k in self.fields_map[table_name]], rows)
-        )
+        for r in rows:
+            self.row_buffer_map[table_name].append(
+                tuple(r[k] for k in self.fields_map[table_name])
+            )
+
         if len(self.row_buffer_map[table_name]) > self.buffer_size:
             self.flush(table_name)
 
@@ -115,11 +117,11 @@ class ResponseArchiver:
         db: DatabaseConnection,
         dst_dir: pathlib.Path,
         max_archive_size=10_000_000,
-        host_suffix="oonidata",
+        machine_id="oonidata",
     ):
         self.db = db
         self.dst_dir = dst_dir
-        self.host_suffix = host_suffix
+        self.machine_id = machine_id
         self.max_archive_size = max_archive_size
         self.start_time = int(time.time())
         self.serial = 0
@@ -130,7 +132,6 @@ class ResponseArchiver:
         self._lock = Lock()
 
     def __enter__(self):
-        self.open()
         return self
 
     def __exit__(self, type, value, traceback):
@@ -144,6 +145,18 @@ class ResponseArchiver:
         return res and len(res) > 0
 
     def archive_http_transaction(self, http_transaction: HTTPTransaction):
+        response_body_sha1 = None
+        if http_transaction.response and http_transaction.response.body_bytes:
+            response_body_sha1 = hashlib.sha1(
+                http_transaction.response.body_bytes
+            ).hexdigest()
+
+        if not response_body_sha1 or self.is_already_archived(response_body_sha1):
+            # No point in archiving empty bodies
+            return
+
+        self.maybe_open()
+
         assert (
             self._warc_writer is not None and self._fh is not None
         ), "you must call open before you can begin archiving"
@@ -164,6 +177,7 @@ class ResponseArchiver:
         payload = None
         if http_transaction.response.body_bytes:
             payload = io.BytesIO(http_transaction.response.body_bytes)
+
         record = self._warc_writer.create_warc_record(
             http_transaction.request.url,
             "response",
@@ -174,17 +188,10 @@ class ResponseArchiver:
             "WARC-Payload-Digest"
         ).split(":")
         assert digest_alg == "sha1", "using wrong algorithm to create digest"
-        response_body_sha1 = b32decode(digest_b32).hex()
 
-        if http_transaction.response.body_bytes:
-            # TODO: remove this sanity check once we figure out it's working as intended
-            assert (
-                hashlib.sha1(http_transaction.response.body_bytes).hexdigest()
-                == response_body_sha1
-            ), "inconsistent body hash"
-
-        if self.is_already_archived(response_body_sha1):
-            return
+        # TODO: maybe we can tell warc_writer to not compute the hash to
+        # optimize this
+        assert b32decode(digest_b32).hex() == response_body_sha1
 
         self._warc_writer.write_record(record)
         self.record_idx += 1
@@ -195,12 +202,14 @@ class ResponseArchiver:
 
     @property
     def archive_path(self) -> pathlib.Path:
-        return self.dst_dir / f"ooniresponses-{self.start_time}-{self.serial}.warc.gz"
+        return self.dst_dir / f"ooniresponses-{self.start_time}-{self.serial}-{self.machine_id}.warc.gz"
 
-    def open(self):
-        assert self._fh is None, "attempting to open an already open FH"
+    def maybe_open(self):
+        if self._fh is not None:
+            assert self._warc_writer, "warc_writer is none"
+            return
+
         assert not self.archive_path.exists(), f"{self.archive_path} already exists"
-
         self._fh = self.archive_path.open("wb")
         self._warc_writer = WARCWriter(self._fh, gzip=True)
 
@@ -212,12 +221,13 @@ class ResponseArchiver:
         if self._fh.tell() > self.max_archive_size:
             self.close()
             self.serial += 1
-            self.open()
+            self.maybe_open()
 
         self._lock.release()
 
     def close(self):
-        assert self._fh is not None, "Attempting to close an unopen archiver"
+        if self._fh is None:
+            return
         self._fh.close()
         self._fh = None
 

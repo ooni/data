@@ -36,8 +36,10 @@ class ClickhouseConnection(DatabaseConnection):
 
     def write_rows(self, table_name, rows, fields=None):
         if not fields:
-            fields = ", ".join(rows[0].keys())
-        query_str = f"INSERT INTO {table_name} ({fields}) VALUES"
+            fields = rows[0].keys()
+
+        fields_str = ", ".join(fields)
+        query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
         try:
             self.client.execute(query_str, rows)
         except Exception as exc:

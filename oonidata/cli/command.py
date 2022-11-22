@@ -111,8 +111,8 @@ def sync(
 
 
 def processing_worker(
-    day_queue: multiprocessing.Queue,
-    archiver_queue: multiprocessing.Queue,
+    day_queue: multiprocessing.JoinableQueue,
+    archiver_queue: Optional[multiprocessing.JoinableQueue],
     data_dir: Path,
     probe_cc: List[str],
     test_name: List[str],
@@ -145,7 +145,8 @@ def processing_worker(
             fast_fail=fast_fail,
         ):
             if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
-                archiver_queue.put(msmt.test_keys.requests)
+                if archiver_queue:
+                    archiver_queue.put(msmt.test_keys.requests)
         day_queue.task_done()
 
     db.close()
@@ -254,7 +255,16 @@ def mkobs(
     NetinfoDB(datadir=data_dir, download=True)
 
     day_queue = multiprocessing.JoinableQueue()
-    archiver_queue = multiprocessing.JoinableQueue()
+
+    archiver_queue = None
+    archiver_process = None
+    if archives_dir:
+        archiver_queue = multiprocessing.JoinableQueue()
+        archiver_process = multiprocessing.Process(
+            target=archiver_worker, args=(archiver_queue, archives_dir, clickhouse)
+        )
+        archiver_process.start()
+
     pool = multiprocessing.Pool(
         processes=parallelism,
         initializer=processing_worker,
@@ -270,33 +280,24 @@ def mkobs(
             fast_fail,
         ),
     )
-    archiver_process = None
-    if archives_dir:
-        archiver_process = multiprocessing.Process(
-            target=archiver_worker, args=(archiver_queue, archives_dir, clickhouse)
-        )
-        archiver_process.start()
     for day in date_interval(start_day, end_day):
         day_queue.put(day)
 
     for _ in range(parallelism):
         day_queue.put(None)
 
-    day_queue.close()
     day_queue.join()
-
-    # Singal the archiver we have put everything in it
-    archiver_queue.put(None)
-
-    archiver_queue.close()
-    archiver_queue.join()
-
     pool.close()
+    log.info("waiting for the worker processes to finish")
     pool.join()
 
-    if archiver_process:
-        archiver_process.close()
+    log.info("shutting down the archiving process")
+    if archiver_process and archiver_queue:
+        # Singal the archiver we have put everything in it
+        archiver_queue.put(None)
+        archiver_queue.join()
         archiver_process.join()
+        archiver_process.close()
 
 
 if __name__ == "__main__":
