@@ -91,7 +91,7 @@ def create_query_for_observation(obs_class: Type[MeasurementMeta]) -> Tuple[str,
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
-    ORDER BY (measurement_start_time, measurement_uid)
+    ORDER BY (measurement_start_time, observation_id, measurement_uid)
     SETTINGS index_granularity = 8192;
     """,
         obs_class.__table_name__,

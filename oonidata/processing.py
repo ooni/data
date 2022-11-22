@@ -47,9 +47,12 @@ def write_observations_to_db(
 
     table_name = observations[0].__table_name__
     rows = []
-    for obs in observations:
+    for idx, obs in enumerate(observations):
         assert table_name == obs.__table_name__, "inconsistent table name in group"
         obs.bucket_date = bucket_date
+        # TODO: should probably come up with a better ID, but this will work for
+        # the time being.
+        obs.observation_id = f"{obs.measurement_uid}_{idx}"
         rows.append(dataclasses.asdict(obs))
     db.write_rows(table_name, rows)
 

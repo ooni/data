@@ -202,9 +202,6 @@ class NetinfoDB:
             cc="ZZ",
         )
 
-        db_path = self.find_db_for_date(day.date())
-        assert db_path is not None
-
         try:
             if is_ip_bogon(ip):
                 return IPInfo(
@@ -218,6 +215,9 @@ class NetinfoDB:
                 )
         except ValueError:
             return unknown_ipinfo
+
+        db_path = self.find_db_for_date(day.date())
+        assert db_path is not None
 
         reader = self.get_reader(db_path)
         res = None

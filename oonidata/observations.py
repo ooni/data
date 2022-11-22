@@ -704,10 +704,11 @@ def make_tls_observations(
 class WebObservation(MeasurementMeta):
     __table_name__ = "obs_web"
 
+    observation_id: str = ""
+
     target_id: Optional[str] = None
     hostname: Optional[str] = None
 
-    observation_id: Optional[str] = None
     bucket_date: Optional[str] = None
 
     transaction_id: Optional[int] = None
