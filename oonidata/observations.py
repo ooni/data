@@ -469,6 +469,14 @@ def make_tcp_observations(
         return obs_tcp
 
     for res in tcp_connect:
+        # Older OONI Probes will put things that aren't IPs inside of TCP connect
+        # see: https://explorer.ooni.org/measurement/20221014T000036Z_webconnectivity_RU_42668_n1_XdKjqrsbSmryZHho?input=http://www.newnownext.com/franchise/the-backlot/
+        # TODO: we currently ignore these cases as the measurement is not really
+        # that useful. Maybe we should do something better about it.
+        try:
+            ipaddress.ip_address(res.ip)
+        except ValueError:
+            continue
         obs_tcp.append(TCPObservation.from_measurement(msmt, res))
     return obs_tcp
 

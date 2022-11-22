@@ -42,6 +42,8 @@ def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
             datadir,
             "--csv-dir",
             tmp_path.absolute(),
+            "--archives-dir",
+            tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0

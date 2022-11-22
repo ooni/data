@@ -120,6 +120,8 @@ bogon_ipv6_ranges = [
     ipaddress.ip_network("::ffff:0:0/96"),
     # IPv4-compatible addresses
     ipaddress.ip_network("::/96"),
+    # Local-Use IPv4/IPv6 Translation Prefix RFC 8215
+    ipaddress.ip_network("64:ff9b:1::/48"),
     # Remotely triggered black hole addresses
     ipaddress.ip_network("100::/64"),
     # Overlay routable cryptographic hash identifiers (ORCHID)
