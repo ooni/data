@@ -294,6 +294,7 @@ def fingerprint_hunter_worker(
         if archive_path == None:
             archive_queue.task_done()
             break
+        log.info(f"inspecting bodies inside {archive_path}")
         for response_body_sha1, matched_fingerprints in fingerprint_hunter(
             fingerprintdb=fingerprintdb, archive_path=archive_path
         ):

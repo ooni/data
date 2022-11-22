@@ -2,6 +2,7 @@ import logging
 import multiprocessing
 from pathlib import Path
 import sqlite3
+import sys
 import traceback
 from typing import List, Optional
 from datetime import date, timedelta, datetime
@@ -20,9 +21,6 @@ from oonidata.processing import start_fingerprint_hunter, start_observation_make
 
 
 log = logging.getLogger("oonidata")
-
-log.addHandler(logging.StreamHandler())
-log.setLevel(logging.INFO)
 
 
 def _parse_date(ctx, param, date_str: str) -> date:
@@ -70,6 +68,8 @@ end_day_option = click.option(
 @click.option("--error-log-file", type=Path)
 @click.version_option(__version__)
 def cli(error_log_file: Path):
+    log.addHandler(logging.StreamHandler(sys.stderr))
+    log.setLevel(logging.INFO)
     if error_log_file:
         logging.basicConfig(
             filename=error_log_file, encoding="utf-8", level=logging.ERROR
@@ -223,6 +223,7 @@ def mkobs(
     help="number of processes to use",
 )
 def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
+
     click.echo("🏹 starting the hunt for blockpage fingerprints!")
     start_fingerprint_hunter(
         archives_dir=archives_dir,
