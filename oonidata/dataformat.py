@@ -48,7 +48,7 @@ def guess_decode(s: bytes) -> str:
     """
     best effort decoding of a string of bytes
     """
-    for encoding in ("ascii", "utf-8", "latin1"):
+    for encoding in ("ascii", "utf-8", "latin1", "iso-8859-1"):
         try:
             return s.decode(encoding)
         except UnicodeDecodeError:

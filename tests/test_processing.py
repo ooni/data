@@ -1,5 +1,6 @@
 import gzip
 from pathlib import Path
+import sqlite3
 from unittest.mock import MagicMock
 
 from oonidata.dataformat import WebConnectivity, load_measurement
@@ -10,7 +11,7 @@ from oonidata.observations import (
     make_dnscheck_observations,
 )
 from oonidata.dataclient import stream_jsonl
-from oonidata.processing import ResponseArchiver
+from oonidata.processing import ResponseArchiver, fingerprint_hunter
 
 
 def test_insert_query_for_observation(measurements):
@@ -95,10 +96,43 @@ def test_archive_http_transaction(measurements, tmpdir):
     assert isinstance(msmt, WebConnectivity)
     assert msmt.test_keys.requests
     dst_dir = Path(tmpdir)
-    with ResponseArchiver(db, dst_dir=dst_dir) as archiver:
+    with ResponseArchiver(dst_dir=dst_dir) as archiver:
         for http_transaction in msmt.test_keys.requests:
             archiver.archive_http_transaction(http_transaction=http_transaction)
 
-    assert len(list(dst_dir.glob("*.warc.gz"))) == 1
-    with gzip.open(dst_dir / "ooniresponses-0.warc.gz", "rb") as in_file:
+    warc_files = list(dst_dir.glob("*.warc.gz"))
+    assert len(warc_files) == 1
+    with gzip.open(warc_files[0], "rb") as in_file:
         assert b"Run OONI Probe to detect internet censorship" in in_file.read()
+
+    conn = sqlite3.connect(dst_dir / "graveyard.sqlite3")
+    res = conn.execute("SELECT COUNT() FROM oonibodies_archive")
+    assert res.fetchone()[0] == 1
+
+
+def test_fingerprint_hunter(fingerprintdb, measurements, tmpdir):
+    db = MagicMock()
+    db.write_rows = MagicMock()
+
+    archives_dir = Path(tmpdir)
+    http_blocked = load_measurement(
+        msmt_path=measurements[
+            "20220608121828.356206_RU_webconnectivity_80e3fa60eb2cd026"
+        ]
+    )
+    assert isinstance(http_blocked, WebConnectivity)
+    with ResponseArchiver(dst_dir=archives_dir) as response_archiver:
+        assert http_blocked.test_keys.requests
+        for http_transaction in http_blocked.test_keys.requests:
+            response_archiver.archive_http_transaction(
+                http_transaction=http_transaction
+            )
+
+    archive_path = list(archives_dir.glob("*.warc.gz"))[0]
+    detected_fps = list(
+        fingerprint_hunter(
+            fingerprintdb=fingerprintdb,
+            archive_path=archive_path,
+        )
+    )
+    assert len(detected_fps) == 1

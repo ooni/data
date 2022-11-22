@@ -3,13 +3,12 @@ import csv
 
 from pathlib import Path
 from collections import OrderedDict
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass, field
 
 import requests
 
-from oonidata.dataformat import HTTPResponse
-from oonidata.datautils import get_first_http_header_str
+from oonidata.dataformat import guess_decode
 
 
 @dataclass
@@ -48,29 +47,22 @@ class Fingerprint:
             f"Found unknown fingerprint matching pattern {self.pattern_type}"
         )
 
-    def matches_http(self, http_response: HTTPResponse) -> bool:
+    def matches_http(
+        self, response_body: Optional[bytes], headers: List[Tuple[str, str]]
+    ) -> bool:
         assert self.location_found != "dns", "Cannot use a DNS signature to match HTTP"
 
         if self.location_found == "body":
-            if not http_response.body_str:
+            if not response_body:
                 return False
 
-            try:
-                return self.matches_pattern(http_response.body_str)
-            except UnicodeDecodeError:
-                return False
+            return self.matches_pattern(guess_decode(response_body))
 
         if self.location_found.startswith("header.") and self.regexp:
-            search_header = self.location_found[len("header.") :]
-            header_value = get_first_http_header_str(
-                search_header, http_response.headers_list_str or []
-            )
-            if not header_value:
-                return False
-
-            assert isinstance(header_value, str)
-
-            return self.matches_pattern(header_value)
+            search_header = self.location_found[len("header.") :].lower()
+            for header_name, value in headers:
+                if header_name.lower() == search_header and self.matches_pattern(value):
+                    return True
         return False
 
 
@@ -117,10 +109,12 @@ class FingerprintDB:
 
             output_path.with_suffix(".tmp").rename(output_path)
 
-    def match_http(self, http_response: HTTPResponse) -> List[Fingerprint]:
+    def match_http(
+        self, response_body: bytes, headers: List[Tuple[str, str]]
+    ) -> List[Fingerprint]:
         matches = []
         for fp in self.http_fp.values():
-            if fp.matches_http(http_response):
+            if fp.matches_http(response_body=response_body, headers=headers):
                 matches.append(fp)
         return matches
 

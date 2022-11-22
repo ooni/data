@@ -3,12 +3,13 @@ import hashlib
 import io
 import multiprocessing
 import pathlib
-import signal
 import time
 import logging
 import traceback
 from base64 import b32decode
 import http.client
+import orjson
+import sqlite3
 
 from threading import Lock
 
@@ -18,6 +19,7 @@ import dataclasses
 from typing import (
     Any,
     Dict,
+    Generator,
     List,
     Optional,
     Tuple,
@@ -26,10 +28,16 @@ from typing import (
 
 from tqdm import tqdm
 from warcio.warcwriter import WARCWriter
+from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
 
+from oonidata.fingerprintdb import FingerprintDB, Fingerprint
 from oonidata.observations import WebObservation, make_observations
-from oonidata.dataformat import WebConnectivity, load_measurement, HTTPTransaction
+from oonidata.dataformat import (
+    WebConnectivity,
+    load_measurement,
+    HTTPTransaction,
+)
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.dataclient import (
@@ -117,12 +125,10 @@ class BufferredRowWriter:
 class ResponseArchiver:
     def __init__(
         self,
-        db: DatabaseConnection,
         dst_dir: pathlib.Path,
         max_archive_size=10_000_000,
         machine_id="oonidata",
     ):
-        self.db = db
         self.dst_dir = dst_dir
         self.machine_id = machine_id
         self.max_archive_size = max_archive_size
@@ -130,9 +136,25 @@ class ResponseArchiver:
         self.serial = 0
         self.record_idx = 0
 
+        # Where else would you put your bodies?
+        self.db_conn = sqlite3.connect(dst_dir / "graveyard.sqlite3")
+        self.maybe_create_table()
+
         self._fh = None
         self._warc_writer = None
         self._lock = Lock()
+
+    def maybe_create_table(self):
+        self.db_conn.execute(
+            """CREATE TABLE IF NOT EXISTS oonibodies_archive (
+                response_body_sha1 TEXT NOT NULL,
+                archive_filename TEXT NOT NULL,
+                record_idx INT NOT NULL,
+                response_fingerprints TEXT,
+                is_fingerprint_false_positive INT
+            );"""
+        )
+        self.db_conn.commit()
 
     def __enter__(self):
         return self
@@ -141,11 +163,11 @@ class ResponseArchiver:
         self.close()
 
     def is_already_archived(self, response_body_sha1):
-        res = self.db.execute(
-            "SELECT response_body_sha1 FROM oonibodies_archive WHERE response_body_sha1 = %(response_body_sha1)s",
+        res = self.db_conn.execute(
+            "SELECT response_body_sha1 FROM oonibodies_archive WHERE response_body_sha1 = :response_body_sha1",
             dict(response_body_sha1=response_body_sha1),
         )
-        return res and len(res) > 0
+        return res.fetchone() is not None
 
     def archive_http_transaction(self, http_transaction: HTTPTransaction):
         response_body_sha1 = None
@@ -198,10 +220,11 @@ class ResponseArchiver:
 
         self._warc_writer.write_record(record)
         self.record_idx += 1
-        self.db.execute(
-            "INSERT INTO oonibodies_archive (response_body_sha1, archive_filename, record_idx) VALUES",
-            [[response_body_sha1, self.archive_path.name, self.record_idx]],
+        self.db_conn.execute(
+            "INSERT INTO oonibodies_archive (response_body_sha1, archive_filename, record_idx) VALUES (?, ?, ?)",
+            (response_body_sha1, self.archive_path.name, self.record_idx),
         )
+        self.db_conn.commit()
 
     @property
     def archive_path(self) -> pathlib.Path:
@@ -236,6 +259,97 @@ class ResponseArchiver:
             return
         self._fh.close()
         self._fh = None
+
+
+def fingerprint_hunter(
+    fingerprintdb: FingerprintDB, archive_path: pathlib.Path
+) -> Generator[Tuple[str, List[Fingerprint]], None, None]:
+    with archive_path.open("rb") as in_file:
+        for record in ArchiveIterator(in_file):
+            if record.rec_type == "response":
+                response_body = record.raw_stream.read()
+                matched_fingerprints = fingerprintdb.match_http(
+                    response_body=response_body, headers=record.http_headers.headers
+                )
+                if len(matched_fingerprints) > 0:
+                    digest_alg, digest_b32 = record.rec_headers.get_header(
+                        "WARC-Payload-Digest"
+                    ).split(":")
+                    assert (
+                        digest_alg == "sha1"
+                    ), "using wrong algorithm to create digest"
+                    yield b32decode(digest_b32).hex(), matched_fingerprints
+
+
+def fingerprint_hunter_worker(
+    archive_queue: multiprocessing.JoinableQueue,
+    sqlite_path: pathlib.Path,
+    datadir: pathlib.Path,
+):
+    db_conn = sqlite3.connect(sqlite_path)
+    fingerprintdb = FingerprintDB(datadir=datadir)
+
+    while True:
+        archive_path = archive_queue.get(block=True)
+        if archive_path == None:
+            archive_queue.task_done()
+            break
+        for response_body_sha1, matched_fingerprints in fingerprint_hunter(
+            fingerprintdb=fingerprintdb, archive_path=archive_path
+        ):
+            response_fingerprints = []
+            is_fingerprint_false_positive = 0
+            for fp in matched_fingerprints:
+                if fp.scope == "fp":
+                    is_fingerprint_false_positive = 1
+                response_fingerprints.append(fp.name)
+
+            db_conn.execute(
+                """
+            UPDATE oonibodies_archive
+            SET response_fingerprints = :response_fingerprints,
+            is_fingerprint_false_positive = :is_fingerprint_false_positive
+            WHERE response_body_sha1 = :response_body_sha1
+            """,
+                dict(
+                    response_body_sha1=response_body_sha1,
+                    response_fingerprints=orjson.dumps(response_fingerprints),
+                    is_fingerprint_false_positive=is_fingerprint_false_positive,
+                ),
+            )
+            db_conn.commit()
+
+        archive_queue.task_done()
+
+
+def start_fingerprint_hunter(
+    archives_dir: pathlib.Path,
+    data_dir: pathlib.Path,
+    parallelism: int,
+):
+    archive_queue = multiprocessing.JoinableQueue()
+
+    sqlite_path = archives_dir / "graveyard.sqlite3"
+    pool = multiprocessing.Pool(
+        processes=parallelism,
+        initializer=fingerprint_hunter_worker,
+        initargs=(
+            archive_queue,
+            sqlite_path,
+            data_dir,
+        ),
+    )
+    for archive_path in archives_dir.glob("*.warc.gz"):
+        archive_queue.put(archive_path)
+
+    for _ in range(parallelism):
+        archive_queue.put(None)
+
+    archive_queue.join()
+    pool.close()
+
+    log.info("waiting for the worker processes to finish")
+    pool.join()
 
 
 def process_day(
@@ -365,7 +479,7 @@ def archiver_worker(
 ):
     db = ClickhouseConnection(clickhouse)
 
-    with ResponseArchiver(db, dst_dir=dst_dir) as archiver:
+    with ResponseArchiver(dst_dir=dst_dir) as archiver:
         while True:
             requests = archiver_queue.get(block=True)
             if requests == None:

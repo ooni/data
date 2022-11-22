@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 from pathlib import Path
+import sqlite3
 import traceback
 from typing import List, Optional
 from datetime import date, timedelta, datetime
@@ -15,7 +16,7 @@ from oonidata.dataclient import (
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.db.create_tables import create_queries
 from oonidata.netinfo import NetinfoDB
-from oonidata.processing import start_observation_maker
+from oonidata.processing import start_fingerprint_hunter, start_observation_maker
 
 
 log = logging.getLogger("oonidata")
@@ -184,6 +185,10 @@ def mkobs(
         for query, table_name in create_queries:
             if drop_tables:
                 db.execute(f"DROP TABLE IF EXISTS {table_name};")
+                if archives_dir:
+                    conn = sqlite3.connect(archives_dir / "graveyard.sqlite3")
+                    conn.execute("DROP TABLE IF EXISTS oonibodies_archive")
+                    conn.commit()
             db.execute(query)
 
     NetinfoDB(datadir=data_dir, download=True)
@@ -200,6 +205,29 @@ def mkobs(
         parallelism=parallelism,
         start_at_idx=start_at_idx,
         fast_fail=fast_fail,
+    )
+
+
+@cli.command()
+@click.option(
+    "--data-dir",
+    type=Path,
+    required=True,
+    help="data directory to store fingerprint and geoip databases",
+)
+@click.option("--archives-dir", type=Path, required=True)
+@click.option(
+    "--parallelism",
+    type=int,
+    default=multiprocessing.cpu_count() + 2,
+    help="number of processes to use",
+)
+def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
+    click.echo("🏹 starting the hunt for blockpage fingerprints!")
+    start_fingerprint_hunter(
+        archives_dir=archives_dir,
+        data_dir=data_dir,
+        parallelism=parallelism,
     )
 
 

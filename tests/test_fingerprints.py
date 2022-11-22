@@ -1,6 +1,3 @@
-import orjson
-from oonidata.apiclient import get_raw_measurement
-
 from oonidata.dataformat import WebConnectivity, load_measurement
 
 
@@ -25,8 +22,12 @@ def test_fingerprintdb(fingerprintdb, measurements):
         ]
     )
     assert isinstance(http_blocked, WebConnectivity)
-    assert http_blocked.test_keys.requests is not None
+    assert http_blocked.test_keys.requests
+    assert http_blocked.test_keys.requests[0].response
 
-    matches = fingerprintdb.match_http(http_blocked.test_keys.requests[0].response)
+    matches = fingerprintdb.match_http(
+        response_body=http_blocked.test_keys.requests[0].response.body_bytes,
+        headers=http_blocked.test_keys.requests[0].response.headers_list_str,
+    )
     assert len(matches) > 0
     assert any(["RU" in fp.expected_countries for fp in matches])
