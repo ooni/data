@@ -32,7 +32,6 @@ mypy = ">=0.961"
 pytest-benchmark = "^4.0.0"
 pytest-profiling = "^1.7.0"
 memray = "^1.4.1"
-pytest-memray = "^1.3.1"
 
 [tool.poetry.scripts]
 oonidata = 'oonidata.cli:cli'
