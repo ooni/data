@@ -28,6 +28,7 @@ class ClickhouseConnection(DatabaseConnection):
         from clickhouse_driver import Client
 
         self.client = Client.from_url(conn_url)
+        self._row_buffer = []
 
     def execute(self, *args, **kwargs):
         # log.debug(f"execute {args} {kwargs}")

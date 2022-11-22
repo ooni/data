@@ -198,6 +198,7 @@ def process_day(
             )
             pbar.update(p.current_file_entry_bytes)
 
+        row_buffer = []
         for idx, msmt_dict in enumerate(
             iter_measurements(
                 probe_cc=probe_cc,
@@ -212,11 +213,14 @@ def process_day(
                 continue
             try:
                 msmt = load_measurement(msmt_dict)
-                write_observations_to_db(
-                    db=db,
-                    bucket_date=bucket_date,
-                    observations=make_observations(msmt, netinfodb=netinfodb),
-                )
+                row_buffer += make_observations(msmt, netinfodb=netinfodb)
+                if len(row_buffer) > 10_000:
+                    write_observations_to_db(
+                        db=db,
+                        bucket_date=bucket_date,
+                        observations=row_buffer,
+                    )
+                    row_buffer = []
                 yield msmt
             except Exception as exc:
                 # This is a bit sketchy, we ought to eventually move it to some
@@ -232,7 +236,17 @@ def process_day(
                 ) as out_file:
                     out_file.write(traceback.format_exc())
                     out_file.write("ENDTB----\n")
+                write_observations_to_db(
+                    db=db,
+                    bucket_date=bucket_date,
+                    observations=row_buffer,
+                )
                 if fast_fail:
                     raise exc
 
+    write_observations_to_db(
+        db=db,
+        bucket_date=bucket_date,
+        observations=row_buffer,
+    )
     return time.monotonic() - t0, day
