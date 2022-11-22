@@ -396,7 +396,7 @@ def process_day(
                 progress_callback=progress_callback,
             )
         ):
-            pbar.set_description(f"idx {idx}")
+            pbar.set_description(f"idx {idx} ({day})")
             if idx < start_at_idx:
                 continue
 
@@ -542,7 +542,10 @@ def start_observation_maker(
     for _ in range(parallelism):
         day_queue.put(None)
 
+    log.info("waiting for the day queue to finish")
     day_queue.join()
+
+    log.info("waiting for the pool to close")
     pool.close()
 
     log.info("waiting for the worker processes to finish")
