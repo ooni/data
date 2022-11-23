@@ -467,7 +467,7 @@ class ObservationMakerWorker(mp.Process):
         self.archive_ts = int(time.time())
         self.current_archive_file_idx = 0
         self.archive_fh = None
-        self.body_buffer_size = 500_000_000
+        self.body_buffer_size = 100_000_000
 
         self.status_queue = status_queue
 
@@ -478,7 +478,7 @@ class ObservationMakerWorker(mp.Process):
         if self.archives_dir:
             return (
                 self.archives_dir
-                / f"bodydump-{self.process_id}-{self.archive_ts}-{self.current_archive_file_idx}.msgpack"
+                / f"bodydump-{self.process_id}-{self.archive_ts}-{self.current_archive_file_idx}.msgpack.gz"
             )
 
     def run(self):
@@ -487,7 +487,7 @@ class ObservationMakerWorker(mp.Process):
                 return
 
             if not self.archive_fh:
-                self.archive_fh = self.archive_path.open("wb")
+                self.archive_fh = gzip.open(self.archive_path, "wb")
 
             self.archive_fh.write(msgpack.packb(request_tuple, use_bin_type=True))  # type: ignore
             if self.archive_fh.tell() > self.body_buffer_size:
@@ -586,7 +586,7 @@ def run_archiver_thread(
             continue
 
         try:
-            with archive_path.open("rb") as in_file:
+            with gzip.open(archive_path, "rb") as in_file:
                 requests_unpacker = msgpack.Unpacker(in_file, raw=False)
                 for (
                     status_code,
