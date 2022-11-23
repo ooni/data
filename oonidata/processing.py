@@ -498,6 +498,12 @@ class ObservationMakerWorker(mp.Process):
                     ):
                         if self.requests_queue:
                             self.requests_queue.put(msmt.test_keys.requests)
+                            self.status_queue.put(
+                                StatusMessage(
+                                    src="observation_maker",
+                                    archive_queue_size=self.requests_queue.qsize(),
+                                )
+                            )
                     current_idx = idx
                     day_str = day.strftime("%Y-%m-%d")
             except Exception as exc:
@@ -535,13 +541,13 @@ def run_body_writer_thread(
     body_buffer_size: int = 1_000,
 ):
     log.setLevel(log_level)
-    ts = time.time()
+    ts = int(time.time())
     current_idx = 0
     requests_buffer = []
     log.info("starting body writer")
 
     def flush_requests_buffer():
-        archive_path = archives_dir / f"body_dump-{ts}-{current_idx}.pickle"
+        archive_path = archives_dir / f"bodydump-{ts}-{current_idx}.pickle"
         with archive_path.open("wb") as out_file:
             # TODO: maybe we can use a better serialization engine
             pickle.dump(requests_buffer, out_file)
