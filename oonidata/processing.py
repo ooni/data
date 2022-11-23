@@ -550,6 +550,7 @@ class ArchiverProcess(mp.Process):
                 continue
             except Exception:
                 log.error("error in getting data from the archive queue", exc_info=True)
+                continue
 
             self.status_queue.put(
                 StatusMessage(
