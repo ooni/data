@@ -429,7 +429,7 @@ class ObservationMakerWorker(mp.Process):
         self,
         status_queue: mp.JoinableQueue,
         day_queue: mp.JoinableQueue,
-        archives_dir: Optional[pathlib.Path],
+        requests_queue: Optional[mp.JoinableQueue],
         shutdown_event: EventClass,
         data_dir: pathlib.Path,
         probe_cc: List[str],
@@ -439,12 +439,12 @@ class ObservationMakerWorker(mp.Process):
         start_at_idx: int,
         fast_fail: bool,
         log_level: int = logging.INFO,
-        machine_id: str = "unsetid",
     ):
         super().__init__(daemon=True)
         assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
         self.day_queue = day_queue
+        self.requests_queue = requests_queue
         self.data_dir = data_dir
         self.probe_cc = probe_cc
         self.test_name = test_name
@@ -452,8 +452,6 @@ class ObservationMakerWorker(mp.Process):
         self.csv_dir = csv_dir
         self.start_at_idx = start_at_idx
         self.fast_fail = fast_fail
-        self.archives_dir = archives_dir
-        self.machine_id = machine_id
 
         self.shutdown_event = shutdown_event
 
@@ -468,12 +466,6 @@ class ObservationMakerWorker(mp.Process):
         assert self.clickhouse or self.csv_dir, "missing either clickhouse or csv_dir"
 
         netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
-
-        response_archiver = None
-        if self.archives_dir:
-            response_archiver = ResponseArchiver(
-                dst_dir=self.archives_dir, machine_id=self.machine_id
-            )
 
         db = None
         if self.clickhouse:
@@ -513,13 +505,20 @@ class ObservationMakerWorker(mp.Process):
                     fast_fail=self.fast_fail,
                     progress_callback=progress_callback,
                 ):
-                    if response_archiver:
-                        response_archiver.archive_http_transaction(
-                            status_code=status_code,
-                            request_url=request_url,
-                            response_headers=response_headers or [],
-                            response_body=response_body,
+                    if self.requests_queue:
+                        self.requests_queue.put(
+                            (status_code, request_url, response_headers, response_body)
                         )
+                        try:
+                            self.status_queue.put(
+                                StatusMessage(
+                                    src="observation_maker",
+                                    archive_queue_size=self.requests_queue.qsize(),
+                                )
+                            )
+                        except NotImplementedError:
+                            # on macOS qsize() is not implemented
+                            pass
                     current_idx += 1
                     day_str = day.strftime("%Y-%m-%d")
             except Exception as exc:
@@ -536,12 +535,6 @@ class ObservationMakerWorker(mp.Process):
 
         log.info("process is done")
         try:
-            if response_archiver:
-                response_archiver.close()
-        except Exception as exc:
-            log.error("failed to close archiver", exc_info=True)
-
-        try:
             db.close()
         except Exception as exc:
             log.error("failed to flush database", exc_info=True)
@@ -552,6 +545,95 @@ class ObservationMakerWorker(mp.Process):
                     traceback=traceback.format_exc(),
                 )
             )
+
+
+def run_body_writer(
+    requests_queue: mp.JoinableQueue,
+    archiver_queue: mp.JoinableQueue,
+    archives_dir: pathlib.Path,
+    shutdown_event: EventClass,
+    log_level: int,
+    id: int = 0,
+    body_buffer_size: int = 500_000_000,
+):
+    log.setLevel(log_level)
+    ts = int(time.time())
+    current_file_idx = 0
+    log.info("starting body writer")
+
+    def get_archive_path():
+        return archives_dir / f"bodydump-{id}-{ts}-{current_file_idx}.msgpack.gz"
+
+    out_file = None
+
+    while not shutdown_event.is_set():
+        try:
+            request_tuple = requests_queue.get(block=True, timeout=0.1)
+        except queue.Empty:
+            continue
+
+        if not out_file:
+            out_file = gzip.open(get_archive_path(), "wb")
+
+        out_file.write(msgpack.packb(request_tuple, use_bin_type=True))  # type: ignore
+        if out_file.tell() > body_buffer_size:
+            out_file.close()
+            archiver_queue.put(get_archive_path())
+            current_file_idx += 1
+            out_file = None
+
+        requests_queue.task_done()
+
+
+def run_archiver_thread(
+    status_queue: mp.JoinableQueue,
+    archiver_queue: mp.JoinableQueue,
+    archives_dir: pathlib.Path,
+    shutdown_event: EventClass,
+    log_level: int,
+):
+    log.setLevel(log_level)
+    log.info("starting archiver")
+    response_archiver = ResponseArchiver(dst_dir=archives_dir)
+    while not shutdown_event.is_set():
+        try:
+            archive_path = archiver_queue.get(block=True, timeout=0.1)
+        except queue.Empty:
+            continue
+
+        try:
+            with gzip.open(archive_path, "rb") as in_file:
+                requests_unpacker = msgpack.Unpacker(in_file, raw=False)
+                for (
+                    status_code,
+                    request_url,
+                    response_headers,
+                    response_body,
+                ) in requests_unpacker:
+                    response_archiver.archive_http_transaction(
+                        status_code=status_code,
+                        request_url=request_url,
+                        response_headers=response_headers,
+                        response_body=response_body,
+                    )
+                archive_path.unlink()
+        except Exception as exc:
+            log.error(f"failed to process requests", exc_info=True)
+            status_queue.put(
+                StatusMessage(
+                    src="archiver", exception=exc, traceback=traceback.format_exc()
+                )
+            )
+        archiver_queue.task_done()
+    try:
+        response_archiver.close()
+    except Exception as exc:
+        log.error(f"failed to close archiver", exc_info=True)
+        status_queue.put(
+            StatusMessage(
+                src="archiver", exception=exc, traceback=traceback.format_exc()
+            )
+        )
 
 
 class StatusMessage(NamedTuple):
@@ -641,6 +723,9 @@ def start_observation_maker(
     log_level: int = logging.INFO,
 ):
     shutdown_event = mp.Event()
+    # We need to separately tell the body writer to shutdown so that it can
+    # flush all it's bodies to files
+    body_writer_shutdown_event = mp.Event()
 
     status_queue = mp.JoinableQueue()
 
@@ -649,13 +734,61 @@ def start_observation_maker(
     )
     status_thread.start()
 
+    archiver_thread = None
+    archiver_queue = None
+    requests_queue = None
+    body_writer_process_1 = None
+    body_writer_process_2 = None
+    if archives_dir:
+        archiver_queue = mp.JoinableQueue()
+        requests_queue = mp.JoinableQueue()
+        body_writer_process_1 = mp.Process(
+            target=run_body_writer,
+            args=(
+                requests_queue,
+                archiver_queue,
+                archives_dir,
+                body_writer_shutdown_event,
+                log_level,
+                1,
+            ),
+        )
+        body_writer_process_1.start()
+        log.info(f"started body_writer {body_writer_process_1.pid}")
+
+        body_writer_process_2 = mp.Process(
+            target=run_body_writer,
+            args=(
+                requests_queue,
+                archiver_queue,
+                archives_dir,
+                body_writer_shutdown_event,
+                log_level,
+                2,
+            ),
+        )
+        body_writer_process_2.start()
+        log.info(f"started body_writer {body_writer_process_2.pid}")
+
+        archiver_thread = Thread(
+            target=run_archiver_thread,
+            args=(
+                status_queue,
+                archiver_queue,
+                archives_dir,
+                shutdown_event,
+                log_level,
+            ),
+        )
+        archiver_thread.start()
+
     observation_workers = []
     day_queue = mp.JoinableQueue()
-    for idx in range(parallelism):
+    for _ in range(parallelism):
         worker = ObservationMakerWorker(
             status_queue=status_queue,
             day_queue=day_queue,
-            archives_dir=archives_dir,
+            requests_queue=requests_queue,
             shutdown_event=shutdown_event,
             data_dir=data_dir,
             probe_cc=probe_cc,
@@ -665,7 +798,6 @@ def start_observation_maker(
             start_at_idx=start_at_idx,
             fast_fail=fast_fail,
             log_level=log_level,
-            machine_id=f"oonidata{idx}",
         )
         worker.start()
         log.info(f"started worker {worker.pid}")
@@ -677,11 +809,36 @@ def start_observation_maker(
     log.info("waiting for the day queue to finish")
     day_queue.join()
 
+    if (
+        archiver_queue
+        and requests_queue
+        and body_writer_process_1
+        and body_writer_process_2
+    ):
+        assert archiver_queue, "archiver_queue is unset"
+        log.info("waiting for requests body processing to finish")
+        requests_queue.join()
+
+        log.info("telling the body writer to stop")
+        # This will trigger a flush of the body queue, preparing for the
+        # archiver to start consuming it
+        body_writer_shutdown_event.set()
+        body_writer_process_1.join()
+        body_writer_process_1.close()
+
+        body_writer_process_2.join()
+        body_writer_process_2.close()
+
+        log.info("waiting for archiving to finish")
+        archiver_queue.join()
     status_queue.join()
 
     # We are done, we can now tell everybody to go home
     log.info("sending shutdown event")
     shutdown_event.set()
+
+    if archiver_thread:
+        archiver_thread.join()
 
     # Shutdown the status thread
     log.info("shutting down the status thread")
