@@ -1,26 +1,28 @@
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 import hashlib
 import io
-import multiprocessing
+import multiprocessing as mp
 import pathlib
 import time
 import logging
-import traceback
 from base64 import b32decode
 import http.client
+import traceback
 import orjson
 import sqlite3
 
-from threading import Lock
+from threading import Lock, Thread
 
 from datetime import date, datetime, timedelta
 import dataclasses
 
 from typing import (
     Any,
+    Callable,
     Dict,
     Generator,
     List,
+    NamedTuple,
     Optional,
     Tuple,
     Union,
@@ -282,7 +284,7 @@ def fingerprint_hunter(
 
 
 def fingerprint_hunter_worker(
-    archive_queue: multiprocessing.JoinableQueue,
+    archive_queue: mp.JoinableQueue,
     sqlite_path: pathlib.Path,
     datadir: pathlib.Path,
     log_level: int,
@@ -331,10 +333,10 @@ def start_fingerprint_hunter(
     parallelism: int,
     log_level: int = logging.INFO,
 ):
-    archive_queue = multiprocessing.JoinableQueue()
+    archive_queue = mp.JoinableQueue()
 
     sqlite_path = archives_dir / "graveyard.sqlite3"
-    pool = multiprocessing.Pool(
+    pool = mp.Pool(
         processes=parallelism,
         initializer=fingerprint_hunter_worker,
         initargs=(archive_queue, sqlite_path, data_dir, log_level),
@@ -360,145 +362,265 @@ def process_day(
     probe_cc=[],
     start_at_idx=0,
     fast_fail=False,
+    progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
 ):
     t0 = time.monotonic()
     bucket_date = day.strftime("%Y-%m-%d")
     row_writer = BufferredRowWriter(db=db, buffer_size=10_000)
 
-    with tqdm(unit="B", unit_scale=True) as pbar:
+    for idx, msmt_dict in enumerate(
+        iter_measurements(
+            probe_cc=probe_cc,
+            test_name=test_name,
+            start_day=day,
+            end_day=day + timedelta(days=1),
+            progress_callback=progress_callback,
+        )
+    ):
+        # TODO: in multithreading environment this doesn't really make a lot of
+        # sense. It's still useful for debugging to slice a specific date and
+        # reprocess it.
+        if idx <= start_at_idx:
+            yield None
+            continue
 
-        def progress_callback(p: MeasurementListProgress):
-            if p.progress_status == ProgressStatus.LISTING:
-                if not pbar.total:
-                    pbar.total = p.total_prefixes
-                pbar.update(1)
-                pbar.set_description(
-                    f"listed {p.total_file_entries} files in {p.current_prefix_idx}/{p.total_prefixes} prefixes"
-                )
-                return
-
-            if p.progress_status == ProgressStatus.DOWNLOAD_BEGIN:
-                pbar.unit = "B"
-                pbar.reset(total=p.total_file_entry_bytes)
-
-            pbar.set_description(
-                f"downloading {p.current_file_entry_idx}/{p.total_file_entries} files"
+        msmt = None
+        try:
+            msmt = load_measurement(msmt_dict)
+            table_name, rows = make_db_rows(
+                bucket_date=bucket_date,
+                observations=make_observations(msmt, netinfodb=netinfodb),
             )
-            pbar.update(p.current_file_entry_bytes)
+            row_writer.write_rows(table_name=table_name, rows=rows)
+            yield msmt
+        except Exception as exc:
+            msmt_str = ""
+            if msmt:
+                msmt_str = msmt.report_id
+                if msmt.input:
+                    msmt_str += f"?input={msmt.input}"
+            log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
 
-        for idx, msmt_dict in enumerate(
-            iter_measurements(
-                probe_cc=probe_cc,
-                test_name=test_name,
-                start_day=day,
-                end_day=day + timedelta(days=1),
-                progress_callback=progress_callback,
-            )
-        ):
-            pbar.set_description(f"idx {idx} ({day})")
-            if idx < start_at_idx:
-                continue
-
-            msmt = None
-            try:
-                msmt = load_measurement(msmt_dict)
-                table_name, rows = make_db_rows(
-                    bucket_date=bucket_date,
-                    observations=make_observations(msmt, netinfodb=netinfodb),
-                )
-                row_writer.write_rows(table_name=table_name, rows=rows)
-                yield msmt
-            except Exception as exc:
-                msmt_str = ""
-                if msmt:
-                    msmt_str = msmt.report_id
-                    if msmt.input:
-                        msmt_str += f"?input={msmt.input}"
-                log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
-
-                if fast_fail:
-                    row_writer.flush_all()
-                    raise exc
+            if fast_fail:
+                row_writer.flush_all()
+                raise exc
 
     row_writer.flush_all()
 
     return time.monotonic() - t0, day
 
 
-def processing_worker(
-    day_queue: multiprocessing.JoinableQueue,
-    archiver_queue: Optional[multiprocessing.JoinableQueue],
-    data_dir: pathlib.Path,
-    probe_cc: List[str],
-    test_name: List[str],
-    clickhouse: Optional[str],
-    csv_dir: Optional[str],
-    start_at_idx: int,
-    fast_fail: bool,
-    log_level: int = logging.INFO,
-):
-    log.setLevel(log_level)
-    netinfodb = NetinfoDB(datadir=data_dir, download=False)
+class ObservationMakerWorker(mp.Process):
+    def __init__(
+        self,
+        status_queue: mp.Queue,
+        day_queue: mp.JoinableQueue,
+        archiver_queue: Optional[mp.JoinableQueue],
+        data_dir: pathlib.Path,
+        probe_cc: List[str],
+        test_name: List[str],
+        clickhouse: Optional[str],
+        csv_dir: Optional[pathlib.Path],
+        start_at_idx: int,
+        fast_fail: bool,
+        log_level: int = logging.INFO,
+    ):
+        super().__init__()
+        assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
-    if clickhouse:
-        db = ClickhouseConnection(clickhouse)
-    elif csv_dir:
-        db = CSVConnection(csv_dir)
-    else:
-        raise Exception("Missing --csv-dir or --clickhouse")
+        self.day_queue = day_queue
+        self.archiver_queue = archiver_queue
+        self.data_dir = data_dir
+        self.probe_cc = probe_cc
+        self.test_name = test_name
+        self.clickhouse = clickhouse
+        self.csv_dir = csv_dir
+        self.start_at_idx = start_at_idx
+        self.fast_fail = fast_fail
 
-    while True:
-        day = day_queue.get(block=True)
-        if day == None:
-            day_queue.task_done()
-            break
-        try:
-            for msmt in process_day(
-                db=db,
-                netinfodb=netinfodb,
-                day=day,
-                test_name=test_name,
-                probe_cc=probe_cc,
-                start_at_idx=start_at_idx,
-                fast_fail=fast_fail,
-            ):
-                if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
-                    if archiver_queue:
-                        archiver_queue.put(msmt.test_keys.requests)
-        except Exception:
-            log.error(f"failed to process {day}", exc_info=True)
+        self.status_queue = status_queue
 
-        day_queue.task_done()
+        log.setLevel(log_level)
 
-    try:
-        db.close()
-    except Exception:
-        log.error("failed to flush database", exc_info=True)
+    def run(self):
+        assert self.clickhouse or self.csv_dir, "missing either clickhouse or csv_dir"
 
+        netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
 
-def archiver_worker(
-    archiver_queue: multiprocessing.Queue,
-    dst_dir: pathlib.Path,
-    log_level: int,
-):
-    log.setLevel(log_level)
-    try:
-        with ResponseArchiver(dst_dir=dst_dir) as archiver:
-            while True:
-                requests = archiver_queue.get(block=True)
-                if requests == None:
-                    archiver_queue.task_done()
-                    break
-                try:
-                    for http_transaction in requests:
-                        archiver.archive_http_transaction(
-                            http_transaction=http_transaction
+        db = None
+        if self.clickhouse:
+            db = ClickhouseConnection(self.clickhouse)
+        elif self.csv_dir:
+            db = CSVConnection(self.csv_dir)
+        assert db
+
+        def progress_callback(p: MeasurementListProgress):
+            self.status_queue.put(StatusMessage(src="observation_maker", progress=p))
+
+        while True:
+            day = self.day_queue.get(block=True)
+            if day == None:
+                self.day_queue.task_done()
+                break
+
+            try:
+                for idx, msmt in enumerate(
+                    process_day(
+                        db=db,
+                        netinfodb=netinfodb,
+                        day=day,
+                        test_name=self.test_name,
+                        probe_cc=self.probe_cc,
+                        start_at_idx=self.start_at_idx,
+                        fast_fail=self.fast_fail,
+                        progress_callback=progress_callback,
+                    )
+                ):
+                    if (
+                        msmt
+                        and isinstance(msmt, WebConnectivity)
+                        and msmt.test_keys.requests
+                    ):
+                        if self.archiver_queue:
+                            self.archiver_queue.put(msmt.test_keys.requests)
+                    self.status_queue.put(
+                        StatusMessage(
+                            src="observation_maker",
+                            idx=idx,
+                            day_str=day.strftime("%Y-%m-%d"),
                         )
-                except Exception:
-                    log.error(f"failed to process {requests}", exc_info=True)
-                archiver_queue.task_done()
-    except:
-        log.error("failed in response archiver", exc_info=True)
+                    )
+            except Exception as exc:
+                log.error(f"failed to process {day}", exc_info=True)
+                self.status_queue.put(
+                    StatusMessage(
+                        src="observation_maker",
+                        exception=exc,
+                        traceback=traceback.format_exc(),
+                    )
+                )
+
+            self.day_queue.task_done()
+
+        try:
+            db.close()
+        except Exception as exc:
+            log.error("failed to flush database", exc_info=True)
+            self.status_queue.put(
+                StatusMessage(
+                    src="observation_maker",
+                    exception=exc,
+                    traceback=traceback.format_exc(),
+                )
+            )
+
+
+class ArchiverProcess(mp.Process):
+    def __init__(
+        self,
+        status_queue: mp.Queue,
+        archiver_queue: mp.JoinableQueue,
+        archives_dir: pathlib.Path,
+        log_level: int,
+    ):
+        super().__init__()
+        self.archives_dir = archives_dir
+        self.archiver_queue = archiver_queue
+        self.status_queue = status_queue
+        log.setLevel(log_level)
+
+    def run(self):
+        response_archiver = ResponseArchiver(dst_dir=self.archives_dir)
+        while True:
+            requests = self.archiver_queue.get(block=True)
+            if requests == None:
+                self.archiver_queue.task_done()
+                break
+            try:
+                for http_transaction in requests:
+                    response_archiver.archive_http_transaction(
+                        http_transaction=http_transaction
+                    )
+            except Exception as exc:
+                log.error(f"failed to process {requests}", exc_info=True)
+                self.status_queue.put(
+                    StatusMessage(
+                        src="archiver", exception=exc, traceback=traceback.format_exc()
+                    )
+                )
+            self.archiver_queue.task_done()
+        try:
+            response_archiver.close()
+        except Exception as exc:
+            log.error(f"failed to close archiver", exc_info=True)
+            self.status_queue.put(
+                StatusMessage(
+                    src="archiver", exception=exc, traceback=traceback.format_exc()
+                )
+            )
+
+
+class StatusMessage(NamedTuple):
+    src: str
+    exception: Optional[Exception] = None
+    traceback: Optional[str] = None
+    progress: Optional[MeasurementListProgress] = None
+    idx: Optional[int] = None
+    day_str: Optional[str] = None
+
+
+def _process_status(status_queue: mp.Queue):
+    total_prefixes = 0
+    current_prefix_idx = 0
+
+    total_file_entries = 0
+    current_file_entry_idx = 0
+    download_desc = ""
+    last_idx_desc = ""
+
+    pbar_listing = tqdm(position=0)
+    pbar_download = tqdm(unit="B", unit_scale=True, position=1)
+
+    log.info("starting error handling thread")
+    while True:
+        res = status_queue.get(block=True)
+        if res == None:
+            break
+        if res.exception:
+            log.error(f"got an error from {res.src}: {res.exception} {res.traceback}")
+
+        if res.progress:
+            p = res.progress
+            if p.progress_status == ProgressStatus.LISTING_BEGIN:
+                total_prefixes += p.total_prefixes
+                pbar_listing.total = total_prefixes
+
+                pbar_listing.set_description("starting listing")
+
+            if p.progress_status == ProgressStatus.LISTING:
+                current_prefix_idx += 1
+                pbar_listing.update(1)
+                pbar_listing.set_description(
+                    f"listed {current_prefix_idx}/{total_prefixes} prefixes"
+                )
+
+            if p.progress_status == ProgressStatus.DOWNLOAD_BEGIN:
+                if not pbar_download.total:
+                    pbar_download.total = 0
+                total_file_entries += p.total_file_entries
+                pbar_download.total += p.total_file_entry_bytes
+
+            if p.progress_status == ProgressStatus.DOWNLOADING:
+                current_file_entry_idx += 1
+                download_desc = (
+                    f"downloading {current_file_entry_idx}/{total_file_entries} files"
+                )
+                pbar_download.update(p.current_file_entry_bytes)
+
+        if res.idx:
+            last_idx_desc = f" idx: {res.idx} ({res.day_str})"
+
+        pbar_download.set_description(download_desc + last_idx_desc)
 
 
 def start_observation_maker(
@@ -515,34 +637,43 @@ def start_observation_maker(
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
-    day_queue = multiprocessing.JoinableQueue()
 
-    archiver_queue = None
+    status_queue = mp.Queue()
+
+    status_thread = Thread(target=_process_status, args=(status_queue,))
+    status_thread.start()
+
     archiver_process = None
+    archiver_queue = None
     if archives_dir:
-        archiver_queue = multiprocessing.JoinableQueue()
-        archiver_process = multiprocessing.Process(
-            target=archiver_worker,
-            args=(archiver_queue, archives_dir, log_level),
+        archiver_queue = mp.JoinableQueue()
+        archiver_process = ArchiverProcess(
+            status_queue=status_queue,
+            archiver_queue=archiver_queue,
+            archives_dir=archives_dir,
+            log_level=log_level,
         )
         archiver_process.start()
 
-    pool = multiprocessing.Pool(
-        processes=parallelism,
-        initializer=processing_worker,
-        initargs=(
-            day_queue,
-            archiver_queue,
-            data_dir,
-            probe_cc,
-            test_name,
-            clickhouse,
-            csv_dir,
-            start_at_idx,
-            fast_fail,
-            log_level,
-        ),
-    )
+    observation_workers = []
+    day_queue = mp.JoinableQueue()
+    for _ in range(parallelism):
+        worker = ObservationMakerWorker(
+            status_queue=status_queue,
+            day_queue=day_queue,
+            archiver_queue=archiver_queue,
+            data_dir=data_dir,
+            probe_cc=probe_cc,
+            test_name=test_name,
+            clickhouse=clickhouse,
+            csv_dir=csv_dir,
+            start_at_idx=start_at_idx,
+            fast_fail=fast_fail,
+            log_level=log_level,
+        )
+        worker.start()
+        observation_workers.append(worker)
+
     for day in date_interval(start_day, end_day):
         day_queue.put(day)
 
@@ -552,16 +683,26 @@ def start_observation_maker(
     log.debug("waiting for the day queue to finish")
     day_queue.join()
 
-    log.debug("waiting for the pool to close")
-    pool.close()
+    log.info(f"waiting for workers to finish running")
+    for idx, p in enumerate(observation_workers):
+        log.debug(f"waiting observation_maker {idx} to stop")
+        p.join()
+        p.close()
 
-    log.info("waiting for the worker processes to finish")
-    pool.join()
-
-    log.info("shutting down the archiving process")
-    if archiver_process and archiver_queue:
-        # Singal the archiver we have put everything in it
+    if archiver_process:
+        assert archiver_queue, "archiver_queue is unset"
+        log.info("shutting down the archiving process")
+        # Signal the archiver we have put everything in it
         archiver_queue.put(None)
         archiver_queue.join()
+        log.debug("all the work is not, waiting for clean shutdown")
         archiver_process.join()
+
+    # Shutdown the status thread
+    log.debug("shutting down the status thread")
+    status_queue.put(None)
+    status_thread.join()
+
+    if archiver_process:
+        log.debug("archive_process.close()")
         archiver_process.close()
