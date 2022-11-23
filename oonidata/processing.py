@@ -448,6 +448,9 @@ class ObservationMakerWorker(mp.Process):
         log.setLevel(log_level)
 
     def run(self):
+        current_idx = 0
+        day_str = ""
+
         assert self.clickhouse or self.csv_dir, "missing either clickhouse or csv_dir"
 
         netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
@@ -460,7 +463,14 @@ class ObservationMakerWorker(mp.Process):
         assert db
 
         def progress_callback(p: MeasurementListProgress):
-            self.status_queue.put(StatusMessage(src="observation_maker", progress=p))
+            self.status_queue.put(
+                StatusMessage(
+                    src="observation_maker",
+                    progress=p,
+                    idx=current_idx,
+                    day_str=day_str,
+                )
+            )
 
         while not self.shutdown_event.is_set():
             try:
@@ -487,13 +497,8 @@ class ObservationMakerWorker(mp.Process):
                     ):
                         if self.archiver_queue:
                             self.archiver_queue.put(msmt.test_keys.requests)
-                    self.status_queue.put(
-                        StatusMessage(
-                            src="observation_maker",
-                            idx=idx,
-                            day_str=day.strftime("%Y-%m-%d"),
-                        )
-                    )
+                    current_idx = idx
+                    day_str = day.strftime("%Y-%m-%d")
             except Exception as exc:
                 log.error(f"failed to process {day}", exc_info=True)
                 self.status_queue.put(
@@ -698,6 +703,7 @@ def start_observation_maker(
     status_queue.join()
 
     # We are done, we can now tell everybody to go home
+    log.info("sending shutdown event")
     shutdown_event.set()
 
     # Shutdown the status thread
