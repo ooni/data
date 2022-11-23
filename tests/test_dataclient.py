@@ -74,7 +74,10 @@ def test_get_file_entries_for_cc():
 
     def progress_callback(p):
         assert p.total_prefixes == 10
-        assert p.progress_status == ProgressStatus.LISTING
+        assert (
+            p.progress_status == ProgressStatus.LISTING_BEGIN
+            or p.progress_status == ProgressStatus.LISTING
+        )
 
     fe_list = get_file_entries(
         probe_cc="IT",
