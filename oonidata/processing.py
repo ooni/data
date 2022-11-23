@@ -1,3 +1,4 @@
+import gzip
 import io
 import queue
 import time
@@ -552,7 +553,6 @@ def run_body_writer(
     archives_dir: pathlib.Path,
     shutdown_event: EventClass,
     log_level: int,
-    dump_id: int = 0,
     body_buffer_size: int = 50_000_000,
 ):
     log.setLevel(log_level)
@@ -560,7 +560,7 @@ def run_body_writer(
     current_file_idx = 0
     log.info("starting body writer")
 
-    archive_path = archives_dir / f"bodydump-{dump_id}-{ts}-{current_file_idx}.msgpack"
+    archive_path = archives_dir / f"bodydump-{ts}-{current_file_idx}.msgpack.gz"
     out_file = None
 
     while not shutdown_event.is_set():
@@ -570,14 +570,14 @@ def run_body_writer(
             continue
 
         if not out_file:
-            out_file = archive_path.open("wb")
+            out_file = gzip.open(archive_path, "wb")
 
         out_file.write(msgpack.packb(request_tuple, use_bin_type=True))  # type: ignore
         if out_file.tell() > body_buffer_size:
             out_file.close()
             archiver_queue.put(archive_path)
             current_file_idx += 1
-            archive_path = archives_dir / f"bodydump-{ts}-{current_file_idx}.msgpack"
+            archive_path = archives_dir / f"bodydump-{ts}-{current_file_idx}.msgpack.gz"
             out_file = None
 
         requests_queue.task_done()
@@ -600,7 +600,7 @@ def run_archiver_thread(
             continue
 
         try:
-            with archive_path.open("rb") as in_file:
+            with gzip.open(archive_path, "rb") as in_file:
                 requests_unpacker = msgpack.Unpacker(in_file, raw=False)
                 for (
                     status_code,
