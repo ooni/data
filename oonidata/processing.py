@@ -1,5 +1,4 @@
 import io
-import pickle
 import queue
 import time
 import pathlib
@@ -30,6 +29,7 @@ from typing import (
 )
 
 import orjson
+import msgpack
 from tqdm import tqdm
 from warcio.warcwriter import WARCWriter
 from warcio.archiveiterator import ArchiveIterator
@@ -40,7 +40,6 @@ from oonidata.observations import WebObservation, make_observations
 from oonidata.dataformat import (
     WebConnectivity,
     load_measurement,
-    HTTPTransaction,
 )
 from oonidata.netinfo import NetinfoDB
 
@@ -173,14 +172,19 @@ class ResponseArchiver:
         )
         return res.fetchone() is not None
 
-    def archive_http_transaction(self, http_transaction: HTTPTransaction):
-        response_body_sha1 = None
-        if http_transaction.response and http_transaction.response.body_bytes:
-            response_body_sha1 = hashlib.sha1(
-                http_transaction.response.body_bytes
-            ).hexdigest()
+    def archive_http_transaction(
+        self,
+        status_code: int,
+        request_url: str,
+        response_headers: List[Tuple[str, bytes]],
+        response_body: Optional[bytes],
+    ):
+        if not response_body:
+            return
 
-        if not response_body_sha1 or self.is_already_archived(response_body_sha1):
+        response_body_sha1 = hashlib.sha1(response_body).hexdigest()
+
+        if self.is_already_archived(response_body_sha1):
             # No point in archiving empty bodies
             return
 
@@ -190,25 +194,20 @@ class ResponseArchiver:
             self._warc_writer is not None and self._fh is not None
         ), "you must call open before you can begin archiving"
 
-        if not http_transaction.request or not http_transaction.response:
-            return
-
         self.maybe_open_next_archive()
 
-        status_code = http_transaction.response.code or 0
+        status_code = status_code or 0
         status_str = http.client.responses.get(status_code, "Unknown")
         protocol_v = "HTTP/1.1"
         http_headers = StatusAndHeaders(
             f"{status_code} {status_str}",
-            http_transaction.response.headers_list_bytes or [],
+            response_headers,
             protocol=protocol_v,
         )
-        payload = None
-        if http_transaction.response.body_bytes:
-            payload = io.BytesIO(http_transaction.response.body_bytes)
+        payload = io.BytesIO(response_body)
 
         record = self._warc_writer.create_warc_record(
-            http_transaction.request.url,
+            request_url,
             "response",
             http_headers=http_headers,
             payload=payload,
@@ -366,7 +365,9 @@ def process_day(
     start_at_idx=0,
     fast_fail=False,
     progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
-):
+) -> Generator[
+    Tuple[int, str, Optional[List[Tuple[str, bytes]]], Optional[bytes]], None, None
+]:
     t0 = time.monotonic()
     bucket_date = day.strftime("%Y-%m-%d")
     row_writer = BufferredRowWriter(db=db, buffer_size=10_000)
@@ -384,7 +385,6 @@ def process_day(
         # sense. It's still useful for debugging to slice a specific date and
         # reprocess it.
         if idx <= start_at_idx:
-            yield None
             continue
 
         msmt = None
@@ -395,7 +395,15 @@ def process_day(
                 observations=make_observations(msmt, netinfodb=netinfodb),
             )
             row_writer.write_rows(table_name=table_name, rows=rows)
-            yield msmt
+            if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
+                for http_transaction in msmt.test_keys.requests:
+                    if not http_transaction.response or not http_transaction.request:
+                        continue
+                    request_url = http_transaction.request.url
+                    status_code = http_transaction.response.code or 0
+                    response_headers = http_transaction.response.headers_list_bytes or []
+                    response_body = http_transaction.response.body_bytes
+                    yield status_code, request_url, response_headers, response_body
         except Exception as exc:
             msmt_str = ""
             if msmt:
@@ -410,7 +418,7 @@ def process_day(
 
     row_writer.flush_all()
 
-    return time.monotonic() - t0, day
+    # return time.monotonic() - t0, day
 
 
 class ObservationMakerWorker(mp.Process):
@@ -479,32 +487,36 @@ class ObservationMakerWorker(mp.Process):
             except queue.Empty:
                 continue
             try:
-                for idx, msmt in enumerate(
-                    process_day(
-                        db=db,
-                        netinfodb=netinfodb,
-                        day=day,
-                        test_name=self.test_name,
-                        probe_cc=self.probe_cc,
-                        start_at_idx=self.start_at_idx,
-                        fast_fail=self.fast_fail,
-                        progress_callback=progress_callback,
-                    )
+                for (
+                    status_code,
+                    request_url,
+                    response_headers,
+                    response_body,
+                ) in process_day(
+                    db=db,
+                    netinfodb=netinfodb,
+                    day=day,
+                    test_name=self.test_name,
+                    probe_cc=self.probe_cc,
+                    start_at_idx=self.start_at_idx,
+                    fast_fail=self.fast_fail,
+                    progress_callback=progress_callback,
                 ):
-                    if (
-                        msmt
-                        and isinstance(msmt, WebConnectivity)
-                        and msmt.test_keys.requests
-                    ):
-                        if self.requests_queue:
-                            self.requests_queue.put(msmt.test_keys.requests)
+                    if self.requests_queue:
+                        self.requests_queue.put(
+                            (status_code, request_url, response_headers, response_body)
+                        )
+                        try:
                             self.status_queue.put(
                                 StatusMessage(
                                     src="observation_maker",
                                     archive_queue_size=self.requests_queue.qsize(),
                                 )
                             )
-                    current_idx = idx
+                        except NotImplementedError:
+                            # on macOS qsize() is not implemented
+                            pass
+                    current_idx += 1
                     day_str = day.strftime("%Y-%m-%d")
             except Exception as exc:
                 log.error(f"failed to process {day}", exc_info=True)
@@ -547,10 +559,11 @@ def run_body_writer_thread(
     log.info("starting body writer")
 
     def flush_requests_buffer():
-        archive_path = archives_dir / f"bodydump-{ts}-{current_idx}.pickle"
+        archive_path = archives_dir / f"bodydump-{ts}-{current_idx}.msgpack"
         with archive_path.open("wb") as out_file:
             # TODO: maybe we can use a better serialization engine
-            pickle.dump(requests_buffer, out_file)
+            for req in requests_buffer:
+                out_file.write(msgpack.packb(req, use_bin_type=True))  # type: ignore
         archiver_queue.put(archive_path)
 
     while not shutdown_event.is_set():
@@ -584,15 +597,22 @@ def run_archiver_thread(
         except queue.Empty:
             continue
 
-        with archive_path.open("rb") as in_file:
-            requests = pickle.load(in_file)
         try:
-            for req in requests:
-                for http_transaction in req:
+            with archive_path.open("rb") as in_file:
+                requests_unpacker = msgpack.Unpacker(in_file, raw=False)
+                for (
+                    status_code,
+                    request_url,
+                    response_headers,
+                    response_body,
+                ) in requests_unpacker:
                     response_archiver.archive_http_transaction(
-                        http_transaction=http_transaction
+                        status_code=status_code,
+                        request_url=request_url,
+                        response_headers=response_headers,
+                        response_body=response_body,
                     )
-            archive_path.unlink()
+                archive_path.unlink()
         except Exception as exc:
             log.error(f"failed to process requests", exc_info=True)
             status_queue.put(

@@ -98,7 +98,18 @@ def test_archive_http_transaction(measurements, tmpdir):
     dst_dir = Path(tmpdir)
     with ResponseArchiver(dst_dir=dst_dir) as archiver:
         for http_transaction in msmt.test_keys.requests:
-            archiver.archive_http_transaction(http_transaction=http_transaction)
+            if not http_transaction.response or not http_transaction.request:
+                continue
+            request_url = http_transaction.request.url
+            status_code = http_transaction.response.code or 0
+            response_headers = http_transaction.response.headers_list_bytes or []
+            response_body = http_transaction.response.body_bytes
+            archiver.archive_http_transaction(
+                request_url=request_url,
+                status_code=status_code,
+                response_headers=response_headers,
+                response_body=response_body,
+            )
 
     warc_files = list(dst_dir.glob("*.warc.gz"))
     assert len(warc_files) == 1
@@ -124,8 +135,17 @@ def test_fingerprint_hunter(fingerprintdb, measurements, tmpdir):
     with ResponseArchiver(dst_dir=archives_dir) as response_archiver:
         assert http_blocked.test_keys.requests
         for http_transaction in http_blocked.test_keys.requests:
+            if not http_transaction.response or not http_transaction.request:
+                continue
+            request_url = http_transaction.request.url
+            status_code = http_transaction.response.code or 0
+            response_headers = http_transaction.response.headers_list_bytes or []
+            response_body = http_transaction.response.body_bytes
             response_archiver.archive_http_transaction(
-                http_transaction=http_transaction
+                request_url=request_url,
+                status_code=status_code,
+                response_headers=response_headers,
+                response_body=response_body,
             )
 
     archive_path = list(archives_dir.glob("*.warc.gz"))[0]

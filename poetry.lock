@@ -344,6 +344,14 @@ lint = ["black", "flake8", "isort", "mypy", "check-manifest"]
 test = ["cython", "pytest", "pytest-cov", "ipython", "greenlet"]
 
 [[package]]
+name = "msgpack"
+version = "1.0.4"
+description = "MessagePack serializer"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "mypy"
 version = "0.991"
 description = "Optional static typing for Python"
@@ -777,7 +785,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "flake8 
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7,<4"
-content-hash = "1c3a8c4922af40d59835744b56a9860f9ebc8c24c9acde860653316d71e4735c"
+content-hash = "5ce59cb1172b2c4f82d3708573203a91f8b2f4a4a3d869df2facb229100d24fa"
 
 [metadata.files]
 attrs = []
@@ -813,6 +821,7 @@ markupsafe = []
 mashumaro = []
 maxminddb = []
 memray = []
+msgpack = []
 mypy = []
 mypy-extensions = [
     {file = "mypy_extensions-0.4.3-py2.py3-none-any.whl", hash = "sha256:090fedd75945a69ae91ce1303b5824f428daf5a028d2f6ab8a299250a846f15d"},
