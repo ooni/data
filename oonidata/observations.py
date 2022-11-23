@@ -42,7 +42,7 @@ from oonidata.datautils import (
     removeprefix,
 )
 from oonidata.netinfo import NetinfoDB
-
+from oonidata.compat import add_slots
 
 log = logging.getLogger("oonidata.processing")
 
@@ -88,6 +88,7 @@ def print_nice(obs):
     print(tabulate(rows, headers=headers))
 
 
+@add_slots
 @dataclass
 class MeasurementMeta:
     __table_name__ = "obs_generic"
@@ -218,6 +219,7 @@ def make_timestamp(msmt: BaseMeasurement, t: Optional[float] = None):
     return timestamp
 
 
+@add_slots
 @dataclass
 class HTTPObservation:
     timestamp: datetime
@@ -360,6 +362,7 @@ def make_http_observations(
     return obs_list
 
 
+@add_slots
 @dataclass
 class DNSObservation:
     timestamp: datetime
@@ -431,6 +434,7 @@ def make_dns_observations(
     return obs_dns
 
 
+@add_slots
 @dataclass
 class TCPObservation:
     timestamp: datetime
@@ -533,6 +537,7 @@ def find_tls_handshake_network_events(
     return None
 
 
+@add_slots
 @dataclass
 class TLSObservation:
     timestamp: datetime
@@ -708,6 +713,7 @@ def make_tls_observations(
     return obs_tls
 
 
+@add_slots
 @dataclass
 class WebObservation(MeasurementMeta):
     __table_name__ = "obs_web"

@@ -22,6 +22,7 @@ import orjson
 from mashumaro.config import BaseConfig, TO_DICT_ADD_OMIT_NONE_FLAG
 from mashumaro import DataClassDictMixin
 
+from oonidata.compat import add_slots
 
 log = logging.getLogger("oonidata.dataformat")
 
@@ -34,6 +35,7 @@ class BaseModel(DataClassDictMixin):
         code_generation_options = [TO_DICT_ADD_OMIT_NONE_FLAG]
 
 
+@add_slots
 @dataclass
 class BinaryData(BaseModel):
     format: str
@@ -101,11 +103,13 @@ def trivial_id(raw: bytes, msm: Dict) -> str:
     return tid
 
 
+@add_slots
 @dataclass
 class BaseTestKeys(BaseModel):
     client_resolver: Optional[str] = None
 
 
+@add_slots
 @dataclass
 class BaseMeasurement(BaseModel):
     annotations: Dict[str, str]
@@ -148,6 +152,7 @@ HeadersListBytes = List[Tuple[str, bytes]]
 HeadersListStr = List[Tuple[str, str]]
 
 
+@add_slots
 @dataclass
 class TorInfo(BaseModel):
     is_tor: bool
@@ -155,6 +160,7 @@ class TorInfo(BaseModel):
     exit_name: Optional[str]
 
 
+@add_slots
 @dataclass
 class HTTPBase(BaseModel):
     body: MaybeBinaryData = None
@@ -237,6 +243,7 @@ class HTTPBase(BaseModel):
                 self.headers_list.append([k, v])
 
 
+@add_slots
 @dataclass
 class HTTPRequest(HTTPBase):
     url: str = ""
@@ -245,11 +252,13 @@ class HTTPRequest(HTTPBase):
     x_transport: Optional[str] = "tcp"
 
 
+@add_slots
 @dataclass
 class HTTPResponse(HTTPBase):
     code: Optional[int] = None
 
 
+@add_slots
 @dataclass
 class HTTPTransaction(BaseModel):
     failure: Failure = None
@@ -272,6 +281,7 @@ class HTTPTransaction(BaseModel):
         return ""
 
 
+@add_slots
 @dataclass
 class DNSAnswer(BaseModel):
     answer_type: str
@@ -291,6 +301,7 @@ class DNSAnswer(BaseModel):
     serial_number: Optional[str] = None
 
 
+@add_slots
 @dataclass
 class DNSQuery(BaseModel):
     hostname: str
@@ -315,6 +326,7 @@ class DNSQuery(BaseModel):
     dial_id: Optional[int] = None
 
 
+@add_slots
 @dataclass
 class TCPConnectStatus(BaseModel):
     success: bool
@@ -322,6 +334,7 @@ class TCPConnectStatus(BaseModel):
     failure: Failure = None
 
 
+@add_slots
 @dataclass
 class TCPConnect(BaseModel):
     ip: str
@@ -338,6 +351,7 @@ class TCPConnect(BaseModel):
     dial_id: Optional[int] = None
 
 
+@add_slots
 @dataclass
 class TLSHandshake(BaseModel):
     network: Optional[str] = None
@@ -366,6 +380,7 @@ class TLSHandshake(BaseModel):
     conn_id: Optional[int] = None
 
 
+@add_slots
 @dataclass
 class NetworkEvent(BaseModel):
     operation: str
@@ -382,6 +397,7 @@ class NetworkEvent(BaseModel):
     conn_id: Optional[int] = None
 
 
+@add_slots
 @dataclass
 class WebConnectivityControlHTTPRequest(BaseModel):
     body_length: Optional[int] = None
@@ -391,18 +407,21 @@ class WebConnectivityControlHTTPRequest(BaseModel):
     status_code: Optional[int] = None
 
 
+@add_slots
 @dataclass
 class WebConnectivityControlDNS(BaseModel):
     failure: Failure = None
     addrs: Optional[List[str]] = None
 
 
+@add_slots
 @dataclass
 class WebConnectivityControlTCPConnectStatus(BaseModel):
     status: Optional[bool] = None
     failure: Failure = None
 
 
+@add_slots
 @dataclass
 class WebConnectivityControl(BaseModel):
     tcp_connect: Optional[Dict[str, WebConnectivityControlTCPConnectStatus]] = None
@@ -410,6 +429,7 @@ class WebConnectivityControl(BaseModel):
     dns: Optional[WebConnectivityControlDNS] = None
 
 
+@add_slots
 @dataclass
 class WebConnectivityTestKeys(BaseModel):
     dns_experiment_failure: Failure = None
@@ -445,11 +465,13 @@ class WebConnectivityTestKeys(BaseModel):
     socksproxy: Optional[str] = None
 
 
+@add_slots
 @dataclass
 class WebConnectivity(BaseMeasurement):
     test_keys: WebConnectivityTestKeys
 
 
+@add_slots
 @dataclass
 class WhatsappTestKeys(BaseTestKeys):
     failure: Optional[str] = None
@@ -471,6 +493,7 @@ class WhatsappTestKeys(BaseTestKeys):
     whatsapp_web_status: Optional[str] = None
 
 
+@add_slots
 @dataclass
 class Whatsapp(BaseMeasurement):
     test_keys: WhatsappTestKeys
@@ -543,12 +566,14 @@ Lrsybb0z5gg8w7ZblEuB9zOW9M3l60DXuJO6l7g+deV6P96rv2unHS8UlvWiVWDy
 SIGNAL_PEM_STORE = (SIGNAL_ROOT_CA_OLD, SIGNAL_ROOT_CA_NEW)
 
 
+@add_slots
 @dataclass
 class TCPTTestKeys(BaseTestKeys):
     received: Optional[List[MaybeBinaryData]] = None
     sent: Optional[List[MaybeBinaryData]] = None
 
 
+@add_slots
 @dataclass
 class SignalTestKeys(BaseTestKeys):
     failure: Optional[str] = None
@@ -564,11 +589,13 @@ class SignalTestKeys(BaseTestKeys):
     signal_backend_failure: Optional[str] = None
 
 
+@add_slots
 @dataclass
 class Signal(BaseMeasurement):
     test_keys: SignalTestKeys
 
 
+@add_slots
 @dataclass
 class URLGetterTestKeys(BaseTestKeys):
     failure: Failure = None
@@ -580,6 +607,7 @@ class URLGetterTestKeys(BaseTestKeys):
     requests: Optional[List[HTTPTransaction]] = None
 
 
+@add_slots
 @dataclass
 class DNSCheckTestKeys(BaseTestKeys):
     lookups: Optional[Dict[str, URLGetterTestKeys]] = None
@@ -587,11 +615,13 @@ class DNSCheckTestKeys(BaseTestKeys):
     bootstrap_failure: Optional[str] = None
 
 
+@add_slots
 @dataclass
 class DNSCheck(BaseMeasurement):
     test_keys: DNSCheckTestKeys
 
 
+@add_slots
 @dataclass
 class TorTestTarget(BaseModel):
     target_address: str
@@ -606,11 +636,13 @@ class TorTestTarget(BaseModel):
     failure: Failure = None
 
 
+@add_slots
 @dataclass
 class TorTestKeys(BaseModel):
     targets: Dict[str, TorTestTarget]
 
 
+@add_slots
 @dataclass
 class Tor(BaseMeasurement):
     test_keys: TorTestKeys

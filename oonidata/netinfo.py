@@ -228,7 +228,7 @@ class NetinfoDB:
             pass
 
         if not res:
-            log.error(f"Failed to lookup {ip}")
+            log.debug(f"Failed to lookup {ip}")
             return unknown_ipinfo
 
         return IPInfo(
