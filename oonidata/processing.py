@@ -1,4 +1,5 @@
 import io
+import pickle
 import queue
 import time
 import pathlib
@@ -417,7 +418,7 @@ class ObservationMakerWorker(mp.Process):
         self,
         status_queue: mp.JoinableQueue,
         day_queue: mp.JoinableQueue,
-        archiver_queue: Optional[mp.Queue],
+        requests_queue: Optional[mp.JoinableQueue],
         shutdown_event: EventClass,
         data_dir: pathlib.Path,
         probe_cc: List[str],
@@ -432,7 +433,7 @@ class ObservationMakerWorker(mp.Process):
         assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
         self.day_queue = day_queue
-        self.archiver_queue = archiver_queue
+        self.requests_queue = requests_queue
         self.data_dir = data_dir
         self.probe_cc = probe_cc
         self.test_name = test_name
@@ -495,8 +496,8 @@ class ObservationMakerWorker(mp.Process):
                         and isinstance(msmt, WebConnectivity)
                         and msmt.test_keys.requests
                     ):
-                        if self.archiver_queue:
-                            self.archiver_queue.put(msmt.test_keys.requests)
+                        if self.requests_queue:
+                            self.requests_queue.put(msmt.test_keys.requests)
                     current_idx = idx
                     day_str = day.strftime("%Y-%m-%d")
             except Exception as exc:
@@ -525,60 +526,84 @@ class ObservationMakerWorker(mp.Process):
             )
 
 
-class ArchiverProcess(mp.Process):
-    def __init__(
-        self,
-        status_queue: mp.JoinableQueue,
-        archiver_queue: mp.Queue,
-        archives_dir: pathlib.Path,
-        shutdown_event: EventClass,
-        log_level: int,
-    ):
-        super().__init__(daemon=True)
-        self.archives_dir = archives_dir
-        self.archiver_queue = archiver_queue
-        self.status_queue = status_queue
-        self.shutdown_event = shutdown_event
-        log.setLevel(log_level)
+def run_body_writer_thread(
+    requests_queue: mp.JoinableQueue,
+    archiver_queue: mp.JoinableQueue,
+    archives_dir: pathlib.Path,
+    shutdown_event: EventClass,
+    log_level: int,
+    body_buffer_size: int = 1_000,
+):
+    log.setLevel(log_level)
+    ts = time.time()
+    current_idx = 0
+    requests_buffer = []
+    log.info("starting body writer")
 
-    def run(self):
-        response_archiver = ResponseArchiver(dst_dir=self.archives_dir)
-        while not self.shutdown_event.is_set():
-            try:
-                requests = self.archiver_queue.get(block=True, timeout=0.1)
-            except queue.Empty:
-                continue
-            except Exception:
-                log.error("error in getting data from the archive queue", exc_info=True)
-                continue
+    def flush_requests_buffer():
+        archive_path = archives_dir / f"body_dump-{ts}-{current_idx}.pickle"
+        with archive_path.open("wb") as out_file:
+            # TODO: maybe we can use a better serialization engine
+            pickle.dump(requests_buffer, out_file)
+        archiver_queue.put(archive_path)
 
-            self.status_queue.put(
-                StatusMessage(
-                    src="archiver", archive_queue_size=self.archiver_queue.qsize()
-                )
-            )
-            try:
-                for http_transaction in requests:
+    while not shutdown_event.is_set():
+        try:
+            requests = requests_queue.get(block=True, timeout=0.1)
+        except queue.Empty:
+            continue
+        requests_buffer.append(requests)
+        if len(requests_buffer) > body_buffer_size:
+            flush_requests_buffer()
+            requests_buffer = []
+            current_idx += 1
+        requests_queue.task_done()
+
+    flush_requests_buffer()
+
+
+def run_archiver_thread(
+    status_queue: mp.JoinableQueue,
+    archiver_queue: mp.JoinableQueue,
+    archives_dir: pathlib.Path,
+    shutdown_event: EventClass,
+    log_level: int,
+):
+    log.setLevel(log_level)
+    log.info("starting archiver")
+    response_archiver = ResponseArchiver(dst_dir=archives_dir)
+    while not shutdown_event.is_set():
+        try:
+            archive_path = archiver_queue.get(block=True, timeout=0.1)
+        except queue.Empty:
+            continue
+
+        with archive_path.open("rb") as in_file:
+            requests = pickle.load(in_file)
+        try:
+            for req in requests:
+                for http_transaction in req:
                     response_archiver.archive_http_transaction(
                         http_transaction=http_transaction
                     )
-            except Exception as exc:
-                log.error(f"failed to process {requests}", exc_info=True)
-                self.status_queue.put(
-                    StatusMessage(
-                        src="archiver", exception=exc, traceback=traceback.format_exc()
-                    )
-                )
-            self.archiver_queue.task_done()
-        try:
-            response_archiver.close()
+            archive_path.unlink()
         except Exception as exc:
-            log.error(f"failed to close archiver", exc_info=True)
-            self.status_queue.put(
+            log.error(f"failed to process requests", exc_info=True)
+            status_queue.put(
                 StatusMessage(
                     src="archiver", exception=exc, traceback=traceback.format_exc()
                 )
             )
+        archiver_queue.task_done()
+    try:
+        response_archiver.close()
+    except Exception as exc:
+        log.error(f"failed to close archiver", exc_info=True)
+        status_queue.put(
+            StatusMessage(
+                src="archiver", exception=exc, traceback=traceback.format_exc()
+            )
+        )
 
 
 class StatusMessage(NamedTuple):
@@ -591,7 +616,7 @@ class StatusMessage(NamedTuple):
     archive_queue_size: Optional[int] = None
 
 
-def _process_status(status_queue: mp.Queue, shutdown_event: EventClass):
+def run_status_thread(status_queue: mp.Queue, shutdown_event: EventClass):
     total_prefixes = 0
     current_prefix_idx = 0
 
@@ -668,23 +693,47 @@ def start_observation_maker(
     log_level: int = logging.INFO,
 ):
     shutdown_event = mp.Event()
+    # We need to separately tell the body writer to shutdown so that it can
+    # flush all it's bodies to files
+    body_writer_shutdown_event = mp.Event()
+
     status_queue = mp.JoinableQueue()
 
-    status_thread = Thread(target=_process_status, args=(status_queue, shutdown_event))
+    status_thread = Thread(
+        target=run_status_thread, args=(status_queue, shutdown_event)
+    )
     status_thread.start()
 
-    archiver_process = None
+    archiver_thread = None
     archiver_queue = None
+    requests_queue = None
+    body_writer_thread = None
     if archives_dir:
         archiver_queue = mp.JoinableQueue()
-        archiver_process = ArchiverProcess(
-            shutdown_event=shutdown_event,
-            status_queue=status_queue,
-            archiver_queue=archiver_queue,
-            archives_dir=archives_dir,
-            log_level=log_level,
+        requests_queue = mp.JoinableQueue()
+        body_writer_thread = Thread(
+            target=run_body_writer_thread,
+            args=(
+                requests_queue,
+                archiver_queue,
+                archives_dir,
+                body_writer_shutdown_event,
+                log_level,
+                1_000,
+            ),
         )
-        archiver_process.start()
+        body_writer_thread.start()
+        archiver_thread = Thread(
+            target=run_archiver_thread,
+            args=(
+                status_queue,
+                archiver_queue,
+                archives_dir,
+                shutdown_event,
+                log_level,
+            ),
+        )
+        archiver_thread.start()
 
     observation_workers = []
     day_queue = mp.JoinableQueue()
@@ -692,7 +741,7 @@ def start_observation_maker(
         worker = ObservationMakerWorker(
             status_queue=status_queue,
             day_queue=day_queue,
-            archiver_queue=archiver_queue,
+            requests_queue=requests_queue,
             shutdown_event=shutdown_event,
             data_dir=data_dir,
             probe_cc=probe_cc,
@@ -712,8 +761,17 @@ def start_observation_maker(
     log.info("waiting for the day queue to finish")
     day_queue.join()
 
-    if archiver_process:
+    if archiver_queue and requests_queue and body_writer_thread:
         assert archiver_queue, "archiver_queue is unset"
+        log.info("waiting for requests body processing to finish")
+        requests_queue.join()
+
+        log.info("telling the body writer to stop")
+        # This will trigger a flush of the body queue, preparing for the
+        # archiver to start consuming it
+        body_writer_shutdown_event.set()
+        body_writer_thread.join()
+
         log.info("waiting for archiving to finish")
         archiver_queue.join()
     status_queue.join()
@@ -721,6 +779,9 @@ def start_observation_maker(
     # We are done, we can now tell everybody to go home
     log.info("sending shutdown event")
     shutdown_event.set()
+
+    if archiver_thread:
+        archiver_thread.join()
 
     # Shutdown the status thread
     log.info("shutting down the status thread")
@@ -731,8 +792,3 @@ def start_observation_maker(
         log.info(f"waiting observation_maker {idx} to stop")
         p.join()
         p.close()
-
-    if archiver_process:
-        log.debug("archive_process.close()")
-        archiver_process.join()
-        archiver_process.close()
