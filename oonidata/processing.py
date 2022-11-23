@@ -1,20 +1,20 @@
-from collections import defaultdict, namedtuple
-import hashlib
 import io
-import multiprocessing as mp
-import pathlib
+import queue
 import time
+import pathlib
 import logging
-from base64 import b32decode
-import http.client
-import traceback
-import orjson
 import sqlite3
-
-from threading import Lock, Thread
-
-from datetime import date, datetime, timedelta
+import hashlib
+import traceback
+import http.client
 import dataclasses
+import multiprocessing as mp
+from multiprocessing.synchronize import Event as EventClass
+
+from collections import defaultdict
+from threading import Lock, Thread
+from base64 import b32decode
+from datetime import date, datetime, timedelta
 
 from typing import (
     Any,
@@ -28,6 +28,7 @@ from typing import (
     Union,
 )
 
+import orjson
 from tqdm import tqdm
 from warcio.warcwriter import WARCWriter
 from warcio.archiveiterator import ArchiveIterator
@@ -284,7 +285,7 @@ def fingerprint_hunter(
 
 
 def fingerprint_hunter_worker(
-    archive_queue: mp.JoinableQueue,
+    archive_queue: mp.Queue,
     sqlite_path: pathlib.Path,
     datadir: pathlib.Path,
     log_level: int,
@@ -294,9 +295,12 @@ def fingerprint_hunter_worker(
     fingerprintdb = FingerprintDB(datadir=datadir)
 
     while True:
-        archive_path = archive_queue.get(block=True)
+        try:
+            archive_path = archive_queue.get(block=True, timeout=0.1)
+        except queue.Empty:
+            continue
+
         if archive_path == None:
-            archive_queue.task_done()
             break
         log.info(f"inspecting bodies inside {archive_path}")
         for response_body_sha1, matched_fingerprints in fingerprint_hunter(
@@ -324,8 +328,6 @@ def fingerprint_hunter_worker(
             )
             db_conn.commit()
 
-        archive_queue.task_done()
-
 
 def start_fingerprint_hunter(
     archives_dir: pathlib.Path,
@@ -333,7 +335,7 @@ def start_fingerprint_hunter(
     parallelism: int,
     log_level: int = logging.INFO,
 ):
-    archive_queue = mp.JoinableQueue()
+    archive_queue = mp.Queue()
 
     sqlite_path = archives_dir / "graveyard.sqlite3"
     pool = mp.Pool(
@@ -413,9 +415,10 @@ def process_day(
 class ObservationMakerWorker(mp.Process):
     def __init__(
         self,
-        status_queue: mp.Queue,
+        status_queue: mp.JoinableQueue,
         day_queue: mp.JoinableQueue,
-        archiver_queue: Optional[mp.JoinableQueue],
+        archiver_queue: Optional[mp.Queue],
+        shutdown_event: EventClass,
         data_dir: pathlib.Path,
         probe_cc: List[str],
         test_name: List[str],
@@ -425,7 +428,7 @@ class ObservationMakerWorker(mp.Process):
         fast_fail: bool,
         log_level: int = logging.INFO,
     ):
-        super().__init__()
+        super().__init__(daemon=True)
         assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
         self.day_queue = day_queue
@@ -437,6 +440,8 @@ class ObservationMakerWorker(mp.Process):
         self.csv_dir = csv_dir
         self.start_at_idx = start_at_idx
         self.fast_fail = fast_fail
+
+        self.shutdown_event = shutdown_event
 
         self.status_queue = status_queue
 
@@ -457,12 +462,11 @@ class ObservationMakerWorker(mp.Process):
         def progress_callback(p: MeasurementListProgress):
             self.status_queue.put(StatusMessage(src="observation_maker", progress=p))
 
-        while True:
-            day = self.day_queue.get(block=True)
-            if day == None:
-                self.day_queue.task_done()
-                break
-
+        while not self.shutdown_event.is_set():
+            try:
+                day = self.day_queue.get(block=True, timeout=0.1)
+            except queue.Empty:
+                continue
             try:
                 for idx, msmt in enumerate(
                     process_day(
@@ -499,7 +503,6 @@ class ObservationMakerWorker(mp.Process):
                         traceback=traceback.format_exc(),
                     )
                 )
-
             self.day_queue.task_done()
 
         try:
@@ -518,24 +521,26 @@ class ObservationMakerWorker(mp.Process):
 class ArchiverProcess(mp.Process):
     def __init__(
         self,
-        status_queue: mp.Queue,
-        archiver_queue: mp.JoinableQueue,
+        status_queue: mp.JoinableQueue,
+        archiver_queue: mp.Queue,
         archives_dir: pathlib.Path,
+        shutdown_event: EventClass,
         log_level: int,
     ):
-        super().__init__()
+        super().__init__(daemon=True)
         self.archives_dir = archives_dir
         self.archiver_queue = archiver_queue
         self.status_queue = status_queue
+        self.shutdown_event = shutdown_event
         log.setLevel(log_level)
 
     def run(self):
         response_archiver = ResponseArchiver(dst_dir=self.archives_dir)
-        while True:
-            requests = self.archiver_queue.get(block=True)
-            if requests == None:
-                self.archiver_queue.task_done()
-                break
+        while not self.shutdown_event.is_set():
+            try:
+                requests = self.archiver_queue.get(block=True, timeout=0.1)
+            except queue.Empty:
+                continue
             try:
                 for http_transaction in requests:
                     response_archiver.archive_http_transaction(
@@ -569,7 +574,7 @@ class StatusMessage(NamedTuple):
     day_str: Optional[str] = None
 
 
-def _process_status(status_queue: mp.Queue):
+def _process_status(status_queue: mp.Queue, shutdown_event: EventClass):
     total_prefixes = 0
     current_prefix_idx = 0
 
@@ -582,10 +587,12 @@ def _process_status(status_queue: mp.Queue):
     pbar_download = tqdm(unit="B", unit_scale=True, position=1)
 
     log.info("starting error handling thread")
-    while True:
-        res = status_queue.get(block=True)
-        if res == None:
-            break
+    while not shutdown_event.is_set():
+        try:
+            res = status_queue.get(block=True, timeout=0.1)
+        except queue.Empty:
+            continue
+
         if res.exception:
             log.error(f"got an error from {res.src}: {res.exception} {res.traceback}")
 
@@ -622,6 +629,8 @@ def _process_status(status_queue: mp.Queue):
 
         pbar_download.set_description(download_desc + last_idx_desc)
 
+        status_queue.task_done()
+
 
 def start_observation_maker(
     probe_cc: List[str],
@@ -637,10 +646,10 @@ def start_observation_maker(
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
+    shutdown_event = mp.Event()
+    status_queue = mp.JoinableQueue()
 
-    status_queue = mp.Queue()
-
-    status_thread = Thread(target=_process_status, args=(status_queue,))
+    status_thread = Thread(target=_process_status, args=(status_queue, shutdown_event))
     status_thread.start()
 
     archiver_process = None
@@ -648,6 +657,7 @@ def start_observation_maker(
     if archives_dir:
         archiver_queue = mp.JoinableQueue()
         archiver_process = ArchiverProcess(
+            shutdown_event=shutdown_event,
             status_queue=status_queue,
             archiver_queue=archiver_queue,
             archives_dir=archives_dir,
@@ -662,6 +672,7 @@ def start_observation_maker(
             status_queue=status_queue,
             day_queue=day_queue,
             archiver_queue=archiver_queue,
+            shutdown_event=shutdown_event,
             data_dir=data_dir,
             probe_cc=probe_cc,
             test_name=test_name,
@@ -677,32 +688,29 @@ def start_observation_maker(
     for day in date_interval(start_day, end_day):
         day_queue.put(day)
 
-    for _ in range(parallelism):
-        day_queue.put(None)
-
-    log.debug("waiting for the day queue to finish")
+    log.info("waiting for the day queue to finish")
     day_queue.join()
+
+    if archiver_process:
+        assert archiver_queue, "archiver_queue is unset"
+        log.info("waiting for archiving to finish")
+        archiver_queue.join()
+    status_queue.join()
+
+    # We are done, we can now tell everybody to go home
+    shutdown_event.set()
+
+    # Shutdown the status thread
+    log.info("shutting down the status thread")
+    status_thread.join()
 
     log.info(f"waiting for workers to finish running")
     for idx, p in enumerate(observation_workers):
-        log.debug(f"waiting observation_maker {idx} to stop")
+        log.info(f"waiting observation_maker {idx} to stop")
         p.join()
         p.close()
 
     if archiver_process:
-        assert archiver_queue, "archiver_queue is unset"
-        log.info("shutting down the archiving process")
-        # Signal the archiver we have put everything in it
-        archiver_queue.put(None)
-        archiver_queue.join()
-        log.debug("all the work is not, waiting for clean shutdown")
-        archiver_process.join()
-
-    # Shutdown the status thread
-    log.debug("shutting down the status thread")
-    status_queue.put(None)
-    status_thread.join()
-
-    if archiver_process:
         log.debug("archive_process.close()")
+        archiver_process.join()
         archiver_process.close()
