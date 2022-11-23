@@ -552,6 +552,7 @@ def run_body_writer(
     archives_dir: pathlib.Path,
     shutdown_event: EventClass,
     log_level: int,
+    dump_id: int = 0,
     body_buffer_size: int = 50_000_000,
 ):
     log.setLevel(log_level)
@@ -559,7 +560,7 @@ def run_body_writer(
     current_file_idx = 0
     log.info("starting body writer")
 
-    archive_path = archives_dir / f"bodydump-{ts}-{current_file_idx}.msgpack"
+    archive_path = archives_dir / f"bodydump-{dump_id}-{ts}-{current_file_idx}.msgpack"
     out_file = None
 
     while not shutdown_event.is_set():
@@ -749,6 +750,7 @@ def start_observation_maker(
             ),
         )
         body_writer_process.start()
+        log.info(f"started body_writer {body_writer_process.pid}")
         archiver_thread = Thread(
             target=run_archiver_thread,
             args=(
@@ -779,6 +781,7 @@ def start_observation_maker(
             log_level=log_level,
         )
         worker.start()
+        log.info(f"started worker {worker.pid}")
         observation_workers.append(worker)
 
     for day in date_interval(start_day, end_day):
