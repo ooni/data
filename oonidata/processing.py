@@ -508,8 +508,10 @@ class ObservationMakerWorker(mp.Process):
                         traceback=traceback.format_exc(),
                     )
                 )
+            log.info(f"finished processing day {day_str}")
             self.day_queue.task_done()
 
+        log.info("process is done")
         try:
             db.close()
         except Exception as exc:
@@ -546,6 +548,11 @@ class ArchiverProcess(mp.Process):
                 requests = self.archiver_queue.get(block=True, timeout=0.1)
             except queue.Empty:
                 continue
+            self.status_queue.put(
+                StatusMessage(
+                    src="archiver", archive_queue_size=self.archiver_queue.qsize()
+                )
+            )
             try:
                 for http_transaction in requests:
                     response_archiver.archive_http_transaction(
@@ -577,6 +584,7 @@ class StatusMessage(NamedTuple):
     progress: Optional[MeasurementListProgress] = None
     idx: Optional[int] = None
     day_str: Optional[str] = None
+    archive_queue_size: Optional[int] = None
 
 
 def _process_status(status_queue: mp.Queue, shutdown_event: EventClass):
@@ -587,6 +595,7 @@ def _process_status(status_queue: mp.Queue, shutdown_event: EventClass):
     current_file_entry_idx = 0
     download_desc = ""
     last_idx_desc = ""
+    qsize_desc = ""
 
     pbar_listing = tqdm(position=0)
     pbar_download = tqdm(unit="B", unit_scale=True, position=1)
@@ -632,7 +641,10 @@ def _process_status(status_queue: mp.Queue, shutdown_event: EventClass):
         if res.idx:
             last_idx_desc = f" idx: {res.idx} ({res.day_str})"
 
-        pbar_download.set_description(download_desc + last_idx_desc)
+        if res.archive_queue_size:
+            qsize_desc = f" aqsize: {res.archive_queue_size}"
+
+        pbar_download.set_description(download_desc + last_idx_desc + qsize_desc)
 
         status_queue.task_done()
 
