@@ -548,6 +548,9 @@ class ArchiverProcess(mp.Process):
                 requests = self.archiver_queue.get(block=True, timeout=0.1)
             except queue.Empty:
                 continue
+            except Exception:
+                log.error("error in getting data from the archive queue", exc_info=True)
+
             self.status_queue.put(
                 StatusMessage(
                     src="archiver", archive_queue_size=self.archiver_queue.qsize()
