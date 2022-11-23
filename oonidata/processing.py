@@ -553,14 +553,17 @@ def run_body_writer(
     archives_dir: pathlib.Path,
     shutdown_event: EventClass,
     log_level: int,
-    body_buffer_size: int = 50_000_000,
+    id: int = 0,
+    body_buffer_size: int = 500_000_000,
 ):
     log.setLevel(log_level)
     ts = int(time.time())
     current_file_idx = 0
     log.info("starting body writer")
 
-    archive_path = archives_dir / f"bodydump-{ts}-{current_file_idx}.msgpack.gz"
+    def get_archive_path():
+        return archives_dir / f"bodydump-{id}-{ts}-{current_file_idx}.msgpack.gz"
+
     out_file = None
 
     while not shutdown_event.is_set():
@@ -570,14 +573,13 @@ def run_body_writer(
             continue
 
         if not out_file:
-            out_file = gzip.open(archive_path, "wb")
+            out_file = gzip.open(get_archive_path(), "wb")
 
         out_file.write(msgpack.packb(request_tuple, use_bin_type=True))  # type: ignore
         if out_file.tell() > body_buffer_size:
             out_file.close()
-            archiver_queue.put(archive_path)
+            archiver_queue.put(get_archive_path())
             current_file_idx += 1
-            archive_path = archives_dir / f"bodydump-{ts}-{current_file_idx}.msgpack.gz"
             out_file = None
 
         requests_queue.task_done()
@@ -735,11 +737,12 @@ def start_observation_maker(
     archiver_thread = None
     archiver_queue = None
     requests_queue = None
-    body_writer_process = None
+    body_writer_process_1 = None
+    body_writer_process_2 = None
     if archives_dir:
         archiver_queue = mp.JoinableQueue()
         requests_queue = mp.JoinableQueue()
-        body_writer_process = mp.Process(
+        body_writer_process_1 = mp.Process(
             target=run_body_writer,
             args=(
                 requests_queue,
@@ -747,10 +750,26 @@ def start_observation_maker(
                 archives_dir,
                 body_writer_shutdown_event,
                 log_level,
+                1,
             ),
         )
-        body_writer_process.start()
-        log.info(f"started body_writer {body_writer_process.pid}")
+        body_writer_process_1.start()
+        log.info(f"started body_writer {body_writer_process_1.pid}")
+
+        body_writer_process_2 = mp.Process(
+            target=run_body_writer,
+            args=(
+                requests_queue,
+                archiver_queue,
+                archives_dir,
+                body_writer_shutdown_event,
+                log_level,
+                2,
+            ),
+        )
+        body_writer_process_2.start()
+        log.info(f"started body_writer {body_writer_process_2.pid}")
+
         archiver_thread = Thread(
             target=run_archiver_thread,
             args=(
@@ -790,7 +809,12 @@ def start_observation_maker(
     log.info("waiting for the day queue to finish")
     day_queue.join()
 
-    if archiver_queue and requests_queue and body_writer_process:
+    if (
+        archiver_queue
+        and requests_queue
+        and body_writer_process_1
+        and body_writer_process_2
+    ):
         assert archiver_queue, "archiver_queue is unset"
         log.info("waiting for requests body processing to finish")
         requests_queue.join()
@@ -799,8 +823,11 @@ def start_observation_maker(
         # This will trigger a flush of the body queue, preparing for the
         # archiver to start consuming it
         body_writer_shutdown_event.set()
-        body_writer_process.join()
-        body_writer_process.close()
+        body_writer_process_1.join()
+        body_writer_process_1.close()
+
+        body_writer_process_2.join()
+        body_writer_process_2.close()
 
         log.info("waiting for archiving to finish")
         archiver_queue.join()
