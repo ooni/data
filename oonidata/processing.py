@@ -401,7 +401,9 @@ def process_day(
                         continue
                     request_url = http_transaction.request.url
                     status_code = http_transaction.response.code or 0
-                    response_headers = http_transaction.response.headers_list_bytes or []
+                    response_headers = (
+                        http_transaction.response.headers_list_bytes or []
+                    )
                     response_body = http_transaction.response.body_bytes
                     yield status_code, request_url, response_headers, response_body
         except Exception as exc:
@@ -544,41 +546,40 @@ class ObservationMakerWorker(mp.Process):
             )
 
 
-def run_body_writer_thread(
+def run_body_writer(
     requests_queue: mp.JoinableQueue,
     archiver_queue: mp.JoinableQueue,
     archives_dir: pathlib.Path,
     shutdown_event: EventClass,
     log_level: int,
-    body_buffer_size: int = 1_000,
+    body_buffer_size: int = 50_000_000,
 ):
     log.setLevel(log_level)
     ts = int(time.time())
-    current_idx = 0
-    requests_buffer = []
+    current_file_idx = 0
     log.info("starting body writer")
 
-    def flush_requests_buffer():
-        archive_path = archives_dir / f"bodydump-{ts}-{current_idx}.msgpack"
-        with archive_path.open("wb") as out_file:
-            # TODO: maybe we can use a better serialization engine
-            for req in requests_buffer:
-                out_file.write(msgpack.packb(req, use_bin_type=True))  # type: ignore
-        archiver_queue.put(archive_path)
+    archive_path = archives_dir / f"bodydump-{ts}-{current_file_idx}.msgpack"
+    out_file = None
 
     while not shutdown_event.is_set():
         try:
-            requests = requests_queue.get(block=True, timeout=0.1)
+            request_tuple = requests_queue.get(block=True, timeout=0.1)
         except queue.Empty:
             continue
-        requests_buffer.append(requests)
-        if len(requests_buffer) > body_buffer_size:
-            flush_requests_buffer()
-            requests_buffer = []
-            current_idx += 1
-        requests_queue.task_done()
 
-    flush_requests_buffer()
+        if not out_file:
+            out_file = archive_path.open("wb")
+
+        out_file.write(msgpack.packb(request_tuple, use_bin_type=True))  # type: ignore
+        if out_file.tell() > body_buffer_size:
+            out_file.close()
+            archiver_queue.put(archive_path)
+            current_file_idx += 1
+            archive_path = archives_dir / f"bodydump-{ts}-{current_file_idx}.msgpack"
+            out_file = None
+
+        requests_queue.task_done()
 
 
 def run_archiver_thread(
@@ -733,22 +734,21 @@ def start_observation_maker(
     archiver_thread = None
     archiver_queue = None
     requests_queue = None
-    body_writer_thread = None
+    body_writer_process = None
     if archives_dir:
         archiver_queue = mp.JoinableQueue()
         requests_queue = mp.JoinableQueue()
-        body_writer_thread = Thread(
-            target=run_body_writer_thread,
+        body_writer_process = mp.Process(
+            target=run_body_writer,
             args=(
                 requests_queue,
                 archiver_queue,
                 archives_dir,
                 body_writer_shutdown_event,
                 log_level,
-                1_000,
             ),
         )
-        body_writer_thread.start()
+        body_writer_process.start()
         archiver_thread = Thread(
             target=run_archiver_thread,
             args=(
@@ -787,7 +787,7 @@ def start_observation_maker(
     log.info("waiting for the day queue to finish")
     day_queue.join()
 
-    if archiver_queue and requests_queue and body_writer_thread:
+    if archiver_queue and requests_queue and body_writer_process:
         assert archiver_queue, "archiver_queue is unset"
         log.info("waiting for requests body processing to finish")
         requests_queue.join()
@@ -796,7 +796,8 @@ def start_observation_maker(
         # This will trigger a flush of the body queue, preparing for the
         # archiver to start consuming it
         body_writer_shutdown_event.set()
-        body_writer_thread.join()
+        body_writer_process.join()
+        body_writer_process.close()
 
         log.info("waiting for archiving to finish")
         archiver_queue.join()
