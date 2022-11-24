@@ -13,6 +13,34 @@ log = logging.getLogger("oonidata.processing")
 
 
 @dataclass
+class WebGroundTruth:
+    vp_asn: int
+    vp_cc: str
+    is_trusted_vp: bool
+
+    hostname: str
+    ip: str
+    port: int
+
+    dns_failure: Optional[str]
+    dns_success: Optional[bool]
+
+    tcp_faliure: Optional[str]
+    tcp_success: Optional[bool]
+
+    tls_failure: Optional[str]
+    tls_success: Optional[bool]
+    tls_is_certificate_valid: Optional[bool]
+
+    http_request_url: Optional[str]
+    http_failure: Optional[str]
+    http_success: Optional[bool]
+    http_response_body_length: Optional[int]
+
+    count: int
+
+
+@dataclass
 class TCPControl:
     address: str
     reachable_cc_asn: List[Tuple[str, int]] = field(default_factory=list)

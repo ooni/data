@@ -181,15 +181,15 @@ def mkobs(
                 "Are you sure you want to drop the tables before creation?", abort=True
             )
 
-        db = ClickhouseConnection(clickhouse)
-        for query, table_name in create_queries:
-            if drop_tables:
-                db.execute(f"DROP TABLE IF EXISTS {table_name};")
-                if archives_dir:
-                    conn = sqlite3.connect(archives_dir / "graveyard.sqlite3")
-                    conn.execute("DROP TABLE IF EXISTS oonibodies_archive")
-                    conn.commit()
-            db.execute(query)
+        with ClickhouseConnection(clickhouse) as db:
+            for query, table_name in create_queries:
+                if drop_tables:
+                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
+                    if archives_dir:
+                        conn = sqlite3.connect(archives_dir / "graveyard.sqlite3")
+                        conn.execute("DROP TABLE IF EXISTS oonibodies_archive")
+                        conn.commit()
+                db.execute(query)
 
     NetinfoDB(datadir=data_dir, download=True)
 

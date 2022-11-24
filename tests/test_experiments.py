@@ -25,6 +25,7 @@ from oonidata.experiments.websites import (
 from oonidata.observations import (
     make_signal_observations,
     make_web_connectivity_observations,
+    WebObservation,
 )
 
 
@@ -66,7 +67,7 @@ def test_signal(fingerprintdb, netinfodb, measurements):
             pem_cert_store=SIGNAL_PEM_STORE,
         )
 
-    web_observations = make_signal_observations(signal_new_ca, netinfodb=netinfodb)
+    web_observations = make_signal_observations(signal_new_ca, netinfodb=netinfodb)[0]
     er = make_signal_experiment_result(
         web_observations=web_observations,
         fingerprintdb=fingerprintdb,
@@ -78,7 +79,9 @@ def test_signal(fingerprintdb, netinfodb, measurements):
         msmt_path=measurements["20210926222047.205897_UZ_signal_95fab4a2e669573f"]
     )
     assert isinstance(signal_blocked_uz, Signal)
-    web_observations = make_signal_observations(signal_blocked_uz, netinfodb=netinfodb)
+    web_observations = make_signal_observations(signal_blocked_uz, netinfodb=netinfodb)[
+        0
+    ]
     blocking_event = make_signal_experiment_result(
         web_observations=web_observations,
         fingerprintdb=fingerprintdb,
@@ -97,7 +100,9 @@ def test_signal(fingerprintdb, netinfodb, measurements):
         msmt_path=measurements["20221018174612.488229_IR_signal_f8640b28061bec06"]
     )
     assert isinstance(signal_blocked_ir, Signal)
-    web_observations = make_signal_observations(signal_blocked_ir, netinfodb=netinfodb)
+    web_observations = make_signal_observations(signal_blocked_ir, netinfodb=netinfodb)[
+        0
+    ]
     blocking_event = make_signal_experiment_result(
         web_observations=web_observations,
         fingerprintdb=fingerprintdb,
@@ -207,7 +212,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     assert isinstance(msmt, WebConnectivity)
     dns_ctrl = make_dns_control(day, domain_name, db)
 
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)
+    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
     for web_o in web_observations:
         if not web_o.dns_answer:
             continue
@@ -226,7 +231,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     assert isinstance(msmt, WebConnectivity)
     dns_ctrl = make_dns_control(day, domain_name, db)
 
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)
+    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
     for web_o in web_observations:
         if not web_o.dns_answer:
             continue
@@ -244,8 +249,9 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     )
     assert isinstance(msmt, WebConnectivity)
     dns_ctrl = make_dns_control(day, domain_name, db)
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)
+    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
     for web_o in web_observations:
+        assert isinstance(web_o, WebObservation)
         if not web_o.dns_answer:
             continue
         blocking_event = make_website_dns_blocking_event(
@@ -262,7 +268,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     )
     assert isinstance(msmt, WebConnectivity)
     dns_ctrl = make_dns_control(day, domain_name, db)
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)
+    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
     for web_o in web_observations:
         if not web_o.dns_answer:
             continue
@@ -277,7 +283,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
 def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
     msmt = load_measurement(msmt_path=msmt_path)
     assert isinstance(msmt, WebConnectivity)
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)
+    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
 
     assert msmt.test_keys.control
     assert isinstance(msmt.input, str)

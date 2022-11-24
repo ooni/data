@@ -1,7 +1,5 @@
-import dataclasses
 from oonidata.observations import (
     WebObservation,
-    print_nice,
     make_dnscheck_observations,
     make_http_observations,
     make_dns_observations,
@@ -20,12 +18,12 @@ def test_wc_v5_observations(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs = make_web_connectivity_observations(msmt, netinfodb=netinfodb)
+    web_obs = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
     assert isinstance(web_obs[0], WebObservation)
     assert len(web_obs) == 15
 
 
-def test_http_observations(fingerprintdb, netinfodb, measurements):
+def test_http_observations(measurements):
     msmt = load_measurement(
         msmt_path=measurements[
             "20220608132401.787399_AM_webconnectivity_2285fc373f62729e"
@@ -104,14 +102,14 @@ def test_http_observations(fingerprintdb, netinfodb, measurements):
     assert all_http_obs[-1].request_url == "http://proxy.org/"
 
 
-def test_wc_v5_observations_chained(fingerprintdb, netinfodb, measurements):
+def test_wc_v5_observations_chained(netinfodb, measurements):
     msmt = load_measurement(
         msmt_path=measurements[
             "20220924222854.036406_IR_webconnectivity_7aedefe4aaac824c"
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs = make_web_connectivity_observations(msmt, netinfodb=netinfodb)
+    web_obs = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
     # TODO: there is something weird here.
     # Both DNS query answers are labeled with
     # transaction_id=2.
@@ -135,7 +133,7 @@ def test_wc_observations_chained(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs = make_web_connectivity_observations(msmt, netinfodb=netinfodb)
+    web_obs = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
 
     # Check if DNS and TCP connect observations are being linked together
     assert len(list(filter(lambda o: o.ip == "188.186.154.79", web_obs))) == 1
@@ -147,7 +145,7 @@ def test_wc_observations_chained(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs = make_web_connectivity_observations(msmt, netinfodb=netinfodb)
+    web_obs = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
 
     assert len(list(filter(lambda o: o.ip == "172.67.16.69", web_obs))) == 1
     assert len(web_obs) == 4
@@ -158,5 +156,5 @@ def test_dns_check_obs(netinfodb, measurements):
         msmt_path=measurements["20221013000000.517636_US_dnscheck_bfd6d991e70afa0e"]
     )
     assert isinstance(msmt, DNSCheck)
-    web_obs = make_dnscheck_observations(msmt=msmt, netinfodb=netinfodb)
+    web_obs = make_dnscheck_observations(msmt=msmt, netinfodb=netinfodb)[0]
     assert len(web_obs) == 20

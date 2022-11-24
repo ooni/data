@@ -12,7 +12,6 @@ import dataclasses
 import multiprocessing as mp
 from multiprocessing.synchronize import Event as EventClass
 
-from collections import defaultdict
 from threading import Lock, Thread
 from base64 import b32decode
 from datetime import date, datetime, timedelta
@@ -51,7 +50,6 @@ from oonidata.dataclient import (
     ProgressStatus,
 )
 from oonidata.db.connections import (
-    DatabaseConnection,
     ClickhouseConnection,
     CSVConnection,
 )
@@ -61,69 +59,19 @@ log = logging.getLogger("oonidata.processing")
 
 def make_db_rows(
     bucket_date: str, observations: List[WebObservation]
-) -> Tuple[str, List[Dict]]:
+) -> Tuple[str, List[Dict], List[str]]:
     if len(observations) == 0:
-        return "", []
+        return "", [], []
 
     table_name = observations[0].__table_name__
+    column_names = [f.name for f in dataclasses.fields(observations[0])]
     rows = []
-    for idx, obs in enumerate(observations):
+    for obs in observations:
         obs.bucket_date = bucket_date
         assert table_name == obs.__table_name__, "inconsistent group of observations"
-        # TODO: should probably come up with a better ID, but this will work for
-        # the time being.
-        obs.observation_id = f"{obs.measurement_uid}_{idx}"
-        obs.created_at = datetime.utcnow()
-        rows.append(dataclasses.asdict(obs))
+        rows.append({k: getattr(obs, k) for k in column_names})
 
-    return table_name, rows
-
-
-def write_observations_to_db(
-    db: DatabaseConnection, bucket_date: str, observations: List[WebObservation]
-) -> None:
-    if len(observations) == 0:
-        return
-
-    table_name, rows = make_db_rows(bucket_date=bucket_date, observations=observations)
-    db.write_rows(table_name, rows)
-
-
-class BufferredRowWriter:
-    def __init__(self, db: DatabaseConnection, buffer_size: int = 10_000):
-        self.db = db
-        self.buffer_size = buffer_size
-        self.row_buffer_map = defaultdict(list)
-        self.fields_map = {}
-
-    def write_rows(self, table_name: str, rows: List[Dict[str, Any]]):
-        if len(rows) == 0:
-            return
-
-        if table_name not in self.fields_map:
-            self.fields_map[table_name] = tuple(rows[0].keys())
-
-        for r in rows:
-            self.row_buffer_map[table_name].append(
-                tuple(r[k] for k in self.fields_map[table_name])
-            )
-
-        if len(self.row_buffer_map[table_name]) > self.buffer_size:
-            self.flush(table_name)
-
-    def flush_all(self):
-        for table_name in self.row_buffer_map.keys():
-            self.flush(table_name=table_name)
-
-    def flush(self, table_name):
-        rows = self.row_buffer_map[table_name]
-        if len(rows) > 0:
-            self.db.write_rows(
-                table_name=table_name,
-                rows=rows,
-                fields=self.fields_map[table_name],
-            )
-            self.row_buffer_map[table_name] = []
+    return table_name, rows, column_names
 
 
 class ResponseArchiver:
@@ -371,7 +319,6 @@ def process_day(
 ]:
     t0 = time.monotonic()
     bucket_date = day.strftime("%Y-%m-%d")
-    row_writer = BufferredRowWriter(db=db, buffer_size=10_000)
 
     for idx, msmt_dict in enumerate(
         iter_measurements(
@@ -391,11 +338,14 @@ def process_day(
         msmt = None
         try:
             msmt = load_measurement(msmt_dict)
-            table_name, rows = make_db_rows(
-                bucket_date=bucket_date,
-                observations=make_observations(msmt, netinfodb=netinfodb),
-            )
-            row_writer.write_rows(table_name=table_name, rows=rows)
+            for observations in make_observations(msmt, netinfodb=netinfodb):
+                table_name, rows, column_names = make_db_rows(
+                    bucket_date=bucket_date,
+                    observations=observations,
+                )
+                db.write_rows(
+                    table_name=table_name, rows=rows, column_names=column_names
+                )
             if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
                 for http_transaction in msmt.test_keys.requests:
                     if not http_transaction.response or not http_transaction.request:
@@ -416,10 +366,10 @@ def process_day(
             log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
 
             if fast_fail:
-                row_writer.flush_all()
+                db.close()
                 raise exc
 
-    row_writer.flush_all()
+    db.close()
 
     # return time.monotonic() - t0, day
 
@@ -505,7 +455,7 @@ class ObservationMakerWorker(mp.Process):
 
         db = None
         if self.clickhouse:
-            db = ClickhouseConnection(self.clickhouse)
+            db = ClickhouseConnection(self.clickhouse, row_buffer_size=10_000)
         elif self.csv_dir:
             db = CSVConnection(self.csv_dir)
         assert db

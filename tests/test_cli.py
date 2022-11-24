@@ -37,7 +37,7 @@ def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
             "--end-day",
             "2022-10-21",
             "--test-name",
-            "dnscheck",
+            "web_connectivity",
             "--data-dir",
             datadir,
             "--csv-dir",
@@ -47,4 +47,5 @@ def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
         ],
     )
     assert result.exit_code == 0
-    assert len(list(tmp_path.iterdir())) == 2
+    assert len(list(tmp_path.glob("*.csv"))) == 2
+    assert len(list(tmp_path.glob("*.warc.gz"))) == 1

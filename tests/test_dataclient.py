@@ -1,5 +1,4 @@
 from datetime import date, datetime
-from re import I
 
 from oonidata.dataclient import (
     date_interval,

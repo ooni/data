@@ -423,10 +423,19 @@ class WebConnectivityControlTCPConnectStatus(BaseModel):
 
 @add_slots
 @dataclass
+class WebConnectivityControlTLSStatus(BaseModel):
+    status: Optional[bool] = None
+    failure: Failure = None
+    server_name: Optional[str] = None
+
+
+@add_slots
+@dataclass
 class WebConnectivityControl(BaseModel):
     tcp_connect: Optional[Dict[str, WebConnectivityControlTCPConnectStatus]] = None
     http_request: Optional[WebConnectivityControlHTTPRequest] = None
     dns: Optional[WebConnectivityControlDNS] = None
+    tls_handshake: Optional[Dict[str, WebConnectivityControlTLSStatus]] = None
 
 
 @add_slots

@@ -1,4 +1,5 @@
 from base64 import b64decode
+from copy import deepcopy
 import hashlib
 import ipaddress
 import logging
@@ -9,6 +10,7 @@ from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta
 from typing import (
     Callable,
+    Dict,
     Optional,
     List,
     Tuple,
@@ -717,6 +719,7 @@ def make_tls_observations(
 @dataclass
 class WebObservation(MeasurementMeta):
     __table_name__ = "obs_web"
+    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
 
     # These fields are added by the processor
     observation_id: str = ""
@@ -814,6 +817,149 @@ class WebObservation(MeasurementMeta):
 
     pp_dns_fingerprint_id: Optional[str] = None
     pp_dns_fingerprint_country_consistent: Optional[bool] = None
+
+
+@add_slots
+@dataclass
+class WebControlObservation:
+    __table_name__ = "obs_web_ctrl"
+    __table_index__ = ("measurement_uid", "measurement_start_time")
+
+    measurement_uid: str
+    input: Optional[str]
+    report_id: str
+
+    measurement_start_time: datetime
+
+    software_name: str
+    software_version: str
+    test_name: str
+    test_version: str
+
+    hostname: str
+
+    bucket_date: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    ip: Optional[str] = None
+    port: Optional[int] = None
+
+    dns_failure: Optional[str] = None
+    dns_success: Optional[bool] = None
+
+    tcp_faliure: Optional[str] = None
+    tcp_success: Optional[bool] = None
+
+    tls_failure: Optional[str] = None
+    tls_success: Optional[bool] = None
+
+    http_request_url: Optional[str] = None
+    http_failure: Optional[str] = None
+    http_success: Optional[bool] = None
+    http_response_body_length: Optional[int] = None
+
+
+def make_web_control_observations(
+    msmt: WebConnectivity,
+) -> List[WebControlObservation]:
+    web_ctrl_obs = []
+
+    if msmt.test_keys.control_failure or msmt.test_keys.control is None:
+        # TODO: do we care to note these failures somewhere?
+        return web_ctrl_obs
+
+    # Very malformed input, not much to be done here
+    if not isinstance(msmt.input, str):
+        return web_ctrl_obs
+
+    measurement_start_time = datetime.strptime(
+        msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S"
+    )
+
+    # The hostname is implied from the input
+    hostname = urlparse(msmt.input).hostname
+    if not hostname:
+        return web_ctrl_obs
+
+    obs_base = WebControlObservation(
+        measurement_uid=msmt.measurement_uid or "",
+        input=msmt.input,
+        report_id=msmt.report_id,
+        measurement_start_time=measurement_start_time,
+        software_name=msmt.software_name,
+        software_version=msmt.software_version,
+        test_name=msmt.test_name,
+        test_version=msmt.test_version,
+        hostname=hostname,
+        created_at=datetime.utcnow(),
+    )
+    # Reference for new-style web_connectivity:
+    # https://explorer.ooni.org/measurement/20220924T215758Z_webconnectivity_IR_206065_n1_2CRoWBNJkWc7VyAs?input=https%3A%2F%2Fdoh.dns.apple.com%2Fdns-query%3Fdns%3Dq80BAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB
+
+    if msmt.test_keys.control.dns and msmt.test_keys.control.dns.failure:
+        obs = deepcopy(obs_base)
+        obs.dns_failure = msmt.test_keys.control.dns.failure
+        web_ctrl_obs.append(obs)
+
+    dns_ips = set()
+    if msmt.test_keys.control.dns and msmt.test_keys.control.dns.addrs:
+        dns_ips = set(list(msmt.test_keys.control.dns.addrs))
+
+    addr_map: Dict[str, WebControlObservation] = {}
+    if msmt.test_keys.control.tcp_connect:
+        for addr, res in msmt.test_keys.control.tcp_connect.items():
+            p = urlparse("//" + addr)
+
+            obs = deepcopy(obs_base)
+            obs.ip = p.hostname
+            obs.port = p.port
+            obs.tcp_faliure = res.failure
+            obs.tcp_success = res.failure is None
+
+            addr_map[addr] = obs
+
+    if msmt.test_keys.control.tls_handshake:
+        for addr, res in msmt.test_keys.control.tls_handshake.items():
+            obs = None
+            if addr in addr_map:
+                obs = addr_map[addr]
+
+            if obs is None:
+                p = urlparse("//" + addr)
+                obs = deepcopy(obs_base)
+                obs.ip = p.hostname
+                obs.port = p.port
+
+            obs.tls_failure = res.failure
+            obs.tls_success = res.failure is None
+
+    mapped_dns_ips = set()
+    for obs in addr_map.values():
+        assert obs.ip
+        if obs.ip in dns_ips:
+            # We care to include the IPs for which we got a resolution in the
+            # same row as the relevant TLS and TCP controls, but if we don't
+            # have them, we want to write a row with just that.
+            obs.dns_success = True
+            mapped_dns_ips.add(obs.ip)
+
+        web_ctrl_obs.append(obs)
+
+    for ip in dns_ips - mapped_dns_ips:
+        obs = deepcopy(obs_base)
+        obs.ip = ip
+        obs.dns_success = True
+        web_ctrl_obs.append(obs)
+
+    if msmt.test_keys.control.http_request:
+        obs = deepcopy(obs_base)
+        obs.http_request_url = msmt.input
+        obs.http_failure = msmt.test_keys.control.http_request.failure
+        obs.http_success = msmt.test_keys.control.http_request.failure is None
+        obs.http_response_body_length = msmt.test_keys.control.http_request.body_length
+        web_ctrl_obs.append(obs)
+
+    return web_ctrl_obs
 
 
 def maybe_set_web_fields(
@@ -1043,13 +1189,17 @@ def consume_web_observations(
             )
         )
 
+    for idx, obs in enumerate(web_obs_list):
+        obs.observation_id = f"{obs.measurement_uid}_{idx}"
+        obs.created_at = datetime.utcnow()
+
     return web_obs_list
 
 
 def make_web_connectivity_observations(
     msmt: WebConnectivity,
     netinfodb: NetinfoDB,
-) -> List[WebObservation]:
+) -> Tuple[List[WebObservation], List[WebControlObservation]]:
     msmt_meta = make_measurement_meta(msmt=msmt, netinfodb=netinfodb)
 
     http_observations = make_http_observations(msmt, msmt.test_keys.requests)
@@ -1060,7 +1210,7 @@ def make_web_connectivity_observations(
         msmt.test_keys.tls_handshakes,
         msmt.test_keys.network_events,
     )
-    return consume_web_observations(
+    web_observations = consume_web_observations(
         msmt_meta=msmt_meta,
         netinfodb=netinfodb,
         dns_observations=dns_observations,
@@ -1068,11 +1218,13 @@ def make_web_connectivity_observations(
         tls_observations=tls_observations,
         http_observations=http_observations,
     )
+    web_ctrl_observations = make_web_control_observations(msmt)
+    return (web_observations, web_ctrl_observations)
 
 
 def make_signal_observations(
     msmt: Signal, netinfodb: NetinfoDB
-) -> List[WebObservation]:
+) -> Tuple[List[WebObservation]]:
     cert_store = TLSCertStore(SIGNAL_PEM_STORE)
 
     msmt_meta = make_measurement_meta(msmt=msmt, netinfodb=netinfodb)
@@ -1087,20 +1239,22 @@ def make_signal_observations(
     )
     http_observations = make_http_observations(msmt, msmt.test_keys.requests)
 
-    return consume_web_observations(
-        msmt_meta=msmt_meta,
-        netinfodb=netinfodb,
-        dns_observations=dns_observations,
-        tcp_observations=tcp_observations,
-        tls_observations=tls_observations,
-        http_observations=http_observations,
+    return (
+        consume_web_observations(
+            msmt_meta=msmt_meta,
+            netinfodb=netinfodb,
+            dns_observations=dns_observations,
+            tcp_observations=tcp_observations,
+            tls_observations=tls_observations,
+            http_observations=http_observations,
+        ),
     )
 
 
 def make_dnscheck_observations(
     msmt: DNSCheck,
     netinfodb: NetinfoDB,
-) -> List[WebObservation]:
+) -> Tuple[List[WebObservation]]:
     web_obs_list = []
 
     msmt_meta = make_measurement_meta(msmt=msmt, netinfodb=netinfodb)
@@ -1127,13 +1281,13 @@ def make_dnscheck_observations(
             ),
         )
 
-    return web_obs_list
+    return (web_obs_list,)
 
 
 def make_tor_observations(
     msmt: Tor,
     netinfodb: NetinfoDB,
-) -> List[WebObservation]:
+) -> Tuple[List[WebObservation]]:
     web_obs_list = []
     msmt_meta = make_measurement_meta(msmt=msmt, netinfodb=netinfodb)
 
@@ -1156,7 +1310,7 @@ def make_tor_observations(
             target_id=target_id,
         )
 
-    return web_obs_list
+    return (web_obs_list, )
 
 
 nettest_make_obs_map = {
@@ -1170,4 +1324,4 @@ nettest_make_obs_map = {
 def make_observations(msmt, netinfodb: NetinfoDB):
     if msmt.test_name in nettest_make_obs_map:
         return nettest_make_obs_map[msmt.test_name](msmt, netinfodb)
-    return []
+    return [[]]
