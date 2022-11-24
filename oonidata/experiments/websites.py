@@ -217,8 +217,8 @@ def make_dns_blocking_event(
             map(
                 lambda gt: gt.ip,
                 filter(
-                    lambda gt: (gt.dns_success == True and gt.tls_is_certificate_valid)
-                    or (gt.is_trusted_vp and gt.ip),
+                    lambda gt: gt.dns_success == True
+                    and (gt.tls_is_certificate_valid or gt.is_trusted_vp),
                     ground_truths,
                 ),
             )
@@ -233,15 +233,6 @@ def make_dns_blocking_event(
             confidence=0.9,
         )
 
-    if web_o.tls_is_certificate_valid == False:
-        return BlockingEvent(
-            blocking_type=BlockingType.BLOCKED,
-            blocking_subject=blocking_subject,
-            blocking_detail="dns.inconsistent.tls_mismatch",
-            blocking_meta={"ip": web_o.dns_answer or "", "why": "tls_inconsistent"},
-            confidence=0.9,
-        )
-
     if web_o.tls_is_certificate_valid == True or web_o.dns_answer in trusted_answers:
         # No blocking detected
         return BlockingEvent(
@@ -253,6 +244,18 @@ def make_dns_blocking_event(
                 "why": "resolved IP in trusted answers",
             },
             confidence=1.0,
+        )
+
+    if web_o.tls_is_certificate_valid == False:
+        # TODO: we probably need to handle cases here where it might be the case
+        # that the CERT is bad because it's always serving a bad certificate.
+        # here is an example: https://explorer.ooni.org/measurement/20220930T235729Z_webconnectivity_AE_5384_n1_BLcO454Y5UULxZoq?input=https://www.government.ae/en%23%2F
+        return BlockingEvent(
+            blocking_type=BlockingType.BLOCKED,
+            blocking_subject=blocking_subject,
+            blocking_detail="dns.inconsistent.tls_mismatch",
+            blocking_meta={"ip": web_o.dns_answer or "", "why": "tls_inconsistent"},
+            confidence=0.9,
         )
 
     # If we are in this case, it means we weren't able to determine the

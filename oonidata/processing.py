@@ -867,7 +867,7 @@ def start_experiment_result_maker(
 ):
     shutdown_event = mp.Event()
 
-    observation_workers = []
+    workers = []
     day_queue = mp.JoinableQueue()
     for _ in range(parallelism):
         worker = ExperimentResultMakerWorker(
@@ -882,7 +882,7 @@ def start_experiment_result_maker(
         )
         worker.start()
         log.info(f"started worker {worker.pid}")
-        observation_workers.append(worker)
+        workers.append(worker)
 
     for day in date_interval(start_day, end_day):
         day_queue.put(day)
@@ -893,7 +893,7 @@ def start_experiment_result_maker(
     shutdown_event.set()
 
     log.info(f"waiting for workers to finish running")
-    for idx, p in enumerate(observation_workers):
-        log.info(f"waiting observation_maker {idx} to stop")
+    for idx, p in enumerate(workers):
+        log.info(f"waiting worker {idx} to stop")
         p.join()
         p.close()
