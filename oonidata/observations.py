@@ -7,10 +7,11 @@ import logging
 import dataclasses
 from dataclasses import dataclass, field
 from urllib.parse import urlparse, urlsplit
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import (
     Callable,
     Dict,
+    Generator,
     Optional,
     List,
     Tuple,
@@ -19,6 +20,7 @@ from typing import (
 
 from tabulate import tabulate
 
+from oonidata.db.connections import ClickhouseConnection
 from oonidata.dataformat import SIGNAL_PEM_STORE, DNSCheck, Tor
 
 from oonidata.dataformat import (
@@ -823,13 +825,45 @@ class WebObservation(MeasurementMeta):
     pp_dns_fingerprint_country_consistent: Optional[bool] = None
 
 
+def iter_web_observations(
+    db: ClickhouseConnection, measurement_day: date
+) -> Generator[List[WebObservation], None, None]:
+    start_day = measurement_day.strftime("%Y-%m-%d")
+    end_day = (measurement_day + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    column_names = [f.name for f in dataclasses.fields(WebObservation)]
+    q = "SELECT ("
+    q += ",\n".join(column_names)
+    q += ") FROM obs_web WHERE measurement_start_time > %(start_day)s AND measurement_start_time < %(end_day)s ORDER BY measurement_uid"
+
+    obs_group = []
+    last_msmt_uid = None
+    msmt_uid_idx = column_names.index("measurement_uid")
+    for res in db.execute_iter(q, {"start_day": start_day, "end_day": end_day}):
+        row = res[0]
+        if not last_msmt_uid:
+            last_msmt_uid = row[msmt_uid_idx]
+        if row[msmt_uid_idx] != last_msmt_uid:
+            yield obs_group
+            last_msmt_uid = row[msmt_uid_idx]
+            obs_group = []
+
+        obs_group.append(
+            WebObservation(**{k: row[idx] for idx, k in enumerate(column_names)})
+        )
+
+    if len(obs_group) > 0:
+        yield obs_group
+
+
 @add_slots
 @dataclass
 class WebControlObservation(ObservationBase):
     __table_name__ = "obs_web_ctrl"
-    __table_index__ = ("measurement_uid", "measurement_start_time")
+    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
 
     hostname: str
+    observation_id: str = ""
 
     bucket_date: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -840,7 +874,7 @@ class WebControlObservation(ObservationBase):
     dns_failure: Optional[str] = None
     dns_success: Optional[bool] = None
 
-    tcp_faliure: Optional[str] = None
+    tcp_failure: Optional[str] = None
     tcp_success: Optional[bool] = None
 
     tls_failure: Optional[str] = None
@@ -850,6 +884,23 @@ class WebControlObservation(ObservationBase):
     http_failure: Optional[str] = None
     http_success: Optional[bool] = None
     http_response_body_length: Optional[int] = None
+
+
+def get_web_ctrl_observations(
+    db: ClickhouseConnection, measurement_uid: str
+) -> List[WebControlObservation]:
+    obs_list = []
+    column_names = [f.name for f in dataclasses.fields(WebControlObservation)]
+    q = "SELECT ("
+    q += ",\n".join(column_names)
+    q += ") FROM obs_web_ctrl WHERE measurement_uid = %(measurement_uid)s"
+
+    for res in db.execute_iter(q, {"measurement_uid": measurement_uid}):
+        row = res[0]
+        obs_list.append(
+            WebControlObservation(**{k: row[idx] for idx, k in enumerate(column_names)})
+        )
+    return obs_list
 
 
 def make_web_control_observations(
@@ -907,7 +958,7 @@ def make_web_control_observations(
             assert p.hostname, "missing hostname in tcp_connect control key"
             obs.ip = p.hostname
             obs.port = p.port
-            obs.tcp_faliure = res.failure
+            obs.tcp_failure = res.failure
             obs.tcp_success = res.failure is None
 
             addr_map[addr] = obs
@@ -953,6 +1004,9 @@ def make_web_control_observations(
         obs.http_success = msmt.test_keys.control.http_request.failure is None
         obs.http_response_body_length = msmt.test_keys.control.http_request.body_length
         web_ctrl_obs.append(obs)
+
+    for idx, obs in enumerate(web_ctrl_obs):
+        obs.observation_id = f"{obs.measurement_uid}_{idx}"
 
     return web_ctrl_obs
 

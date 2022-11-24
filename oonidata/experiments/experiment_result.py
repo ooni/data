@@ -49,7 +49,8 @@ def fp_scope_to_outcome(scope: Optional[str]) -> BlockingType:
     return BlockingType.BLOCKED
 
 
-class BlockingEvent(NamedTuple):
+@dataclass
+class BlockingEvent:
     blocking_type: BlockingType
     blocking_subject: str
     blocking_detail: str
@@ -79,11 +80,16 @@ class ExperimentResult:
     resolver_cc: Optional[str]
 
     observation_ids: List[str]
+
     blocking_events: List[BlockingEvent]
     ok_confidence: float
 
     anomaly: bool
     confirmed: bool
+
+    experiment_result_id: str = ""
+    domain_name: str = ""
+    website_name: str = ""
 
 
 def make_base_result_meta(obs: MeasurementMeta) -> dict:

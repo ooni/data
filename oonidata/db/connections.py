@@ -24,11 +24,12 @@ class DatabaseConnection:
 
 
 class ClickhouseConnection(DatabaseConnection):
-    def __init__(self, conn_url, row_buffer_size=0):
+    def __init__(self, conn_url, row_buffer_size=0, max_block_size=10000):
         from clickhouse_driver import Client
 
         self.client = Client.from_url(conn_url)
         self.row_buffer_size = row_buffer_size
+        self.max_block_size = max_block_size
 
         self._column_names = {}
         self._row_buffer = defaultdict(list)
@@ -40,8 +41,12 @@ class ClickhouseConnection(DatabaseConnection):
         self.close()
 
     def execute(self, *args, **kwargs):
-        # log.debug(f"execute {args} {kwargs}")
         return self.client.execute(*args, **kwargs)
+
+    def execute_iter(self, *args, **kwargs):
+        return self.client.execute_iter(
+            *args, **kwargs, settings={"max_block_size": self.max_block_size}
+        )
 
     def write_rows(self, table_name, rows, column_names):
         if table_name in self._column_names:

@@ -218,7 +218,7 @@ def make_dns_blocking_event(
                 lambda gt: gt.ip,
                 filter(
                     lambda gt: (gt.dns_success == True and gt.tls_is_certificate_valid)
-                    or gt.is_trusted_vp,
+                    or (gt.is_trusted_vp and gt.ip),
                     ground_truths,
                 ),
             )
@@ -265,7 +265,7 @@ def make_dns_blocking_event(
     ground_truth_asns = set()
     ground_truth_as_org_names = set()
     for ip in trusted_answers:
-        assert ip, "did not find IP in ground truth"
+        assert ip, f"did not find IP in ground truth {ip}"
         ip_info = netinfodb.lookup_ip(web_o.measurement_start_time, ip)
         if ip_info:
             ground_truth_asns.add(ip_info.as_info.asn)
@@ -563,8 +563,7 @@ def is_blocked(be: Optional[BlockingEvent]) -> bool:
 
 @dataclass
 class WebsiteExperimentResult(ExperimentResult):
-    domain_name: str
-    website_name: str
+    pass
 
 
 def make_website_experiment_result(
@@ -589,6 +588,15 @@ def make_website_experiment_result(
     is_tcp_blocked = False
     is_tls_blocked = False
     for web_o in web_observations:
+        # FIXME: for the moment we just ignore all IPv6 results, because they are too noisy
+        if web_o.ip:
+            try:
+                ipaddr = ipaddress.ip_address(web_o.ip)
+                if isinstance(ipaddr, ipaddress.IPv6Address):
+                    continue
+            except:
+                log.error(f"Invalid IP in {web_o.ip}")
+
         request_is_encrypted = (
             web_o.http_request_url and web_o.http_request_url.startswith("https://")
         )

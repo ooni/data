@@ -17,7 +17,11 @@ from oonidata.dataclient import (
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.db.create_tables import create_queries
 from oonidata.netinfo import NetinfoDB
-from oonidata.processing import start_fingerprint_hunter, start_observation_maker
+from oonidata.processing import (
+    start_experiment_result_maker,
+    start_fingerprint_hunter,
+    start_observation_maker,
+)
 
 
 log = logging.getLogger("oonidata")
@@ -204,6 +208,51 @@ def mkobs(
         archives_dir=archives_dir,
         parallelism=parallelism,
         start_at_idx=start_at_idx,
+        fast_fail=fast_fail,
+    )
+
+
+@cli.command()
+@probe_cc_option
+@test_name_option
+@start_day_option
+@end_day_option
+@click.option("--clickhouse", type=str, required=True)
+@click.option(
+    "--data-dir",
+    type=Path,
+    required=True,
+    help="data directory to store fingerprint and geoip databases",
+)
+@click.option(
+    "--parallelism",
+    type=int,
+    default=multiprocessing.cpu_count() + 2,
+    help="number of processes to use. Only works when writing to a database",
+)
+@click.option(
+    "--fast-fail",
+    is_flag=True,
+    help="should we fail immediately when we encounter an error?",
+)
+def mker(
+    probe_cc: List[str],
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    clickhouse: str,
+    data_dir: Path,
+    parallelism: int,
+    fast_fail: bool,
+):
+    start_experiment_result_maker(
+        probe_cc=probe_cc,
+        test_name=test_name,
+        start_day=start_day,
+        end_day=end_day,
+        clickhouse=clickhouse,
+        data_dir=data_dir,
+        parallelism=parallelism,
         fast_fail=fast_fail,
     )
 

@@ -17,7 +17,6 @@ from base64 import b32decode
 from datetime import date, datetime, timedelta
 
 from typing import (
-    Any,
     Callable,
     Dict,
     Generator,
@@ -34,9 +33,25 @@ from tqdm import tqdm
 from warcio.warcwriter import WARCWriter
 from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
+from oonidata.experiments.control import (
+    BodyDB,
+    WebGroundTruthDB,
+    get_web_ground_truth,
+)
+from oonidata.experiments.experiment_result import (
+    BlockingEvent,
+    BlockingType,
+    ExperimentResult,
+)
+from oonidata.experiments.websites import make_website_experiment_result
 
 from oonidata.fingerprintdb import FingerprintDB, Fingerprint
-from oonidata.observations import WebObservation, make_observations
+from oonidata.observations import (
+    WebObservation,
+    iter_web_observations,
+    make_observations,
+    get_web_ctrl_observations,
+)
 from oonidata.dataformat import (
     WebConnectivity,
     load_measurement,
@@ -741,3 +756,142 @@ def start_observation_maker(
     # Shutdown the status thread
     log.info("shutting down the status thread")
     status_thread.join()
+
+
+class ExperimentResultMakerWorker(mp.Process):
+    def __init__(
+        self,
+        day_queue: mp.JoinableQueue,
+        shutdown_event: EventClass,
+        data_dir: pathlib.Path,
+        probe_cc: List[str],
+        test_name: List[str],
+        clickhouse: str,
+        fast_fail: bool,
+        log_level: int = logging.INFO,
+    ):
+        super().__init__(daemon=True)
+        self.day_queue = day_queue
+        self.probe_cc = probe_cc
+        self.test_name = test_name
+        self.clickhouse = clickhouse
+        self.fast_fail = fast_fail
+        self.data_dir = data_dir
+
+        self.shutdown_event = shutdown_event
+        log.setLevel(log_level)
+
+    def run(self):
+        er_columns = list(
+            filter(
+                lambda x: x != "blocking_events",
+                [f.name for f in dataclasses.fields(ExperimentResult)],
+            )
+        )
+        be_columns = [f.name for f in dataclasses.fields(BlockingEvent)]
+        all_columns = er_columns + be_columns
+
+        db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=100)
+        netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
+        fingerprintdb = FingerprintDB(datadir=self.data_dir, download=False)
+
+        body_db = BodyDB(db=ClickhouseConnection(self.clickhouse, row_buffer_size=100))
+
+        while not self.shutdown_event.is_set():
+            try:
+                day = self.day_queue.get(block=True, timeout=0.1)
+            except queue.Empty:
+                continue
+            try:
+                db_lookup = ClickhouseConnection(self.clickhouse)
+                web_ground_truth_db = WebGroundTruthDB(
+                    ground_truths=get_web_ground_truth(
+                        db=db_lookup, measurement_day=day
+                    )
+                )
+                db = ClickhouseConnection(self.clickhouse)
+                for web_obs in iter_web_observations(db, measurement_day=day):
+                    try:
+                        er = make_website_experiment_result(
+                            web_observations=web_obs,
+                            body_db=body_db,
+                            web_ground_truth_db=web_ground_truth_db,
+                            fingerprintdb=fingerprintdb,
+                            netinfodb=netinfodb,
+                        )
+
+                        # FIXME FIXME FIXME YELP
+                        # This is just aweful. Should be fixed up
+                        rows = []
+                        for idx, be in enumerate(er.blocking_events):
+                            er.experiment_result_id = f"{er.measurement_uid}_{idx}"
+                            row = [getattr(er, k) for k in er_columns]
+                            for k in be_columns:
+                                v = getattr(be, k)
+                                if isinstance(v, BlockingType):
+                                    v = v.value
+                                row.append(v)
+                            rows.append(row)
+                        db_writer.write_rows(
+                            table_name="experiment_result",
+                            rows=rows,
+                            column_names=all_columns,
+                        )
+                    except Exception:
+                        log.error(f"failed to obs group {web_obs}", exc_info=True)
+            except Exception as exc:
+                log.error(f"failed to process {day}", exc_info=True)
+
+            log.info(f"finished processing day {day}")
+            self.day_queue.task_done()
+
+        log.info("process is done")
+        try:
+            db_writer.close()
+        except Exception as exc:
+            log.error("failed to flush database", exc_info=True)
+
+
+def start_experiment_result_maker(
+    probe_cc: List[str],
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    data_dir: pathlib.Path,
+    clickhouse: str,
+    parallelism: int,
+    fast_fail: bool,
+    log_level: int = logging.INFO,
+):
+    shutdown_event = mp.Event()
+
+    observation_workers = []
+    day_queue = mp.JoinableQueue()
+    for _ in range(parallelism):
+        worker = ExperimentResultMakerWorker(
+            day_queue=day_queue,
+            shutdown_event=shutdown_event,
+            probe_cc=probe_cc,
+            test_name=test_name,
+            data_dir=data_dir,
+            clickhouse=clickhouse,
+            fast_fail=fast_fail,
+            log_level=log_level,
+        )
+        worker.start()
+        log.info(f"started worker {worker.pid}")
+        observation_workers.append(worker)
+
+    for day in date_interval(start_day, end_day):
+        day_queue.put(day)
+
+    log.info("waiting for the day queue to finish")
+    day_queue.join()
+
+    shutdown_event.set()
+
+    log.info(f"waiting for workers to finish running")
+    for idx, p in enumerate(observation_workers):
+        log.info(f"waiting observation_maker {idx} to stop")
+        p.join()
+        p.close()

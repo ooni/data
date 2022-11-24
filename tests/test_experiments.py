@@ -167,13 +167,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
             er.blocking_events,
         )
     )
-    # TODO: this is disabled because we aren't yet smart enough to consider IPv6
-    # unreachable as a non-blocking event. We are giving it a pretty low
-    # confidence so it shouldn't have a big impact, but we ought to fix it with
-    # smarter analysis
-    # Should all blocking events be OK
-    # assert len(be) == len(er.blocking_events)
-    assert len(be) == 8
+    assert len(be) == len(er.blocking_events)
 
 
 def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):

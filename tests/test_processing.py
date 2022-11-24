@@ -47,7 +47,7 @@ def test_web_connectivity_processor(netinfodb, measurements):
     assert len(web_ctrl_list) == 3
 
 
-def test_dnscheck_processor(benchmark, measurements, netinfodb):
+def test_dnscheck_processor(measurements, netinfodb):
     db = MagicMock()
     db.write_row = MagicMock()
 

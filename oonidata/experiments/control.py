@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 import logging
 
 from typing import Any, Dict, Optional, Tuple, List
@@ -25,7 +25,7 @@ class WebGroundTruth:
     dns_failure: Optional[str]
     dns_success: Optional[bool]
 
-    tcp_faliure: Optional[str]
+    tcp_failure: Optional[str]
     tcp_success: Optional[bool]
 
     tls_failure: Optional[str]
@@ -55,7 +55,7 @@ def make_ground_truths_from_web_control(
             port=obs.port,
             dns_failure=obs.dns_failure,
             dns_success=obs.dns_success,
-            tcp_faliure=obs.tcp_faliure,
+            tcp_failure=obs.tcp_failure,
             tcp_success=obs.tcp_success,
             tls_failure=obs.tls_failure,
             tls_success=obs.tls_success,
@@ -68,6 +68,62 @@ def make_ground_truths_from_web_control(
             count=count,
         )
         wgt_list.append(wgt)
+    return wgt_list
+
+
+def get_web_ground_truth(
+    db: ClickhouseConnection, measurement_day: date
+) -> List[WebGroundTruth]:
+    start_day = measurement_day.strftime("%Y-%m-%d")
+    end_day = (measurement_day + timedelta(days=1)).strftime("%Y-%m-%d")
+    wgt_list = []
+    column_names = [
+        "hostname",
+        "ip",
+        "port",
+        "dns_failure",
+        "dns_success",
+        "tcp_failure",
+        "tcp_success",
+        "tls_failure",
+        "tls_success",
+        "tls_is_certificate_valid",
+        "http_request_url",
+        "http_success",
+        "http_failure",
+        "http_response_body_length",
+    ]
+    q = """
+    SELECT (
+        hostname,
+        ip,
+        port,
+        dns_failure,
+        dns_success,
+        tcp_failure,
+        tcp_success,
+        tls_failure,
+        tls_success,
+        (tls_failure is NULL AND tls_success = 1) AS tls_is_certificate_valid,
+        http_request_url,
+        http_failure,
+        http_success,
+        http_response_body_length,
+        COUNT()
+    )
+    FROM obs_web_ctrl
+    WHERE measurement_start_time > %(start_day)s AND measurement_start_time < %(end_day)s
+    """
+    q += "GROUP BY "
+    q += ",".join(column_names)
+
+    for res in db.execute_iter(q, dict(start_day=start_day, end_day=end_day)):
+        row = res[0]
+        wgt_dict = {k: row[idx] for idx, k in enumerate(column_names + ["count"])}
+        wgt_dict["vp_cc"] = "ZZ"
+        wgt_dict["vp_asn"] = 0
+        wgt_dict["is_trusted_vp"] = True
+        wgt_list.append(WebGroundTruth(**wgt_dict))
     return wgt_list
 
 

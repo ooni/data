@@ -44,7 +44,7 @@ def typing_to_clickhouse(t: Any) -> str:
         return "Float64"
 
     if t == dict:
-        return "JSON"
+        return "String"
 
     if t == Optional[float]:
         return "Nullable(Float64)"
@@ -62,16 +62,19 @@ def typing_to_clickhouse(t: Any) -> str:
         return "String"
 
     if t == List[BlockingEvent]:
-        columns = []
-        for name, type in BlockingEvent.__annotations__.items():
-            type_str = typing_to_clickhouse(type)
-            columns.append(f"         {name} {type_str}")
-        columns_str = ",\n".join(columns)
+        return "String"
 
-        s = "Nested (\n"
-        s += columns_str
-        s += "\n     )"
-        return s
+        # FIXME: Temporarily disabled until I figure out how this works properly
+        # columns = []
+        # for name, type in BlockingEvent.__annotations__.items():
+        #     type_str = typing_to_clickhouse(type)
+        #     columns.append(f"         {name} {type_str}")
+        # columns_str = ",\n".join(columns)
+
+        # s = "Nested (\n"
+        # s += columns_str
+        # s += "\n     )"
+        # return s
 
     if t in (Mapping[str, str], Dict[str, str]):
         return "Map(String, String)"
@@ -104,6 +107,13 @@ def create_query_for_observation(obs_class: Type[ObservationBase]) -> Tuple[str,
 def create_query_for_experiment_result() -> Tuple[str, str]:
     columns = []
     for f in fields(ExperimentResult):
+        if f.name == "blocking_events":
+            continue
+        type_str = typing_to_clickhouse(f.type)
+        columns.append(f"     {f.name} {type_str}")
+
+    # TODO: this is a little bit sketch, should change the base data struct
+    for f in fields(BlockingEvent):
         type_str = typing_to_clickhouse(f.type)
         columns.append(f"     {f.name} {type_str}")
 
