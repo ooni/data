@@ -4,27 +4,25 @@ from datetime import date, timedelta, datetime
 import logging
 import sqlite3
 
-from typing import Any, Dict, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List, NamedTuple
 from urllib.parse import urlparse
 from oonidata.netinfo import NetinfoDB
 from oonidata.observations import WebControlObservation
 from oonidata.datautils import one_day_dict
 
+from oonidata.compat import add_slots
 from oonidata.db.connections import ClickhouseConnection
 
 log = logging.getLogger("oonidata.processing")
 
 
-@dataclass
-class WebGroundTruth:
+class WebGroundTruth(NamedTuple):
     vp_asn: int
     vp_cc: str
     is_trusted_vp: bool
 
     hostname: str
     ip: Optional[str]
-    ip_asn: Optional[int]
-    ip_as_org_name: Optional[str]
     port: Optional[int]
 
     dns_failure: Optional[str]
@@ -44,6 +42,9 @@ class WebGroundTruth:
 
     timestamp: datetime
     count: int
+
+    ip_asn: Optional[int]
+    ip_as_org_name: Optional[str]
 
 
 def make_ground_truths_from_web_control(
@@ -186,17 +187,17 @@ class WebGroundTruthDB:
             "CREATE INDEX http_request_url_idx ON ground_truth(http_request_url)"
         )
         self.db.commit()
-        self.column_names = [f.name for f in dataclasses.fields(WebGroundTruth)]
+        self.column_names = WebGroundTruth._fields
 
         c_str = ",".join(self.column_names)
         v_str = ",".join(["?" for _ in range(len(self.column_names))])
         q_str = f"INSERT INTO ground_truth ({c_str}) VALUES ({v_str})"
         for gt in ground_truths:
+            row = gt
             if gt.ip:
                 ip_info = netinfodb.lookup_ip(gt.timestamp, gt.ip)
-                gt.ip_asn = ip_info.as_info.asn
-                gt.ip_as_org_name = ip_info.as_info.as_org_name
-            self.db.execute(q_str, [getattr(gt, k) for k in self.column_names])
+                row = gt[:-2] + (ip_info.as_info.asn, ip_info.as_info.as_org_name)
+            self.db.execute(q_str, row)
         self.db.commit()
 
     def lookup(
@@ -233,9 +234,7 @@ class WebGroundTruthDB:
             q_args.append(port)
         matches = []
         for row in self.db.execute(q, q_args):
-            gt = WebGroundTruth(
-                **{k: row[idx] for idx, k in enumerate(self.column_names)}
-            )
+            gt = WebGroundTruth(*row)
             matches.append(gt)
         return matches
 

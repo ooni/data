@@ -22,4 +22,4 @@ def test_experiment_results(fingerprintdb, netinfodb):
             fingerprintdb=fingerprintdb,
             netinfodb=netinfodb,
         ):
-            print(er)
+            pass
