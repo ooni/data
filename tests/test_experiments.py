@@ -209,16 +209,7 @@ def test_website_experiment_result_blocked(fingerprintdb, netinfodb, measurement
         netinfodb,
     )
     assert experiment_result.anomaly == True
-    # FIXME this is currently generating two separate blocking events, one for
-    # HTTPS and another for DNS. That is because we aren't able to match up the
-    # DNS query to the HTTPS requests, leading us to not know if the blocking is
-    # happening at the DNS level or not.
-    # I'm not even sure if this is a bug tbh, since the measurement data doesn't
-    # include enough details to tell which of the two cases it is.
-    #
-    # assert len(experiment_result.blocking_events) == 1
-
-    assert len(experiment_result.blocking_events) == 2
+    assert len(experiment_result.blocking_events) == 1
 
 
 def test_website_experiment_result_ok(fingerprintdb, netinfodb, measurements):
@@ -228,34 +219,6 @@ def test_website_experiment_result_ok(fingerprintdb, netinfodb, measurements):
         netinfodb,
     )
     print(experiment_result)
-    assert experiment_result.anomaly == False
-    for be in experiment_result.blocking_events:
-        assert be.blocking_type == BlockingType.OK
-    assert len(experiment_result.blocking_events) == 4
-
-
-def benchmark_test_website_experiment_result_blocked(
-    fingerprintdb, netinfodb, measurements, benchmark
-):
-    experiment_result = benchmark(
-        make_experiment_result_from_wc_ctrl,
-        measurements["20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"],
-        fingerprintdb,
-        netinfodb,
-    )
-    assert experiment_result.anomaly == True
-    assert len(experiment_result.blocking_events) == 1
-
-
-def benchmark_test_website_experiment_result_ok(
-    fingerprintdb, netinfodb, measurements, benchmark
-):
-    experiment_result = benchmark(
-        make_experiment_result_from_wc_ctrl,
-        measurements["20220608132401.787399_AM_webconnectivity_2285fc373f62729e"],
-        fingerprintdb,
-        netinfodb,
-    )
     assert experiment_result.anomaly == False
     for be in experiment_result.blocking_events:
         assert be.blocking_type == BlockingType.OK

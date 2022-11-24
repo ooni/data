@@ -3,7 +3,7 @@ from pathlib import Path
 import sqlite3
 from unittest.mock import MagicMock
 
-from oonidata.dataformat import WebConnectivity, load_measurement
+from oonidata.dataformat import WebConnectivity, DNSCheck, load_measurement
 from oonidata.observations import (
     make_http_observations,
     make_observations,
@@ -40,37 +40,23 @@ def test_web_connectivity_processor(netinfodb, measurements):
     )
     assert isinstance(msmt, WebConnectivity)
 
-    make_web_connectivity_observations(msmt, netinfodb=netinfodb)
-
-
-def test_benchmark_web_connectivity(benchmark, measurements, netinfodb):
-    db = MagicMock()
-    db.write_row = MagicMock()
-
-    msmt = load_measurement(
-        msmt_path=measurements[
-            "20220627131742.081225_GB_webconnectivity_e1e2cf4db492b748"
-        ]
+    web_obs_list, web_ctrl_list = make_web_connectivity_observations(
+        msmt, netinfodb=netinfodb
     )
-    benchmark(
-        make_web_connectivity_observations,
-        msmt=msmt,
-        netinfodb=netinfodb,
-    )
+    assert len(web_obs_list) == 3
+    assert len(web_ctrl_list) == 3
 
 
-def test_benchmark_dnscheck(benchmark, measurements, netinfodb):
+def test_dnscheck_processor(benchmark, measurements, netinfodb):
     db = MagicMock()
     db.write_row = MagicMock()
 
     msmt = load_measurement(
         msmt_path=measurements["20221013000000.517636_US_dnscheck_bfd6d991e70afa0e"]
     )
-    benchmark(
-        make_dnscheck_observations,
-        msmt=msmt,
-        netinfodb=netinfodb,
-    )
+    assert isinstance(msmt, DNSCheck)
+    obs_list = make_dnscheck_observations(msmt=msmt, netinfodb=netinfodb)[0]
+    assert len(obs_list) == 20
 
 
 def test_full_processing(raw_measurements, netinfodb):
