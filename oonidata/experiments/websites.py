@@ -16,8 +16,6 @@ from oonidata.experiments.experiment_result import (
 )
 
 from oonidata.fingerprintdb import FingerprintDB
-from oonidata.netinfo import NetinfoDB
-
 
 from oonidata.observations import (
     WebObservation,
@@ -168,7 +166,6 @@ def make_dns_blocking_event(
     web_o: WebObservation,
     web_ground_truth_db: WebGroundTruthDB,
     fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
 ) -> Optional[BlockingEvent]:
 
     blocking_subject = web_o.hostname or ""
@@ -212,18 +209,13 @@ def make_dns_blocking_event(
             confidence=0.9,
         )
 
-    trusted_answers = set(
-        list(
-            map(
-                lambda gt: gt.ip,
-                filter(
-                    lambda gt: gt.dns_success == True
-                    and (gt.tls_is_certificate_valid or gt.is_trusted_vp),
-                    ground_truths,
-                ),
-            )
-        )
-    )
+    trusted_answers = {}
+    for gt in ground_truths:
+        if gt.dns_success != True:
+            continue
+        if gt.tls_is_certificate_valid != False and gt.is_trusted_vp != True:
+            continue
+        trusted_answers[gt.ip] = gt
     if web_o.ip_is_bogon and len(trusted_answers) > 0:
         return BlockingEvent(
             blocking_type=BlockingType.BLOCKED,
@@ -267,12 +259,10 @@ def make_dns_blocking_event(
     # blocked.
     ground_truth_asns = set()
     ground_truth_as_org_names = set()
-    for ip in trusted_answers:
-        assert ip, f"did not find IP in ground truth {ip}"
-        ip_info = netinfodb.lookup_ip(web_o.measurement_start_time, ip)
-        if ip_info:
-            ground_truth_asns.add(ip_info.as_info.asn)
-            ground_truth_as_org_names.add(ip_info.as_info.as_org_name.lower())
+    for gt in trusted_answers.values():
+        assert gt.ip, f"did not find IP in ground truth {gt.ip}"
+        ground_truth_asns.add(gt.ip_asn)
+        ground_truth_as_org_names.add(gt.ip_as_org_name.lower())
 
     if web_o.dns_answer_asn in ground_truth_asns:
         return BlockingEvent(
@@ -310,9 +300,7 @@ def make_dns_blocking_event(
             continue
         other_ips[gt.ip].add((gt.vp_cc, gt.vp_asn))
         assert gt.ip, "did not find IP in ground truth"
-        ip_info = netinfodb.lookup_ip(web_o.measurement_start_time, gt.ip)
-        if ip_info:
-            other_asns[ip_info.as_info.asn].add((gt.vp_cc, gt.vp_asn))
+        other_asns[gt.ip_asn].add((gt.vp_cc, gt.vp_asn))
 
     if web_o.dns_answer in other_ips:
         return BlockingEvent(
@@ -574,7 +562,6 @@ def make_website_experiment_result(
     web_ground_truth_db: WebGroundTruthDB,
     body_db: BodyDB,
     fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
 ) -> WebsiteExperimentResult:
     blocking_events = []
     observation_ids = []
@@ -612,7 +599,6 @@ def make_website_experiment_result(
                 web_o=web_o,
                 web_ground_truth_db=web_ground_truth_db,
                 fingerprintdb=fingerprintdb,
-                netinfodb=netinfodb,
             )
             if is_blocked(dns_be):
                 is_dns_blocked = True

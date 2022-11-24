@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+import dataclasses
+from datetime import date, timedelta, datetime
 import logging
+import sqlite3
 
 from typing import Any, Dict, Optional, Tuple, List
 from urllib.parse import urlparse
+from oonidata.netinfo import NetinfoDB
 from oonidata.observations import WebControlObservation
 from oonidata.datautils import one_day_dict
 
@@ -20,6 +23,8 @@ class WebGroundTruth:
 
     hostname: str
     ip: Optional[str]
+    ip_asn: Optional[int]
+    ip_as_org_name: Optional[str]
     port: Optional[int]
 
     dns_failure: Optional[str]
@@ -37,6 +42,7 @@ class WebGroundTruth:
     http_success: Optional[bool]
     http_response_body_length: Optional[int]
 
+    timestamp: datetime
     count: int
 
 
@@ -45,13 +51,17 @@ def make_ground_truths_from_web_control(
     count: int = 1,
 ) -> List[WebGroundTruth]:
     wgt_list = []
+    # TODO: pass a netinfodb to lookup the ip_asn and ip_as_org_name
     for obs in web_control_observations:
         wgt = WebGroundTruth(
             vp_asn=0,
             vp_cc="ZZ",
+            timestamp=obs.measurement_start_time,
             is_trusted_vp=True,
             hostname=obs.hostname,
             ip=obs.ip,
+            ip_asn=0,
+            ip_as_org_name="",
             port=obs.port,
             dns_failure=obs.dns_failure,
             dns_success=obs.dns_success,
@@ -81,6 +91,7 @@ def get_web_ground_truth(
         "hostname",
         "ip",
         "port",
+        "timestamp",
         "dns_failure",
         "dns_success",
         "tcp_failure",
@@ -98,6 +109,7 @@ def get_web_ground_truth(
         hostname,
         ip,
         port,
+        toStartOfDay(measurement_start_time) as timestamp,
         dns_failure,
         dns_success,
         tcp_failure,
@@ -123,13 +135,69 @@ def get_web_ground_truth(
         wgt_dict["vp_cc"] = "ZZ"
         wgt_dict["vp_asn"] = 0
         wgt_dict["is_trusted_vp"] = True
+        # We add these later in the ground truth DB
+        wgt_dict["ip_asn"] = 0
+        wgt_dict["ip_as_org_name"] = ""
         wgt_list.append(WebGroundTruth(**wgt_dict))
     return wgt_list
 
 
 class WebGroundTruthDB:
-    def __init__(self, ground_truths: List[WebGroundTruth]):
-        self.truths = ground_truths
+    def __init__(self, ground_truths: List[WebGroundTruth], netinfodb: NetinfoDB):
+        self.db = sqlite3.connect(":memory:")
+        self.db.execute(
+            """
+        CREATE TABLE ground_truth (
+            vp_asn INT,
+            vp_cc TEXT,
+            is_trusted_vp INT,
+
+            timestamp TEXT,
+
+            hostname TEXT,
+            ip TEXT,
+            ip_asn INT,
+            ip_as_org_name TEXT,
+            port TEXT,
+
+            dns_failure TEXT,
+            dns_success INT,
+
+            tcp_failure TEXT,
+            tcp_success INT,
+
+            tls_failure TEXT,
+            tls_success INT,
+            tls_is_certificate_valid INT,
+
+            http_request_url TEXT,
+            http_failure TEXT,
+            http_success INT,
+            http_response_body_length INT,
+            count INT
+        )
+        """
+        )
+        self.db.commit()
+        self.db.execute("CREATE INDEX vp_idx ON ground_truth(vp_asn, vp_cc)")
+        self.db.execute("CREATE INDEX hostname_idx ON ground_truth(hostname)")
+        self.db.execute("CREATE INDEX ip_port_idx ON ground_truth(ip, port)")
+        self.db.execute(
+            "CREATE INDEX http_request_url_idx ON ground_truth(http_request_url)"
+        )
+        self.db.commit()
+        self.column_names = [f.name for f in dataclasses.fields(WebGroundTruth)]
+
+        c_str = ",".join(self.column_names)
+        v_str = ",".join(["?" for _ in range(len(self.column_names))])
+        q_str = f"INSERT INTO ground_truth ({c_str}) VALUES ({v_str})"
+        for gt in ground_truths:
+            if gt.ip:
+                ip_info = netinfodb.lookup_ip(gt.timestamp, gt.ip)
+                gt.ip_asn = ip_info.as_info.asn
+                gt.ip_as_org_name = ip_info.as_info.as_org_name
+            self.db.execute(q_str, [getattr(gt, k) for k in self.column_names])
+        self.db.commit()
 
     def lookup(
         self,
@@ -140,20 +208,34 @@ class WebGroundTruthDB:
         port: Optional[int] = None,
         http_request_url: Optional[str] = None,
     ) -> List[WebGroundTruth]:
+        c_str = ",\n".join(self.column_names)
+        q = f"""
+        SELECT
+        {c_str}
+        FROM ground_truth
+        WHERE vp_asn != ? AND vp_cc != ?
+        """
+        # We want to exclude all the ground truths that are from the same
+        # vantage point as the probe
+        q_args = [probe_cc, probe_asn]
+        if hostname:
+            q += " AND hostname = ? "
+            q_args.append(hostname)
+        if ip:
+            q += " AND ip = ? "
+            q_args.append(ip)
+        if port:
+            q += " AND port = ? "
+            q_args.append(port)
+
+        if http_request_url:
+            q += " AND http_request_url = ? "
+            q_args.append(port)
         matches = []
-        for gt in self.truths:
-            # We want to exclude all the ground truths that are from the same
-            # vantage point as the probe
-            if gt.vp_asn == probe_asn and gt.vp_cc == probe_cc:
-                continue
-            if hostname and gt.hostname != hostname:
-                continue
-            if ip and gt.ip != ip:
-                continue
-            if port is not None and gt.port != port:
-                continue
-            if http_request_url and gt.http_request_url != http_request_url:
-                continue
+        for row in self.db.execute(q, q_args):
+            gt = WebGroundTruth(
+                **{k: row[idx] for idx, k in enumerate(self.column_names)}
+            )
             matches.append(gt)
         return matches
 

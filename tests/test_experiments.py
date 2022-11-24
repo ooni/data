@@ -180,7 +180,8 @@ def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
     web_ground_truth_db = WebGroundTruthDB(
         ground_truths=make_ground_truths_from_web_control(
             make_web_control_observations(msmt)
-        )
+        ),
+        netinfodb=netinfodb,
     )
 
     body_db = MagicMock()
@@ -192,7 +193,6 @@ def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
         web_ground_truth_db=web_ground_truth_db,
         body_db=body_db,
         fingerprintdb=fingerprintdb,
-        netinfodb=netinfodb,
     )
 
 

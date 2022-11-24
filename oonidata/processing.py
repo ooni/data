@@ -758,6 +758,59 @@ def start_observation_maker(
     status_thread.join()
 
 
+def run_experiment_results(
+    day: date,
+    fingerprintdb: FingerprintDB,
+    netinfodb: NetinfoDB,
+    body_db: BodyDB,
+    db_writer: ClickhouseConnection,
+    clickhouse: str,
+):
+    er_columns = list(
+        filter(
+            lambda x: x != "blocking_events",
+            [f.name for f in dataclasses.fields(ExperimentResult)],
+        )
+    )
+    be_columns = [f.name for f in dataclasses.fields(BlockingEvent)]
+    all_columns = er_columns + be_columns
+    db_lookup = ClickhouseConnection(clickhouse)
+    web_ground_truth_db = WebGroundTruthDB(
+        ground_truths=get_web_ground_truth(db=db_lookup, measurement_day=day),
+        netinfodb=netinfodb,
+    )
+    db = ClickhouseConnection(clickhouse)
+    for web_obs in iter_web_observations(db, measurement_day=day):
+        try:
+            er = make_website_experiment_result(
+                web_observations=web_obs,
+                body_db=body_db,
+                web_ground_truth_db=web_ground_truth_db,
+                fingerprintdb=fingerprintdb,
+            )
+            # FIXME FIXME FIXME YELP
+            # This is just aweful. Should be fixed up
+            rows = []
+            for idx, be in enumerate(er.blocking_events):
+                er.experiment_result_id = f"{er.measurement_uid}_{idx}"
+                row = [getattr(er, k) for k in er_columns]
+                for k in be_columns:
+                    v = getattr(be, k)
+                    if isinstance(v, BlockingType):
+                        v = v.value
+                    row.append(v)
+                rows.append(row)
+            db_writer.write_rows(
+                table_name="experiment_result",
+                rows=rows,
+                column_names=all_columns,
+            )
+            yield er
+        except:
+            web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
+            log.error(f"failed to generate er for {web_obs_ids}", exc_info=True)
+
+
 class ExperimentResultMakerWorker(mp.Process):
     def __init__(
         self,
@@ -784,20 +837,12 @@ class ExperimentResultMakerWorker(mp.Process):
         log.setLevel(log_level)
 
     def run(self):
-        er_columns = list(
-            filter(
-                lambda x: x != "blocking_events",
-                [f.name for f in dataclasses.fields(ExperimentResult)],
-            )
-        )
-        be_columns = [f.name for f in dataclasses.fields(BlockingEvent)]
-        all_columns = er_columns + be_columns
 
-        db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=100)
+        db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=10_000)
         netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
         fingerprintdb = FingerprintDB(datadir=self.data_dir, download=False)
 
-        body_db = BodyDB(db=ClickhouseConnection(self.clickhouse, row_buffer_size=100))
+        body_db = BodyDB(db=ClickhouseConnection(self.clickhouse))
 
         while not self.shutdown_event.is_set():
             try:
@@ -807,43 +852,15 @@ class ExperimentResultMakerWorker(mp.Process):
 
             log.info(f"generating experiment results from {day}")
             try:
-                db_lookup = ClickhouseConnection(self.clickhouse)
-                web_ground_truth_db = WebGroundTruthDB(
-                    ground_truths=get_web_ground_truth(
-                        db=db_lookup, measurement_day=day
-                    )
-                )
-                db = ClickhouseConnection(self.clickhouse)
-                for web_obs in iter_web_observations(db, measurement_day=day):
-                    try:
-                        er = make_website_experiment_result(
-                            web_observations=web_obs,
-                            body_db=body_db,
-                            web_ground_truth_db=web_ground_truth_db,
-                            fingerprintdb=fingerprintdb,
-                            netinfodb=netinfodb,
-                        )
-
-                        # FIXME FIXME FIXME YELP
-                        # This is just aweful. Should be fixed up
-                        rows = []
-                        for idx, be in enumerate(er.blocking_events):
-                            er.experiment_result_id = f"{er.measurement_uid}_{idx}"
-                            row = [getattr(er, k) for k in er_columns]
-                            for k in be_columns:
-                                v = getattr(be, k)
-                                if isinstance(v, BlockingType):
-                                    v = v.value
-                                row.append(v)
-                            rows.append(row)
-                        db_writer.write_rows(
-                            table_name="experiment_result",
-                            rows=rows,
-                            column_names=all_columns,
-                        )
-                        self.progress_queue.put(1)
-                    except Exception:
-                        log.error(f"failed to obs group {web_obs}", exc_info=True)
+                for _ in run_experiment_results(
+                    day=day,
+                    fingerprintdb=fingerprintdb,
+                    netinfodb=netinfodb,
+                    body_db=body_db,
+                    db_writer=db_writer,
+                    clickhouse=self.clickhouse,
+                ):
+                    self.progress_queue.put(1)
             except Exception as exc:
                 log.error(f"failed to process {day}", exc_info=True)
 
@@ -884,6 +901,7 @@ def start_experiment_result_maker(
     log_level: int = logging.INFO,
 ):
     shutdown_event = mp.Event()
+    worker_shutdown_event = mp.Event()
 
     progress_queue = mp.JoinableQueue()
 
@@ -898,7 +916,7 @@ def start_experiment_result_maker(
         worker = ExperimentResultMakerWorker(
             day_queue=day_queue,
             progress_queue=progress_queue,
-            shutdown_event=shutdown_event,
+            shutdown_event=worker_shutdown_event,
             probe_cc=probe_cc,
             test_name=test_name,
             data_dir=data_dir,
@@ -916,7 +934,7 @@ def start_experiment_result_maker(
     log.info("waiting for the day queue to finish")
     day_queue.join()
 
-    shutdown_event.set()
+    worker_shutdown_event.set()
 
     log.info(f"waiting for workers to finish running")
     for idx, p in enumerate(workers):
@@ -924,5 +942,6 @@ def start_experiment_result_maker(
         p.join()
         p.close()
 
+    shutdown_event.set()
     progress_queue.join()
     progress_thread.join()
