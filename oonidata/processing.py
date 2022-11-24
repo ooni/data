@@ -762,6 +762,7 @@ class ExperimentResultMakerWorker(mp.Process):
     def __init__(
         self,
         day_queue: mp.JoinableQueue,
+        progress_queue: mp.Queue,
         shutdown_event: EventClass,
         data_dir: pathlib.Path,
         probe_cc: List[str],
@@ -772,6 +773,7 @@ class ExperimentResultMakerWorker(mp.Process):
     ):
         super().__init__(daemon=True)
         self.day_queue = day_queue
+        self.progress_queue = progress_queue
         self.probe_cc = probe_cc
         self.test_name = test_name
         self.clickhouse = clickhouse
@@ -839,6 +841,7 @@ class ExperimentResultMakerWorker(mp.Process):
                             rows=rows,
                             column_names=all_columns,
                         )
+                        self.progress_queue.put(1)
                     except Exception:
                         log.error(f"failed to obs group {web_obs}", exc_info=True)
             except Exception as exc:
@@ -854,6 +857,21 @@ class ExperimentResultMakerWorker(mp.Process):
             log.error("failed to flush database", exc_info=True)
 
 
+def run_progress_thread(status_queue: mp.Queue, shutdown_event: EventClass):
+    pbar = tqdm(position=0)
+
+    log.info("starting error handling thread")
+    while not shutdown_event.is_set():
+        try:
+            res = status_queue.get(block=True, timeout=0.1)
+        except queue.Empty:
+            continue
+
+        pbar.update()
+        pbar.set_description("analyzing data")
+        status_queue.task_done()
+
+
 def start_experiment_result_maker(
     probe_cc: List[str],
     test_name: List[str],
@@ -867,11 +885,19 @@ def start_experiment_result_maker(
 ):
     shutdown_event = mp.Event()
 
+    progress_queue = mp.JoinableQueue()
+
+    progress_thread = Thread(
+        target=run_progress_thread, args=(progress_queue, shutdown_event)
+    )
+    progress_thread.start()
+
     workers = []
     day_queue = mp.JoinableQueue()
     for _ in range(parallelism):
         worker = ExperimentResultMakerWorker(
             day_queue=day_queue,
+            progress_queue=progress_queue,
             shutdown_event=shutdown_event,
             probe_cc=probe_cc,
             test_name=test_name,
@@ -897,3 +923,6 @@ def start_experiment_result_maker(
         log.info(f"waiting worker {idx} to stop")
         p.join()
         p.close()
+
+    progress_queue.join()
+    progress_thread.join()
