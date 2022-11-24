@@ -176,10 +176,10 @@ class HTTPBase(BaseModel):
 
     @property
     def body_str(self) -> Optional[str]:
-        if not self.body:
+        if self.body is None:
             return None
 
-        if self._body_str:
+        if self._body_str is not None:
             return self._body_str
 
         self._body_str = maybe_binary_data_to_str(self.body)
@@ -187,10 +187,10 @@ class HTTPBase(BaseModel):
 
     @property
     def body_bytes(self) -> Optional[bytes]:
-        if not self.body:
+        if self.body is None:
             return None
 
-        if self._body_bytes:
+        if self._body_bytes is not None:
             return self._body_bytes
 
         self._body_bytes = maybe_binary_data_to_bytes(self.body)

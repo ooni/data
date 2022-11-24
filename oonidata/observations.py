@@ -834,7 +834,7 @@ class WebControlObservation(ObservationBase):
     bucket_date: Optional[str] = None
     created_at: Optional[datetime] = None
 
-    ip: Optional[str] = None
+    ip: str = ""
     port: Optional[int] = None
 
     dns_failure: Optional[str] = None
@@ -904,6 +904,7 @@ def make_web_control_observations(
             p = urlparse("//" + addr)
 
             obs = deepcopy(obs_base)
+            assert p.hostname, "missing hostname in tcp_connect control key"
             obs.ip = p.hostname
             obs.port = p.port
             obs.tcp_faliure = res.failure
@@ -920,6 +921,7 @@ def make_web_control_observations(
             if obs is None:
                 p = urlparse("//" + addr)
                 obs = deepcopy(obs_base)
+                assert p.hostname, "missing hostname in tls_handshakes control key"
                 obs.ip = p.hostname
                 obs.port = p.port
 

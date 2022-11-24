@@ -1,5 +1,5 @@
 from base64 import b64decode
-from datetime import date, datetime
+from datetime import datetime
 from unittest.mock import MagicMock
 from oonidata.dataformat import (
     WebConnectivity,
@@ -8,24 +8,17 @@ from oonidata.dataformat import (
     SIGNAL_PEM_STORE,
 )
 from oonidata.datautils import validate_cert_chain
-from oonidata.experiments.control import (
-    make_dns_control,
-    make_dns_control_from_wc,
-    make_http_control_from_wc,
-    make_http_control_map,
-    make_tcp_control_from_wc,
-    make_tcp_control_map,
-)
+from oonidata.experiments.control import make_ground_truths_from_web_control
 from oonidata.experiments.experiment_result import BlockingType
 from oonidata.experiments.signal import make_signal_experiment_result
 from oonidata.experiments.websites import (
-    make_website_dns_blocking_event,
     make_website_experiment_result,
+    WebGroundTruthDB,
 )
 from oonidata.observations import (
     make_signal_observations,
+    make_web_control_observations,
     make_web_connectivity_observations,
-    WebObservation,
 )
 
 
@@ -118,166 +111,69 @@ def test_signal(fingerprintdb, netinfodb, measurements):
     assert blocking_event.confirmed == True
 
 
-def ctrl_query_mock(q, q_params):
-    # This pattern of mocking is a bit brittle.
-    # TODO: come up with a better way of mocking these things out
-    if "SELECT DISTINCT(ip) FROM obs_tls" in q:
-        return [["162.159.137.6"], ["162.159.136.6"], ["2606:4700:7::a29f:8906"]]
-    if "SELECT probe_cc, probe_asn, failure, answer FROM obs_dns" in q:
-        return [
-            ["IT", 12345, None, "162.159.137.6"],
-            ["GB", 789, None, "162.159.137.6"],
-            ["FR", 5410, "dns_nxdomain_error", ""],
-        ]
-
-    if "SELECT probe_cc, probe_asn, request_url, failure FROM obs_http" in q:
-        return [
-            ["IT", 12345, "https://thepiratebay.org/", ""],
-            ["FR", 5410, "https://thepiratebay.org/", "dns_nxdomain_error"],
-            ["GB", 789, "https://thepiratebay.org/", ""],
-        ]
-
-    if "response_body_sha1" in q:
-        return [
-            [
-                "http://thepiratebay.org/",
-                ["1965c4952cc8c082a6307ed67061a57aab6632fa"],
-                [134],
-                [""],
-                [""],
-                [301],
-            ],
-            ["http://thepiratebay.org/index.html", [""], [], [""], [""], [301]],
-            [
-                "https://thepiratebay.org/index.html",
-                ["c2062ae3fb19fa0d9657b1827a80e10c937b4691"],
-                [4712],
-                [""],
-                [""],
-                [200],
-            ],
-            [
-                "https://thepiratebay.org/index.html",
-                ["cf7a17ad4d1cb7683a1f8592588e5c7b49629cc3"],
-                [154],
-                [""],
-                [""],
-                [302],
-            ],
-        ]
-
-    if "SELECT probe_cc, probe_asn, ip, port, failure FROM obs_tcp" in q:
-        return [
-            ["IT", 12345, "162.159.137.6", 443, ""],
-            ["FR", 5410, "162.159.137.6", 443, ""],
-            ["GB", 789, "162.159.137.6", 443, ""],
-        ]
-
-
-def make_mock_ctrldb():
-    db = MagicMock()
-    db.execute = MagicMock()
-    db.execute.side_effect = ctrl_query_mock
-    return db
-
-
-def test_controls():
-    day = date(2022, 1, 1)
-    domain_name = "ooni.org"
-    db = make_mock_ctrldb()
-
-    dns_ctrl = make_dns_control(day, domain_name, db)
-    assert len(dns_ctrl.failure_cc_asn) == 1
-    assert len(dns_ctrl.ok_cc_asn) == 2
-    assert "162.159.137.6" in dns_ctrl.tls_consistent_answers
-
-    http_baseline_map = make_http_control_map(day, domain_name, db)
-    assert len(http_baseline_map["https://thepiratebay.org/"].failure_cc_asn) == 1
-
-    tcp_baseline_map = make_tcp_control_map(day, domain_name, db)
-    assert len(tcp_baseline_map["162.159.137.6:443"].reachable_cc_asn) == 3
-
-
 def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
-    day = date(2022, 1, 1)
-    domain_name = "ooni.org"
-
-    db = make_mock_ctrldb()
-
-    msmt = load_measurement(
-        msmt_path=measurements[
-            "20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"
-        ]
-    )
-    assert isinstance(msmt, WebConnectivity)
-    dns_ctrl = make_dns_control(day, domain_name, db)
-
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
-    for web_o in web_observations:
-        if not web_o.dns_answer:
-            continue
-        blocking_event = make_website_dns_blocking_event(
-            web_o, dns_ctrl, fingerprintdb, netinfodb
+    msmt_path = measurements[
+        "20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"
+    ]
+    er = make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb)
+    be = list(
+        filter(
+            lambda be: be.blocking_type == BlockingType.NATIONAL_BLOCK,
+            er.blocking_events,
         )
-        assert blocking_event
-        assert blocking_event.blocking_type == BlockingType.NATIONAL_BLOCK
-        assert blocking_event.blocking_detail == "dns.inconsistent.blockpage"
-
-    msmt = load_measurement(
-        msmt_path=measurements[
-            "20220627134426.194308_DE_webconnectivity_15675b61ec62e268"
-        ]
     )
-    assert isinstance(msmt, WebConnectivity)
-    dns_ctrl = make_dns_control(day, domain_name, db)
+    assert len(be) == 1
 
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
-    for web_o in web_observations:
-        if not web_o.dns_answer:
-            continue
-        blocking_event = make_website_dns_blocking_event(
-            web_o, dns_ctrl, fingerprintdb, netinfodb
+    msmt_path = measurements[
+        "20220627134426.194308_DE_webconnectivity_15675b61ec62e268"
+    ]
+    er = make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb)
+    be = list(
+        filter(
+            lambda be: be.blocking_type == BlockingType.BLOCKED,
+            er.blocking_events,
         )
-        assert blocking_event
-        assert blocking_event.blocking_type == BlockingType.BLOCKED
-        assert blocking_event.blocking_detail == "dns.inconsistent.bogon"
-
-    msmt = load_measurement(
-        msmt_path=measurements[
-            "20220627125833.737451_FR_webconnectivity_bca9ad9d3371919a"
-        ]
     )
-    assert isinstance(msmt, WebConnectivity)
-    dns_ctrl = make_dns_control(day, domain_name, db)
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
-    for web_o in web_observations:
-        assert isinstance(web_o, WebObservation)
-        if not web_o.dns_answer:
-            continue
-        blocking_event = make_website_dns_blocking_event(
-            web_o, dns_ctrl, fingerprintdb, netinfodb
-        )
-        assert blocking_event
-        assert blocking_event.blocking_type == BlockingType.BLOCKED
-        assert blocking_event.blocking_detail == "dns.inconsistent.nxdomain"
+    assert len(be) == 1
+    assert be[0].blocking_detail == "dns.inconsistent.bogon"
 
-    msmt = load_measurement(
-        msmt_path=measurements[
-            "20220625234824.235023_HU_webconnectivity_3435a5df0e743d39"
-        ]
-    )
-    assert isinstance(msmt, WebConnectivity)
-    dns_ctrl = make_dns_control(day, domain_name, db)
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
-    for web_o in web_observations:
-        if not web_o.dns_answer:
-            continue
-        blocking_event = make_website_dns_blocking_event(
-            web_o, dns_ctrl, fingerprintdb, netinfodb
+    msmt_path = measurements[
+        "20220627125833.737451_FR_webconnectivity_bca9ad9d3371919a"
+    ]
+    er = make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb)
+    be = list(
+        filter(
+            lambda be: be.blocking_type == BlockingType.BLOCKED,
+            er.blocking_events,
         )
-        assert blocking_event
-        assert blocking_event.blocking_type == BlockingType.OK
-        break
+    )
+    # TODO: is it reasonable to double count NXDOMAIN for AAAA and A queries?
+    assert len(be) == 2
+    assert be[0].blocking_detail == "dns.inconsistent.nxdomain"
+
+    msmt_path = measurements[
+        "20220625234824.235023_HU_webconnectivity_3435a5df0e743d39"
+    ]
+    er = make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb)
+    be = list(
+        filter(
+            lambda be: be.blocking_type == BlockingType.OK,
+            er.blocking_events,
+        )
+    )
+    nok_be = list(
+        filter(
+            lambda be: be.blocking_type != BlockingType.OK,
+            er.blocking_events,
+        )
+    )
+    # TODO: this is disabled because we aren't yet smart enough to consider IPv6
+    # unreachable as a non-blocking event. We are giving it a pretty low
+    # confidence so it shouldn't have a big impact, but we ought to fix it with
+    # smarter analysis
+    # Should all blocking events be OK
+    # assert len(be) == len(er.blocking_events)
+    assert len(be) == 8
 
 
 def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
@@ -287,27 +183,27 @@ def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
 
     assert msmt.test_keys.control
     assert isinstance(msmt.input, str)
-    dns_ctrl = make_dns_control_from_wc(
-        msmt_input=msmt.input, control=msmt.test_keys.control
+    web_ground_truth_db = WebGroundTruthDB(
+        ground_truths=make_ground_truths_from_web_control(
+            make_web_control_observations(msmt)
+        )
     )
-    http_ctrl_map = make_http_control_from_wc(msmt=msmt, control=msmt.test_keys.control)
-    tcp_ctrl_map = make_tcp_control_from_wc(control=msmt.test_keys.control)
+
+    body_db = MagicMock()
+    body_db.lookup = MagicMock()
+    body_db.lookup.return_value = []
 
     return make_website_experiment_result(
         web_observations=web_observations,
-        dns_ctrl=dns_ctrl,
-        tcp_ctrl_map=tcp_ctrl_map,
-        http_ctrl_map=http_ctrl_map,
+        web_ground_truth_db=web_ground_truth_db,
+        body_db=body_db,
         fingerprintdb=fingerprintdb,
         netinfodb=netinfodb,
     )
 
 
-def test_website_experiment_result_blocked(
-    fingerprintdb, netinfodb, measurements, benchmark
-):
-    experiment_result = benchmark(
-        make_experiment_result_from_wc_ctrl,
+def test_website_experiment_result_blocked(fingerprintdb, netinfodb, measurements):
+    experiment_result = make_experiment_result_from_wc_ctrl(
         measurements["20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"],
         fingerprintdb,
         netinfodb,
@@ -325,7 +221,33 @@ def test_website_experiment_result_blocked(
     assert len(experiment_result.blocking_events) == 2
 
 
-def test_website_experiment_result_ok(
+def test_website_experiment_result_ok(fingerprintdb, netinfodb, measurements):
+    experiment_result = make_experiment_result_from_wc_ctrl(
+        measurements["20220608132401.787399_AM_webconnectivity_2285fc373f62729e"],
+        fingerprintdb,
+        netinfodb,
+    )
+    print(experiment_result)
+    assert experiment_result.anomaly == False
+    for be in experiment_result.blocking_events:
+        assert be.blocking_type == BlockingType.OK
+    assert len(experiment_result.blocking_events) == 4
+
+
+def benchmark_test_website_experiment_result_blocked(
+    fingerprintdb, netinfodb, measurements, benchmark
+):
+    experiment_result = benchmark(
+        make_experiment_result_from_wc_ctrl,
+        measurements["20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"],
+        fingerprintdb,
+        netinfodb,
+    )
+    assert experiment_result.anomaly == True
+    assert len(experiment_result.blocking_events) == 1
+
+
+def benchmark_test_website_experiment_result_ok(
     fingerprintdb, netinfodb, measurements, benchmark
 ):
     experiment_result = benchmark(

@@ -1,9 +1,12 @@
+from collections import defaultdict
 from dataclasses import dataclass
 import ipaddress
-from enum import Enum
 from typing import Optional, List, Tuple, Dict
-from urllib.parse import urlparse
-from oonidata.experiments.control import DNSControl, HTTPControl, TCPControl
+from oonidata.experiments.control import (
+    WebGroundTruth,
+    WebGroundTruthDB,
+    BodyDB,
+)
 from oonidata.experiments.experiment_result import (
     BlockingEvent,
     BlockingType,
@@ -17,10 +20,6 @@ from oonidata.netinfo import NetinfoDB
 
 
 from oonidata.observations import (
-    DNSObservation,
-    HTTPObservation,
-    TCPObservation,
-    TLSObservation,
     WebObservation,
 )
 
@@ -29,153 +28,102 @@ import logging
 log = logging.getLogger("oonidata.processing")
 
 
-def is_dns_consistent(
-    web_o: WebObservation, dns_ctrl: DNSControl, netinfodb: NetinfoDB
-) -> Tuple[bool, float]:
-    if not web_o.dns_answer:
-        return False, 0
+def encode_address(ip: str, port: int) -> str:
+    """
+    return a properly encoded address handling IPv6 IPs
+    """
+    # I'm amazed python doesn't have this in the standard library
+    # and urlparse is incredibly inconsistent with it's handling of IPv6
+    # addresses.
+    ipaddr = ipaddress.ip_address(ip)
+    addr = ip
+    if isinstance(ipaddr, ipaddress.IPv6Address):
+        addr = "[" + ip + "]"
 
-    try:
-        ipaddress.ip_address(web_o.dns_answer)
-    except ValueError:
-        # Not an IP, er can't do much to validate it
-        return False, 0
-
-    if web_o.dns_answer in dns_ctrl.tls_consistent_answers:
-        return True, 1.0
-
-    baseline_asns = set()
-    baseline_as_org_names = set()
-
-    for ip in dns_ctrl.tls_consistent_answers:
-        ip_info = netinfodb.lookup_ip(web_o.measurement_start_time, ip)
-        if ip_info:
-            baseline_asns.add(ip_info.as_info.asn)
-            baseline_as_org_names.add(ip_info.as_info.as_org_name.lower())
-
-    if web_o.dns_answer_asn in baseline_asns:
-        return True, 0.9
-
-    # XXX maybe with the org_name we can also do something like levenshtein
-    # distance to get more similarities
-    if (
-        web_o.dns_answer_as_org_name
-        and web_o.dns_answer_as_org_name.lower() in baseline_as_org_names
-    ):
-        return True, 0.9
-
-    other_answers = dns_ctrl.answers_map.copy()
-    other_answers.pop(web_o.probe_cc, None)
-    other_ips = {}
-    other_asns = {}
-    for answer_list in other_answers.values():
-        for _, ip in answer_list:
-
-            other_ips[ip] = other_ips.get(ip, 0)
-            other_ips[ip] += 1
-            if ip is None:
-                log.error(f"Missing ip for {web_o.hostname}")
-                continue
-            ip_info = netinfodb.lookup_ip(web_o.measurement_start_time, ip)
-            if ip_info:
-                asn = ip_info.as_info.asn
-                other_asns[asn] = other_asns.get(ip, 0)
-                other_asns[asn] += 1
-
-    if web_o.dns_answer in other_ips:
-        x = other_ips[web_o.dns_answer]
-        # This function was derived by looking for an exponential function in
-        # the form f(x) = c1*a^x + c2 and solving for f(0) = 0 and f(10) = 1,
-        # giving us a function in the form f(x) = (a^x - 1) / (a^10 - 1). We
-        # then choose the magic value of 0.6 by looking for a solution in a
-        # where f(1) ~= 0.5, doing a bit of plots and choosing a curve that
-        # looks reasonably sloped.
-        y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
-        return True, min(0.9, 0.8 * y)
-
-    if web_o.dns_answer in other_asns:
-        x = other_asns[web_o.dns_answer_asn]
-        y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
-        return True, min(0.8, 0.7 * y)
-
-    x = len(baseline_asns)
-    y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
-    return False, min(0.9, 0.8 * y)
+    addr += f":{port}"
+    return addr
 
 
-def make_website_tcp_blocking_event(
-    web_o: WebObservation, tcp_b: TCPControl
+def make_tcp_blocking_event(
+    web_o: WebObservation, web_ground_truth_db: WebGroundTruthDB
 ) -> Optional[BlockingEvent]:
-    blocking_type = BlockingType.OK
-    blocking_detail = "tcp.ok"
-    blocking_subject = f"{web_o.ip}:{web_o.port}"
-    blocking_meta = {}
-    confidence = 1.0
+    assert web_o.ip is not None and web_o.port is not None
 
-    if web_o.tcp_failure:
-        unreachable_cc_asn = list(tcp_b.unreachable_cc_asn)
-        try:
-            unreachable_cc_asn.remove((web_o.probe_cc, web_o.probe_asn))
-        except ValueError:
-            log.info(
-                "missing failure in tcp baseline. You are probably using a control derived baseline."
-            )
+    blocking_subject = encode_address(web_o.ip, web_o.port)
 
-        reachable_count = len(tcp_b.reachable_cc_asn)
-        unreachable_count = len(unreachable_cc_asn)
-        blocking_meta = {
-            "unreachable_count": str(unreachable_count),
-            "reachable_count": str(reachable_count),
-        }
-        if reachable_count > unreachable_count:
-            # We are adding back 1 because we removed it above and it avoid a divide by zero
-            confidence = (
-                reachable_count / (reachable_count + unreachable_count + 1) * 0.9
-            )
-            blocking_type = BlockingType.BLOCKED
-        elif unreachable_count > reachable_count:
-            confidence = (
-                (unreachable_count + 1) / (reachable_count + unreachable_count + 1)
-            ) * 0.9
-            blocking_type = BlockingType.DOWN
-
-        # TODO: should we bump up the confidence in the case of connection_reset?
-        blocking_detail = f"tcp.{web_o.tcp_failure}"
-
+    # Nothing to see here, go on with your life
     if web_o.tcp_success == True:
         return BlockingEvent(
-            blocking_type=blocking_type,
+            blocking_type=BlockingType.OK,
             blocking_subject=blocking_subject,
-            blocking_detail=blocking_detail,
-            blocking_meta=blocking_meta,
-            confidence=confidence,
+            blocking_detail="tcp.ok",
+            blocking_meta={},
+            confidence=1.0,
         )
+
+    assert (
+        web_o.tcp_failure is not None
+    ), "inconsistency between tcp_success and tcp_failure"
+
+    ground_truths = web_ground_truth_db.lookup(
+        probe_cc=web_o.probe_cc, probe_asn=web_o.probe_asn, ip=web_o.ip, port=web_o.port
+    )
+    unreachable_cc_asn = set()
+    reachable_cc_asn = set()
+    for gt in ground_truths:
+        if gt.tcp_success == True:
+            reachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
+        elif gt.tcp_success == False:
+            unreachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
+
+    reachable_count = len(reachable_cc_asn)
+    unreachable_count = len(unreachable_cc_asn)
+    blocking_meta = {
+        "unreachable_count": str(unreachable_count),
+        "reachable_count": str(reachable_count),
+    }
+    if reachable_count > unreachable_count:
+        # We are adding back 1 because we removed it above and it avoid a divide by zero
+        confidence = reachable_count / (reachable_count + unreachable_count + 1) * 0.9
+        blocking_type = BlockingType.BLOCKED
+        blocking_meta["why"] = "it's reachable from most places"
+    else:
+        confidence = (
+            (unreachable_count + 1) / (reachable_count + unreachable_count + 1)
+        ) * 0.9
+        blocking_meta["why"] = "it's not reachable from most places"
+        blocking_type = BlockingType.DOWN
+
+    # TODO: should we bump up the confidence in the case of connection_reset?
+    blocking_detail = f"tcp.{web_o.tcp_failure}"
+    return BlockingEvent(
+        blocking_type=blocking_type,
+        blocking_subject=blocking_subject,
+        blocking_detail=blocking_detail,
+        blocking_meta=blocking_meta,
+        confidence=confidence,
+    )
 
 
 def get_blocking_for_dns_failure(
-    web_o: WebObservation, dns_ctrl: DNSControl
+    dns_failure: str, ground_truths: List[WebGroundTruth]
 ) -> Tuple[BlockingType, str, float]:
-    failure_cc_asn = list(dns_ctrl.failure_cc_asn)
-    try:
-        failure_cc_asn.remove((web_o.probe_cc, web_o.probe_asn))
-    except ValueError:
-        log.info(
-            "missing failure for the probe in the baseline. You are probably using a control derived baseline."
-        )
+    nxdomain_cc_asn = set()
+    failure_cc_asn = set()
+    ok_cc_asn = set()
+    for gt in ground_truths:
+        if gt.dns_success == False:
+            failure_cc_asn.add((gt.vp_cc, gt.vp_asn))
+        elif gt.dns_success == True:
+            ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
+        if gt.dns_failure == "dns_nxdomain_error":
+            nxdomain_cc_asn.add((gt.vp_cc, gt.vp_asn))
 
+    ok_count = len(ok_cc_asn)
     failure_count = len(failure_cc_asn)
-    ok_count = len(dns_ctrl.ok_cc_asn)
+    nxdomain_count = len(nxdomain_cc_asn)
 
-    if web_o.dns_failure == "dns_nxdomain_error":
-        nxdomain_cc_asn = list(dns_ctrl.nxdomain_cc_asn)
-        try:
-            nxdomain_cc_asn.remove((web_o.probe_cc, web_o.probe_asn))
-        except ValueError:
-            log.info(
-                "missing nx_domain failure for the probe in the baseline. You are probably using a control derived baseline."
-            )
-
-        nxdomain_count = len(nxdomain_cc_asn)
+    if dns_failure == "dns_nxdomain_error":
         blocking_detail = "dns.inconsistent.nxdomain"
         if ok_count > nxdomain_count:
             # We give a bit extra weight to an NXDOMAIN compared to other failures
@@ -188,30 +136,46 @@ def get_blocking_for_dns_failure(
     elif ok_count > failure_count:
         confidence = ok_count / (ok_count + failure_count + 1)
         blocking_type = BlockingType.BLOCKED
-        blocking_detail = f"dns.{web_o.dns_failure}"
+        blocking_detail = f"dns.{dns_failure}"
     else:
         confidence = (failure_count + 1) / (ok_count + failure_count + 1)
         blocking_type = BlockingType.DOWN
-        blocking_detail = f"dns.{web_o.dns_failure}"
+        blocking_detail = f"dns.{dns_failure}"
 
     return blocking_type, blocking_detail, confidence
 
 
-def make_website_dns_blocking_event(
+def confidence_estimate(x, factor=0.8, clamping=0.9):
+    """
+    Gives an estimate of confidence given the number of datapoints that are
+    consistent (x).
+
+    clamping: defines what is the maximum value it can take
+    factor: is a multiplicate factor to decrease the value of the function
+
+    This function was derived by looking for an exponential function in
+    the form f(x) = c1*a^x + c2 and solving for f(0) = 0 and f(10) = 1,
+    giving us a function in the form f(x) = (a^x - 1) / (a^10 - 1). We
+    then choose the magic value of 0.6 by looking for a solution in a
+    where f(1) ~= 0.5, doing a bit of plots and choosing a curve that
+    looks reasonably sloped.
+    """
+    y = (pow(0.5, x) - 1) / (pow(0.5, 10) - 1)
+    return min(clamping, factor * y)
+
+
+def make_dns_blocking_event(
     web_o: WebObservation,
-    dns_ctrl: DNSControl,
+    web_ground_truth_db: WebGroundTruthDB,
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
 ) -> Optional[BlockingEvent]:
 
     blocking_subject = web_o.hostname or ""
 
-    fingerprint_id = web_o.pp_dns_fingerprint_id
     fp = None
-    if not fingerprint_id and web_o.dns_answer:
+    if web_o.dns_answer:
         fp = fingerprintdb.match_dns(web_o.dns_answer)
-    elif fingerprint_id:
-        fp = fingerprintdb.get_fp(fingerprint_id)
 
     if fp:
         blocking_type = fp_scope_to_outcome(fp.scope)
@@ -232,18 +196,13 @@ def make_website_dns_blocking_event(
             confidence=confidence,
         )
 
-    elif web_o.ip_is_bogon and len(dns_ctrl.tls_consistent_answers) > 0:
-        return BlockingEvent(
-            blocking_type=BlockingType.BLOCKED,
-            blocking_subject=blocking_subject,
-            blocking_detail="dns.inconsistent.bogon",
-            blocking_meta={"ip": web_o.dns_answer or ""},
-            confidence=0.9,
-        )
-
-    elif web_o.dns_failure:
+    assert web_o.hostname, "malformed DNS observation"
+    ground_truths = web_ground_truth_db.lookup(
+        probe_cc=web_o.probe_cc, probe_asn=web_o.probe_asn, hostname=web_o.hostname
+    )
+    if web_o.dns_failure:
         blocking_type, blocking_detail, confidence = get_blocking_for_dns_failure(
-            web_o, dns_ctrl=dns_ctrl
+            dns_failure=web_o.dns_failure, ground_truths=ground_truths
         )
         return BlockingEvent(
             blocking_type=blocking_type,
@@ -253,7 +212,28 @@ def make_website_dns_blocking_event(
             confidence=0.9,
         )
 
-    elif web_o.tls_is_certificate_valid == False:
+    trusted_answers = set(
+        list(
+            map(
+                lambda gt: gt.ip,
+                filter(
+                    lambda gt: (gt.dns_success == True and gt.tls_is_certificate_valid)
+                    or gt.is_trusted_vp,
+                    ground_truths,
+                ),
+            )
+        )
+    )
+    if web_o.ip_is_bogon and len(trusted_answers) > 0:
+        return BlockingEvent(
+            blocking_type=BlockingType.BLOCKED,
+            blocking_subject=blocking_subject,
+            blocking_detail="dns.inconsistent.bogon",
+            blocking_meta={"ip": web_o.dns_answer or ""},
+            confidence=0.9,
+        )
+
+    if web_o.tls_is_certificate_valid == False:
         return BlockingEvent(
             blocking_type=BlockingType.BLOCKED,
             blocking_subject=blocking_subject,
@@ -262,50 +242,139 @@ def make_website_dns_blocking_event(
             confidence=0.9,
         )
 
-    elif web_o.tls_is_certificate_valid == None:
-        # If we are in this case, it means we weren't able to determine the
-        # consistency of the DNS query using TLS. This is the case either
-        # because the tested site is not in HTTPS and therefore we didn't
-        # generate a TLS measurement for it or because the target IP isn't
-        # listening on HTTPS (which is quite fishy).
-        # In either case we should flag these with being somewhat likely to be
-        # blocked.
-        ip_based_consistency, consistency_confidence = is_dns_consistent(
-            web_o, dns_ctrl, netinfodb
-        )
-        if ip_based_consistency is False and consistency_confidence > 0:
-            confidence = consistency_confidence
-            blocking_detail = "dns.inconsistent.generic"
-            # If the answer ASN is the same as the probe_asn, it's more likely
-            # to be a blockpage
-            if web_o.dns_answer_asn == web_o.probe_asn:
-                blocking_detail = "dns.inconsistent.asn_match"
-                confidence = 0.8
-            # same for the answer_cc
-            elif web_o.ip_as_cc == web_o.probe_cc:
-                blocking_detail = "dns.inconsistent.cc_match"
-                confidence = 0.7
-
-            return BlockingEvent(
-                blocking_type=BlockingType.BLOCKED,
-                blocking_subject=blocking_subject,
-                blocking_detail=blocking_detail,
-                blocking_meta={"ip": web_o.dns_answer or "", "why": "tls_inconsistent"},
-                confidence=0.9,
-            )
-
-    if web_o.dns_answer:
+    if web_o.tls_is_certificate_valid == True or web_o.dns_answer in trusted_answers:
         # No blocking detected
         return BlockingEvent(
             blocking_type=BlockingType.OK,
             blocking_subject=blocking_subject,
             blocking_detail="dns.ok",
-            blocking_meta={"ip": web_o.dns_answer or ""},
-            confidence=0.8,
+            blocking_meta={
+                "ip": web_o.dns_answer or "",
+                "why": "resolved IP in trusted answers",
+            },
+            confidence=1.0,
         )
 
+    # If we are in this case, it means we weren't able to determine the
+    # consistency of the DNS query using TLS. This is the case either
+    # because the tested site is not in HTTPS and therefore we didn't
+    # generate a TLS measurement for it or because the target IP isn't
+    # listening on HTTPS (which is quite fishy).
+    # In either case we should flag these with being somewhat likely to be
+    # blocked.
+    ground_truth_asns = set()
+    ground_truth_as_org_names = set()
+    for ip in trusted_answers:
+        assert ip, "did not find IP in ground truth"
+        ip_info = netinfodb.lookup_ip(web_o.measurement_start_time, ip)
+        if ip_info:
+            ground_truth_asns.add(ip_info.as_info.asn)
+            ground_truth_as_org_names.add(ip_info.as_info.as_org_name.lower())
 
-def make_website_tls_blocking_event(web_o: WebObservation) -> Optional[BlockingEvent]:
+    if web_o.dns_answer_asn in ground_truth_asns:
+        return BlockingEvent(
+            blocking_type=BlockingType.OK,
+            blocking_subject=blocking_subject,
+            blocking_detail="dns.ok",
+            blocking_meta={
+                "ip": web_o.dns_answer or "",
+                "why": "answer in matches AS of trusted answers",
+            },
+            confidence=0.9,
+        )
+
+    if (
+        web_o.dns_answer_as_org_name
+        and web_o.dns_answer_as_org_name.lower() in ground_truth_as_org_names
+    ):
+        return BlockingEvent(
+            blocking_type=BlockingType.OK,
+            blocking_subject=blocking_subject,
+            blocking_detail="dns.ok",
+            blocking_meta={
+                "ip": web_o.dns_answer or "",
+                "why": "answer in TLS ground truth as org name",
+            },
+            confidence=0.9,
+        )
+
+    # Here we count how many vantage vantage points, as in distinct probe_cc,
+    # probe_asn pairs, had this DNS answer
+    other_ips = defaultdict(set)
+    other_asns = defaultdict(set)
+    for gt in ground_truths:
+        if gt.dns_success != True:
+            continue
+        other_ips[gt.ip].add((gt.vp_cc, gt.vp_asn))
+        assert gt.ip, "did not find IP in ground truth"
+        ip_info = netinfodb.lookup_ip(web_o.measurement_start_time, gt.ip)
+        if ip_info:
+            other_asns[ip_info.as_info.asn].add((gt.vp_cc, gt.vp_asn))
+
+    if web_o.dns_answer in other_ips:
+        return BlockingEvent(
+            blocking_type=BlockingType.OK,
+            blocking_subject=blocking_subject,
+            blocking_detail="dns.ok",
+            blocking_meta={
+                "ip": web_o.dns_answer or "",
+                "why": "answer in resolver IPs in ground truth",
+            },
+            confidence=confidence_estimate(
+                len(other_ips[web_o.dns_answer]), clamping=0.9, factor=0.8
+            ),
+        )
+
+    if web_o.dns_answer in other_asns:
+        # We clamp this to some lower values and scale it by a smaller factor,
+        # since ASN consistency is less strong than direct IP match.
+        return BlockingEvent(
+            blocking_type=BlockingType.OK,
+            blocking_subject=blocking_subject,
+            blocking_detail="dns.ok",
+            blocking_meta={
+                "ip": web_o.dns_answer or "",
+                "why": "answer in resolver IPs in ground truth",
+            },
+            confidence=confidence_estimate(
+                len(other_asns[web_o.dns_answer]), clamping=0.8, factor=0.7
+            ),
+        )
+
+    blocking_meta = {
+        "ip": web_o.dns_answer or "",
+        "why": "unable to determine consistency through ground truth",
+    }
+    confidence = 0.6
+    blocking_detail = "dns.inconsistent"
+
+    # It's more common to answer to DNS queries for blocking with IPs managed by
+    # the ISP (ex. to serve their blockpage).
+    # So we give this a bit higher confidence
+    if web_o.dns_answer_asn == web_o.probe_asn:
+        confidence = 0.8
+        blocking_meta["why"] = "answer matches probe_asn"
+    # It's common to do this also in the country, for example when the blockpage
+    # is centrally managed (ex. case in IT, ID)
+    elif web_o.ip_as_cc == web_o.probe_cc:
+        blocking_detail = "dns.inconsistent"
+        blocking_meta["why"] = "answer matches probe_cc"
+        confidence = 0.7
+
+    # We haven't managed to figured out if the DNS resolution was a good one, so
+    # we are going to assume it's bad.
+    return BlockingEvent(
+        blocking_type=BlockingType.BLOCKED,
+        blocking_subject=blocking_subject,
+        blocking_detail=blocking_detail,
+        blocking_meta=blocking_meta,
+        confidence=confidence,
+    )
+
+
+def make_tls_blocking_event(
+    web_o: WebObservation, web_ground_truth_db: WebGroundTruthDB
+) -> Optional[BlockingEvent]:
     blocking_subject = web_o.hostname or ""
 
     if web_o.tls_is_certificate_valid == True:
@@ -352,12 +421,15 @@ def make_website_tls_blocking_event(web_o: WebObservation) -> Optional[BlockingE
         )
 
 
-def make_website_http_blocking_event(
+def make_http_blocking_event(
     web_o: WebObservation,
-    http_ctrl: HTTPControl,
+    web_ground_truth_db: WebGroundTruthDB,
+    body_db: BodyDB,
     fingerprintdb: FingerprintDB,
 ) -> Optional[BlockingEvent]:
-    blocking_subject = web_o.http_request_url or ""
+    assert web_o.http_request_url
+
+    blocking_subject = web_o.http_request_url
 
     request_is_encrypted = web_o.http_request_url and web_o.http_request_url.startswith(
         "https://"
@@ -375,53 +447,36 @@ def make_website_http_blocking_event(
     if request_is_encrypted:
         detail_prefix = "https."
 
+    ground_truths = web_ground_truth_db.lookup(
+        probe_cc=web_o.probe_cc,
+        probe_asn=web_o.probe_asn,
+        http_request_url=web_o.http_request_url,
+    )
     if web_o.http_failure:
-        failure_cc_asn = list(http_ctrl.failure_cc_asn)
-        try:
-            failure_cc_asn.remove((web_o.probe_cc, web_o.probe_asn))
-        except ValueError:
-            log.info(
-                "missing failure in http baseline. Either something is wrong or you are using a control derived baseline"
-            )
+        blocking_meta = {}
+
+        failure_cc_asn = set()
+        ok_cc_asn = set()
+        for gt in ground_truths:
+            if gt.http_success == False:
+                failure_cc_asn.add((gt.vp_cc, gt.vp_asn))
+            elif gt.http_success == True:
+                ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
 
         failure_count = len(failure_cc_asn)
-        ok_count = len(http_ctrl.ok_cc_asn)
+        ok_count = len(ok_cc_asn)
         if ok_count > failure_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
             confidence = ok_count / (ok_count + failure_count + 1)
             blocking_type = BlockingType.BLOCKED
+            blocking_meta["why"] = "it's mostly accessible"
         else:
             confidence = (failure_count + 1) / (ok_count + failure_count + 1)
             blocking_type = BlockingType.DOWN
+            blocking_meta["why"] = "the site is down"
+
         blocking_detail = f"{detail_prefix}{web_o.http_failure}"
 
-        return BlockingEvent(
-            blocking_type=blocking_type,
-            blocking_subject=blocking_subject,
-            blocking_detail=blocking_detail,
-            blocking_meta={},
-            confidence=confidence,
-        )
-
-    elif web_o.pp_http_response_matches_blockpage:
-        blocking_type = BlockingType.BLOCKED
-        blocking_meta = {}
-        confidence = 0.7
-        if request_is_encrypted:
-            # Likely some form of server-side blocking
-            blocking_type = BlockingType.SERVER_SIDE_BLOCK
-            confidence = 0.5
-        elif web_o.pp_http_fingerprint_country_consistent:
-            confidence = 1
-
-        for fp_name in web_o.pp_http_response_fingerprints:
-            fp = fingerprintdb.get_fp(fp_name)
-            if fp.scope:
-                blocking_type = fp_scope_to_outcome(fp.scope)
-                blocking_meta = {"fp_name": fp.name, "why": "matched fingerprint"}
-                break
-
-        blocking_detail = f"{detail_prefix}diff"
         return BlockingEvent(
             blocking_type=blocking_type,
             blocking_subject=blocking_subject,
@@ -430,14 +485,50 @@ def make_website_http_blocking_event(
             confidence=confidence,
         )
 
-    elif not request_is_encrypted:
+    # TODO: do we care to do something about empty bodies?
+    # They are commonly a source of blockpages
+    if web_o.http_response_body_sha1:
+        matched_fp = body_db.lookup(web_o.http_response_body_sha1)
+        if len(matched_fp) > 0:
+            blocking_type = BlockingType.BLOCKED
+            blocking_meta = {}
+            confidence = 0.8
+            if request_is_encrypted:
+                # Likely some form of server-side blocking
+                blocking_type = BlockingType.SERVER_SIDE_BLOCK
+                confidence = 0.5
+
+            for fp_name in matched_fp:
+                fp = fingerprintdb.get_fp(fp_name)
+                if fp.scope:
+                    blocking_type = fp_scope_to_outcome(fp.scope)
+                    blocking_meta = {
+                        "fp_name": fp.name,
+                        "why": f"matched fingerprint {fp.name}",
+                    }
+                    if (
+                        fp.expected_countries
+                        and web_o.probe_cc in fp.expected_countries
+                    ):
+                        confidence = 1.0
+                    break
+
+            blocking_detail = f"{detail_prefix}diff.blockpage"
+            return BlockingEvent(
+                blocking_type=blocking_type,
+                blocking_subject=blocking_subject,
+                blocking_detail=blocking_detail,
+                blocking_meta=blocking_meta,
+                confidence=confidence,
+            )
+
+    if not request_is_encrypted:
+        # TODO we don't currently do any of this to keep things simple.
+        # We should probably do mining of the body dumps to figure out if there
+        # are blockpages in there instead of relying on a per-measurement heuristic
+        """
+        ground_truths = filter(lambda gt: gt.http_response_body_length, ground_truths)
         if web_o.http_response_body_sha1 == http_ctrl.response_body_sha1:
-            return ok_be
-        if web_o.pp_http_response_matches_false_positive:
-            return ok_be
-        if web_o.pp_http_response_body_title == http_ctrl.response_body_title:
-            return ok_be
-        if web_o.pp_http_response_body_meta_title == http_ctrl.response_body_meta_title:
             return ok_be
 
         if (
@@ -457,6 +548,7 @@ def make_website_http_blocking_event(
                 blocking_meta={"why": "inconsistent body length"},
                 confidence=0.6,
             )
+        """
 
     return ok_be
 
@@ -477,57 +569,42 @@ class WebsiteExperimentResult(ExperimentResult):
 
 def make_website_experiment_result(
     web_observations: List[WebObservation],
-    dns_ctrl: DNSControl,
-    tcp_ctrl_map: Dict[str, TCPControl],
-    http_ctrl_map: Dict[str, HTTPControl],
+    web_ground_truth_db: WebGroundTruthDB,
+    body_db: BodyDB,
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
 ) -> WebsiteExperimentResult:
-    """
-    make_website_verdicts will yield many verdicts given some observations
-    related to a website measurement.
-
-    We MUST pass in DNS observations, but observations of other types are
-    optional. This is to workaround the fact that not every version of OONI
-    Probe was generating all types of observations.
-
-    The order in which we compute the verdicts is important, since the knowledge
-    of some form of blocking is relevant to being able to determine future
-    methods of blocking.
-    Examples of this include:
-    * If you know that DNS is consistent and you see a TLS certificate
-    validation error, you can conclude that it's a MITM
-    * If you see that TCP connect is failing, you will not attribute a failing
-    TLS to a TLS level interference (ex. SNI filtering)
-
-    For some lists of observations we also need to pass in a baseline. The
-    baseline is some groundtruth related to the targets being measured that are
-    needed in order to draw some meaningful conclusion about it's blocking.
-    We need this so that we are able to exclude instances in which the target is
-    unavailable due to transient network failures.
-
-    It is the job of who calls the make_website_verdicts function to build this
-    baseline by either running queries against the database of observations or
-    using some set of observations that are already in memory.
-
-    The basic idea is that since we are going to be generating verdicts in
-    windows of 24h, we would have to do the baselining only once for the 24h
-    time window given a certain domain.
-    """
     blocking_events = []
     observation_ids = []
 
     domain_name = web_observations[0].hostname
+
+    # We need to process HTTP observations after all the others, because we
+    # arent' guaranteed to have on the same row all connected observations.
+    # If we don't do that, we will not exclude from our blocking calculations
+    # cases in which something has already been counted as blocked through other
+    # means
+    http_obs = []
+    is_dns_blocked = False
+    is_tcp_blocked = False
+    is_tls_blocked = False
     for web_o in web_observations:
         request_is_encrypted = (
             web_o.http_request_url and web_o.http_request_url.startswith("https://")
         )
-
         observation_ids.append(web_o.observation_id)
-        dns_be = make_website_dns_blocking_event(
-            web_o, dns_ctrl, fingerprintdb, netinfodb
-        )
-        if dns_be:
+
+        dns_be = None
+        if web_o.dns_query_type:
+            # We have data related to DNS and it's a failure
+            dns_be = make_dns_blocking_event(
+                web_o=web_o,
+                web_ground_truth_db=web_ground_truth_db,
+                fingerprintdb=fingerprintdb,
+                netinfodb=netinfodb,
+            )
+            if is_blocked(dns_be):
+                is_dns_blocked = True
             blocking_events.append(dns_be)
 
         # TODO: this is now missing
@@ -539,19 +616,29 @@ def make_website_experiment_result(
         # level blocks in this case by some factor.
 
         tcp_be = None
-        if not is_blocked(dns_be):
-            tcp_ctrl = tcp_ctrl_map.get(f"{web_o.ip}:{web_o.port}")
-            if tcp_ctrl:
-                tcp_be = make_website_tcp_blocking_event(web_o, tcp_ctrl)
-                if tcp_be:
-                    blocking_events.append(tcp_be)
+        if not is_blocked(dns_be) and web_o.tcp_success is not None:
+            tcp_be = make_tcp_blocking_event(web_o, web_ground_truth_db)
+            if is_blocked(tcp_be):
+                is_tcp_blocked = True
+            blocking_events.append(tcp_be)
 
         tls_be = None
         # We ignore things that are already blocked by DNS or TCP
-        if not is_blocked(dns_be) and not is_blocked(tcp_be):
-            tls_be = make_website_tls_blocking_event(web_o)
-            if tls_be:
-                blocking_events.append(tls_be)
+        if (
+            not is_blocked(dns_be)
+            and not is_blocked(tcp_be)
+            and (web_o.tls_failure or web_o.tls_cipher_suite is not None)
+        ):
+            tls_be = make_tls_blocking_event(
+                web_o=web_o, web_ground_truth_db=web_ground_truth_db
+            )
+            blocking_events.append(tls_be)
+            if is_blocked(tls_be):
+                is_tls_blocked = True
+
+        if web_o.http_request_url and not web_o.ip:
+            http_obs.append(web_o)
+            continue
 
         # For HTTP requests we ignore cases in which we detected the blocking
         # already to be happening via DNS or TCP.
@@ -567,12 +654,37 @@ def make_website_experiment_result(
                 or (request_is_encrypted and not is_blocked(tls_be))
             )
         ):
-            http_ctrl = http_ctrl_map.get(web_o.http_request_url)
-            if http_ctrl:
-                http_be = make_website_http_blocking_event(
-                    web_o, http_ctrl, fingerprintdb
-                )
-                blocking_events.append(http_be)
+            http_be = make_http_blocking_event(
+                web_o=web_o,
+                web_ground_truth_db=web_ground_truth_db,
+                body_db=body_db,
+                fingerprintdb=fingerprintdb,
+            )
+            blocking_events.append(http_be)
+
+    for web_o in http_obs:
+        request_is_encrypted = (
+            web_o.http_request_url and web_o.http_request_url.startswith("https://")
+        )
+        if (
+            web_o.http_request_url
+            and (
+                not is_dns_blocked
+                and not is_tcp_blocked
+                # For HTTPS requests we ignore cases in which we detected the blocking via DNS, TCP or TLS
+            )
+            and (
+                request_is_encrypted == False
+                or (request_is_encrypted and not is_tls_blocked)
+            )
+        ):
+            http_be = make_http_blocking_event(
+                web_o=web_o,
+                web_ground_truth_db=web_ground_truth_db,
+                body_db=body_db,
+                fingerprintdb=fingerprintdb,
+            )
+            blocking_events.append(http_be)
 
     # TODO: Should we be including this also BlockingType.DOWN,SERVER_SIDE_BLOCK or not?
     nok_blocking_confidence = list(
