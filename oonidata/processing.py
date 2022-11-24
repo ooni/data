@@ -802,6 +802,8 @@ class ExperimentResultMakerWorker(mp.Process):
                 day = self.day_queue.get(block=True, timeout=0.1)
             except queue.Empty:
                 continue
+
+            log.info(f"generating experiment results from {day}")
             try:
                 db_lookup = ClickhouseConnection(self.clickhouse)
                 web_ground_truth_db = WebGroundTruthDB(
