@@ -235,6 +235,11 @@ def mkobs(
     is_flag=True,
     help="should we fail immediately when we encounter an error?",
 )
+@click.option(
+    "--create-tables",
+    is_flag=True,
+    help="should we attempt to create the required clickhouse tables",
+)
 def mker(
     probe_cc: List[str],
     test_name: List[str],
@@ -244,7 +249,13 @@ def mker(
     data_dir: Path,
     parallelism: int,
     fast_fail: bool,
+    create_tables: bool,
 ):
+    if create_tables:
+        with ClickhouseConnection(clickhouse) as db:
+            for query, table_name in create_queries:
+                db.execute(query)
+
     start_experiment_result_maker(
         probe_cc=probe_cc,
         test_name=test_name,
