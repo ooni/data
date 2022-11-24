@@ -776,11 +776,12 @@ def run_experiment_results(
     all_columns = er_columns + be_columns
     db_lookup = ClickhouseConnection(clickhouse)
 
-    log.info("building ground truth DB")
+    log.info(f"building ground truth DB for {day}")
     web_ground_truth_db = WebGroundTruthDB(
         ground_truths=get_web_ground_truth(db=db_lookup, measurement_day=day),
         netinfodb=netinfodb,
     )
+    log.info(f"built DB for {day}")
     for web_obs in iter_web_observations(db_lookup, measurement_day=day):
         try:
             er = make_website_experiment_result(
