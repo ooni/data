@@ -92,27 +92,31 @@ def print_nice(obs):
 
 @add_slots
 @dataclass
-class MeasurementMeta:
+class ObservationBase:
     __table_name__ = "obs_generic"
+    __table_index__ = ("measurement_start_time", "measurement_uid")
 
     measurement_uid: str
-
     input: Optional[str]
     report_id: str
 
     measurement_start_time: datetime
 
+    software_name: str
+    software_version: str
+    test_name: str
+    test_version: str
+
+
+@add_slots
+@dataclass
+class MeasurementMeta(ObservationBase):
     probe_asn: int
     probe_cc: str
 
     probe_as_org_name: str
     probe_as_cc: str
     probe_as_name: str
-
-    software_name: str
-    software_version: str
-    test_name: str
-    test_version: str
 
     network_type: str
     platform: str
@@ -821,20 +825,9 @@ class WebObservation(MeasurementMeta):
 
 @add_slots
 @dataclass
-class WebControlObservation:
+class WebControlObservation(ObservationBase):
     __table_name__ = "obs_web_ctrl"
     __table_index__ = ("measurement_uid", "measurement_start_time")
-
-    measurement_uid: str
-    input: Optional[str]
-    report_id: str
-
-    measurement_start_time: datetime
-
-    software_name: str
-    software_version: str
-    test_name: str
-    test_version: str
 
     hostname: str
 
@@ -1310,7 +1303,7 @@ def make_tor_observations(
             target_id=target_id,
         )
 
-    return (web_obs_list, )
+    return (web_obs_list,)
 
 
 nettest_make_obs_map = {

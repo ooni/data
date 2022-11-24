@@ -4,6 +4,8 @@ from typing import Optional, Tuple, List, Any, Type, Mapping, Dict
 from dataclasses import fields
 from oonidata.observations import (
     MeasurementMeta,
+    ObservationBase,
+    WebControlObservation,
     WebObservation,
 )
 from oonidata.experiments.experiment_result import (
@@ -77,13 +79,14 @@ def typing_to_clickhouse(t: Any) -> str:
     raise Exception(f"Unhandled type {t}")
 
 
-def create_query_for_observation(obs_class: Type[MeasurementMeta]) -> Tuple[str, str]:
+def create_query_for_observation(obs_class: Type[ObservationBase]) -> Tuple[str, str]:
     columns = []
     for f in fields(obs_class):
         type_str = typing_to_clickhouse(f.type)
         columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
+    index_str = ",\n".join(obs_class.__table_index__)
 
     return (
         f"""
@@ -91,7 +94,7 @@ def create_query_for_observation(obs_class: Type[MeasurementMeta]) -> Tuple[str,
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
-    ORDER BY (measurement_start_time, observation_id, measurement_uid)
+    ORDER BY ({index_str})
     SETTINGS index_granularity = 8192;
     """,
         obs_class.__table_name__,
@@ -121,6 +124,7 @@ def create_query_for_experiment_result() -> Tuple[str, str]:
 
 create_queries = [
     create_query_for_observation(WebObservation),
+    create_query_for_observation(WebControlObservation),
     create_query_for_experiment_result(),
 ]
 

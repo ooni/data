@@ -60,8 +60,7 @@ log = logging.getLogger("oonidata.processing")
 def make_db_rows(
     bucket_date: str, observations: List[WebObservation]
 ) -> Tuple[str, List[Dict], List[str]]:
-    if len(observations) == 0:
-        return "", [], []
+    assert len(observations) > 0
 
     table_name = observations[0].__table_name__
     column_names = [f.name for f in dataclasses.fields(observations[0])]
@@ -69,7 +68,8 @@ def make_db_rows(
     for obs in observations:
         obs.bucket_date = bucket_date
         assert table_name == obs.__table_name__, "inconsistent group of observations"
-        rows.append({k: getattr(obs, k) for k in column_names})
+        # TODO: can I use a tuple here for more efficiency?
+        rows.append([getattr(obs, k) for k in column_names])
 
     return table_name, rows, column_names
 
@@ -339,6 +339,9 @@ def process_day(
         try:
             msmt = load_measurement(msmt_dict)
             for observations in make_observations(msmt, netinfodb=netinfodb):
+                if len(observations) == 0:
+                    continue
+
                 table_name, rows, column_names = make_db_rows(
                     bucket_date=bucket_date,
                     observations=observations,

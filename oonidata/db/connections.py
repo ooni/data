@@ -36,12 +36,11 @@ class ClickhouseConnection(DatabaseConnection):
     def __enter__(self):
         return self
 
-    def __exit__(self):
+    def __exit__(self, type, value, traceback):
         self.close()
 
     def execute(self, *args, **kwargs):
         # log.debug(f"execute {args} {kwargs}")
-        print(f"calling {self.client.execute} {args} {kwargs}")
         return self.client.execute(*args, **kwargs)
 
     def write_rows(self, table_name, rows, column_names):
@@ -52,9 +51,7 @@ class ClickhouseConnection(DatabaseConnection):
 
         if self.row_buffer_size:
             self._row_buffer[table_name] += rows
-            print(f"checking {len(self._row_buffer[table_name])}")
             if len(self._row_buffer[table_name]) >= self.row_buffer_size:
-                print(f"flushing {len(self._row_buffer[table_name])}")
                 self.flush_rows(table_name, self._row_buffer[table_name])
                 self._row_buffer[table_name] = []
         else:
