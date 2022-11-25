@@ -24,7 +24,7 @@ class DatabaseConnection:
 
 
 class ClickhouseConnection(DatabaseConnection):
-    def __init__(self, conn_url, row_buffer_size=0, max_block_size=10000):
+    def __init__(self, conn_url, row_buffer_size=0, max_block_size=1_000_000):
         from clickhouse_driver import Client
 
         self.client = Client.from_url(conn_url)
