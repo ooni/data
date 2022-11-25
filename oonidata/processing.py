@@ -796,30 +796,56 @@ def run_experiment_results(
     for web_obs in iter_web_observations(db_lookup, measurement_day=day):
         try:
             t0 = time.monotonic()
-            er = make_website_experiment_result(
-                web_observations=web_obs,
-                body_db=body_db,
-                web_ground_truth_db=web_ground_truth_db,
-                fingerprintdb=fingerprintdb,
-                statsd_client=statsd_client,
-            )
-            # FIXME FIXME FIXME YELP
-            # This is just aweful. Should be fixed up
-            rows = []
-            for idx, be in enumerate(er.blocking_events):
-                er.experiment_result_id = f"{er.measurement_uid}_{idx}"
-                row = [getattr(er, k) for k in er_columns]
-                for k in be_columns:
-                    v = getattr(be, k)
-                    if isinstance(v, BlockingType):
-                        v = v.value
-                    row.append(v)
-                rows.append(row)
-            if statsd_client:
-                statsd_client.timing(
-                    "make_website_er.timing", (time.monotonic() - t0) * 1000
+
+            # We build a reduced in-memory ground truth database just for this set of
+            # observations. That way the lookups inside of each observation group should
+            # be a bit faster as they don't have to scan through the whole set of ground truths.
+            to_lookup_hostnames = set()
+            to_lookup_ip_ports = set()
+            to_lookup_http_request_urls = set()
+            probe_cc = web_obs[0].probe_cc
+            probe_asn = web_obs[0].probe_asn
+            for web_o in web_obs:
+                if web_o.hostname is not None:
+                    to_lookup_hostnames.add(web_o.hostname)
+                if web_o.ip is not None:
+                    to_lookup_ip_ports.add((web_o.ip, web_o.port))
+                if web_o.http_request_url is not None:
+                    to_lookup_http_request_urls.add(web_o.http_request_url)
+
+            t0 = time.monotonic()
+            with web_ground_truth_db.reduced_table(
+                probe_cc=probe_cc,
+                probe_asn=probe_asn,
+                ip_ports=list(to_lookup_ip_ports),
+                http_request_urls=list(to_lookup_http_request_urls),
+                hostnames=list(to_lookup_hostnames),
+            ) as reduced_wgt_db:
+                if statsd_client:
+                    statsd_client.timing("wgt_er_reduced.timed", (time.monotonic() - t0) * 1000)
+                er = make_website_experiment_result(
+                    web_observations=web_obs,
+                    body_db=body_db,
+                    web_ground_truth_db=reduced_wgt_db,
+                    fingerprintdb=fingerprintdb,
                 )
-                statsd_client.incr("make_website_er.er_count")
+                # FIXME FIXME FIXME YELP
+                # This is just aweful. Should be fixed up
+                rows = []
+                for idx, be in enumerate(er.blocking_events):
+                    er.experiment_result_id = f"{er.measurement_uid}_{idx}"
+                    row = [getattr(er, k) for k in er_columns]
+                    for k in be_columns:
+                        v = getattr(be, k)
+                        if isinstance(v, BlockingType):
+                            v = v.value
+                        row.append(v)
+                    rows.append(row)
+                if statsd_client:
+                    statsd_client.timing(
+                        "make_website_er.timing", (time.monotonic() - t0) * 1000
+                    )
+                    statsd_client.incr("make_website_er.er_count")
 
             t0 = time.monotonic()
             db_writer.write_rows(

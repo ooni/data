@@ -1,17 +1,13 @@
 from contextlib import contextmanager
-from dataclasses import dataclass, field
-import dataclasses
 from datetime import date, timedelta, datetime
 import logging
 import sqlite3
+from threading import Lock
 
-from typing import Any, Dict, Optional, Tuple, List, NamedTuple
-from urllib.parse import urlparse
+from typing import Any, Optional, Tuple, List, NamedTuple
 from oonidata.netinfo import NetinfoDB
 from oonidata.observations import WebControlObservation
-from oonidata.datautils import one_day_dict
 
-from oonidata.compat import add_slots
 from oonidata.db.connections import ClickhouseConnection
 
 log = logging.getLogger("oonidata.processing")
@@ -149,6 +145,15 @@ def get_web_ground_truth(
 
 
 class WebGroundTruthDB:
+    """
+    The Web Ground Truth database is used by the websites experiment results
+    processor for looking up ground truths related to a particular set of
+    measurements.
+
+    Currently it's implemented through an in-memory SQLite databases which
+    contains all the ground_truths for a particular day.
+    """
+
     _indexes = (
         ("vp_idx", "vp_asn, vp_cc"),
         ("hostname_idx", "hostname"),
@@ -160,6 +165,7 @@ class WebGroundTruthDB:
         self, ground_truths: List[WebGroundTruth], netinfodb: Optional[NetinfoDB] = None
     ):
         self.active_table = "ground_truth"
+        self.db_lock = Lock()
         self.db = sqlite3.connect(":memory:")
         self.db.execute(self.create_query)
         self.db.commit()
@@ -260,10 +266,12 @@ class WebGroundTruthDB:
         q_str = self.insert_query + select_q
         self.db.execute(q_str, q_args)
         self.create_indexes()
+
         try:
             yield self
         finally:
             self.db.execute(f"DROP TABLE {self.active_table}")
+            self.db.commit()
             self.active_table = "ground_truth"
 
     def select_query(
