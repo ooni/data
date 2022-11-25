@@ -812,7 +812,9 @@ def run_experiment_results(
                     row.append(v)
                 rows.append(row)
             if statsd_client:
-                statsd_client.timing("make_website_er.timing", time.monotonic() - t0)
+                statsd_client.timing(
+                    "make_website_er.timing", (time.monotonic() - t0) * 1000
+                )
 
             t0 = time.monotonic()
             db_writer.write_rows(
@@ -821,7 +823,9 @@ def run_experiment_results(
                 column_names=all_columns,
             )
             if statsd_client:
-                statsd_client.timing("db_write_rows.timing", time.monotonic() - t0)
+                statsd_client.timing(
+                    "db_write_rows.timing", (time.monotonic() - t0) * 1000
+                )
             yield er
         except:
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))

@@ -598,7 +598,7 @@ def make_website_experiment_result(
     )
     reduced_wgt_db = WebGroundTruthDB(ground_truths=reduced_wgt)
     if statsd_client:
-        statsd_client.timing("wgt_er_reduced.timed", time.monotonic() - t0)
+        statsd_client.timing("wgt_er_reduced.timed", (time.monotonic() - t0) * 1000)
 
     # We need to process HTTP observations after all the others, because we
     # arent' guaranteed to have on the same row all connected observations.
