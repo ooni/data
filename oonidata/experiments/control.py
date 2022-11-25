@@ -235,7 +235,10 @@ class WebGroundTruthDB:
         sub_query_parts = []
         if hostnames:
             sub_q = "("
-            sub_q += "OR ".join([" hostname = ?" for _ in range(len(hostnames))])
+            sub_q += "OR ".join(
+                # When hostname was supplied, we only care about it in relation to DNS resolutions
+                [" hostname = ? AND dns_success = 1 " for _ in range(len(hostnames))]
+            )
             sub_q += ")"
             q_args += hostnames
             sub_query_parts.append(sub_q)
