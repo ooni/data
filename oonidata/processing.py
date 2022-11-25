@@ -29,6 +29,7 @@ from typing import (
 
 import orjson
 import msgpack
+import statsd
 from tqdm import tqdm
 from warcio.warcwriter import WARCWriter
 from warcio.archiveiterator import ArchiveIterator
@@ -766,6 +767,12 @@ def run_experiment_results(
     db_writer: ClickhouseConnection,
     clickhouse: str,
 ):
+    statsd_client = None
+    try:
+        statsd_client = statsd.StatsClient("localhost", 8125)
+    except:
+        pass
+
     er_columns = list(
         filter(
             lambda x: x != "blocking_events",
@@ -784,11 +791,13 @@ def run_experiment_results(
     log.info(f"built DB for {day}")
     for web_obs in iter_web_observations(db_lookup, measurement_day=day):
         try:
+            t0 = time.monotonic()
             er = make_website_experiment_result(
                 web_observations=web_obs,
                 body_db=body_db,
                 web_ground_truth_db=web_ground_truth_db,
                 fingerprintdb=fingerprintdb,
+                statsd_client=statsd_client,
             )
             # FIXME FIXME FIXME YELP
             # This is just aweful. Should be fixed up
@@ -802,11 +811,17 @@ def run_experiment_results(
                         v = v.value
                     row.append(v)
                 rows.append(row)
+            if statsd_client:
+                statsd_client.timing("make_website_er.timing", time.monotonic() - t0)
+
+            t0 = time.monotonic()
             db_writer.write_rows(
                 table_name="experiment_result",
                 rows=rows,
                 column_names=all_columns,
             )
+            if statsd_client:
+                statsd_client.timing("db_write_rows.timing", time.monotonic() - t0)
             yield er
         except:
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))

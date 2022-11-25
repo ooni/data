@@ -1,7 +1,8 @@
 from collections import defaultdict
 from dataclasses import dataclass
 import ipaddress
-from typing import Optional, List, Tuple, Dict
+import time
+from typing import Any, Optional, List, Tuple, Dict
 from oonidata.experiments.control import (
     WebGroundTruth,
     WebGroundTruthDB,
@@ -564,6 +565,7 @@ def make_website_experiment_result(
     web_ground_truth_db: WebGroundTruthDB,
     body_db: BodyDB,
     fingerprintdb: FingerprintDB,
+    statsd_client: Optional[Any] = None,
 ) -> WebsiteExperimentResult:
     blocking_events = []
     observation_ids = []
@@ -586,6 +588,7 @@ def make_website_experiment_result(
         if web_o.http_request_url is not None:
             to_lookup_http_request_urls.add(web_o.http_request_url)
 
+    t0 = time.monotonic()
     reduced_wgt = web_ground_truth_db.lookup(
         probe_cc=probe_cc,
         probe_asn=probe_asn,
@@ -594,6 +597,8 @@ def make_website_experiment_result(
         hostnames=list(to_lookup_hostnames),
     )
     reduced_wgt_db = WebGroundTruthDB(ground_truths=reduced_wgt)
+    if statsd_client:
+        statsd_client.timing("wgt_er_reduced.timed", time.monotonic() - t0)
 
     # We need to process HTTP observations after all the others, because we
     # arent' guaranteed to have on the same row all connected observations.
