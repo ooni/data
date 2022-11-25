@@ -792,7 +792,7 @@ def run_experiment_results(
         ground_truths=all_ground_truths,
         netinfodb=netinfodb,
     )
-    log.info(f"built DB for {day}")
+    log.info(f"built DB for {day} with {len(all_ground_truths)} ground truths")
     for web_obs in iter_web_observations(db_lookup, measurement_day=day):
         try:
             t0 = time.monotonic()
