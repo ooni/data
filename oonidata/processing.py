@@ -815,6 +815,7 @@ def run_experiment_results(
                 statsd_client.timing(
                     "make_website_er.timing", (time.monotonic() - t0) * 1000
                 )
+                statsd_client.incr("make_website_er.er_count")
 
             t0 = time.monotonic()
             db_writer.write_rows(

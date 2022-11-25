@@ -596,6 +596,8 @@ def make_website_experiment_result(
         http_request_urls=list(to_lookup_http_request_urls),
         hostnames=list(to_lookup_hostnames),
     )
+    if statsd_client:
+        statsd_client.gauge("wgt_er_reduced.size", len(reduced_wgt))
     reduced_wgt_db = WebGroundTruthDB(ground_truths=reduced_wgt)
     if statsd_client:
         statsd_client.timing("wgt_er_reduced.timed", (time.monotonic() - t0) * 1000)
