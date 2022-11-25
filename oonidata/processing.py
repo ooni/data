@@ -885,7 +885,7 @@ class ExperimentResultMakerWorker(mp.Process):
 
     def run(self):
 
-        db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=10_000)
+        db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=100_000)
         netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
         fingerprintdb = FingerprintDB(datadir=self.data_dir, download=False)
 
