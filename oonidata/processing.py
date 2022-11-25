@@ -759,13 +759,16 @@ def start_observation_maker(
     status_thread.join()
 
 
-def start_timer():
-    t0 = time.perf_counter_ns()
+class PerfTimer:
+    def __init__(self):
+        self.t0 = time.perf_counter_ns()
+        self._runtime = None
 
-    def _():
-        return time.perf_counter_ns() / 10**6
-
-    return _
+    @property
+    def runtime(self):
+        if not self._runtime:
+            self._runtime = (time.perf_counter_ns() - self.t0) / 10**6
+        return self._runtime
 
 
 def run_experiment_results(
@@ -793,13 +796,16 @@ def run_experiment_results(
 
     statsd_client.incr("make_website_er.all_ground_truths", len(all_ground_truths))
 
-    with statsd_client.timer("wgt_er_all.timed"):
-        web_ground_truth_db = WebGroundTruthDB(
-            ground_truths=all_ground_truths,
-            netinfodb=netinfodb,
-        )
+    t = PerfTimer()
+    web_ground_truth_db = WebGroundTruthDB(
+        ground_truths=all_ground_truths,
+        netinfodb=netinfodb,
+    )
+    statsd_client.timing("wgt_er_all.timed", t.runtime)
 
-    log.info(f"built DB for {day} with {len(all_ground_truths)} ground truths")
+    log.info(
+        f"built DB for {day} with {len(all_ground_truths)} ground truths in {t.runtime}"
+    )
     for web_obs in iter_web_observations(db_lookup, measurement_day=day):
         try:
             # We build a reduced in-memory ground truth database just for this set of
@@ -818,8 +824,8 @@ def run_experiment_results(
                 if web_o.http_request_url is not None:
                     to_lookup_http_request_urls.add(web_o.http_request_url)
 
-            t_er_gen = start_timer()
-            t = start_timer()
+            t_er_gen = PerfTimer()
+            t = PerfTimer()
             with web_ground_truth_db.reduced_table(
                 probe_cc=probe_cc,
                 probe_asn=probe_asn,
@@ -828,7 +834,7 @@ def run_experiment_results(
                 hostnames=list(to_lookup_hostnames),
             ) as reduced_wgt_db:
                 if statsd_client:
-                    statsd_client.timing("wgt_er_reduced.timed", t())
+                    statsd_client.timing("wgt_er_reduced.timed", t.runtime)
                 er = make_website_experiment_result(
                     web_observations=web_obs,
                     body_db=body_db,
@@ -848,7 +854,7 @@ def run_experiment_results(
                         row.append(v)
                     rows.append(row)
 
-                statsd_client.timing("make_website_er.timing", t_er_gen)
+                statsd_client.timing("make_website_er.timing", t_er_gen.runtime)
                 statsd_client.incr("make_website_er.er_count")
 
             with statsd_client.timer("db_write_rows.timing"):
