@@ -137,8 +137,8 @@ def get_web_ground_truth(
         wgt_dict["vp_asn"] = 0
         wgt_dict["is_trusted_vp"] = True
         # We add these later in the ground truth DB
-        wgt_dict["ip_asn"] = 0
-        wgt_dict["ip_as_org_name"] = ""
+        wgt_dict["ip_asn"] = None
+        wgt_dict["ip_as_org_name"] = None
         wgt_list.append(WebGroundTruth(**wgt_dict))
     return wgt_list
 

@@ -784,8 +784,11 @@ def run_experiment_results(
     db_lookup = ClickhouseConnection(clickhouse)
 
     log.info(f"building ground truth DB for {day}")
+    all_ground_truths = get_web_ground_truth(db=db_lookup, measurement_day=day)
+    if statsd_client:
+        statsd_client.gauge("make_website_er.all_ground_truths", len(all_ground_truths))
     web_ground_truth_db = WebGroundTruthDB(
-        ground_truths=get_web_ground_truth(db=db_lookup, measurement_day=day),
+        ground_truths=all_ground_truths,
         netinfodb=netinfodb,
     )
     log.info(f"built DB for {day}")
