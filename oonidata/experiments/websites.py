@@ -64,7 +64,9 @@ def make_tcp_blocking_event(
     ), "inconsistency between tcp_success and tcp_failure"
 
     ground_truths = web_ground_truth_db.lookup(
-        probe_cc=web_o.probe_cc, probe_asn=web_o.probe_asn, ip=web_o.ip, port=web_o.port
+        probe_cc=web_o.probe_cc,
+        probe_asn=web_o.probe_asn,
+        ip_ports=[(web_o.ip, web_o.port)],
     )
     unreachable_cc_asn = set()
     reachable_cc_asn = set()
@@ -195,7 +197,7 @@ def make_dns_blocking_event(
 
     assert web_o.hostname, "malformed DNS observation"
     ground_truths = web_ground_truth_db.lookup(
-        probe_cc=web_o.probe_cc, probe_asn=web_o.probe_asn, hostname=web_o.hostname
+        probe_cc=web_o.probe_cc, probe_asn=web_o.probe_asn, hostnames=[web_o.hostname]
     )
     if web_o.dns_failure:
         blocking_type, blocking_detail, confidence = get_blocking_for_dns_failure(
@@ -441,7 +443,7 @@ def make_http_blocking_event(
     ground_truths = web_ground_truth_db.lookup(
         probe_cc=web_o.probe_cc,
         probe_asn=web_o.probe_asn,
-        http_request_url=web_o.http_request_url,
+        http_request_urls=[web_o.http_request_url],
     )
     if web_o.http_failure:
         blocking_meta = {}
@@ -568,6 +570,31 @@ def make_website_experiment_result(
 
     domain_name = web_observations[0].hostname
 
+    # We build a reduced in-memory ground truth database just for this set of
+    # observations. That way the lookups inside of each observation group should
+    # be a bit faster as they don't have to scan through the whole set of ground truths.
+    to_lookup_hostnames = set()
+    to_lookup_ip_ports = set()
+    to_lookup_http_request_urls = set()
+    probe_cc = web_observations[0].probe_cc
+    probe_asn = web_observations[0].probe_asn
+    for web_o in web_observations:
+        if web_o.hostname is not None:
+            to_lookup_hostnames.add(web_o.hostname)
+        if web_o.ip is not None:
+            to_lookup_ip_ports.add((web_o.ip, web_o.port))
+        if web_o.http_request_url is not None:
+            to_lookup_http_request_urls.add(web_o.http_request_url)
+
+    reduced_wgt = web_ground_truth_db.lookup(
+        probe_cc=probe_cc,
+        probe_asn=probe_asn,
+        ip_ports=list(to_lookup_ip_ports),
+        http_request_urls=list(to_lookup_http_request_urls),
+        hostnames=list(to_lookup_hostnames),
+    )
+    reduced_wgt_db = WebGroundTruthDB(ground_truths=reduced_wgt)
+
     # We need to process HTTP observations after all the others, because we
     # arent' guaranteed to have on the same row all connected observations.
     # If we don't do that, we will not exclude from our blocking calculations
@@ -597,7 +624,7 @@ def make_website_experiment_result(
             # We have data related to DNS and it's a failure
             dns_be = make_dns_blocking_event(
                 web_o=web_o,
-                web_ground_truth_db=web_ground_truth_db,
+                web_ground_truth_db=reduced_wgt_db,
                 fingerprintdb=fingerprintdb,
             )
             if is_blocked(dns_be):
@@ -614,7 +641,7 @@ def make_website_experiment_result(
 
         tcp_be = None
         if not is_blocked(dns_be) and web_o.tcp_success is not None:
-            tcp_be = make_tcp_blocking_event(web_o, web_ground_truth_db)
+            tcp_be = make_tcp_blocking_event(web_o, reduced_wgt_db)
             if is_blocked(tcp_be):
                 is_tcp_blocked = True
             blocking_events.append(tcp_be)
@@ -627,7 +654,7 @@ def make_website_experiment_result(
             and (web_o.tls_failure or web_o.tls_cipher_suite is not None)
         ):
             tls_be = make_tls_blocking_event(
-                web_o=web_o, web_ground_truth_db=web_ground_truth_db
+                web_o=web_o, web_ground_truth_db=reduced_wgt_db
             )
             blocking_events.append(tls_be)
             if is_blocked(tls_be):

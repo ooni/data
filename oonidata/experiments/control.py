@@ -144,7 +144,9 @@ def get_web_ground_truth(
 
 
 class WebGroundTruthDB:
-    def __init__(self, ground_truths: List[WebGroundTruth], netinfodb: NetinfoDB):
+    def __init__(
+        self, ground_truths: List[WebGroundTruth], netinfodb: Optional[NetinfoDB] = None
+    ):
         self.db = sqlite3.connect(":memory:")
         self.db.execute(
             """
@@ -194,7 +196,10 @@ class WebGroundTruthDB:
         q_str = f"INSERT INTO ground_truth ({c_str}) VALUES ({v_str})"
         for gt in ground_truths:
             row = gt
-            if gt.ip:
+            if gt.ip and (gt.ip_asn is None or gt.ip_as_org_name is None):
+                assert (
+                    netinfodb
+                ), "when passing not annotated groundtruths you need a netinfodb"
                 ip_info = netinfodb.lookup_ip(gt.timestamp, gt.ip)
                 row = gt[:-2] + (ip_info.as_info.asn, ip_info.as_info.as_org_name)
             self.db.execute(q_str, row)
@@ -204,34 +209,68 @@ class WebGroundTruthDB:
         self,
         probe_cc: str,
         probe_asn: int,
-        hostname: Optional[str] = None,
-        ip: Optional[str] = None,
-        port: Optional[int] = None,
-        http_request_url: Optional[str] = None,
+        hostnames: Optional[List[str]] = None,
+        ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
+        http_request_urls: Optional[List[str]] = None,
     ) -> List[WebGroundTruth]:
-        c_str = ",\n".join(self.column_names)
+        assert (
+            hostnames or ip_ports or http_request_urls
+        ), "one of either hostnames or ip_ports or http_request_urls should be set"
+        c_str = ",\n".join(
+            map(
+                lambda r: r if r != "count" else "SUM(count) as count",
+                self.column_names,
+            )
+        )
         q = f"""
         SELECT
         {c_str}
         FROM ground_truth
-        WHERE vp_asn != ? AND vp_cc != ?
+        WHERE vp_asn != ? AND vp_cc != ? AND (
         """
         # We want to exclude all the ground truths that are from the same
         # vantage point as the probe
         q_args = [probe_cc, probe_asn]
-        if hostname:
-            q += " AND hostname = ? "
-            q_args.append(hostname)
-        if ip:
-            q += " AND ip = ? "
-            q_args.append(ip)
-        if port:
-            q += " AND port = ? "
-            q_args.append(port)
 
-        if http_request_url:
-            q += " AND http_request_url = ? "
-            q_args.append(port)
+        sub_query_parts = []
+        if hostnames:
+            sub_q = "("
+            sub_q += "OR ".join([" hostname = ?" for _ in range(len(hostnames))])
+            sub_q += ")"
+            q_args += hostnames
+            sub_query_parts.append(sub_q)
+
+        if ip_ports:
+            sub_q = "("
+            ip_port_l = []
+            for ip, port in ip_ports:
+                assert ip is not None, "empty IP in query"
+                ip_port_q = "(ip = ?"
+                q_args.append(ip)
+                if port is not None:
+                    ip_port_q += " AND port = ?"
+                    q_args.append(port)
+                ip_port_q += ")"
+                ip_port_l.append(ip_port_q)
+            sub_q += "OR ".join(ip_port_l)
+            sub_q += ")"
+            sub_query_parts.append(sub_q)
+
+        if http_request_urls:
+            sub_q = "("
+            sub_q += "OR ".join(
+                [" http_request_url = ?" for _ in range(len(http_request_urls))]
+            )
+            sub_q += ")"
+            q_args += http_request_urls
+            sub_query_parts.append(sub_q)
+
+        q += "OR ".join(sub_query_parts)
+        q += ")"
+        q += "GROUP BY "
+        aggregate_columns = list(self.column_names)
+        aggregate_columns.remove("count")
+        q += ", ".join(aggregate_columns)
         matches = []
         for row in self.db.execute(q, q_args):
             gt = WebGroundTruth(*row)
