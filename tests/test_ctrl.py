@@ -68,3 +68,14 @@ def test_web_ground_truth_db():
     )
     assert len(res) == 3
     assert all(r.count == 10 for r in res)
+
+    for _ in range(10):
+        with wgt_db.reduced_table(
+            probe_cc="IT", probe_asn=100, ip_ports=[("1.1.1.1", 80)]
+        ) as reduced_db:
+            res = reduced_db.lookup(
+                probe_cc="IT",
+                probe_asn=100,
+                http_request_urls=["https://ooni.org/"],
+            )
+            assert len(res) == 0

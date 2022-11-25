@@ -589,180 +589,178 @@ def make_website_experiment_result(
             to_lookup_http_request_urls.add(web_o.http_request_url)
 
     t0 = time.monotonic()
-    reduced_wgt = web_ground_truth_db.lookup(
+
+    with web_ground_truth_db.reduced_table(
         probe_cc=probe_cc,
         probe_asn=probe_asn,
         ip_ports=list(to_lookup_ip_ports),
         http_request_urls=list(to_lookup_http_request_urls),
         hostnames=list(to_lookup_hostnames),
-    )
-    if statsd_client:
-        statsd_client.gauge("wgt_er_reduced.size", len(reduced_wgt))
-    reduced_wgt_db = WebGroundTruthDB(ground_truths=reduced_wgt)
-    if statsd_client:
-        statsd_client.timing("wgt_er_reduced.timed", (time.monotonic() - t0) * 1000)
+    ) as reduced_wgt_db:
+        if statsd_client:
+            statsd_client.timing("wgt_er_reduced.timed", (time.monotonic() - t0) * 1000)
 
-    # We need to process HTTP observations after all the others, because we
-    # arent' guaranteed to have on the same row all connected observations.
-    # If we don't do that, we will not exclude from our blocking calculations
-    # cases in which something has already been counted as blocked through other
-    # means
-    http_obs = []
-    is_dns_blocked = False
-    is_tcp_blocked = False
-    is_tls_blocked = False
-    for web_o in web_observations:
-        # FIXME: for the moment we just ignore all IPv6 results, because they are too noisy
-        if web_o.ip:
-            try:
-                ipaddr = ipaddress.ip_address(web_o.ip)
-                if isinstance(ipaddr, ipaddress.IPv6Address):
-                    continue
-            except:
-                log.error(f"Invalid IP in {web_o.ip}")
+        # We need to process HTTP observations after all the others, because we
+        # arent' guaranteed to have on the same row all connected observations.
+        # If we don't do that, we will not exclude from our blocking calculations
+        # cases in which something has already been counted as blocked through other
+        # means
+        http_obs = []
+        is_dns_blocked = False
+        is_tcp_blocked = False
+        is_tls_blocked = False
+        for web_o in web_observations:
+            # FIXME: for the moment we just ignore all IPv6 results, because they are too noisy
+            if web_o.ip:
+                try:
+                    ipaddr = ipaddress.ip_address(web_o.ip)
+                    if isinstance(ipaddr, ipaddress.IPv6Address):
+                        continue
+                except:
+                    log.error(f"Invalid IP in {web_o.ip}")
 
-        request_is_encrypted = (
-            web_o.http_request_url and web_o.http_request_url.startswith("https://")
-        )
-        observation_ids.append(web_o.observation_id)
-
-        dns_be = None
-        if web_o.dns_query_type:
-            # We have data related to DNS and it's a failure
-            dns_be = make_dns_blocking_event(
-                web_o=web_o,
-                web_ground_truth_db=reduced_wgt_db,
-                fingerprintdb=fingerprintdb,
+            request_is_encrypted = (
+                web_o.http_request_url and web_o.http_request_url.startswith("https://")
             )
-            if is_blocked(dns_be):
-                is_dns_blocked = True
-            blocking_events.append(dns_be)
+            observation_ids.append(web_o.observation_id)
 
-        # TODO: this is now missing
-        # If we didn't get a DNS blocking event from an observation, it means that
-        # observation was a sign of everything being OK, hence we should
-        # ignore all the previous DNS verdicts as likely false positives and
-        # just consider no DNS level censorship to be happening.
-        # TODO: probably we want to just reduce the confidence of the DNS
-        # level blocks in this case by some factor.
+            dns_be = None
+            if web_o.dns_query_type:
+                # We have data related to DNS and it's a failure
+                dns_be = make_dns_blocking_event(
+                    web_o=web_o,
+                    web_ground_truth_db=reduced_wgt_db,
+                    fingerprintdb=fingerprintdb,
+                )
+                if is_blocked(dns_be):
+                    is_dns_blocked = True
+                blocking_events.append(dns_be)
 
-        tcp_be = None
-        if not is_blocked(dns_be) and web_o.tcp_success is not None:
-            tcp_be = make_tcp_blocking_event(web_o, reduced_wgt_db)
-            if is_blocked(tcp_be):
-                is_tcp_blocked = True
-            blocking_events.append(tcp_be)
+            # TODO: this is now missing
+            # If we didn't get a DNS blocking event from an observation, it means that
+            # observation was a sign of everything being OK, hence we should
+            # ignore all the previous DNS verdicts as likely false positives and
+            # just consider no DNS level censorship to be happening.
+            # TODO: probably we want to just reduce the confidence of the DNS
+            # level blocks in this case by some factor.
 
-        tls_be = None
-        # We ignore things that are already blocked by DNS or TCP
-        if (
-            not is_blocked(dns_be)
-            and not is_blocked(tcp_be)
-            and (web_o.tls_failure or web_o.tls_cipher_suite is not None)
-        ):
-            tls_be = make_tls_blocking_event(
-                web_o=web_o, web_ground_truth_db=reduced_wgt_db
-            )
-            blocking_events.append(tls_be)
-            if is_blocked(tls_be):
-                is_tls_blocked = True
+            tcp_be = None
+            if not is_blocked(dns_be) and web_o.tcp_success is not None:
+                tcp_be = make_tcp_blocking_event(web_o, reduced_wgt_db)
+                if is_blocked(tcp_be):
+                    is_tcp_blocked = True
+                blocking_events.append(tcp_be)
 
-        if web_o.http_request_url and not web_o.ip:
-            http_obs.append(web_o)
-            continue
-
-        # For HTTP requests we ignore cases in which we detected the blocking
-        # already to be happening via DNS or TCP.
-        if (
-            web_o.http_request_url
-            and (
+            tls_be = None
+            # We ignore things that are already blocked by DNS or TCP
+            if (
                 not is_blocked(dns_be)
                 and not is_blocked(tcp_be)
-                # For HTTPS requests we ignore cases in which we detected the blocking via DNS, TCP or TLS
-            )
-            and (
-                request_is_encrypted == False
-                or (request_is_encrypted and not is_blocked(tls_be))
-            )
-        ):
-            http_be = make_http_blocking_event(
-                web_o=web_o,
-                web_ground_truth_db=web_ground_truth_db,
-                body_db=body_db,
-                fingerprintdb=fingerprintdb,
-            )
-            blocking_events.append(http_be)
+                and (web_o.tls_failure or web_o.tls_cipher_suite is not None)
+            ):
+                tls_be = make_tls_blocking_event(
+                    web_o=web_o, web_ground_truth_db=reduced_wgt_db
+                )
+                blocking_events.append(tls_be)
+                if is_blocked(tls_be):
+                    is_tls_blocked = True
 
-    for web_o in http_obs:
-        request_is_encrypted = (
-            web_o.http_request_url and web_o.http_request_url.startswith("https://")
-        )
-        if (
-            web_o.http_request_url
-            and (
-                not is_dns_blocked
-                and not is_tcp_blocked
-                # For HTTPS requests we ignore cases in which we detected the blocking via DNS, TCP or TLS
-            )
-            and (
-                request_is_encrypted == False
-                or (request_is_encrypted and not is_tls_blocked)
-            )
-        ):
-            http_be = make_http_blocking_event(
-                web_o=web_o,
-                web_ground_truth_db=web_ground_truth_db,
-                body_db=body_db,
-                fingerprintdb=fingerprintdb,
-            )
-            blocking_events.append(http_be)
+            if web_o.http_request_url and not web_o.ip:
+                http_obs.append(web_o)
+                continue
 
-    # TODO: Should we be including this also BlockingType.DOWN,SERVER_SIDE_BLOCK or not?
-    nok_blocking_confidence = list(
-        map(
-            lambda be: be.confidence,
-            filter(
-                lambda be: be.blocking_type
-                not in (
-                    BlockingType.OK,
-                    BlockingType.DOWN,
-                    BlockingType.SERVER_SIDE_BLOCK,
+            # For HTTP requests we ignore cases in which we detected the blocking
+            # already to be happening via DNS or TCP.
+            if (
+                web_o.http_request_url
+                and (
+                    not is_blocked(dns_be)
+                    and not is_blocked(tcp_be)
+                    # For HTTPS requests we ignore cases in which we detected the blocking via DNS, TCP or TLS
+                )
+                and (
+                    request_is_encrypted == False
+                    or (request_is_encrypted and not is_blocked(tls_be))
+                )
+            ):
+                http_be = make_http_blocking_event(
+                    web_o=web_o,
+                    web_ground_truth_db=web_ground_truth_db,
+                    body_db=body_db,
+                    fingerprintdb=fingerprintdb,
+                )
+                blocking_events.append(http_be)
+
+        for web_o in http_obs:
+            request_is_encrypted = (
+                web_o.http_request_url and web_o.http_request_url.startswith("https://")
+            )
+            if (
+                web_o.http_request_url
+                and (
+                    not is_dns_blocked
+                    and not is_tcp_blocked
+                    # For HTTPS requests we ignore cases in which we detected the blocking via DNS, TCP or TLS
+                )
+                and (
+                    request_is_encrypted == False
+                    or (request_is_encrypted and not is_tls_blocked)
+                )
+            ):
+                http_be = make_http_blocking_event(
+                    web_o=web_o,
+                    web_ground_truth_db=web_ground_truth_db,
+                    body_db=body_db,
+                    fingerprintdb=fingerprintdb,
+                )
+                blocking_events.append(http_be)
+
+        # TODO: Should we be including this also BlockingType.DOWN,SERVER_SIDE_BLOCK or not?
+        nok_blocking_confidence = list(
+            map(
+                lambda be: be.confidence,
+                filter(
+                    lambda be: be.blocking_type
+                    not in (
+                        BlockingType.OK,
+                        BlockingType.DOWN,
+                        BlockingType.SERVER_SIDE_BLOCK,
+                    ),
+                    blocking_events,
                 ),
-                blocking_events,
-            ),
+            )
         )
-    )
-    ok_blocking_confidence = list(
-        map(
-            lambda be: be.confidence,
-            filter(
-                lambda be: be.blocking_type == BlockingType.OK,
-                blocking_events,
-            ),
+        ok_blocking_confidence = list(
+            map(
+                lambda be: be.confidence,
+                filter(
+                    lambda be: be.blocking_type == BlockingType.OK,
+                    blocking_events,
+                ),
+            )
         )
-    )
 
-    ok_confidence = 0.5
-    if len(ok_blocking_confidence) > 0:
-        ok_confidence = min(ok_blocking_confidence)
+        ok_confidence = 0.5
+        if len(ok_blocking_confidence) > 0:
+            ok_confidence = min(ok_blocking_confidence)
 
-    if len(nok_blocking_confidence) > 0:
-        ok_confidence = 1 - max(nok_blocking_confidence)
+        if len(nok_blocking_confidence) > 0:
+            ok_confidence = 1 - max(nok_blocking_confidence)
 
-    confirmed = False
-    anomaly = False
-    if ok_confidence == 0:
-        confirmed = True
-    if ok_confidence < 0.6:
-        anomaly = True
+        confirmed = False
+        anomaly = False
+        if ok_confidence == 0:
+            confirmed = True
+        if ok_confidence < 0.6:
+            anomaly = True
 
-    return WebsiteExperimentResult(
-        domain_name=domain_name or "",
-        website_name=domain_name or "",
-        blocking_events=blocking_events,
-        observation_ids=observation_ids,
-        anomaly=anomaly,
-        confirmed=confirmed,
-        ok_confidence=ok_confidence,
-        **make_base_result_meta(web_observations[0]),
-    )
+        return WebsiteExperimentResult(
+            domain_name=domain_name or "",
+            website_name=domain_name or "",
+            blocking_events=blocking_events,
+            observation_ids=observation_ids,
+            anomaly=anomaly,
+            confirmed=confirmed,
+            ok_confidence=ok_confidence,
+            **make_base_result_meta(web_observations[0]),
+        )
