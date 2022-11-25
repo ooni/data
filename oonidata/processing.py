@@ -34,6 +34,7 @@ from tqdm import tqdm
 from warcio.warcwriter import WARCWriter
 from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
+from oonidata.datautils import PerfTimer
 from oonidata.experiments.control import (
     BodyDB,
     WebGroundTruthDB,
@@ -759,18 +760,6 @@ def start_observation_maker(
     status_thread.join()
 
 
-class PerfTimer:
-    def __init__(self):
-        self.t0 = time.perf_counter_ns()
-        self._runtime = None
-
-    @property
-    def runtime(self):
-        if not self._runtime:
-            self._runtime = (time.perf_counter_ns() - self.t0) / 10**6
-        return self._runtime
-
-
 def run_experiment_results(
     day: date,
     fingerprintdb: FingerprintDB,
@@ -801,10 +790,10 @@ def run_experiment_results(
         ground_truths=all_ground_truths,
         netinfodb=netinfodb,
     )
-    statsd_client.timing("wgt_er_all.timed", t.runtime)
+    statsd_client.timing("wgt_er_all.timed", t.ms)
 
     log.info(
-        f"built DB for {day} with {len(all_ground_truths)} ground truths in {t.runtime}"
+        f"built DB for {day} with {len(all_ground_truths)} ground truths in {t.pretty}"
     )
     for web_obs in iter_web_observations(db_lookup, measurement_day=day):
         try:
@@ -834,7 +823,7 @@ def run_experiment_results(
                 hostnames=list(to_lookup_hostnames),
             ) as reduced_wgt_db:
                 if statsd_client:
-                    statsd_client.timing("wgt_er_reduced.timed", t.runtime)
+                    statsd_client.timing("wgt_er_reduced.timed", t.ms)
                 er = make_website_experiment_result(
                     web_observations=web_obs,
                     body_db=body_db,
@@ -854,7 +843,7 @@ def run_experiment_results(
                         row.append(v)
                     rows.append(row)
 
-                statsd_client.timing("make_website_er.timing", t_er_gen.runtime)
+                statsd_client.timing("make_website_er.timing", t_er_gen.ms)
                 statsd_client.incr("make_website_er.er_count")
 
             with statsd_client.timer("db_write_rows.timing"):

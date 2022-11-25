@@ -1,5 +1,6 @@
 from datetime import datetime, date, timedelta
 import logging
+import time
 from typing import Iterable, List, Any, Tuple, Union, Dict
 from dataclasses import dataclass
 from functools import partial, singledispatch
@@ -26,6 +27,35 @@ from oonidata.dataformat import (
 
 
 log = logging.getLogger("oonidata.datautils")
+
+class PerfTimer:
+    def __init__(self):
+        self.t0 = time.perf_counter_ns()
+        self._runtime = None
+
+    @property
+    def runtime(self):
+        if not self._runtime:
+            self._runtime = (time.perf_counter_ns() - self.t0)
+        return self._runtime
+
+    @property
+    def ms(self):
+        return self.runtime / 10**6
+
+    @property
+    def pretty(self):
+        runtime = self.runtime
+        if runtime < 10**3:
+            return f"{runtime}ns"
+
+        if runtime < 10**6:
+            return f"{round(runtime/10**3, 2)}μs"
+
+        if runtime < 10**9:
+            return f"{round(runtime/10**6, 2)}ms"
+
+        return f"{round(runtime/10**9, 2)}s"
 
 META_TITLE_REGEXP = re.compile(
     b'<meta.*?property="og:title".*?content="(.*?)"', re.IGNORECASE | re.DOTALL
@@ -402,3 +432,4 @@ def one_day_dict(day: date) -> Dict[str, Any]:
 
 def removeprefix(s: str, prefix: str):
     return s[len(prefix) :]
+ 
