@@ -759,6 +759,15 @@ def start_observation_maker(
     status_thread.join()
 
 
+def start_timer():
+    t0 = time.perf_counter_ns()
+
+    def _():
+        return time.perf_counter_ns() / 10**6
+
+    return _
+
+
 def run_experiment_results(
     day: date,
     fingerprintdb: FingerprintDB,
@@ -767,12 +776,7 @@ def run_experiment_results(
     db_writer: ClickhouseConnection,
     clickhouse: str,
 ):
-    statsd_client = None
-    try:
-        statsd_client = statsd.StatsClient("localhost", 8125)
-    except:
-        log.error("failed to connect to statsd", exc_info=True)
-        pass
+    statsd_client = statsd.StatsClient("localhost", 8125)
 
     er_columns = list(
         filter(
@@ -786,17 +790,18 @@ def run_experiment_results(
 
     log.info(f"building ground truth DB for {day}")
     all_ground_truths = get_web_ground_truth(db=db_lookup, measurement_day=day)
-    if statsd_client:
-        statsd_client.incr("make_website_er.all_ground_truths", len(all_ground_truths))
-    web_ground_truth_db = WebGroundTruthDB(
-        ground_truths=all_ground_truths,
-        netinfodb=netinfodb,
-    )
+
+    statsd_client.incr("make_website_er.all_ground_truths", len(all_ground_truths))
+
+    with statsd_client.timer("wgt_er_all.timed"):
+        web_ground_truth_db = WebGroundTruthDB(
+            ground_truths=all_ground_truths,
+            netinfodb=netinfodb,
+        )
+
     log.info(f"built DB for {day} with {len(all_ground_truths)} ground truths")
     for web_obs in iter_web_observations(db_lookup, measurement_day=day):
         try:
-            t0 = time.monotonic()
-
             # We build a reduced in-memory ground truth database just for this set of
             # observations. That way the lookups inside of each observation group should
             # be a bit faster as they don't have to scan through the whole set of ground truths.
@@ -813,7 +818,8 @@ def run_experiment_results(
                 if web_o.http_request_url is not None:
                     to_lookup_http_request_urls.add(web_o.http_request_url)
 
-            t0 = time.monotonic()
+            t_er_gen = start_timer()
+            t = start_timer()
             with web_ground_truth_db.reduced_table(
                 probe_cc=probe_cc,
                 probe_asn=probe_asn,
@@ -822,7 +828,7 @@ def run_experiment_results(
                 hostnames=list(to_lookup_hostnames),
             ) as reduced_wgt_db:
                 if statsd_client:
-                    statsd_client.timing("wgt_er_reduced.timed", (time.monotonic() - t0) * 1000)
+                    statsd_client.timing("wgt_er_reduced.timed", t())
                 er = make_website_experiment_result(
                     web_observations=web_obs,
                     body_db=body_db,
@@ -841,21 +847,15 @@ def run_experiment_results(
                             v = v.value
                         row.append(v)
                     rows.append(row)
-                if statsd_client:
-                    statsd_client.timing(
-                        "make_website_er.timing", (time.monotonic() - t0) * 1000
-                    )
-                    statsd_client.incr("make_website_er.er_count")
 
-            t0 = time.monotonic()
-            db_writer.write_rows(
-                table_name="experiment_result",
-                rows=rows,
-                column_names=all_columns,
-            )
-            if statsd_client:
-                statsd_client.timing(
-                    "db_write_rows.timing", (time.monotonic() - t0) * 1000
+                statsd_client.timing("make_website_er.timing", t_er_gen)
+                statsd_client.incr("make_website_er.er_count")
+
+            with statsd_client.timer("db_write_rows.timing"):
+                db_writer.write_rows(
+                    table_name="experiment_result",
+                    rows=rows,
+                    column_names=all_columns,
                 )
             yield er
         except:
