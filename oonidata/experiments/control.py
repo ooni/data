@@ -275,6 +275,9 @@ class WebGroundTruthDB:
         for row in self.db.execute(q, q_args):
             gt = WebGroundTruth(*row)
             matches.append(gt)
+        if len(matches) > 10_000:
+            print(q)
+            print(q_args)
         return matches
 
 

@@ -771,6 +771,7 @@ def run_experiment_results(
     try:
         statsd_client = statsd.StatsClient("localhost", 8125)
     except:
+        log.error("failed to connect to statsd", exc_info=True)
         pass
 
     er_columns = list(
