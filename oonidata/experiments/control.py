@@ -103,7 +103,6 @@ def get_web_ground_truth(
         "http_request_url",
         "http_success",
         "http_failure",
-        "http_response_body_length",
     ]
     q = """
     SELECT (
@@ -121,7 +120,7 @@ def get_web_ground_truth(
         http_request_url,
         http_failure,
         http_success,
-        http_response_body_length,
+        arrayMax(topK(1)(http_response_body_length)) as http_response_body_length,
         COUNT()
     )
     FROM obs_web_ctrl
@@ -132,7 +131,12 @@ def get_web_ground_truth(
 
     for res in db.execute_iter(q, dict(start_day=start_day, end_day=end_day)):
         row = res[0]
-        wgt_dict = {k: row[idx] for idx, k in enumerate(column_names + ["count"])}
+        wgt_dict = {
+            k: row[idx]
+            for idx, k in enumerate(
+                column_names + ["http_response_body_length", "count"]
+            )
+        }
         wgt_dict["vp_cc"] = "ZZ"
         wgt_dict["vp_asn"] = 0
         wgt_dict["is_trusted_vp"] = True
