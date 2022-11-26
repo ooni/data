@@ -1,4 +1,6 @@
 from datetime import datetime
+import random
+import time
 from oonidata.experiments.control import WebGroundTruth, WebGroundTruthDB
 
 
@@ -31,19 +33,21 @@ def test_web_ground_truth_db():
         wgt_dict = base_wgt.copy()
         wgt_dict["ip"] = "1.1.1.1"
         wgt_dict["port"] = 80
-        all_wgt.append(WebGroundTruth(**wgt_dict))  # type: ignore
+        all_wgt.append(wgt_dict)
 
     for _ in range(10):
         wgt_dict = base_wgt.copy()
         wgt_dict["hostname"] = "ooni.org"
-        all_wgt.append(WebGroundTruth(**wgt_dict))  # type: ignore
+        all_wgt.append(wgt_dict)
 
     for _ in range(10):
         wgt_dict = base_wgt.copy()
         wgt_dict["http_request_url"] = "https://ooni.org/"
-        all_wgt.append(WebGroundTruth(**wgt_dict))  # type: ignore
+        all_wgt.append(wgt_dict)
 
-    wgt_db = WebGroundTruthDB(ground_truths=all_wgt)
+    iter_rows = map(lambda x: (list(x.keys()), list(x.values())), all_wgt)
+
+    wgt_db = WebGroundTruthDB(iter_rows=iter_rows)
     res = wgt_db.lookup(probe_cc="IT", probe_asn=100, hostnames=["ooni.org"])
     # They should be aggregated
     assert len(res) == 1
@@ -69,13 +73,22 @@ def test_web_ground_truth_db():
     assert len(res) == 3
     assert all(r.count == 10 for r in res)
 
-    for _ in range(10):
-        with wgt_db.reduced_table(
+    reduced_db = WebGroundTruthDB(
+        iter_rows=wgt_db.iter_select(
             probe_cc="IT", probe_asn=100, ip_ports=[("1.1.1.1", 80)]
-        ) as reduced_db:
-            res = reduced_db.lookup(
-                probe_cc="IT",
-                probe_asn=100,
-                http_request_urls=["https://ooni.org/"],
-            )
-            assert len(res) == 0
+        )
+    )
+
+    res = reduced_db.lookup(
+        probe_cc="IT",
+        probe_asn=100,
+        http_request_urls=["https://ooni.org/"],
+    )
+    assert len(res) == 0
+    res = reduced_db.lookup(
+        probe_cc="IT",
+        probe_asn=100,
+        ip_ports=[("1.1.1.1", 80)],
+    )
+    assert len(res) == 1
+    assert res[0].count == 10

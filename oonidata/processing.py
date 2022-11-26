@@ -38,7 +38,7 @@ from oonidata.datautils import PerfTimer
 from oonidata.experiments.control import (
     BodyDB,
     WebGroundTruthDB,
-    get_web_ground_truth,
+    iter_web_ground_truths,
 )
 from oonidata.experiments.experiment_result import (
     BlockingEvent,
@@ -52,7 +52,6 @@ from oonidata.observations import (
     WebObservation,
     iter_web_observations,
     make_observations,
-    get_web_ctrl_observations,
 )
 from oonidata.dataformat import (
     WebConnectivity,
@@ -781,20 +780,15 @@ def run_experiment_results(
     db_lookup = ClickhouseConnection(clickhouse)
 
     log.info(f"building ground truth DB for {day}")
-    all_ground_truths = get_web_ground_truth(db=db_lookup, measurement_day=day)
-
-    statsd_client.incr("make_website_er.all_ground_truths", len(all_ground_truths))
+    all_ground_truths = iter_web_ground_truths(
+        db=db_lookup, measurement_day=day, netinfodb=netinfodb
+    )
 
     t = PerfTimer()
-    web_ground_truth_db = WebGroundTruthDB(
-        ground_truths=all_ground_truths,
-        netinfodb=netinfodb,
-    )
+    web_ground_truth_db = WebGroundTruthDB(iter_rows=all_ground_truths)
     statsd_client.timing("wgt_er_all.timed", t.ms)
 
-    log.info(
-        f"built DB for {day} with {len(all_ground_truths)} ground truths in {t.pretty}"
-    )
+    log.info(f"built ground truth DB for {day} in {t.pretty}")
     for web_obs in iter_web_observations(db_lookup, measurement_day=day):
         try:
             # We build a reduced in-memory ground truth database just for this set of
@@ -815,36 +809,38 @@ def run_experiment_results(
 
             t_er_gen = PerfTimer()
             t = PerfTimer()
-            with web_ground_truth_db.reduced_table(
-                probe_cc=probe_cc,
-                probe_asn=probe_asn,
-                ip_ports=list(to_lookup_ip_ports),
-                http_request_urls=list(to_lookup_http_request_urls),
-                hostnames=list(to_lookup_hostnames),
-            ) as reduced_wgt_db:
-                if statsd_client:
-                    statsd_client.timing("wgt_er_reduced.timed", t.ms)
-                er = make_website_experiment_result(
-                    web_observations=web_obs,
-                    body_db=body_db,
-                    web_ground_truth_db=reduced_wgt_db,
-                    fingerprintdb=fingerprintdb,
+            reduced_wgt_db = WebGroundTruthDB(
+                iter_rows=web_ground_truth_db.iter_select(
+                    probe_cc=probe_cc,
+                    probe_asn=probe_asn,
+                    ip_ports=list(to_lookup_ip_ports),
+                    http_request_urls=list(to_lookup_http_request_urls),
+                    hostnames=list(to_lookup_hostnames),
                 )
-                # FIXME FIXME FIXME YELP
-                # This is just aweful. Should be fixed up
-                rows = []
-                for idx, be in enumerate(er.blocking_events):
-                    er.experiment_result_id = f"{er.measurement_uid}_{idx}"
-                    row = [getattr(er, k) for k in er_columns]
-                    for k in be_columns:
-                        v = getattr(be, k)
-                        if isinstance(v, BlockingType):
-                            v = v.value
-                        row.append(v)
-                    rows.append(row)
+            )
+            if statsd_client:
+                statsd_client.timing("wgt_er_reduced.timed", t.ms)
+            er = make_website_experiment_result(
+                web_observations=web_obs,
+                body_db=body_db,
+                web_ground_truth_db=reduced_wgt_db,
+                fingerprintdb=fingerprintdb,
+            )
+            # FIXME FIXME FIXME YELP
+            # This is just aweful. Should be fixed up
+            rows = []
+            for idx, be in enumerate(er.blocking_events):
+                er.experiment_result_id = f"{er.measurement_uid}_{idx}"
+                row = [getattr(er, k) for k in er_columns]
+                for k in be_columns:
+                    v = getattr(be, k)
+                    if isinstance(v, BlockingType):
+                        v = v.value
+                    row.append(v)
+                rows.append(row)
 
-                statsd_client.timing("make_website_er.timing", t_er_gen.ms)
-                statsd_client.incr("make_website_er.er_count")
+            statsd_client.timing("make_website_er.timing", t_er_gen.ms)
+            statsd_client.incr("make_website_er.er_count")
 
             with statsd_client.timer("db_write_rows.timing"):
                 db_writer.write_rows(
@@ -885,7 +881,7 @@ class ExperimentResultMakerWorker(mp.Process):
 
     def run(self):
 
-        db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=100_000)
+        db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=30_000)
         netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
         fingerprintdb = FingerprintDB(datadir=self.data_dir, download=False)
 

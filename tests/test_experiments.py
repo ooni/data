@@ -8,7 +8,9 @@ from oonidata.dataformat import (
     SIGNAL_PEM_STORE,
 )
 from oonidata.datautils import validate_cert_chain
-from oonidata.experiments.control import make_ground_truths_from_web_control
+from oonidata.experiments.control import (
+    iter_ground_truths_from_web_control,
+)
 from oonidata.experiments.experiment_result import BlockingType
 from oonidata.experiments.signal import make_signal_experiment_result
 from oonidata.experiments.websites import (
@@ -178,10 +180,10 @@ def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
     assert msmt.test_keys.control
     assert isinstance(msmt.input, str)
     web_ground_truth_db = WebGroundTruthDB(
-        ground_truths=make_ground_truths_from_web_control(
-            make_web_control_observations(msmt)
+        iter_rows=iter_ground_truths_from_web_control(
+            web_control_observations=make_web_control_observations(msmt),
+            netinfodb=netinfodb,
         ),
-        netinfodb=netinfodb,
     )
 
     body_db = MagicMock()

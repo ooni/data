@@ -1,10 +1,9 @@
-from contextlib import contextmanager
 from datetime import date, timedelta, datetime
 import logging
 import sqlite3
-from threading import Lock
+from collections.abc import Iterable
 
-from typing import Any, Optional, Tuple, List, NamedTuple
+from typing import Any, Generator, Optional, Tuple, List, NamedTuple
 from oonidata.netinfo import NetinfoDB
 from oonidata.observations import WebControlObservation
 
@@ -44,13 +43,20 @@ class WebGroundTruth(NamedTuple):
     ip_as_org_name: Optional[str]
 
 
-def make_ground_truths_from_web_control(
+def iter_ground_truths_from_web_control(
     web_control_observations: List[WebControlObservation],
+    netinfodb: NetinfoDB,
     count: int = 1,
-) -> List[WebGroundTruth]:
-    wgt_list = []
+) -> Generator[Tuple[Tuple[str, ...], List], None, None]:
     # TODO: pass a netinfodb to lookup the ip_asn and ip_as_org_name
     for obs in web_control_observations:
+        ip_as_org_name = ""
+        ip_asn = 0
+        if obs.ip:
+            ip_info = netinfodb.lookup_ip(obs.measurement_start_time, obs.ip)
+            ip_asn = ip_info.as_info.asn
+            ip_as_org_name = ip_info.as_info.as_org_name
+
         wgt = WebGroundTruth(
             vp_asn=0,
             vp_cc="ZZ",
@@ -58,8 +64,8 @@ def make_ground_truths_from_web_control(
             is_trusted_vp=True,
             hostname=obs.hostname,
             ip=obs.ip,
-            ip_asn=0,
-            ip_as_org_name="",
+            ip_asn=ip_asn,
+            ip_as_org_name=ip_as_org_name,
             port=obs.port,
             dns_failure=obs.dns_failure,
             dns_success=obs.dns_success,
@@ -75,21 +81,19 @@ def make_ground_truths_from_web_control(
             http_response_body_length=obs.http_response_body_length,
             count=count,
         )
-        wgt_list.append(wgt)
-    return wgt_list
+        yield WebGroundTruth._fields, list(wgt)
 
 
-def get_web_ground_truth(
-    db: ClickhouseConnection, measurement_day: date
-) -> List[WebGroundTruth]:
+def iter_web_ground_truths(
+    db: ClickhouseConnection, netinfodb: NetinfoDB, measurement_day: date
+) -> Generator[Tuple[List[str], List], None, None]:
     start_day = measurement_day.strftime("%Y-%m-%d")
     end_day = (measurement_day + timedelta(days=1)).strftime("%Y-%m-%d")
-    wgt_list = []
     column_names = [
+        "timestamp",
         "hostname",
         "ip",
         "port",
-        "timestamp",
         "dns_failure",
         "dns_success",
         "tcp_failure",
@@ -103,10 +107,10 @@ def get_web_ground_truth(
     ]
     q = """
     SELECT (
+        toStartOfDay(measurement_start_time) as timestamp,
         hostname,
         ip,
         port,
-        toStartOfDay(measurement_start_time) as timestamp,
         dns_failure,
         dns_success,
         tcp_failure,
@@ -128,20 +132,28 @@ def get_web_ground_truth(
 
     for res in db.execute_iter(q, dict(start_day=start_day, end_day=end_day)):
         row = res[0]
-        wgt_dict = {
-            k: row[idx]
-            for idx, k in enumerate(
-                column_names + ["http_response_body_length", "count"]
-            )
-        }
-        wgt_dict["vp_cc"] = "ZZ"
-        wgt_dict["vp_asn"] = 0
-        wgt_dict["is_trusted_vp"] = True
-        # We add these later in the ground truth DB
-        wgt_dict["ip_asn"] = None
-        wgt_dict["ip_as_org_name"] = None
-        wgt_list.append(WebGroundTruth(**wgt_dict))
-    return wgt_list
+
+        c_names = column_names + [
+            "ip_asn",
+            "ip_as_org_name",
+            "vp_asn",
+            "vp_cc",
+            "is_trusted_vp",
+            "http_response_body_length",
+            "count",
+        ]
+        row_extra: List[Any] = [None, None]
+        # TODO move this directly into the obs_web_ctrl table
+        if row[2]:
+            ip_info = netinfodb.lookup_ip(row[0], row[2])
+            row_extra = [ip_info.as_info.asn, ip_info.as_info.as_org_name]
+
+        # vp_asn, vp_cc, is_trusted_vp
+        row_extra.append(0)
+        row_extra.append("ZZ")
+        row_extra.append(1)
+
+        yield c_names, row + tuple(row_extra)
 
 
 class WebGroundTruthDB:
@@ -161,47 +173,33 @@ class WebGroundTruthDB:
         ("http_request_url_idx", "http_request_url"),
     )
 
-    def __init__(
-        self, ground_truths: List[WebGroundTruth], netinfodb: Optional[NetinfoDB] = None
-    ):
-        self.active_table = "ground_truth"
-        self.db_lock = Lock()
+    def __init__(self, iter_rows: Iterable):
+        self._table_name = "ground_truth"
         self.db = sqlite3.connect(":memory:")
         self.db.execute(self.create_query)
         self.db.commit()
         self.column_names = WebGroundTruth._fields
 
-        v_str = ",".join(["?" for _ in range(len(self.column_names))])
-        q_insert_with_values = f"{self.insert_query} VALUES ({v_str})"
-        for gt in ground_truths:
-            row = gt
-            if gt.ip and (gt.ip_asn is None or gt.ip_as_org_name is None):
-                assert (
-                    netinfodb
-                ), "when passing not annotated groundtruths you need a netinfodb"
-                ip_info = netinfodb.lookup_ip(gt.timestamp, gt.ip)
-                row = gt[:-2] + (ip_info.as_info.asn, ip_info.as_info.as_org_name)
-
+        for column_names, row in iter_rows:
+            v_str = ",".join(["?" for _ in range(len(column_names))])
+            q_insert_with_values = (
+                f"{self.insert_query(column_names=column_names)} VALUES ({v_str})"
+            )
             self.db.execute(q_insert_with_values, row)
-
+        self.db.commit()
         self.create_indexes()
 
     def create_indexes(self):
         for idx_name, idx_value in self._indexes:
             self.db.execute(
-                f"CREATE INDEX {self.active_table}_{idx_name} ON {self.active_table}({idx_value})"
+                f"CREATE INDEX {self._table_name}_{idx_name} ON {self._table_name}({idx_value})"
             )
-        self.db.commit()
-
-    def drop_indexes(self):
-        for idx_name, _ in self._indexes:
-            self.db.execute(f"DROP INDEX IF EXISTS {self.active_table}_{idx_name}")
         self.db.commit()
 
     @property
     def create_query(self):
         return f"""
-        CREATE TABLE {self.active_table} (
+        CREATE TABLE {self._table_name} (
             vp_asn INT,
             vp_cc TEXT,
             is_trusted_vp INT,
@@ -232,56 +230,19 @@ class WebGroundTruthDB:
         )
     """
 
-    @property
-    def insert_query(self):
-        c_str = ",".join(self.column_names)
-        q_str = f"INSERT INTO {self.active_table} ({c_str})\n"
+    def insert_query(self, column_names: List[str]):
+        c_str = ",".join(column_names)
+        q_str = f"INSERT INTO {self._table_name} ({c_str})\n"
         return q_str
 
-    @contextmanager
-    def reduced_table(
+    def iter_select(
         self,
         probe_cc: str,
         probe_asn: int,
         hostnames: Optional[List[str]] = None,
         ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
         http_request_urls: Optional[List[str]] = None,
-    ):
-        assert (
-            self.active_table == "ground_truth"
-        ), "only one active_table at a time is possible"
-        self.active_table = "ground_truth_reduced"
-
-        self.drop_indexes()
-        self.db.execute(self.create_query)
-        self.db.commit()
-
-        select_q, q_args = self.select_query(
-            probe_cc=probe_cc,
-            probe_asn=probe_asn,
-            hostnames=hostnames,
-            ip_ports=ip_ports,
-            http_request_urls=http_request_urls,
-        )
-        q_str = self.insert_query + select_q
-        self.db.execute(q_str, q_args)
-        self.create_indexes()
-
-        try:
-            yield self
-        finally:
-            self.db.execute(f"DROP TABLE {self.active_table}")
-            self.db.commit()
-            self.active_table = "ground_truth"
-
-    def select_query(
-        self,
-        probe_cc: str,
-        probe_asn: int,
-        hostnames: Optional[List[str]] = None,
-        ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
-        http_request_urls: Optional[List[str]] = None,
-    ) -> Tuple[str, List[Any]]:
+    ) -> Generator[Tuple[Tuple[str, ...], Any], None, None]:
         assert (
             hostnames or ip_ports or http_request_urls
         ), "one of either hostnames or ip_ports or http_request_urls should be set"
@@ -294,7 +255,7 @@ class WebGroundTruthDB:
         q = f"""
         SELECT
         {c_str}
-        FROM {self.active_table}
+        FROM {self._table_name}
         WHERE vp_asn != ? AND vp_cc != ? AND (
         """
         # We want to exclude all the ground truths that are from the same
@@ -343,7 +304,8 @@ class WebGroundTruthDB:
         aggregate_columns = list(self.column_names)
         aggregate_columns.remove("count")
         q += ", ".join(aggregate_columns)
-        return q, q_args
+        for row in self.db.execute(q, q_args):
+            yield self.column_names, row
 
     def lookup(
         self,
@@ -353,7 +315,7 @@ class WebGroundTruthDB:
         ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
         http_request_urls: Optional[List[str]] = None,
     ) -> List[WebGroundTruth]:
-        q, q_args = self.select_query(
+        iter_rows = self.iter_select(
             probe_cc=probe_cc,
             probe_asn=probe_asn,
             hostnames=hostnames,
@@ -361,12 +323,9 @@ class WebGroundTruthDB:
             http_request_urls=http_request_urls,
         )
         matches = []
-        for row in self.db.execute(q, q_args):
-            gt = WebGroundTruth(*row)
+        for column_names, row in iter_rows:
+            gt = WebGroundTruth(**dict(zip(column_names, row)))
             matches.append(gt)
-        if len(matches) > 10_000:
-            print(q)
-            print(q_args)
         return matches
 
 
