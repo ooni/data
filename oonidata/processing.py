@@ -775,11 +775,9 @@ def run_experiment_results(
     web_ground_truth_db = WebGroundTruthDB()
     web_ground_truth_db.build_from_existing(str(ground_truth_db_path.absolute()))
     statsd_client.timing("wgt_er_all.timed", t.ms)
-    log.info(f"built ground truth DB for {day} in {t.pretty}")
+    log.info(f"loaded ground truth DB for {day} in {t.pretty}")
 
-    for idx, web_obs in enumerate(
-        iter_web_observations(db_lookup, measurement_day=day)
-    ):
+    for web_obs in iter_web_observations(db_lookup, measurement_day=day):
         try:
             # We build a reduced in-memory ground truth database just for this set of
             # observations. That way the lookups inside of each observation group should

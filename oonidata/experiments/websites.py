@@ -174,7 +174,8 @@ def make_dns_blocking_event(
     fingerprintdb: FingerprintDB,
 ) -> Optional[BlockingEvent]:
 
-    blocking_subject = web_o.hostname or ""
+    assert web_o.hostname is not None
+    blocking_subject = web_o.hostname
 
     fp = None
     if web_o.dns_answer:

@@ -176,6 +176,9 @@ class WebGroundTruthDB:
     def __init__(self, connect_str: str = ":memory:"):
         self._table_name = "ground_truth"
         self.db = sqlite3.connect(connect_str)
+        self.db.execute("pragma synchronous = normal;")
+        self.db.execute("pragma journal_mode = WAL;")
+        self.db.execute("pragma temp_store = memory;")
 
     def build_from_rows(self, rows: Iterable):
         self.db.execute(self.create_query)
@@ -189,6 +192,8 @@ class WebGroundTruthDB:
             self.db.execute(q_insert_with_values, row)
         self.db.commit()
         self.create_indexes()
+        self.db.execute("pragma vacuum;")
+        self.db.execute("pragma optimize;")
 
     def build_from_existing(self, db_str: str):
         with sqlite3.connect(db_str) as src_db:
