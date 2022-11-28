@@ -126,7 +126,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     er = list(make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb))
     be = list(
         filter(
-            lambda be: be.blocking_scope == BlockingScope.NATIONAL_BLOCK,
+            lambda be: be.blocking_scope == "n",
             er,
         )
     )
@@ -138,7 +138,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     er = list(make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb))
     be = list(
         filter(
-            lambda be: be.blocking_status == BlockingStatus.BLOCKED,
+            lambda be: be.blocking_status == "b",
             er,
         )
     )
@@ -151,7 +151,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     er = make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb)
     be = list(
         filter(
-            lambda be: be.blocking_status == BlockingStatus.BLOCKED,
+            lambda be: be.blocking_status == "b",
             er,
         )
     )
@@ -165,13 +165,13 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     er = list(make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb))
     be = list(
         filter(
-            lambda be: be.blocking_status == BlockingStatus.OK,
+            lambda be: be.blocking_status == "k",
             er,
         )
     )
     nok_be = list(
         filter(
-            lambda be: be.blocking_status != BlockingStatus.OK,
+            lambda be: be.blocking_status != "k",
             er,
         )
     )
@@ -228,4 +228,4 @@ def test_website_experiment_result_ok(fingerprintdb, netinfodb, measurements):
     assert len(experiment_results) == 4
     assert experiment_results[0].anomaly == False
     for er in experiment_results:
-        assert er.blocking_status == BlockingStatus.OK
+        assert er.blocking_status == "k"

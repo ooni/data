@@ -1,7 +1,8 @@
 from datetime import datetime
-import random
-import time
-from oonidata.experiments.control import WebGroundTruth, WebGroundTruthDB
+from oonidata.experiments.control import (
+    WebGroundTruthDB,
+    ReducedWebGroundTruthDB,
+)
 
 
 def test_web_ground_truth_db():
@@ -73,11 +74,10 @@ def test_web_ground_truth_db():
     assert len(res) == 3
     assert all(r.count == 10 for r in res)
 
-    reduced_db = WebGroundTruthDB(
-        iter_rows=wgt_db.iter_select(
-            probe_cc="IT", probe_asn=100, ip_ports=[("1.1.1.1", 80)]
-        )
-    )
+    reduced_db = ReducedWebGroundTruthDB(db=wgt_db.db, idx=0)
+    reduced_db.build(probe_cc="IT", probe_asn=100, ip_ports=[("1.1.1.1", 80)])
+    for row in reduced_db.db.execute(f"SELECT * FROM {reduced_db._table_name}"):
+        print(row)
 
     res = reduced_db.lookup(
         probe_cc="IT",

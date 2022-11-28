@@ -37,6 +37,7 @@ from warcio.statusandheaders import StatusAndHeaders
 from oonidata.datautils import PerfTimer
 from oonidata.experiments.control import (
     BodyDB,
+    ReducedWebGroundTruthDB,
     WebGroundTruthDB,
     iter_web_ground_truths,
 )
@@ -776,7 +777,9 @@ def run_experiment_results(
     statsd_client.timing("wgt_er_all.timed", t.ms)
 
     log.info(f"built ground truth DB for {day} in {t.pretty}")
-    for web_obs in iter_web_observations(db_lookup, measurement_day=day):
+    for idx, web_obs in enumerate(
+        iter_web_observations(db_lookup, measurement_day=day)
+    ):
         try:
             # We build a reduced in-memory ground truth database just for this set of
             # observations. That way the lookups inside of each observation group should
@@ -800,15 +803,22 @@ def run_experiment_results(
 
             t_er_gen = PerfTimer()
             t = PerfTimer()
-            reduced_wgt_db = WebGroundTruthDB(
-                iter_rows=web_ground_truth_db.iter_select(
-                    probe_cc=probe_cc,
-                    probe_asn=probe_asn,
-                    ip_ports=list(to_lookup_ip_ports),
-                    http_request_urls=list(to_lookup_http_request_urls),
-                    hostnames=list(to_lookup_hostnames),
-                )
+            reduced_wgt_db = ReducedWebGroundTruthDB(db=web_ground_truth_db.db, idx=idx)
+            reduced_wgt_db.build(
+                probe_cc=probe_cc,
+                probe_asn=probe_asn,
+                ip_ports=list(to_lookup_ip_ports),
+                http_request_urls=list(to_lookup_http_request_urls),
+                hostnames=list(to_lookup_hostnames),
             )
+        except:
+            log.error(
+                f"failed to build reduced_wgt_db er for {web_obs[0].measurement_uid}",
+                exc_info=True,
+            )
+            continue
+
+        try:
             if statsd_client:
                 statsd_client.timing("wgt_er_reduced.timed", t.ms)
             experiment_results = list(
@@ -835,6 +845,8 @@ def run_experiment_results(
         except:
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate er for {web_obs_ids}", exc_info=True)
+        finally:
+            reduced_wgt_db.drop()
 
 
 class ExperimentResultMakerWorker(mp.Process):

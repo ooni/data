@@ -172,13 +172,13 @@ class WebGroundTruthDB:
         ("ip_port_idx", "ip, port"),
         ("http_request_url_idx", "http_request_url"),
     )
+    column_names = WebGroundTruth._fields
 
     def __init__(self, iter_rows: Iterable):
         self._table_name = "ground_truth"
         self.db = sqlite3.connect(":memory:")
         self.db.execute(self.create_query)
         self.db.commit()
-        self.column_names = WebGroundTruth._fields
 
         for column_names, row in iter_rows:
             v_str = ",".join(["?" for _ in range(len(column_names))])
@@ -235,14 +235,15 @@ class WebGroundTruthDB:
         q_str = f"INSERT INTO {self._table_name} ({c_str})\n"
         return q_str
 
-    def iter_select(
+    def select_query(
         self,
+        table_name: str,
         probe_cc: str,
         probe_asn: int,
         hostnames: Optional[List[str]] = None,
         ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
         http_request_urls: Optional[List[str]] = None,
-    ) -> Generator[Tuple[Tuple[str, ...], Any], None, None]:
+    ) -> Tuple[str, List]:
         assert (
             hostnames or ip_ports or http_request_urls
         ), "one of either hostnames or ip_ports or http_request_urls should be set"
@@ -255,7 +256,7 @@ class WebGroundTruthDB:
         q = f"""
         SELECT
         {c_str}
-        FROM {self._table_name}
+        FROM {table_name}
         WHERE vp_asn != ? AND vp_cc != ? AND (
         """
         # We want to exclude all the ground truths that are from the same
@@ -304,6 +305,24 @@ class WebGroundTruthDB:
         aggregate_columns = list(self.column_names)
         aggregate_columns.remove("count")
         q += ", ".join(aggregate_columns)
+        return q, q_args
+
+    def iter_select(
+        self,
+        probe_cc: str,
+        probe_asn: int,
+        hostnames: Optional[List[str]] = None,
+        ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
+        http_request_urls: Optional[List[str]] = None,
+    ) -> Generator[Tuple[Tuple[str, ...], Any], None, None]:
+        q, q_args = self.select_query(
+            table_name=self._table_name,
+            probe_cc=probe_cc,
+            probe_asn=probe_asn,
+            hostnames=hostnames,
+            ip_ports=ip_ports,
+            http_request_urls=http_request_urls,
+        )
         for row in self.db.execute(q, q_args):
             yield self.column_names, row
 
@@ -327,6 +346,40 @@ class WebGroundTruthDB:
             gt = WebGroundTruth(**dict(zip(column_names, row)))
             matches.append(gt)
         return matches
+
+
+class ReducedWebGroundTruthDB(WebGroundTruthDB):
+    def __init__(self, db: sqlite3.Connection, idx: int):
+        self._table_name = f"ground_truth_reduced_{idx}"
+
+        self.db = db
+        self.db.execute(self.create_query)
+        self.db.commit()
+
+    def build(
+        self,
+        probe_cc: str,
+        probe_asn: int,
+        hostnames: Optional[List[str]] = None,
+        ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
+        http_request_urls: Optional[List[str]] = None,
+    ):
+        c_str = ",\n".join(self.column_names)
+        s_query, q_args = self.select_query(
+            table_name="ground_truth",
+            probe_cc=probe_cc,
+            probe_asn=probe_asn,
+            hostnames=hostnames,
+            ip_ports=ip_ports,
+            http_request_urls=http_request_urls,
+        )
+        q = f"INSERT INTO {self._table_name} ({c_str})\n{s_query}"
+        self.db.execute(q, q_args)
+        self.db.commit()
+        self.create_indexes()
+
+    def drop(self):
+        self.db.execute(f"DROP TABLE {self._table_name}")
 
 
 class BodyDB:
