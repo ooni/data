@@ -758,6 +758,7 @@ def run_experiment_results(
     day: date,
     fingerprintdb: FingerprintDB,
     netinfodb: NetinfoDB,
+    data_dir: pathlib.Path,
     body_db: BodyDB,
     db_writer: ClickhouseConnection,
     clickhouse: str,
@@ -767,16 +768,14 @@ def run_experiment_results(
     column_names = [f for f in ExperimentResult._fields]
     db_lookup = ClickhouseConnection(clickhouse)
 
-    log.info(f"building ground truth DB for {day}")
-    all_ground_truths = iter_web_ground_truths(
-        db=db_lookup, measurement_day=day, netinfodb=netinfodb
-    )
-
+    log.info(f"loading ground truth DB for {day}")
     t = PerfTimer()
-    web_ground_truth_db = WebGroundTruthDB(iter_rows=all_ground_truths)
+    ground_truth_db_path = data_dir / "ground_truths" /  f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
+    web_ground_truth_db = WebGroundTruthDB()
+    web_ground_truth_db.build_from_existing(str(ground_truth_db_path.absolute()))
     statsd_client.timing("wgt_er_all.timed", t.ms)
-
     log.info(f"built ground truth DB for {day} in {t.pretty}")
+
     for idx, web_obs in enumerate(
         iter_web_observations(db_lookup, measurement_day=day)
     ):
@@ -894,6 +893,7 @@ class ExperimentResultMakerWorker(mp.Process):
                     day=day,
                     fingerprintdb=fingerprintdb,
                     netinfodb=netinfodb,
+                    data_dir=self.data_dir,
                     body_db=body_db,
                     db_writer=db_writer,
                     clickhouse=self.clickhouse,
@@ -936,8 +936,12 @@ def start_experiment_result_maker(
     clickhouse: str,
     parallelism: int,
     fast_fail: bool,
+    rebuild_ground_truths: bool,
     log_level: int = logging.INFO,
 ):
+
+    netinfodb = NetinfoDB(datadir=data_dir, download=False)
+
     shutdown_event = mp.Event()
     worker_shutdown_event = mp.Event()
 
@@ -947,6 +951,22 @@ def start_experiment_result_maker(
         target=run_progress_thread, args=(progress_queue, shutdown_event)
     )
     progress_thread.start()
+
+    db_lookup = ClickhouseConnection(clickhouse)
+    ground_truth_dir = data_dir / "ground_truths"
+    ground_truth_dir.mkdir(exist_ok=True)
+    for day in date_interval(start_day, end_day):
+        dst_path = ground_truth_dir / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
+        if dst_path.exists() and rebuild_ground_truths == False:
+            continue
+
+        t = PerfTimer()
+        log.info(f"building ground truth DB for {day}")
+        web_ground_truth_db = WebGroundTruthDB(connect_str=str(dst_path.absolute()))
+        web_ground_truth_db.build_from_rows(rows=iter_web_ground_truths(
+            db=db_lookup, measurement_day=day, netinfodb=netinfodb
+        ))
+        log.info(f"built in {t.pretty}")
 
     workers = []
     day_queue = mp.JoinableQueue()

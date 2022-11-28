@@ -48,7 +48,8 @@ def test_web_ground_truth_db():
 
     iter_rows = map(lambda x: (list(x.keys()), list(x.values())), all_wgt)
 
-    wgt_db = WebGroundTruthDB(iter_rows=iter_rows)
+    wgt_db = WebGroundTruthDB()
+    wgt_db.build_from_rows(rows=iter_rows)
     res = wgt_db.lookup(probe_cc="IT", probe_asn=100, hostnames=["ooni.org"])
     # They should be aggregated
     assert len(res) == 1

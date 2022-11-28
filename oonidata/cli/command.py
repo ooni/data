@@ -240,6 +240,11 @@ def mkobs(
     is_flag=True,
     help="should we attempt to create the required clickhouse tables",
 )
+@click.option(
+    "--rebuild-ground-truths",
+    is_flag=True,
+    help="should we force the rebuilding of ground truths",
+)
 def mker(
     probe_cc: List[str],
     test_name: List[str],
@@ -250,6 +255,7 @@ def mker(
     parallelism: int,
     fast_fail: bool,
     create_tables: bool,
+    rebuild_ground_truths: bool,
 ):
     if create_tables:
         with ClickhouseConnection(clickhouse) as db:
@@ -265,6 +271,7 @@ def mker(
         data_dir=data_dir,
         parallelism=parallelism,
         fast_fail=fast_fail,
+        rebuild_ground_truths=rebuild_ground_truths,
     )
 
 

@@ -174,13 +174,15 @@ class WebGroundTruthDB:
     )
     column_names = WebGroundTruth._fields
 
-    def __init__(self, iter_rows: Iterable):
+    def __init__(self, connect_str: str = ":memory:"):
         self._table_name = "ground_truth"
-        self.db = sqlite3.connect(":memory:")
+        self.db = sqlite3.connect(connect_str)
+
+    def build_from_rows(self, rows: Iterable):
         self.db.execute(self.create_query)
         self.db.commit()
 
-        for column_names, row in iter_rows:
+        for column_names, row in rows:
             v_str = ",".join(["?" for _ in range(len(column_names))])
             q_insert_with_values = (
                 f"{self.insert_query(column_names=column_names)} VALUES ({v_str})"
@@ -188,6 +190,14 @@ class WebGroundTruthDB:
             self.db.execute(q_insert_with_values, row)
         self.db.commit()
         self.create_indexes()
+
+    def build_from_existing(self, db_str: str):
+        with sqlite3.connect(db_str) as src_db:
+            self.db = sqlite3.connect(":memory:")
+            src_db.backup(self.db)
+
+    def close(self):
+        self.db.close()
 
     def create_indexes(self):
         for idx_name, idx_value in self._indexes:

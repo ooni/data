@@ -186,8 +186,9 @@ def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
 
     assert msmt.test_keys.control
     assert isinstance(msmt.input, str)
-    web_ground_truth_db = WebGroundTruthDB(
-        iter_rows=iter_ground_truths_from_web_control(
+    web_ground_truth_db = WebGroundTruthDB()
+    web_ground_truth_db.build_from_rows(
+        rows=iter_ground_truths_from_web_control(
             web_control_observations=make_web_control_observations(msmt),
             netinfodb=netinfodb,
         ),
