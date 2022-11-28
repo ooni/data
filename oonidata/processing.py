@@ -331,6 +331,8 @@ def process_day(
     t0 = time.monotonic()
     bucket_date = day.strftime("%Y-%m-%d")
 
+    statsd_client = statsd.StatsClient("localhost", 8125)
+
     for idx, msmt_dict in enumerate(
         iter_measurements(
             probe_cc=probe_cc,
@@ -348,6 +350,7 @@ def process_day(
 
         msmt = None
         try:
+            t = PerfTimer()
             msmt = load_measurement(msmt_dict)
             for observations in make_observations(msmt, netinfodb=netinfodb):
                 if len(observations) == 0:
@@ -373,6 +376,8 @@ def process_day(
                     )
                     response_body = http_transaction.response.body_bytes
                     yield status_code, request_url, response_headers, response_body
+            statsd_client.timing("make_observations.timed", t.ms)
+            statsd_client.incr("make_observations.msmt_count")
         except Exception as exc:
             msmt_str = ""
             if msmt:
