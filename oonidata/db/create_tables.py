@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 
 from typing import Optional, Tuple, List, Any, Type, Mapping, Dict
 from dataclasses import fields
@@ -9,7 +10,6 @@ from oonidata.observations import (
     WebObservation,
 )
 from oonidata.experiments.experiment_result import (
-    BlockingType,
     ExperimentResult,
     BlockingEvent,
 )
@@ -58,24 +58,6 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Optional[List[Tuple[str, bytes]]]:
         return "Nullable(Array(Array(String)))"
 
-    if t == BlockingType:
-        return "String"
-
-    if t == List[BlockingEvent]:
-        return "String"
-
-        # FIXME: Temporarily disabled until I figure out how this works properly
-        # columns = []
-        # for name, type in BlockingEvent.__annotations__.items():
-        #     type_str = typing_to_clickhouse(type)
-        #     columns.append(f"         {name} {type_str}")
-        # columns_str = ",\n".join(columns)
-
-        # s = "Nested (\n"
-        # s += columns_str
-        # s += "\n     )"
-        # return s
-
     if t in (Mapping[str, str], Dict[str, str]):
         return "Map(String, String)"
 
@@ -107,25 +89,19 @@ def create_query_for_observation(obs_class: Type[ObservationBase]) -> Tuple[str,
 def create_query_for_experiment_result() -> Tuple[str, str]:
     columns = []
     for f in fields(ExperimentResult):
-        if f.name == "blocking_events":
-            continue
-        type_str = typing_to_clickhouse(f.type)
-        columns.append(f"     {f.name} {type_str}")
-
-    # TODO: this is a little bit sketch, should change the base data struct
-    for f in fields(BlockingEvent):
         type_str = typing_to_clickhouse(f.type)
         columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
+    table_name = ExperimentResult.__table_name__
 
     return (
         f"""
-    CREATE TABLE IF NOT EXISTS experiment_result (
+    CREATE TABLE IF NOT EXISTS {table_name} (
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
-    ORDER BY (measurement_uid)
+    ORDER BY (measurement_uid, experiment_result_id)
     SETTINGS index_granularity = 8192;
     """,
         "experiment_result",

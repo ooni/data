@@ -2,7 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import ipaddress
 import time
-from typing import Any, Optional, List, Tuple, Dict
+from typing import Any, Generator, Optional, List, Tuple, Dict
 from oonidata.experiments.control import (
     WebGroundTruth,
     WebGroundTruthDB,
@@ -10,9 +10,10 @@ from oonidata.experiments.control import (
 )
 from oonidata.experiments.experiment_result import (
     BlockingEvent,
-    BlockingType,
+    BlockingScope,
+    BlockingStatus,
     ExperimentResult,
-    fp_scope_to_outcome,
+    fp_scope_to_status_scope,
     make_base_result_meta,
 )
 
@@ -53,7 +54,8 @@ def make_tcp_blocking_event(
     # Nothing to see here, go on with your life
     if web_o.tcp_success == True:
         return BlockingEvent(
-            blocking_type=BlockingType.OK,
+            blocking_status=BlockingStatus.OK,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="tcp.ok",
             blocking_meta={},
@@ -86,19 +88,20 @@ def make_tcp_blocking_event(
     if reachable_count > unreachable_count:
         # We are adding back 1 because we removed it above and it avoid a divide by zero
         confidence = reachable_count / (reachable_count + unreachable_count + 1) * 0.9
-        blocking_type = BlockingType.BLOCKED
+        blocking_status = BlockingStatus.BLOCKED
         blocking_meta["why"] = "it's reachable from most places"
     else:
         confidence = (
             (unreachable_count + 1) / (reachable_count + unreachable_count + 1)
         ) * 0.9
         blocking_meta["why"] = "it's not reachable from most places"
-        blocking_type = BlockingType.DOWN
+        blocking_status = BlockingStatus.DOWN
 
     # TODO: should we bump up the confidence in the case of connection_reset?
     blocking_detail = f"tcp.{web_o.tcp_failure}"
     return BlockingEvent(
-        blocking_type=blocking_type,
+        blocking_status=blocking_status,
+        blocking_scope=BlockingScope.UNKNOWN,
         blocking_subject=blocking_subject,
         blocking_detail=blocking_detail,
         blocking_meta=blocking_meta,
@@ -108,7 +111,7 @@ def make_tcp_blocking_event(
 
 def get_blocking_for_dns_failure(
     dns_failure: str, ground_truths: List[WebGroundTruth]
-) -> Tuple[BlockingType, str, float]:
+) -> Tuple[BlockingStatus, str, float]:
     nxdomain_cc_asn = set()
     failure_cc_asn = set()
     ok_cc_asn = set()
@@ -130,20 +133,20 @@ def get_blocking_for_dns_failure(
             # We give a bit extra weight to an NXDOMAIN compared to other failures
             confidence = ok_count / (ok_count + nxdomain_count + 1)
             confidence = min(0.8, confidence * 1.5)
-            blocking_type = BlockingType.BLOCKED
+            blocking_status = BlockingStatus.BLOCKED
         else:
             confidence = (nxdomain_count + 1) / (ok_count + nxdomain_count + 1)
-            blocking_type = BlockingType.DOWN
+            blocking_status = BlockingStatus.DOWN
     elif ok_count > failure_count:
         confidence = ok_count / (ok_count + failure_count + 1)
-        blocking_type = BlockingType.BLOCKED
+        blocking_status = BlockingStatus.BLOCKED
         blocking_detail = f"dns.{dns_failure}"
     else:
         confidence = (failure_count + 1) / (ok_count + failure_count + 1)
-        blocking_type = BlockingType.DOWN
+        blocking_status = BlockingStatus.DOWN
         blocking_detail = f"dns.{dns_failure}"
 
-    return blocking_type, blocking_detail, confidence
+    return blocking_status, blocking_detail, confidence
 
 
 def confidence_estimate(x, factor=0.8, clamping=0.9):
@@ -178,7 +181,7 @@ def make_dns_blocking_event(
         fp = fingerprintdb.match_dns(web_o.dns_answer)
 
     if fp:
-        blocking_type = fp_scope_to_outcome(fp.scope)
+        blocking_status, blocking_scope = fp_scope_to_status_scope(fp.scope)
         confidence = 1.0
         # If we see the fingerprint in an unexpected country we should
         # significantly reduce the confidence in the block
@@ -189,7 +192,8 @@ def make_dns_blocking_event(
             confidence = 0.7
 
         return BlockingEvent(
-            blocking_type=blocking_type,
+            blocking_status=blocking_status,
+            blocking_scope=blocking_scope,
             blocking_subject=blocking_subject,
             blocking_detail="dns.inconsistent.blockpage",
             blocking_meta={"ip": web_o.dns_answer or ""},
@@ -201,11 +205,12 @@ def make_dns_blocking_event(
         probe_cc=web_o.probe_cc, probe_asn=web_o.probe_asn, hostnames=[web_o.hostname]
     )
     if web_o.dns_failure:
-        blocking_type, blocking_detail, confidence = get_blocking_for_dns_failure(
+        blocking_status, blocking_detail, confidence = get_blocking_for_dns_failure(
             dns_failure=web_o.dns_failure, ground_truths=ground_truths
         )
         return BlockingEvent(
-            blocking_type=blocking_type,
+            blocking_status=blocking_status,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail=blocking_detail,
             blocking_meta={"ip": web_o.dns_answer or ""},
@@ -221,7 +226,8 @@ def make_dns_blocking_event(
         trusted_answers[gt.ip] = gt
     if web_o.ip_is_bogon and len(trusted_answers) > 0:
         return BlockingEvent(
-            blocking_type=BlockingType.BLOCKED,
+            blocking_status=BlockingStatus.BLOCKED,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="dns.inconsistent.bogon",
             blocking_meta={"ip": web_o.dns_answer or ""},
@@ -231,7 +237,8 @@ def make_dns_blocking_event(
     if web_o.tls_is_certificate_valid == True or web_o.dns_answer in trusted_answers:
         # No blocking detected
         return BlockingEvent(
-            blocking_type=BlockingType.OK,
+            blocking_status=BlockingStatus.OK,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="dns.ok",
             blocking_meta={
@@ -246,7 +253,8 @@ def make_dns_blocking_event(
         # that the CERT is bad because it's always serving a bad certificate.
         # here is an example: https://explorer.ooni.org/measurement/20220930T235729Z_webconnectivity_AE_5384_n1_BLcO454Y5UULxZoq?input=https://www.government.ae/en%23%2F
         return BlockingEvent(
-            blocking_type=BlockingType.BLOCKED,
+            blocking_status=BlockingStatus.BLOCKED,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="dns.inconsistent.tls_mismatch",
             blocking_meta={"ip": web_o.dns_answer or "", "why": "tls_inconsistent"},
@@ -269,7 +277,8 @@ def make_dns_blocking_event(
 
     if web_o.dns_answer_asn in ground_truth_asns:
         return BlockingEvent(
-            blocking_type=BlockingType.OK,
+            blocking_status=BlockingStatus.OK,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="dns.ok",
             blocking_meta={
@@ -284,7 +293,8 @@ def make_dns_blocking_event(
         and web_o.dns_answer_as_org_name.lower() in ground_truth_as_org_names
     ):
         return BlockingEvent(
-            blocking_type=BlockingType.OK,
+            blocking_status=BlockingStatus.OK,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="dns.ok",
             blocking_meta={
@@ -307,7 +317,8 @@ def make_dns_blocking_event(
 
     if web_o.dns_answer in other_ips:
         return BlockingEvent(
-            blocking_type=BlockingType.OK,
+            blocking_status=BlockingStatus.OK,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="dns.ok",
             blocking_meta={
@@ -323,7 +334,8 @@ def make_dns_blocking_event(
         # We clamp this to some lower values and scale it by a smaller factor,
         # since ASN consistency is less strong than direct IP match.
         return BlockingEvent(
-            blocking_type=BlockingType.OK,
+            blocking_status=BlockingStatus.OK,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="dns.ok",
             blocking_meta={
@@ -358,7 +370,8 @@ def make_dns_blocking_event(
     # We haven't managed to figured out if the DNS resolution was a good one, so
     # we are going to assume it's bad.
     return BlockingEvent(
-        blocking_type=BlockingType.BLOCKED,
+        blocking_status=BlockingStatus.BLOCKED,
+        blocking_scope=BlockingScope.UNKNOWN,
         blocking_subject=blocking_subject,
         blocking_detail=blocking_detail,
         blocking_meta=blocking_meta,
@@ -373,7 +386,8 @@ def make_tls_blocking_event(
 
     if web_o.tls_is_certificate_valid == True:
         return BlockingEvent(
-            blocking_type=BlockingType.OK,
+            blocking_status=BlockingStatus.OK,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="tls.ok",
             blocking_meta={},
@@ -385,7 +399,8 @@ def make_tls_blocking_event(
         # MITM, because the cert might be invalid also from other location (eg.
         # it expired) and not due to censorship.
         return BlockingEvent(
-            blocking_type=BlockingType.BLOCKED,
+            blocking_status=BlockingStatus.BLOCKED,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail="tls.mitm",
             blocking_meta={"why": "invalid certificate"},
@@ -407,7 +422,8 @@ def make_tls_blocking_event(
             confidence += 0.2
 
         return BlockingEvent(
-            blocking_type=BlockingType.BLOCKED,
+            blocking_status=BlockingStatus.BLOCKED,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail=blocking_detail,
             blocking_meta={},
@@ -430,7 +446,8 @@ def make_http_blocking_event(
     )
 
     ok_be = BlockingEvent(
-        blocking_type=BlockingType.OK,
+        blocking_status=BlockingStatus.OK,
+        blocking_scope=BlockingScope.UNKNOWN,
         blocking_subject=blocking_subject,
         blocking_detail="http.ok",
         blocking_meta={},
@@ -462,17 +479,18 @@ def make_http_blocking_event(
         if ok_count > failure_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
             confidence = ok_count / (ok_count + failure_count + 1)
-            blocking_type = BlockingType.BLOCKED
+            blocking_status = BlockingStatus.BLOCKED
             blocking_meta["why"] = "it's mostly accessible"
         else:
             confidence = (failure_count + 1) / (ok_count + failure_count + 1)
-            blocking_type = BlockingType.DOWN
+            blocking_status = BlockingStatus.DOWN
             blocking_meta["why"] = "the site is down"
 
         blocking_detail = f"{detail_prefix}{web_o.http_failure}"
 
         return BlockingEvent(
-            blocking_type=blocking_type,
+            blocking_status=blocking_status,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=blocking_subject,
             blocking_detail=blocking_detail,
             blocking_meta=blocking_meta,
@@ -484,18 +502,20 @@ def make_http_blocking_event(
     if web_o.http_response_body_sha1:
         matched_fp = body_db.lookup(web_o.http_response_body_sha1)
         if len(matched_fp) > 0:
-            blocking_type = BlockingType.BLOCKED
+            blocking_status = BlockingStatus.BLOCKED
+            blocking_scope = BlockingScope.UNKNOWN
             blocking_meta = {}
             confidence = 0.8
             if request_is_encrypted:
                 # Likely some form of server-side blocking
-                blocking_type = BlockingType.SERVER_SIDE_BLOCK
+                blocking_status = BlockingStatus.DOWN
+                blocking_scope = BlockingScope.SERVER_SIDE_BLOCK
                 confidence = 0.5
 
             for fp_name in matched_fp:
                 fp = fingerprintdb.get_fp(fp_name)
                 if fp.scope:
-                    blocking_type = fp_scope_to_outcome(fp.scope)
+                    blocking_status, blocking_scope = fp_scope_to_status_scope(fp.scope)
                     blocking_meta = {
                         "fp_name": fp.name,
                         "why": f"matched fingerprint {fp.name}",
@@ -509,7 +529,8 @@ def make_http_blocking_event(
 
             blocking_detail = f"{detail_prefix}diff.blockpage"
             return BlockingEvent(
-                blocking_type=blocking_type,
+                blocking_status=blocking_status,
+                blocking_scope=blocking_scope,
                 blocking_subject=blocking_subject,
                 blocking_detail=blocking_detail,
                 blocking_meta=blocking_meta,
@@ -550,14 +571,9 @@ def make_http_blocking_event(
 def is_blocked(be: Optional[BlockingEvent]) -> bool:
     if not be:
         return False
-    if be.blocking_type not in (BlockingType.OK, BlockingType.DOWN):
+    if be.blocking_status not in (BlockingStatus.OK, BlockingStatus.DOWN):
         return True
     return False
-
-
-@dataclass
-class WebsiteExperimentResult(ExperimentResult):
-    pass
 
 
 def make_website_experiment_result(
@@ -565,7 +581,7 @@ def make_website_experiment_result(
     web_ground_truth_db: WebGroundTruthDB,
     body_db: BodyDB,
     fingerprintdb: FingerprintDB,
-) -> WebsiteExperimentResult:
+) -> Generator[ExperimentResult, None, None]:
     blocking_events = []
     observation_ids = []
 
@@ -686,17 +702,12 @@ def make_website_experiment_result(
             )
             blocking_events.append(http_be)
 
-    # TODO: Should we be including this also BlockingType.DOWN,SERVER_SIDE_BLOCK or not?
+    # TODO: Should we be including this also BlockingType.DOWN or not?
     nok_blocking_confidence = list(
         map(
             lambda be: be.confidence,
             filter(
-                lambda be: be.blocking_type
-                not in (
-                    BlockingType.OK,
-                    BlockingType.DOWN,
-                    BlockingType.SERVER_SIDE_BLOCK,
-                ),
+                lambda be: be.blocking_status == BlockingStatus.BLOCKED,
                 blocking_events,
             ),
         )
@@ -705,7 +716,7 @@ def make_website_experiment_result(
         map(
             lambda be: be.confidence,
             filter(
-                lambda be: be.blocking_type == BlockingType.OK,
+                lambda be: be.blocking_status == BlockingStatus.OK,
                 blocking_events,
             ),
         )
@@ -725,13 +736,13 @@ def make_website_experiment_result(
     if ok_confidence < 0.6:
         anomaly = True
 
-    return WebsiteExperimentResult(
+    base_er = ExperimentResult(
         domain_name=domain_name or "",
         website_name=domain_name or "",
-        blocking_events=blocking_events,
         observation_ids=observation_ids,
         anomaly=anomaly,
         confirmed=confirmed,
         ok_confidence=ok_confidence,
         **make_base_result_meta(web_observations[0]),
     )
+    return base_er.with_blocking_events(blocking_events)

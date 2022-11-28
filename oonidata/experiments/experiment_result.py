@@ -1,10 +1,11 @@
 import logging
-from typing import List, Optional, NamedTuple, Mapping
+from typing import Any, Generator, List, Optional, NamedTuple, Mapping, Tuple
 from enum import Enum
 from datetime import datetime
-from dataclasses import dataclass
+import dataclasses
+from dataclasses import dataclass, field
 
-
+from oonidata.compat import add_slots
 from oonidata.observations import (
     MeasurementMeta,
 )
@@ -12,11 +13,7 @@ from oonidata.observations import (
 log = logging.getLogger("oonidata.events")
 
 
-class BlockingType(Enum):
-    # k: everything is OK
-    OK = "k"
-    # b: blocking is happening with an unknown scope
-    BLOCKED = "b"
+class BlockingScope(Enum):
     # n: national level blocking
     NATIONAL_BLOCK = "n"
     # i: isp level blocking
@@ -25,13 +22,24 @@ class BlockingType(Enum):
     LOCAL_BLOCK = "l"
     # s: server-side blocking
     SERVER_SIDE_BLOCK = "s"
-    # d: the subject is down
-    DOWN = "d"
     # t: this is a signal indicating some form of network throttling
     THROTTLING = "t"
+    # u: unknown blocking scope
+    UNKNOWN = "u"
 
 
-def fp_scope_to_outcome(scope: Optional[str]) -> BlockingType:
+class BlockingStatus(Enum):
+    # k: everything is OK
+    OK = "k"
+    # b: blocking is happening with an unknown scope
+    BLOCKED = "b"
+    # d: the subject is down
+    DOWN = "d"
+
+
+def fp_scope_to_status_scope(
+    scope: Optional[str],
+) -> Tuple[BlockingStatus, BlockingScope]:
     # "nat" national level blockpage
     # "isp" ISP level blockpage
     # "prod" text pattern related to a middlebox product
@@ -39,27 +47,31 @@ def fp_scope_to_outcome(scope: Optional[str]) -> BlockingType:
     # "vbw" vague blocking word
     # "fp" fingerprint for false positives
     if scope == "nat":
-        return BlockingType.NATIONAL_BLOCK
+        return BlockingStatus.BLOCKED, BlockingScope.NATIONAL_BLOCK
     elif scope == "isp":
-        return BlockingType.ISP_BLOCK
+        return BlockingStatus.BLOCKED, BlockingScope.ISP_BLOCK
     elif scope == "inst":
-        return BlockingType.LOCAL_BLOCK
+        return BlockingStatus.DOWN, BlockingScope.LOCAL_BLOCK
     elif scope == "fp":
-        return BlockingType.SERVER_SIDE_BLOCK
-    return BlockingType.BLOCKED
+        return BlockingStatus.DOWN, BlockingScope.SERVER_SIDE_BLOCK
+
+    return BlockingStatus.BLOCKED, BlockingScope.UNKNOWN
 
 
-@dataclass
-class BlockingEvent:
-    blocking_type: BlockingType
+class BlockingEvent(NamedTuple):
+    blocking_status: BlockingStatus
+    blocking_scope: BlockingScope
     blocking_subject: str
     blocking_detail: str
     blocking_meta: Mapping[str, str]
     confidence: float
 
 
+@add_slots
 @dataclass
 class ExperimentResult:
+    __table_name__ = "experiment_result"
+
     measurement_uid: str
     report_id: str
     input: str
@@ -81,15 +93,36 @@ class ExperimentResult:
 
     observation_ids: List[str]
 
-    blocking_events: List[BlockingEvent]
     ok_confidence: float
 
     anomaly: bool
     confirmed: bool
 
+    blocking_meta: Mapping[str, str] = field(default_factory=dict)
+    blocking_status: str = "d"
+    blocking_scope: str = "u"
+    blocking_subject: str = ""
+    blocking_detail: str = ""
+    confidence: float = 0
+
     experiment_result_id: str = ""
+    experiment_group: str = "generic"
     domain_name: str = ""
     website_name: str = ""
+
+    def with_blocking_events(
+        self, be_list: List[BlockingEvent]
+    ) -> Generator["ExperimentResult", None, None]:
+        for idx, be in enumerate(be_list):
+            yield dataclasses.replace(
+                self,
+                experiment_result_id=f"{self.measurement_uid}_{idx}",
+                blocking_meta=be.blocking_meta,
+                blocking_status=be.blocking_status.value,
+                blocking_scope=be.blocking_scope.value,
+                blocking_subject=be.blocking_subject,
+                blocking_detail=be.blocking_detail,
+            )
 
 
 def make_base_result_meta(obs: MeasurementMeta) -> dict:

@@ -1,11 +1,13 @@
-from typing import List
+from typing import List, Generator
+
 from oonidata.dataformat import SIGNAL_PEM_STORE
 from oonidata.datautils import InvalidCertificateChain, TLSCertStore
 from oonidata.experiments.experiment_result import (
     BlockingEvent,
-    BlockingType,
+    BlockingStatus,
+    BlockingScope,
     ExperimentResult,
-    fp_scope_to_outcome,
+    fp_scope_to_status_scope,
     make_base_result_meta,
 )
 from oonidata.fingerprintdb import FingerprintDB
@@ -15,16 +17,20 @@ from oonidata.observations import (
 )
 
 
-class SignalExperimentResult(ExperimentResult):
-    pass
-
-
 def make_signal_experiment_result(
     web_observations: List[WebObservation],
     fingerprintdb: FingerprintDB,
-) -> ExperimentResult:
+) -> Generator[ExperimentResult, None, None]:
     confirmed = False
     anomaly = False
+
+    base_er = ExperimentResult(
+        observation_ids=[],
+        anomaly=anomaly,
+        confirmed=confirmed,
+        ok_confidence=0,
+        **make_base_result_meta(web_observations[0]),
+    )
 
     blocking_events = []
     observation_ids = []
@@ -55,20 +61,15 @@ def make_signal_experiment_result(
         # present.
         blocking_events.append(
             BlockingEvent(
-                blocking_type=BlockingType.DOWN,
+                blocking_status=BlockingStatus.DOWN,
+                blocking_scope=BlockingScope.UNKNOWN,
                 blocking_subject="Signal Messenger",
                 blocking_detail="down",
                 blocking_meta={},
                 confidence=0.9,
             )
         )
-        return SignalExperimentResult(
-            blocking_events=blocking_events,
-            observation_ids=observation_ids,
-            anomaly=anomaly,
-            confirmed=confirmed,
-            **make_base_result_meta(web_observations[0]),
-        )
+        return base_er.with_blocking_events(blocking_events)
 
     for web_o in web_observations:
         dns_blocked = False
@@ -82,7 +83,8 @@ def make_signal_experiment_result(
             anomaly = True
             blocking_events.append(
                 BlockingEvent(
-                    blocking_type=BlockingType.BLOCKED,
+                    blocking_status=BlockingStatus.BLOCKED,
+                    blocking_scope=BlockingScope.UNKNOWN,
                     blocking_subject=f"{web_o.hostname}",
                     blocking_detail=f"dns.{web_o.dns_failure}",
                     blocking_meta={},
@@ -96,11 +98,12 @@ def make_signal_experiment_result(
             # susceptible to false positives
             # anomaly = True
             blocking_meta = {"why": "tls_inconsistent", "ip": web_o.dns_answer}
-            blocking_type = BlockingType.BLOCKED
+            blocking_status = BlockingStatus.BLOCKED
+            blocking_scope = BlockingScope.UNKNOWN
             fp = fingerprintdb.match_dns(web_o.dns_answer)
             if fp:
-                blocking_type = fp_scope_to_outcome(fp.scope)
-                if blocking_type != BlockingType.SERVER_SIDE_BLOCK:
+                blocking_status, blocking_scope = fp_scope_to_status_scope(fp.scope)
+                if blocking_status == BlockingStatus.BLOCKED:
                     dns_blocked = True
                     confirmed = True
                     anomaly = True
@@ -119,7 +122,8 @@ def make_signal_experiment_result(
 
             blocking_events.append(
                 BlockingEvent(
-                    blocking_type=blocking_type,
+                    blocking_status=blocking_status,
+                    blocking_scope=blocking_scope,
                     blocking_detail="dns.inconsistent",
                     blocking_subject=f"{web_o.hostname}",
                     blocking_meta=blocking_meta,
@@ -131,7 +135,8 @@ def make_signal_experiment_result(
             anomaly = True
             blocking_events.append(
                 BlockingEvent(
-                    blocking_type=BlockingType.BLOCKED,
+                    blocking_status=BlockingStatus.BLOCKED,
+                    blocking_scope=BlockingScope.UNKNOWN,
                     blocking_subject=f"{web_o.ip}:{web_o.port}",
                     blocking_detail=f"tcp.{web_o.tcp_failure}",
                     blocking_meta={},
@@ -147,7 +152,8 @@ def make_signal_experiment_result(
             anomaly = True
             blocking_events.append(
                 BlockingEvent(
-                    blocking_type=BlockingType.BLOCKED,
+                    blocking_status=BlockingStatus.BLOCKED,
+                    blocking_scope=BlockingScope.UNKNOWN,
                     blocking_subject=f"{web_o.hostname}",
                     blocking_detail=f"tls.{web_o.tls_failure}",
                     blocking_meta={},
@@ -162,7 +168,8 @@ def make_signal_experiment_result(
             anomaly = True
             blocking_events.append(
                 BlockingEvent(
-                    blocking_type=BlockingType.BLOCKED,
+                    blocking_status=BlockingStatus.BLOCKED,
+                    blocking_scope=BlockingScope.UNKNOWN,
                     blocking_subject=f"{web_o.hostname}",
                     blocking_detail=f"tls.ssl_invalid_certificate",
                     blocking_meta={},
@@ -174,7 +181,8 @@ def make_signal_experiment_result(
     ok_confidence = 1 - max(map(lambda o: o.confidence, blocking_events), default=0)
     blocking_events.append(
         BlockingEvent(
-            blocking_type=BlockingType.OK,
+            blocking_status=BlockingStatus.OK,
+            blocking_scope=BlockingScope.UNKNOWN,
             blocking_subject=f"Signal Messenger",
             blocking_detail=f"ok",
             blocking_meta={},
@@ -182,12 +190,9 @@ def make_signal_experiment_result(
         )
     )
 
-    # TODO: add support for validating if the HTTP responses are also consistent
-    return SignalExperimentResult(
-        blocking_events=blocking_events,
-        observation_ids=observation_ids,
-        anomaly=anomaly,
-        confirmed=confirmed,
-        ok_confidence=ok_confidence,
-        **make_base_result_meta(web_observations[0]),
-    )
+    base_er.ok_confidence = ok_confidence
+    base_er.anomaly = anomaly
+    base_er.confirmed = confirmed
+    # TODO: move the observation_ids into the blocking_events row that they pertain to
+    base_er.observation_ids = observation_ids
+    return base_er.with_blocking_events(blocking_events)

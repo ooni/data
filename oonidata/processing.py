@@ -14,7 +14,7 @@ from multiprocessing.synchronize import Event as EventClass
 
 from threading import Lock, Thread
 from base64 import b32decode
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from typing import (
     Callable,
@@ -42,7 +42,6 @@ from oonidata.experiments.control import (
 )
 from oonidata.experiments.experiment_result import (
     BlockingEvent,
-    BlockingType,
     ExperimentResult,
 )
 from oonidata.experiments.websites import make_website_experiment_result
@@ -74,18 +73,19 @@ log = logging.getLogger("oonidata.processing")
 
 
 def make_db_rows(
-    bucket_date: str, observations: List[WebObservation]
+    dc_list: List, bucket_date: Optional[str] = None
 ) -> Tuple[str, List[Dict], List[str]]:
-    assert len(observations) > 0
+    assert len(dc_list) > 0
 
-    table_name = observations[0].__table_name__
-    column_names = [f.name for f in dataclasses.fields(observations[0])]
+    table_name = dc_list[0].__table_name__
+    column_names = [f.name for f in dataclasses.fields(dc_list[0])]
     rows = []
-    for obs in observations:
-        obs.bucket_date = bucket_date
-        assert table_name == obs.__table_name__, "inconsistent group of observations"
+    for d in dc_list:
+        if bucket_date:
+            d.bucket_date = bucket_date
+        assert table_name == d.__table_name__, "inconsistent group of observations"
         # TODO: can I use a tuple here for more efficiency?
-        rows.append([getattr(obs, k) for k in column_names])
+        rows.append([getattr(d, k) for k in column_names])
 
     return table_name, rows, column_names
 
@@ -360,7 +360,7 @@ def process_day(
 
                 table_name, rows, column_names = make_db_rows(
                     bucket_date=bucket_date,
-                    observations=observations,
+                    dc_list=observations,
                 )
                 db.write_rows(
                     table_name=table_name, rows=rows, column_names=column_names
@@ -769,14 +769,6 @@ def run_experiment_results(
 ):
     statsd_client = statsd.StatsClient("localhost", 8125)
 
-    er_columns = list(
-        filter(
-            lambda x: x != "blocking_events",
-            [f.name for f in dataclasses.fields(ExperimentResult)],
-        )
-    )
-    be_columns = [f.name for f in dataclasses.fields(BlockingEvent)]
-    all_columns = er_columns + be_columns
     db_lookup = ClickhouseConnection(clickhouse)
 
     log.info(f"building ground truth DB for {day}")
@@ -800,6 +792,10 @@ def run_experiment_results(
             probe_cc = web_obs[0].probe_cc
             probe_asn = web_obs[0].probe_asn
             for web_o in web_obs:
+                # All the observations in this group should be coming from the
+                # same probe
+                assert web_o.probe_cc == probe_cc
+                assert web_o.probe_asn == probe_asn
                 if web_o.hostname is not None:
                     to_lookup_hostnames.add(web_o.hostname)
                 if web_o.ip is not None:
@@ -820,35 +816,25 @@ def run_experiment_results(
             )
             if statsd_client:
                 statsd_client.timing("wgt_er_reduced.timed", t.ms)
-            er = make_website_experiment_result(
-                web_observations=web_obs,
-                body_db=body_db,
-                web_ground_truth_db=reduced_wgt_db,
-                fingerprintdb=fingerprintdb,
+            experiment_results = list(
+                make_website_experiment_result(
+                    web_observations=web_obs,
+                    body_db=body_db,
+                    web_ground_truth_db=reduced_wgt_db,
+                    fingerprintdb=fingerprintdb,
+                )
             )
-            # FIXME FIXME FIXME YELP
-            # This is just aweful. Should be fixed up
-            rows = []
-            for idx, be in enumerate(er.blocking_events):
-                er.experiment_result_id = f"{er.measurement_uid}_{idx}"
-                row = [getattr(er, k) for k in er_columns]
-                for k in be_columns:
-                    v = getattr(be, k)
-                    if isinstance(v, BlockingType):
-                        v = v.value
-                    row.append(v)
-                rows.append(row)
-
+            table_name, rows, column_names = make_db_rows(dc_list=experiment_results)
             statsd_client.timing("make_website_er.timing", t_er_gen.ms)
             statsd_client.incr("make_website_er.er_count")
 
             with statsd_client.timer("db_write_rows.timing"):
                 db_writer.write_rows(
-                    table_name="experiment_result",
+                    table_name=table_name,
                     rows=rows,
-                    column_names=all_columns,
+                    column_names=column_names,
                 )
-            yield er
+            yield experiment_results
         except:
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate er for {web_obs_ids}", exc_info=True)
