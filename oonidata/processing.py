@@ -770,7 +770,9 @@ def run_experiment_results(
 
     log.info(f"loading ground truth DB for {day}")
     t = PerfTimer()
-    ground_truth_db_path = data_dir / "ground_truths" /  f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
+    ground_truth_db_path = (
+        data_dir / "ground_truths" / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
+    )
     web_ground_truth_db = WebGroundTruthDB()
     web_ground_truth_db.build_from_existing(str(ground_truth_db_path.absolute()))
     statsd_client.timing("wgt_er_all.timed", t.ms)
@@ -952,22 +954,6 @@ def start_experiment_result_maker(
     )
     progress_thread.start()
 
-    db_lookup = ClickhouseConnection(clickhouse)
-    ground_truth_dir = data_dir / "ground_truths"
-    ground_truth_dir.mkdir(exist_ok=True)
-    for day in date_interval(start_day, end_day):
-        dst_path = ground_truth_dir / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
-        if dst_path.exists() and rebuild_ground_truths == False:
-            continue
-
-        t = PerfTimer()
-        log.info(f"building ground truth DB for {day}")
-        web_ground_truth_db = WebGroundTruthDB(connect_str=str(dst_path.absolute()))
-        web_ground_truth_db.build_from_rows(rows=iter_web_ground_truths(
-            db=db_lookup, measurement_day=day, netinfodb=netinfodb
-        ))
-        log.info(f"built in {t.pretty}")
-
     workers = []
     day_queue = mp.JoinableQueue()
     for _ in range(parallelism):
@@ -986,7 +972,21 @@ def start_experiment_result_maker(
         log.info(f"started worker {worker.pid}")
         workers.append(worker)
 
+    db_lookup = ClickhouseConnection(clickhouse)
+    ground_truth_dir = data_dir / "ground_truths"
+    ground_truth_dir.mkdir(exist_ok=True)
     for day in date_interval(start_day, end_day):
+        dst_path = ground_truth_dir / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
+        if not dst_path.exists() and rebuild_ground_truths != False:
+            t = PerfTimer()
+            log.info(f"building ground truth DB for {day}")
+            web_ground_truth_db = WebGroundTruthDB(connect_str=str(dst_path.absolute()))
+            web_ground_truth_db.build_from_rows(
+                rows=iter_web_ground_truths(
+                    db=db_lookup, measurement_day=day, netinfodb=netinfodb
+                )
+            )
+            log.info(f"built in {t.pretty}")
         day_queue.put(day)
 
     log.info("waiting for the day queue to finish")
