@@ -757,7 +757,6 @@ def start_observation_maker(
 def run_experiment_results(
     day: date,
     fingerprintdb: FingerprintDB,
-    netinfodb: NetinfoDB,
     data_dir: pathlib.Path,
     body_db: BodyDB,
     db_writer: ClickhouseConnection,
@@ -804,6 +803,7 @@ def run_experiment_results(
 
             t_er_gen = PerfTimer()
             t = PerfTimer()
+            """
             reduced_wgt_db = ReducedWebGroundTruthDB(db=web_ground_truth_db.db, idx=idx)
             reduced_wgt_db.build(
                 probe_cc=probe_cc,
@@ -812,6 +812,7 @@ def run_experiment_results(
                 http_request_urls=list(to_lookup_http_request_urls),
                 hostnames=list(to_lookup_hostnames),
             )
+            """
         except:
             log.error(
                 f"failed to build reduced_wgt_db er for {web_obs[0].measurement_uid}",
@@ -826,7 +827,7 @@ def run_experiment_results(
                 make_website_experiment_result(
                     web_observations=web_obs,
                     body_db=body_db,
-                    web_ground_truth_db=reduced_wgt_db,
+                    web_ground_truth_db=web_ground_truth_db,
                     fingerprintdb=fingerprintdb,
                 )
             )
@@ -847,7 +848,8 @@ def run_experiment_results(
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate er for {web_obs_ids}", exc_info=True)
         finally:
-            reduced_wgt_db.drop()
+            pass
+            # reduced_wgt_db.drop()
 
 
 class ExperimentResultMakerWorker(mp.Process):
@@ -878,7 +880,6 @@ class ExperimentResultMakerWorker(mp.Process):
     def run(self):
 
         db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=10_000)
-        netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
         fingerprintdb = FingerprintDB(datadir=self.data_dir, download=False)
 
         body_db = BodyDB(db=ClickhouseConnection(self.clickhouse))
@@ -894,7 +895,6 @@ class ExperimentResultMakerWorker(mp.Process):
                 for _ in run_experiment_results(
                     day=day,
                     fingerprintdb=fingerprintdb,
-                    netinfodb=netinfodb,
                     data_dir=self.data_dir,
                     body_db=body_db,
                     db_writer=db_writer,
@@ -927,6 +927,29 @@ def run_progress_thread(status_queue: mp.Queue, shutdown_event: EventClass):
         pbar.update()
         pbar.set_description("analyzing data")
         status_queue.task_done()
+
+
+def maybe_build_web_ground_truth(
+    db: ClickhouseConnection,
+    netinfodb: NetinfoDB,
+    day: date,
+    data_dir: pathlib.Path,
+    rebuild_ground_truths: bool = False,
+):
+    ground_truth_dir = data_dir / "ground_truths"
+    ground_truth_dir.mkdir(exist_ok=True)
+    dst_path = ground_truth_dir / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
+    if not dst_path.exists() or rebuild_ground_truths != False:
+        if dst_path.exists():
+            dst_path.unlink()
+
+        t = PerfTimer()
+        log.info(f"building ground truth DB for {day}")
+        web_ground_truth_db = WebGroundTruthDB(connect_str=str(dst_path.absolute()))
+        web_ground_truth_db.build_from_rows(
+            rows=iter_web_ground_truths(db=db, measurement_day=day, netinfodb=netinfodb)
+        )
+        log.info(f"built ground truth DB {day} in {t.pretty}")
 
 
 def start_experiment_result_maker(
@@ -973,20 +996,15 @@ def start_experiment_result_maker(
         workers.append(worker)
 
     db_lookup = ClickhouseConnection(clickhouse)
-    ground_truth_dir = data_dir / "ground_truths"
-    ground_truth_dir.mkdir(exist_ok=True)
+
     for day in date_interval(start_day, end_day):
-        dst_path = ground_truth_dir / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
-        if not dst_path.exists() and rebuild_ground_truths != False:
-            t = PerfTimer()
-            log.info(f"building ground truth DB for {day}")
-            web_ground_truth_db = WebGroundTruthDB(connect_str=str(dst_path.absolute()))
-            web_ground_truth_db.build_from_rows(
-                rows=iter_web_ground_truths(
-                    db=db_lookup, measurement_day=day, netinfodb=netinfodb
-                )
-            )
-            log.info(f"built in {t.pretty}")
+        maybe_build_web_ground_truth(
+            db=db_lookup,
+            netinfodb=netinfodb,
+            day=day,
+            data_dir=data_dir,
+            rebuild_ground_truths=rebuild_ground_truths,
+        )
         day_queue.put(day)
 
     log.info("waiting for the day queue to finish")

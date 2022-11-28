@@ -167,10 +167,9 @@ class WebGroundTruthDB:
     """
 
     _indexes = (
-        ("vp_idx", "vp_asn, vp_cc"),
-        ("hostname_idx", "hostname"),
-        ("ip_port_idx", "ip, port"),
-        ("http_request_url_idx", "http_request_url"),
+        ("hostname_idx", "hostname, vp_asn, vp_cc"),
+        ("ip_port_idx", "ip, port, vp_asn, vp_cc"),
+        ("http_request_url_idx", "http_request_url, vp_asn, vp_cc"),
     )
     column_names = WebGroundTruth._fields
 
