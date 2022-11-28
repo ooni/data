@@ -8,7 +8,7 @@ from oonidata.experiments.experiment_result import (
     BlockingScope,
     ExperimentResult,
     fp_scope_to_status_scope,
-    make_base_result_meta,
+    iter_experiment_results,
 )
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
@@ -23,14 +23,8 @@ def make_signal_experiment_result(
 ) -> Generator[ExperimentResult, None, None]:
     confirmed = False
     anomaly = False
-
-    base_er = ExperimentResult(
-        observation_ids=[],
-        anomaly=anomaly,
-        confirmed=confirmed,
-        ok_confidence=0,
-        **make_base_result_meta(web_observations[0]),
-    )
+    experiment_group = "im"
+    target_name = "signal"
 
     blocking_events = []
     observation_ids = []
@@ -63,13 +57,22 @@ def make_signal_experiment_result(
             BlockingEvent(
                 blocking_status=BlockingStatus.DOWN,
                 blocking_scope=BlockingScope.UNKNOWN,
-                blocking_subject="Signal Messenger",
+                blocking_subject="all",
                 blocking_detail="down",
                 blocking_meta={},
                 confidence=0.9,
             )
         )
-        return base_er.with_blocking_events(blocking_events)
+        return iter_experiment_results(
+            obs=web_observations[0],
+            experiment_group=experiment_group,
+            domain_name=target_name,
+            target_name=target_name,
+            anomaly=anomaly,
+            confirmed=confirmed,
+            observation_ids=observation_ids,
+            be_list=blocking_events,
+        )
 
     for web_o in web_observations:
         dns_blocked = False
@@ -179,20 +182,25 @@ def make_signal_experiment_result(
 
     # This is an upper bound, which means we might be over-estimating blocking
     ok_confidence = 1 - max(map(lambda o: o.confidence, blocking_events), default=0)
-    blocking_events.append(
-        BlockingEvent(
-            blocking_status=BlockingStatus.OK,
-            blocking_scope=BlockingScope.UNKNOWN,
-            blocking_subject=f"Signal Messenger",
-            blocking_detail=f"ok",
-            blocking_meta={},
-            confidence=ok_confidence,
+    if len(blocking_events) == 0:
+        blocking_events.append(
+            BlockingEvent(
+                blocking_status=BlockingStatus.OK,
+                blocking_scope=BlockingScope.UNKNOWN,
+                blocking_subject=f"all",
+                blocking_detail=f"ok",
+                blocking_meta={},
+                confidence=0.9,
+            )
         )
-    )
 
-    base_er.ok_confidence = ok_confidence
-    base_er.anomaly = anomaly
-    base_er.confirmed = confirmed
-    # TODO: move the observation_ids into the blocking_events row that they pertain to
-    base_er.observation_ids = observation_ids
-    return base_er.with_blocking_events(blocking_events)
+    return iter_experiment_results(
+        obs=web_observations[0],
+        experiment_group=experiment_group,
+        domain_name=target_name,
+        target_name=target_name,
+        anomaly=anomaly,
+        confirmed=confirmed,
+        observation_ids=observation_ids,
+        be_list=blocking_events,
+    )

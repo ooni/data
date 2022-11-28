@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Generator, List, Optional, NamedTuple, Mapping, Tuple
+from typing import Any, Dict, Generator, List, Optional, NamedTuple, Mapping, Tuple
 from enum import Enum
 from datetime import datetime
 import dataclasses
@@ -67,14 +67,12 @@ class BlockingEvent(NamedTuple):
     confidence: float
 
 
-@add_slots
-@dataclass
-class ExperimentResult:
+class ExperimentResult(NamedTuple):
     __table_name__ = "experiment_result"
 
     measurement_uid: str
     report_id: str
-    input: str
+    input: Optional[str]
     timestamp: datetime
 
     probe_asn: int
@@ -93,52 +91,59 @@ class ExperimentResult:
 
     observation_ids: List[str]
 
-    ok_confidence: float
-
     anomaly: bool
     confirmed: bool
 
-    blocking_meta: Mapping[str, str] = field(default_factory=dict)
-    blocking_status: str = "d"
-    blocking_scope: str = "u"
-    blocking_subject: str = ""
-    blocking_detail: str = ""
-    confidence: float = 0
+    blocking_meta: Mapping[str, str]
+    blocking_status: str
+    blocking_scope: str
+    blocking_subject: str
+    blocking_detail: str
+    blocking_confidence: float
 
-    experiment_result_id: str = ""
-    experiment_group: str = "generic"
-    domain_name: str = ""
-    website_name: str = ""
-
-    def with_blocking_events(
-        self, be_list: List[BlockingEvent]
-    ) -> Generator["ExperimentResult", None, None]:
-        for idx, be in enumerate(be_list):
-            yield dataclasses.replace(
-                self,
-                experiment_result_id=f"{self.measurement_uid}_{idx}",
-                blocking_meta=be.blocking_meta,
-                blocking_status=be.blocking_status.value,
-                blocking_scope=be.blocking_scope.value,
-                blocking_subject=be.blocking_subject,
-                blocking_detail=be.blocking_detail,
-            )
+    experiment_result_id: str
+    experiment_group: str
+    domain_name: str
+    target_name: str
 
 
-def make_base_result_meta(obs: MeasurementMeta) -> dict:
-    return dict(
-        measurement_uid=obs.measurement_uid,
-        report_id=obs.report_id,
-        input=obs.input,
-        timestamp=obs.measurement_start_time,
-        probe_asn=obs.probe_asn,
-        probe_cc=obs.probe_cc,
-        probe_as_org_name=obs.probe_as_org_name,
-        probe_as_cc=obs.probe_as_cc,
-        network_type=obs.network_type,
-        resolver_ip=obs.resolver_ip,
-        resolver_asn=obs.resolver_asn,
-        resolver_as_org_name=obs.resolver_as_org_name,
-        resolver_as_cc=obs.resolver_as_cc,
-        resolver_cc=obs.resolver_cc,
-    )
+def iter_experiment_results(
+    obs: MeasurementMeta,
+    experiment_group: str,
+    anomaly: bool,
+    confirmed: bool,
+    domain_name: str,
+    target_name: str,
+    observation_ids: List[str],
+    be_list: List[BlockingEvent],
+) -> Generator[ExperimentResult, None, None]:
+    for idx, be in enumerate(be_list):
+        yield ExperimentResult(
+            measurement_uid=obs.measurement_uid,
+            report_id=obs.report_id,
+            input=obs.input,
+            timestamp=obs.measurement_start_time,
+            probe_asn=obs.probe_asn,
+            probe_cc=obs.probe_cc,
+            probe_as_org_name=obs.probe_as_org_name,
+            probe_as_cc=obs.probe_as_cc,
+            network_type=obs.network_type,
+            resolver_ip=obs.resolver_ip,
+            resolver_asn=obs.resolver_asn,
+            resolver_as_org_name=obs.resolver_as_org_name,
+            resolver_as_cc=obs.resolver_as_cc,
+            resolver_cc=obs.resolver_cc,
+            experiment_result_id=f"{obs.measurement_uid}_{idx}",
+            experiment_group=experiment_group,
+            anomaly=anomaly,
+            confirmed=confirmed,
+            domain_name=domain_name,
+            target_name=target_name,
+            observation_ids=observation_ids,
+            blocking_meta=be.blocking_meta,
+            blocking_confidence=be.confidence,
+            blocking_status=be.blocking_status.value,
+            blocking_scope=be.blocking_scope.value,
+            blocking_subject=be.blocking_subject,
+            blocking_detail=be.blocking_detail,
+        )

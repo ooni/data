@@ -88,9 +88,10 @@ def create_query_for_observation(obs_class: Type[ObservationBase]) -> Tuple[str,
 
 def create_query_for_experiment_result() -> Tuple[str, str]:
     columns = []
-    for f in fields(ExperimentResult):
-        type_str = typing_to_clickhouse(f.type)
-        columns.append(f"     {f.name} {type_str}")
+    for f in ExperimentResult._fields:
+        t = ExperimentResult.__annotations__.get(f)
+        type_str = typing_to_clickhouse(t)
+        columns.append(f"     {f} {type_str}")
 
     columns_str = ",\n".join(columns)
     table_name = ExperimentResult.__table_name__

@@ -40,15 +40,11 @@ from oonidata.experiments.control import (
     WebGroundTruthDB,
     iter_web_ground_truths,
 )
-from oonidata.experiments.experiment_result import (
-    BlockingEvent,
-    ExperimentResult,
-)
+from oonidata.experiments.experiment_result import ExperimentResult
 from oonidata.experiments.websites import make_website_experiment_result
 
 from oonidata.fingerprintdb import FingerprintDB, Fingerprint
 from oonidata.observations import (
-    WebObservation,
     iter_web_observations,
     make_observations,
 )
@@ -73,21 +69,19 @@ log = logging.getLogger("oonidata.processing")
 
 
 def make_db_rows(
-    dc_list: List, bucket_date: Optional[str] = None
-) -> Tuple[str, List[Dict], List[str]]:
+    dc_list: List, column_names: List[str], bucket_date: Optional[str] = None
+) -> Tuple[str, List[str]]:
     assert len(dc_list) > 0
 
     table_name = dc_list[0].__table_name__
-    column_names = [f.name for f in dataclasses.fields(dc_list[0])]
     rows = []
     for d in dc_list:
         if bucket_date:
             d.bucket_date = bucket_date
         assert table_name == d.__table_name__, "inconsistent group of observations"
-        # TODO: can I use a tuple here for more efficiency?
-        rows.append([getattr(d, k) for k in column_names])
+        rows.append(tuple(getattr(d, k) for k in column_names))
 
-    return table_name, rows, column_names
+    return table_name, rows
 
 
 class ResponseArchiver:
@@ -358,9 +352,11 @@ def process_day(
                 if len(observations) == 0:
                     continue
 
-                table_name, rows, column_names = make_db_rows(
+                column_names = [f.name for f in dataclasses.fields(observations[0])]
+                table_name, rows = make_db_rows(
                     bucket_date=bucket_date,
                     dc_list=observations,
+                    column_names=column_names,
                 )
                 db.write_rows(
                     table_name=table_name, rows=rows, column_names=column_names
@@ -389,8 +385,6 @@ def process_day(
                 raise exc
 
     db.close()
-
-    # return time.monotonic() - t0, day
 
 
 class ObservationMakerWorker(mp.Process):
@@ -769,6 +763,7 @@ def run_experiment_results(
 ):
     statsd_client = statsd.StatsClient("localhost", 8125)
 
+    column_names = [f for f in ExperimentResult._fields]
     db_lookup = ClickhouseConnection(clickhouse)
 
     log.info(f"building ground truth DB for {day}")
@@ -824,7 +819,9 @@ def run_experiment_results(
                     fingerprintdb=fingerprintdb,
                 )
             )
-            table_name, rows, column_names = make_db_rows(dc_list=experiment_results)
+            table_name, rows = make_db_rows(
+                dc_list=experiment_results, column_names=column_names
+            )
             statsd_client.timing("make_website_er.timing", t_er_gen.ms)
             statsd_client.incr("make_website_er.er_count")
 

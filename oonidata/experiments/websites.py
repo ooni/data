@@ -14,7 +14,7 @@ from oonidata.experiments.experiment_result import (
     BlockingStatus,
     ExperimentResult,
     fp_scope_to_status_scope,
-    make_base_result_meta,
+    iter_experiment_results,
 )
 
 from oonidata.fingerprintdb import FingerprintDB
@@ -729,6 +729,8 @@ def make_website_experiment_result(
     if len(nok_blocking_confidence) > 0:
         ok_confidence = 1 - max(nok_blocking_confidence)
 
+    # TODO: we should probably be computing the anomaly and confirmed summary
+    # flags directly as part of aggregation.
     confirmed = False
     anomaly = False
     if ok_confidence == 0:
@@ -736,13 +738,13 @@ def make_website_experiment_result(
     if ok_confidence < 0.6:
         anomaly = True
 
-    base_er = ExperimentResult(
+    return iter_experiment_results(
+        obs=web_observations[0],
+        experiment_group="websites",
         domain_name=domain_name or "",
-        website_name=domain_name or "",
-        observation_ids=observation_ids,
+        target_name=domain_name or "",
         anomaly=anomaly,
         confirmed=confirmed,
-        ok_confidence=ok_confidence,
-        **make_base_result_meta(web_observations[0]),
+        observation_ids=observation_ids,
+        be_list=blocking_events,
     )
-    return base_er.with_blocking_events(blocking_events)
