@@ -507,9 +507,9 @@ def make_http_blocking_event(
                 continue
 
             if gt.http_success:
-                failure_cc_asn.add((gt.vp_cc, gt.vp_asn))
+                failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
             else:
-                ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
+                ok_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
 
         failure_count = len(failure_cc_asn)
         ok_count = len(ok_cc_asn)
@@ -519,11 +519,11 @@ def make_http_blocking_event(
             # We are adding back 1 because we removed it above and it avoid a divide by zero
             confidence = ok_count / (ok_count + failure_count + 1)
             blocking_status = BlockingStatus.BLOCKED
-            blocking_meta["why"] = "it's mostly accessible"
+            blocking_meta["why"] = "it accessible from most places"
         else:
             confidence = (failure_count + 1) / (ok_count + failure_count + 1)
             blocking_status = BlockingStatus.DOWN
-            blocking_meta["why"] = "the site is down"
+            blocking_meta["why"] = "the site is inaccessible from most places"
 
         blocking_detail = f"{detail_prefix}{web_o.http_failure}"
 

@@ -29,6 +29,8 @@ def test_web_ground_truth_from_clickhouse(netinfodb):
         if res.dns_success == 1:
             assert res.ip_asn and res.ip_asn == 16509
             assert res.ip_as_org_name and len(res.ip_as_org_name) > 0
+        if res.http_request_url:
+            assert res.http_failure or res.http_success
 
 
 def test_web_ground_truth_db():
@@ -90,6 +92,7 @@ def test_web_ground_truth_db():
     )
     assert len(res) == 1
     assert res[0].count == 10
+    assert res[0].http_success
 
     res = wgt_db.lookup(
         probe_cc="IT",

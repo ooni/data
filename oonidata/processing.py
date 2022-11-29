@@ -990,6 +990,7 @@ def start_experiment_result_maker(
     log.info("waiting for the day queue to finish")
     day_queue.join()
 
+    log.info(f"sending shutdown signal to workers")
     worker_shutdown_event.set()
 
     log.info(f"waiting for workers to finish running")
