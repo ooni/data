@@ -507,9 +507,9 @@ def make_http_blocking_event(
                 continue
 
             if gt.http_success:
-                failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
-            else:
                 ok_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
+            else:
+                failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
 
         failure_count = len(failure_cc_asn)
         ok_count = len(ok_cc_asn)
