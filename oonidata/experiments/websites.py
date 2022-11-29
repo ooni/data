@@ -513,8 +513,8 @@ def make_http_blocking_event(
 
         failure_count = len(failure_cc_asn)
         ok_count = len(ok_cc_asn)
-        blocking_meta["ok_count"] = ok_count
-        blocking_meta["failure_count"] = failure_count
+        blocking_meta["ok_count"] = str(ok_count)
+        blocking_meta["failure_count"] = str(failure_count)
         if ok_count >= failure_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
             confidence = ok_count / (ok_count + failure_count + 1)
