@@ -761,6 +761,7 @@ def start_observation_maker(
 
 def run_experiment_results(
     day: date,
+    probe_cc: List[str],
     fingerprintdb: FingerprintDB,
     data_dir: pathlib.Path,
     body_db: BodyDB,
@@ -782,43 +783,16 @@ def run_experiment_results(
     statsd_client.timing("wgt_er_all.timed", t.ms)
     log.info(f"loaded ground truth DB for {day} in {t.pretty}")
 
-    for web_obs in iter_web_observations(db_lookup, measurement_day=day):
+    for web_obs in iter_web_observations(
+        db_lookup, measurement_day=day, probe_cc=probe_cc, test_name="web_connectivity"
+    ):
         try:
-            # We build a reduced in-memory ground truth database just for this set of
-            # observations. That way the lookups inside of each observation group should
-            # be a bit faster as they don't have to scan through the whole set of ground truths.
-            to_lookup_hostnames = set()
-            to_lookup_ip_ports = set()
-            to_lookup_http_request_urls = set()
-            probe_cc = web_obs[0].probe_cc
-            probe_asn = web_obs[0].probe_asn
-            for web_o in web_obs:
-                # All the observations in this group should be coming from the
-                # same probe
-                assert web_o.probe_cc == probe_cc
-                assert web_o.probe_asn == probe_asn
-                if web_o.hostname is not None:
-                    to_lookup_hostnames.add(web_o.hostname)
-                if web_o.ip is not None:
-                    to_lookup_ip_ports.add((web_o.ip, web_o.port))
-                if web_o.http_request_url is not None:
-                    to_lookup_http_request_urls.add(web_o.http_request_url)
-
             t_er_gen = PerfTimer()
             t = PerfTimer()
-            """
-            reduced_wgt_db = ReducedWebGroundTruthDB(db=web_ground_truth_db.db, idx=idx)
-            reduced_wgt_db.build(
-                probe_cc=probe_cc,
-                probe_asn=probe_asn,
-                ip_ports=list(to_lookup_ip_ports),
-                http_request_urls=list(to_lookup_http_request_urls),
-                hostnames=list(to_lookup_hostnames),
-            )
-            """
+            relevant_gts = web_ground_truth_db.lookup_by_web_obs(web_obs=web_obs)
         except:
             log.error(
-                f"failed to build reduced_wgt_db er for {web_obs[0].measurement_uid}",
+                f"failed to lookup relevant_gts for {web_obs[0].measurement_uid}",
                 exc_info=True,
             )
             continue
@@ -830,7 +804,7 @@ def run_experiment_results(
                 make_website_experiment_result(
                     web_observations=web_obs,
                     body_db=body_db,
-                    web_ground_truth_db=web_ground_truth_db,
+                    web_ground_truths=relevant_gts,
                     fingerprintdb=fingerprintdb,
                 )
             )
@@ -850,9 +824,6 @@ def run_experiment_results(
         except:
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate er for {web_obs_ids}", exc_info=True)
-        finally:
-            pass
-            # reduced_wgt_db.drop()
 
 
 class ExperimentResultMakerWorker(mp.Process):
@@ -897,6 +868,7 @@ class ExperimentResultMakerWorker(mp.Process):
             try:
                 for _ in run_experiment_results(
                     day=day,
+                    probe_cc=self.probe_cc,
                     fingerprintdb=fingerprintdb,
                     data_dir=self.data_dir,
                     body_db=body_db,
@@ -967,7 +939,6 @@ def start_experiment_result_maker(
     rebuild_ground_truths: bool,
     log_level: int = logging.INFO,
 ):
-
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
 
     shutdown_event = mp.Event()

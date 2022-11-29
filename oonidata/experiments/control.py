@@ -5,7 +5,7 @@ from collections.abc import Iterable
 
 from typing import Any, Generator, Optional, Tuple, List, NamedTuple
 from oonidata.netinfo import NetinfoDB
-from oonidata.observations import WebControlObservation
+from oonidata.observations import WebControlObservation, WebObservation
 
 from oonidata.db.connections import ClickhouseConnection
 
@@ -360,6 +360,39 @@ class WebGroundTruthDB:
             gt = WebGroundTruth(**dict(zip(column_names, row)))
             matches.append(gt)
         return matches
+
+    def lookup_by_web_obs(self, web_obs: List[WebObservation]) -> List[WebGroundTruth]:
+        """
+        Returns the list of WebGroundTruth that are relevant to a particular set
+        of related web observations.
+
+        Every web_obs in the list needs to be related to the same probe_cc,
+        probe_asn pair.
+        """
+        to_lookup_hostnames = set()
+        to_lookup_ip_ports = set()
+        to_lookup_http_request_urls = set()
+        probe_cc = web_obs[0].probe_cc
+        probe_asn = web_obs[0].probe_asn
+        for web_o in web_obs:
+            # All the observations in this group should be coming from the
+            # same probe
+            assert web_o.probe_cc == probe_cc
+            assert web_o.probe_asn == probe_asn
+            if web_o.hostname is not None:
+                to_lookup_hostnames.add(web_o.hostname)
+            if web_o.ip is not None:
+                to_lookup_ip_ports.add((web_o.ip, web_o.port))
+            if web_o.http_request_url is not None:
+                to_lookup_http_request_urls.add(web_o.http_request_url)
+
+        return self.lookup(
+            probe_cc=probe_cc,
+            probe_asn=probe_asn,
+            ip_ports=list(to_lookup_ip_ports),
+            http_request_urls=list(to_lookup_http_request_urls),
+            hostnames=list(to_lookup_hostnames),
+        )
 
 
 class ReducedWebGroundTruthDB(WebGroundTruthDB):

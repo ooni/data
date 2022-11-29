@@ -200,7 +200,9 @@ def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
 
     return make_website_experiment_result(
         web_observations=web_observations,
-        web_ground_truth_db=web_ground_truth_db,
+        web_ground_truths=web_ground_truth_db.lookup_by_web_obs(
+            web_obs=web_observations
+        ),
         body_db=body_db,
         fingerprintdb=fingerprintdb,
     )

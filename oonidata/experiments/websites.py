@@ -2,7 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import ipaddress
 import time
-from typing import Any, Generator, Optional, List, Tuple, Dict
+from typing import Any, Generator, Iterable, Optional, List, Tuple, Dict
 from oonidata.experiments.control import (
     WebGroundTruth,
     WebGroundTruthDB,
@@ -45,7 +45,7 @@ def encode_address(ip: str, port: int) -> str:
 
 
 def make_tcp_blocking_event(
-    web_o: WebObservation, web_ground_truth_db: WebGroundTruthDB
+    web_o: WebObservation, web_ground_truths: List[WebGroundTruth]
 ) -> Optional[BlockingEvent]:
     assert web_o.ip is not None and web_o.port is not None
 
@@ -66,10 +66,8 @@ def make_tcp_blocking_event(
         web_o.tcp_failure is not None
     ), "inconsistency between tcp_success and tcp_failure"
 
-    ground_truths = web_ground_truth_db.lookup(
-        probe_cc=web_o.probe_cc,
-        probe_asn=web_o.probe_asn,
-        ip_ports=[(web_o.ip, web_o.port)],
+    ground_truths = filter(
+        lambda gt: gt.ip == web_o.ip and gt.port == web_o.port, web_ground_truths
     )
     unreachable_cc_asn = set()
     reachable_cc_asn = set()
@@ -110,7 +108,7 @@ def make_tcp_blocking_event(
 
 
 def get_blocking_for_dns_failure(
-    dns_failure: str, ground_truths: List[WebGroundTruth]
+    dns_failure: str, ground_truths: Iterable[WebGroundTruth]
 ) -> Tuple[BlockingStatus, str, float]:
     nxdomain_cc_asn = set()
     failure_cc_asn = set()
@@ -170,7 +168,7 @@ def confidence_estimate(x, factor=0.8, clamping=0.9):
 
 def make_dns_blocking_event(
     web_o: WebObservation,
-    web_ground_truth_db: WebGroundTruthDB,
+    web_ground_truths: List[WebGroundTruth],
     fingerprintdb: FingerprintDB,
 ) -> Optional[BlockingEvent]:
 
@@ -203,9 +201,7 @@ def make_dns_blocking_event(
             confidence=confidence,
         )
 
-    ground_truths = web_ground_truth_db.lookup(
-        probe_cc=web_o.probe_cc, probe_asn=web_o.probe_asn, hostnames=[web_o.hostname]
-    )
+    ground_truths = filter(lambda gt: gt.hostname == web_o.hostname, web_ground_truths)
     if web_o.dns_failure:
         blocking_status, blocking_detail, confidence = get_blocking_for_dns_failure(
             dns_failure=web_o.dns_failure, ground_truths=ground_truths
@@ -219,13 +215,21 @@ def make_dns_blocking_event(
             confidence=0.9,
         )
 
+    # Here we count how many vantage vantage points, as in distinct probe_cc,
+    # probe_asn pairs, had this DNS answer
+    other_ips = defaultdict(set)
+    other_asns = defaultdict(set)
     trusted_answers = {}
     for gt in ground_truths:
         if gt.dns_success != True:
             continue
+        other_ips[gt.ip].add((gt.vp_cc, gt.vp_asn))
+        assert gt.ip, "did not find IP in ground truth"
+        other_asns[gt.ip_asn].add((gt.vp_cc, gt.vp_asn))
         if gt.tls_is_certificate_valid != False and gt.is_trusted_vp != True:
             continue
         trusted_answers[gt.ip] = gt
+
     if web_o.ip_is_bogon and len(trusted_answers) > 0:
         return BlockingEvent(
             blocking_status=BlockingStatus.BLOCKED,
@@ -306,17 +310,6 @@ def make_dns_blocking_event(
             confidence=0.9,
         )
 
-    # Here we count how many vantage vantage points, as in distinct probe_cc,
-    # probe_asn pairs, had this DNS answer
-    other_ips = defaultdict(set)
-    other_asns = defaultdict(set)
-    for gt in ground_truths:
-        if gt.dns_success != True:
-            continue
-        other_ips[gt.ip].add((gt.vp_cc, gt.vp_asn))
-        assert gt.ip, "did not find IP in ground truth"
-        other_asns[gt.ip_asn].add((gt.vp_cc, gt.vp_asn))
-
     if web_o.dns_answer in other_ips:
         return BlockingEvent(
             blocking_status=BlockingStatus.OK,
@@ -382,7 +375,7 @@ def make_dns_blocking_event(
 
 
 def make_tls_blocking_event(
-    web_o: WebObservation, web_ground_truth_db: WebGroundTruthDB
+    web_o: WebObservation, web_ground_truths: List[WebGroundTruth]
 ) -> Optional[BlockingEvent]:
     blocking_subject = web_o.hostname or ""
 
@@ -435,7 +428,7 @@ def make_tls_blocking_event(
 
 def make_http_blocking_event(
     web_o: WebObservation,
-    web_ground_truth_db: WebGroundTruthDB,
+    web_ground_truths: List[WebGroundTruth],
     body_db: BodyDB,
     fingerprintdb: FingerprintDB,
 ) -> Optional[BlockingEvent]:
@@ -460,11 +453,7 @@ def make_http_blocking_event(
     if request_is_encrypted:
         detail_prefix = "https."
 
-    ground_truths = web_ground_truth_db.lookup(
-        probe_cc=web_o.probe_cc,
-        probe_asn=web_o.probe_asn,
-        http_request_urls=[web_o.http_request_url],
-    )
+    ground_truths = filter(lambda gt: gt.http_request_url == web_o.http_request_url, web_ground_truths)
     if web_o.http_failure:
         blocking_meta = {}
 
@@ -580,7 +569,7 @@ def is_blocked(be: Optional[BlockingEvent]) -> bool:
 
 def make_website_experiment_result(
     web_observations: List[WebObservation],
-    web_ground_truth_db: WebGroundTruthDB,
+    web_ground_truths: List[WebGroundTruth],
     body_db: BodyDB,
     fingerprintdb: FingerprintDB,
 ) -> Generator[ExperimentResult, None, None]:
@@ -618,7 +607,7 @@ def make_website_experiment_result(
             # We have data related to DNS and it's a failure
             dns_be = make_dns_blocking_event(
                 web_o=web_o,
-                web_ground_truth_db=web_ground_truth_db,
+                web_ground_truths=web_ground_truths,
                 fingerprintdb=fingerprintdb,
             )
             if is_blocked(dns_be):
@@ -635,7 +624,9 @@ def make_website_experiment_result(
 
         tcp_be = None
         if not is_blocked(dns_be) and web_o.tcp_success is not None:
-            tcp_be = make_tcp_blocking_event(web_o, web_ground_truth_db)
+            tcp_be = make_tcp_blocking_event(
+                web_o=web_o, web_ground_truths=web_ground_truths
+            )
             if is_blocked(tcp_be):
                 is_tcp_blocked = True
             blocking_events.append(tcp_be)
@@ -648,7 +639,7 @@ def make_website_experiment_result(
             and (web_o.tls_failure or web_o.tls_cipher_suite is not None)
         ):
             tls_be = make_tls_blocking_event(
-                web_o=web_o, web_ground_truth_db=web_ground_truth_db
+                web_o=web_o, web_ground_truths=web_ground_truths
             )
             blocking_events.append(tls_be)
             if is_blocked(tls_be):
@@ -674,7 +665,7 @@ def make_website_experiment_result(
         ):
             http_be = make_http_blocking_event(
                 web_o=web_o,
-                web_ground_truth_db=web_ground_truth_db,
+                web_ground_truths=web_ground_truths,
                 body_db=body_db,
                 fingerprintdb=fingerprintdb,
             )
@@ -698,7 +689,7 @@ def make_website_experiment_result(
         ):
             http_be = make_http_blocking_event(
                 web_o=web_o,
-                web_ground_truth_db=web_ground_truth_db,
+                web_ground_truths=web_ground_truths,
                 body_db=body_db,
                 fingerprintdb=fingerprintdb,
             )
