@@ -895,7 +895,9 @@ class ExperimentResultMakerWorker(mp.Process):
             log.error("failed to flush database", exc_info=True)
 
 
-def run_progress_thread(status_queue: mp.Queue, shutdown_event: EventClass):
+def run_progress_thread(
+    status_queue: mp.Queue, shutdown_event: EventClass, desc: str = "analyzing data"
+):
     pbar = tqdm(position=0)
 
     log.info("starting error handling thread")
@@ -906,7 +908,7 @@ def run_progress_thread(status_queue: mp.Queue, shutdown_event: EventClass):
             continue
 
         pbar.update()
-        pbar.set_description("analyzing data")
+        pbar.set_description(desc)
         status_queue.task_done()
 
 
@@ -973,6 +975,7 @@ class GroundTrutherWorker(mp.Process):
             except:
                 log.error(f"failed to build ground truth for {day}", exc_info=True)
 
+            self.day_queue.task_done()
             self.progress_queue.put(1)
 
 
@@ -990,7 +993,8 @@ def start_ground_truth_builder(
     progress_queue = mp.JoinableQueue()
 
     progress_thread = Thread(
-        target=run_progress_thread, args=(progress_queue, shutdown_event)
+        target=run_progress_thread,
+        args=(progress_queue, shutdown_event, "generating ground truths"),
     )
     progress_thread.start()
 
