@@ -22,15 +22,28 @@ def test_web_ground_truth_from_clickhouse(netinfodb):
     rows = []
     for column_names, row in iter_rows:
         assert len(column_names) == len(row)
+        d = dict(zip(column_names, row))
+        if d["http_request_url"] == "https://ooni.org/":
+            print(d)
         rows.append((column_names, row))
     wgt_db = WebGroundTruthDB()
     wgt_db.build_from_rows(rows=rows)
+    found = False
     for res in wgt_db.lookup(probe_asn=100, probe_cc="IT", hostnames=["ooni.org"]):
         if res.dns_success == 1:
+            found = True
             assert res.ip_asn and res.ip_asn == 16509
             assert res.ip_as_org_name and len(res.ip_as_org_name) > 0
+    assert found
+
+    found = False
+    for res in wgt_db.lookup(
+        probe_asn=100, probe_cc="IT", http_request_urls=["https://ooni.org/"]
+    ):
         if res.http_request_url:
+            found = True
             assert res.http_failure or res.http_success
+    assert found
 
 
 def test_web_ground_truth_db():
@@ -107,7 +120,7 @@ def test_web_ground_truth_db():
     reduced_db = ReducedWebGroundTruthDB(db=wgt_db.db, idx=0)
     reduced_db.build(probe_cc="IT", probe_asn=100, ip_ports=[("1.1.1.1", 80)])
     for row in reduced_db.db.execute(f"SELECT * FROM {reduced_db._table_name}"):
-        print(row)
+        pass
 
     res = reduced_db.lookup(
         probe_cc="IT",

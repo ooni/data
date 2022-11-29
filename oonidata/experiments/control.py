@@ -102,8 +102,8 @@ def iter_web_ground_truths(
         "tls_success",
         "tls_is_certificate_valid",
         "http_request_url",
-        "http_success",
         "http_failure",
+        "http_success",
     ]
     q = """
     SELECT (
@@ -191,9 +191,9 @@ class WebGroundTruthDB:
             )
             self.db.execute(q_insert_with_values, row)
         self.db.commit()
-        self.create_indexes()
         self.db.execute("pragma vacuum;")
         self.db.execute("pragma optimize;")
+        self.create_indexes()
 
     def build_from_existing(self, db_str: str):
         with sqlite3.connect(db_str) as src_db:
