@@ -27,7 +27,11 @@ import logging
 
 log = logging.getLogger("oonidata.processing")
 
-
+CLOUD_PROVIDERS = [
+    13335, # Cloudflare: https://www.peeringdb.com/net/4224
+    20940, # Akamai: https://www.peeringdb.com/net/2
+    396982, # Google Cloud: https://www.peeringdb.com/net/30878
+]
 def encode_address(ip: str, port: int) -> str:
     """
     return a properly encoded address handling IPv6 IPs
@@ -201,8 +205,12 @@ def make_dns_blocking_event(
             confidence=confidence,
         )
 
-    ground_truths = filter(lambda gt: gt.hostname == web_o.hostname, web_ground_truths)
+    ground_truths = filter(
+        lambda gt: gt.hostname == web_o.hostname,
+        web_ground_truths,
+    )
     if web_o.dns_failure:
+        # It's ok to unroll the iterable here, since we will not use it again as we return
         blocking_status, blocking_detail, confidence = get_blocking_for_dns_failure(
             dns_failure=web_o.dns_failure, ground_truths=ground_truths
         )
@@ -342,6 +350,22 @@ def make_dns_blocking_event(
             ),
         )
 
+    if web_o.ip_asn in CLOUD_PROVIDERS:
+        # Cloud providers are a common source of false positives. Let's just
+        # mark them as ok with a low confidence
+        return BlockingEvent(
+            blocking_status=BlockingStatus.OK,
+            blocking_scope=BlockingScope.UNKNOWN,
+            blocking_subject=blocking_subject,
+            blocking_detail="dns.ok",
+            blocking_meta={
+                "ip": web_o.dns_answer or "",
+                "why": "answer matches a cloud provider",
+            },
+            confidence=0.6,
+        )
+ 
+
     blocking_meta = {
         "ip": web_o.dns_answer or "",
         "why": "unable to determine consistency through ground truth",
@@ -453,7 +477,9 @@ def make_http_blocking_event(
     if request_is_encrypted:
         detail_prefix = "https."
 
-    ground_truths = filter(lambda gt: gt.http_request_url == web_o.http_request_url, web_ground_truths)
+    ground_truths = filter(
+        lambda gt: gt.http_request_url == web_o.http_request_url, web_ground_truths
+    )
     if web_o.http_failure:
         blocking_meta = {}
 
