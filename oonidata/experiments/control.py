@@ -134,13 +134,13 @@ def iter_web_ground_truths(
         row = res[0]
 
         c_names = column_names + [
+            "http_response_body_length",
+            "count",
             "ip_asn",
             "ip_as_org_name",
             "vp_asn",
             "vp_cc",
             "is_trusted_vp",
-            "http_response_body_length",
-            "count",
         ]
         row_extra: List[Any] = [None, None]
         # TODO move this directly into the obs_web_ctrl table

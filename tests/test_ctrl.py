@@ -1,8 +1,34 @@
-from datetime import datetime
+from datetime import date, datetime
+
+import pytest
+from oonidata.db.connections import ClickhouseConnection
 from oonidata.experiments.control import (
     WebGroundTruthDB,
     ReducedWebGroundTruthDB,
+    iter_web_ground_truths,
 )
+
+
+def test_web_ground_truth_from_clickhouse(netinfodb):
+    db = ClickhouseConnection(conn_url="clickhouse://localhost")
+    try:
+        db.execute("SELECT 1")
+    except:
+        pytest.skip("no database connection")
+
+    iter_rows = iter_web_ground_truths(
+        db=db, netinfodb=netinfodb, measurement_day=date(2022, 11, 10)
+    )
+    rows = []
+    for column_names, row in iter_rows:
+        assert len(column_names) == len(row)
+        rows.append((column_names, row))
+    wgt_db = WebGroundTruthDB()
+    wgt_db.build_from_rows(rows=rows)
+    for res in wgt_db.lookup(probe_asn=100, probe_cc="IT", hostnames=["ooni.org"]):
+        if res.dns_success == 1:
+            assert res.ip_asn and res.ip_asn == 16509
+            assert res.ip_as_org_name and len(res.ip_as_org_name) > 0
 
 
 def test_web_ground_truth_db():

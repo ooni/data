@@ -174,7 +174,9 @@ def make_dns_blocking_event(
     fingerprintdb: FingerprintDB,
 ) -> Optional[BlockingEvent]:
 
-    assert web_o.hostname is not None
+    assert (
+        web_o.hostname is not None
+    ), f"missing hostname field for query in {web_o.measurement_uid}"
     blocking_subject = web_o.hostname
 
     fp = None
@@ -201,7 +203,6 @@ def make_dns_blocking_event(
             confidence=confidence,
         )
 
-    assert web_o.hostname, "malformed DNS observation"
     ground_truths = web_ground_truth_db.lookup(
         probe_cc=web_o.probe_cc, probe_asn=web_o.probe_asn, hostnames=[web_o.hostname]
     )

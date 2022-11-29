@@ -834,7 +834,9 @@ def iter_web_observations(
     column_names = [f.name for f in dataclasses.fields(WebObservation)]
     q = "SELECT ("
     q += ",\n".join(column_names)
-    q += ") FROM obs_web WHERE measurement_start_time > %(start_day)s AND measurement_start_time < %(end_day)s ORDER BY measurement_uid"
+    q += ") FROM obs_web\n"
+    q += "WHERE measurement_start_time > %(start_day)s AND measurement_start_time < %(end_day)s\n"
+    q += "ORDER BY measurement_uid"
 
     obs_group = []
     last_msmt_uid = None
@@ -848,9 +850,7 @@ def iter_web_observations(
             last_msmt_uid = row[msmt_uid_idx]
             obs_group = []
 
-        obs_group.append(
-            WebObservation(**{k: row[idx] for idx, k in enumerate(column_names)})
-        )
+        obs_group.append(WebObservation(*row))
 
     if len(obs_group) > 0:
         yield obs_group
