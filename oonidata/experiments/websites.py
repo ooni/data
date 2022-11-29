@@ -27,11 +27,15 @@ import logging
 
 log = logging.getLogger("oonidata.processing")
 
-CLOUD_PROVIDERS = [
-    13335, # Cloudflare: https://www.peeringdb.com/net/4224
-    20940, # Akamai: https://www.peeringdb.com/net/2
-    396982, # Google Cloud: https://www.peeringdb.com/net/30878
+CLOUD_PROVIDERS_ASNS = [
+    13335,  # Cloudflare: https://www.peeringdb.com/net/4224
+    20940,  # Akamai: https://www.peeringdb.com/net/2
+    396982,  # Google Cloud: https://www.peeringdb.com/net/30878
 ]
+
+CLOUD_PROVIDERS_AS_ORGS = ["Akamai Technologies, Inc.".lower()]
+
+
 def encode_address(ip: str, port: int) -> str:
     """
     return a properly encoded address handling IPv6 IPs
@@ -350,7 +354,11 @@ def make_dns_blocking_event(
             ),
         )
 
-    if web_o.ip_asn in CLOUD_PROVIDERS:
+    if (
+        web_o.ip_asn in CLOUD_PROVIDERS_ASNS
+        or (web_o.ip_as_org_name and web_o.ip_as_org_name.lower())
+        in CLOUD_PROVIDERS_AS_ORGS
+    ):
         # Cloud providers are a common source of false positives. Let's just
         # mark them as ok with a low confidence
         return BlockingEvent(
@@ -364,7 +372,6 @@ def make_dns_blocking_event(
             },
             confidence=0.6,
         )
- 
 
     blocking_meta = {
         "ip": web_o.dns_answer or "",
