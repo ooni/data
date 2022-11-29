@@ -21,6 +21,7 @@ from oonidata.processing import (
     start_experiment_result_maker,
     start_fingerprint_hunter,
     start_observation_maker,
+    start_ground_truth_builder,
 )
 
 
@@ -272,6 +273,38 @@ def mker(
         parallelism=parallelism,
         fast_fail=fast_fail,
         rebuild_ground_truths=rebuild_ground_truths,
+    )
+
+
+@cli.command()
+@start_day_option
+@end_day_option
+@click.option("--clickhouse", type=str, required=True)
+@click.option(
+    "--data-dir",
+    type=Path,
+    required=True,
+    help="data directory to store fingerprint and geoip databases",
+)
+@click.option(
+    "--parallelism",
+    type=int,
+    default=multiprocessing.cpu_count() + 2,
+    help="number of processes to use. Only works when writing to a database",
+)
+def mkgt(
+    start_day: date,
+    end_day: date,
+    clickhouse: str,
+    data_dir: Path,
+    parallelism: int,
+):
+    start_ground_truth_builder(
+        start_day=start_day,
+        end_day=end_day,
+        clickhouse=clickhouse,
+        data_dir=data_dir,
+        parallelism=parallelism,
     )
 
 

@@ -933,6 +933,102 @@ def maybe_build_web_ground_truth(
         log.info(f"built ground truth DB {day} in {t.pretty}")
 
 
+class GroundTrutherWorker(mp.Process):
+    def __init__(
+        self,
+        day_queue: mp.JoinableQueue,
+        progress_queue: mp.Queue,
+        clickhouse: str,
+        shutdown_event: EventClass,
+        data_dir: pathlib.Path,
+        log_level: int = logging.INFO,
+    ):
+        super().__init__(daemon=True)
+        self.day_queue = day_queue
+        self.progress_queue = progress_queue
+        self.data_dir = data_dir
+        self.clickhouse = clickhouse
+
+        self.shutdown_event = shutdown_event
+        log.setLevel(log_level)
+
+    def run(self):
+        db = ClickhouseConnection(self.clickhouse)
+        netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
+
+        while not self.shutdown_event.is_set():
+            try:
+                day = self.day_queue.get(block=True, timeout=0.1)
+            except queue.Empty:
+                continue
+
+            try:
+                maybe_build_web_ground_truth(
+                    db=db,
+                    netinfodb=netinfodb,
+                    day=day,
+                    data_dir=self.data_dir,
+                    rebuild_ground_truths=True,
+                )
+            except:
+                log.error(f"failed to build ground truth for {day}", exc_info=True)
+
+            self.progress_queue.put(1)
+
+
+def start_ground_truth_builder(
+    start_day: date,
+    end_day: date,
+    clickhouse: str,
+    data_dir: pathlib.Path,
+    parallelism: int,
+    log_level: int = logging.INFO,
+):
+    shutdown_event = mp.Event()
+    worker_shutdown_event = mp.Event()
+
+    progress_queue = mp.JoinableQueue()
+
+    progress_thread = Thread(
+        target=run_progress_thread, args=(progress_queue, shutdown_event)
+    )
+    progress_thread.start()
+
+    workers = []
+    day_queue = mp.JoinableQueue()
+    for _ in range(parallelism):
+        worker = GroundTrutherWorker(
+            day_queue=day_queue,
+            progress_queue=progress_queue,
+            shutdown_event=worker_shutdown_event,
+            clickhouse=clickhouse,
+            data_dir=data_dir,
+            log_level=log_level,
+        )
+        worker.start()
+        log.info(f"started worker {worker.pid}")
+        workers.append(worker)
+
+    for day in date_interval(start_day, end_day):
+        day_queue.put(day)
+
+    log.info("waiting for the day queue to finish")
+    day_queue.join()
+
+    log.info(f"sending shutdown signal to workers")
+    worker_shutdown_event.set()
+
+    log.info(f"waiting for workers to finish running")
+    for idx, p in enumerate(workers):
+        log.info(f"waiting worker {idx} to stop")
+        p.join()
+        p.close()
+
+    shutdown_event.set()
+    progress_queue.join()
+    progress_thread.join()
+
+
 def start_experiment_result_maker(
     probe_cc: List[str],
     test_name: List[str],
