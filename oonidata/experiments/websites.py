@@ -60,7 +60,7 @@ def make_tcp_blocking_event(
     blocking_subject = encode_address(web_o.ip, web_o.port)
 
     # Nothing to see here, go on with your life
-    if web_o.tcp_success == True:
+    if web_o.tcp_success:
         return BlockingEvent(
             blocking_status=BlockingStatus.OK,
             blocking_scope=BlockingScope.UNKNOWN,
@@ -80,9 +80,13 @@ def make_tcp_blocking_event(
     unreachable_cc_asn = set()
     reachable_cc_asn = set()
     for gt in ground_truths:
-        if gt.tcp_success == True:
+        # We don't check for strict == True, since depending on the DB engine
+        # True could also be represented as 1
+        if gt.tcp_success is None:
+            continue
+        if gt.tcp_success:
             reachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
-        elif gt.tcp_success == False:
+        else:
             unreachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
 
     reachable_count = len(reachable_cc_asn)
@@ -122,10 +126,14 @@ def get_blocking_for_dns_failure(
     failure_cc_asn = set()
     ok_cc_asn = set()
     for gt in ground_truths:
-        if gt.dns_success == False:
-            failure_cc_asn.add((gt.vp_cc, gt.vp_asn))
-        elif gt.dns_success == True:
+        # We don't check for strict == True, since depending on the DB engine
+        # True could also be represented as 1
+        if gt.dns_success is None:
+            continue
+        if gt.dns_success:
             ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
+        else:
+            failure_cc_asn.add((gt.vp_cc, gt.vp_asn))
         if gt.dns_failure == "dns_nxdomain_error":
             nxdomain_cc_asn.add((gt.vp_cc, gt.vp_asn))
 
@@ -493,14 +501,21 @@ def make_http_blocking_event(
         failure_cc_asn = set()
         ok_cc_asn = set()
         for gt in ground_truths:
-            if gt.http_success == False:
+            # We don't check for strict == True, since depending on the DB engine
+            # True could also be represented as 1
+            if gt.http_success is None:
+                continue
+
+            if gt.http_success:
                 failure_cc_asn.add((gt.vp_cc, gt.vp_asn))
-            elif gt.http_success == True:
+            else:
                 ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
 
         failure_count = len(failure_cc_asn)
         ok_count = len(ok_cc_asn)
-        if ok_count > failure_count:
+        blocking_meta["ok_count"] = ok_count
+        blocking_meta["failure_count"] = failure_count
+        if ok_count >= failure_count:
             # We are adding back 1 because we removed it above and it avoid a divide by zero
             confidence = ok_count / (ok_count + failure_count + 1)
             blocking_status = BlockingStatus.BLOCKED

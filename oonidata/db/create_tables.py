@@ -4,14 +4,12 @@ from enum import Enum
 from typing import Optional, Tuple, List, Any, Type, Mapping, Dict
 from dataclasses import fields
 from oonidata.observations import (
-    MeasurementMeta,
     ObservationBase,
     WebControlObservation,
     WebObservation,
 )
 from oonidata.experiments.experiment_result import (
     ExperimentResult,
-    BlockingEvent,
 )
 
 
