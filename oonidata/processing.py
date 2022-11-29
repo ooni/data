@@ -783,6 +783,7 @@ def run_experiment_results(
     statsd_client.timing("wgt_er_all.timed", t.ms)
     log.info(f"loaded ground truth DB for {day} in {t.pretty}")
 
+    idx = 0
     for web_obs in iter_web_observations(
         db_lookup, measurement_day=day, probe_cc=probe_cc, test_name="web_connectivity"
     ):
@@ -808,11 +809,15 @@ def run_experiment_results(
                     fingerprintdb=fingerprintdb,
                 )
             )
+            idx += 1
             table_name, rows = make_db_rows(
                 dc_list=experiment_results, column_names=column_names
             )
+            if idx % 100 == 0:
+                statsd_client.incr("make_website_er.er_count", count=100)
+                idx = 0
+
             statsd_client.timing("make_website_er.timing", t_er_gen.ms)
-            statsd_client.incr("make_website_er.er_count")
 
             with statsd_client.timer("db_write_rows.timing"):
                 db_writer.write_rows(
