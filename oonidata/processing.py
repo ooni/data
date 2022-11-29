@@ -815,6 +815,7 @@ def run_experiment_results(
             )
             if idx % 100 == 0:
                 statsd_client.incr("make_website_er.er_count", count=100)
+                statsd_client.gauge("make_website_er.er_gauge", 100, delta=True)
                 idx = 0
 
             statsd_client.timing("make_website_er.timing", t_er_gen.ms)
