@@ -84,6 +84,10 @@ def test_full_worfklow(cli_runner, datadir, tmp_path: Path):
     )
     assert result.exit_code == 0
     assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    res = db.execute(
+        "SELECT COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
+    )
+    assert res[0][0] == 200  # type: ignore
 
     result = cli_runner.invoke(
         cli,
@@ -134,3 +138,7 @@ def test_full_worfklow(cli_runner, datadir, tmp_path: Path):
         ],
     )
     assert result.exit_code == 0
+    res = db.execute(
+        "SELECT COUNT(DISTINCT(measurement_uid)) FROM experiment_result WHERE measurement_uid LIKE '20221020%' AND probe_cc = 'BA'"
+    )
+    assert res[0][0] == 200  # type: ignore
