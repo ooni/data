@@ -74,6 +74,7 @@ class ExperimentResult(NamedTuple):
     report_id: str
     input: Optional[str]
     timestamp: datetime
+    created_at: datetime
 
     probe_asn: int
     probe_cc: str
@@ -117,9 +118,11 @@ def iter_experiment_results(
     observation_ids: List[str],
     be_list: List[BlockingEvent],
 ) -> Generator[ExperimentResult, None, None]:
+    created_at = datetime.utcnow()
     for idx, be in enumerate(be_list):
         yield ExperimentResult(
             measurement_uid=obs.measurement_uid,
+            created_at=created_at,
             report_id=obs.report_id,
             input=obs.input,
             timestamp=obs.measurement_start_time,

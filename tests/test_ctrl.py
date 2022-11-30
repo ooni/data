@@ -19,12 +19,10 @@ def test_web_ground_truth_from_clickhouse(netinfodb):
     iter_rows = iter_web_ground_truths(
         db=db, netinfodb=netinfodb, measurement_day=date(2022, 11, 10)
     )
+
     rows = []
     for column_names, row in iter_rows:
         assert len(column_names) == len(row)
-        d = dict(zip(column_names, row))
-        if d["http_request_url"] == "https://ooni.org/":
-            print(d)
         rows.append((column_names, row))
     wgt_db = WebGroundTruthDB()
     wgt_db.build_from_rows(rows=rows)

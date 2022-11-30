@@ -28,6 +28,7 @@ class ClickhouseConnection(DatabaseConnection):
         from clickhouse_driver import Client
 
         self.client = Client.from_url(conn_url)
+
         self.row_buffer_size = row_buffer_size
         self.max_block_size = max_block_size
 
@@ -39,6 +40,11 @@ class ClickhouseConnection(DatabaseConnection):
 
     def __exit__(self, type, value, traceback):
         self.close()
+
+    def delete_sync(self, table_name: str, where: str):
+        self.execute("SET allow_experimental_lightweight_delete = true;")
+        self.execute("SET mutations_sync = 1;")
+        return self.execute(f"DELETE FROM {table_name} WHERE {where};")
 
     def execute(self, *args, **kwargs):
         return self.client.execute(*args, **kwargs)
