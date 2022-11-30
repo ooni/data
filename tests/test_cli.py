@@ -109,16 +109,14 @@ def test_full_worfklow(cli_runner, datadir, tmp_path: Path):
         cli,
         [
             "fphunt",
-            "--start-day",
-            "2022-10-20",
-            "--end-day",
-            "2022-10-21",
             "--data-dir",
             datadir,
             "--archives-dir",
             tmp_path.absolute(),
         ],
     )
+    print(result)
+    assert result.exit_code == 0
     result = cli_runner.invoke(
         cli,
         [

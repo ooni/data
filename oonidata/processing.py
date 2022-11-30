@@ -309,7 +309,6 @@ def start_fingerprint_hunter(
     for _ in range(parallelism):
         archive_queue.put(None)
 
-    archive_queue.join()
     pool.close()
 
     log.info("waiting for the worker processes to finish")
