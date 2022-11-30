@@ -1,20 +1,68 @@
 ## OONI Data
 
-## Using this repo
+OONI Data is a collection of tooling for downloading, analyzing and interpreting
+OONI network measurement data.
 
-To get yourself started with using this repo, run the following:
+Most users will likely be interested in using this as a CLI tool for downloading
+measurements.
 
+If that is your goal, getting started is easy, run:
+```
+pip install oonidata
+```
+
+You will then be able to download measurements via:
+```
+oonidata sync --probe-cc IT --start-day 2022-10-01 --end-day 2022-10-02 --output-dir measurements/
+```
+
+This will download all OONI measurements for Italy into the directory
+`./measurements` that were uploaded between 2022-10-01 and 2022-10-02.
+
+If you are interested in learning more about the design of the analysis tooling,
+please read on.
+
+## Developer setup
+
+This project makes use of [poetry](https://python-poetry.org/) for dependency
+management. Follow [their
+instructions](https://python-poetry.org/docs/#installation) on how to set it up.
+
+Once you have done that you should be able to run:
 ```
 poetry install
-mkdir output/
-poetry run python oonidata/processing.py --csv-dir output/ --geoip-dir ../historical-geoip/country-asn-databases --asn-map ../historical-geoip/as-orgs/all_as_org_map.json
+poetry run python -m oonidata --help
 ```
-
 ## Architecture overview
 
-This data pipeline works by dealing with the data in two different stages:
+The analysis engine is made up of several components:
 * Observation generation
-* Verdict generation
+* Response body archving
+* Ground truth generation
+* Experiment result generation
+
+Below we explain each step of this process in detail
+
+At a high level the pipeline looks like this:
+```mermaid
+graph
+    M{{Measurement}} --> OGEN[[make_observations]]
+    OGEN --> |many| O{{Observations}}
+    NDB[(NetInfoDB)] --> OGEN
+    OGEN --> RB{{ResponseBodies}}
+    RB --> BA[(BodyArchive)]
+    FDB[(FingerprintDB)] --> FPH
+    FPH --> BA
+    RB --> FPH[[fingerprint_hunter]]
+    O --> ODB[(ObservationTables)]
+
+    ODB --> MKGT[[make_ground_truths]]
+    MKGT --> GTDB[(GroundTruthDB)]
+    GTDB --> MKER
+    BA --> MKER
+    ODB --> MKER[[make_experiment_results]]
+    MKER --> |one| ER{{ExperimentResult}}
+```
 
 ### Observation generation
 
@@ -32,170 +80,107 @@ that is to be determined when looking at data in aggregate and is the
 responsibility of the Verdict generation stage.
 
 During this stage we are also going to enrich observations with metadata about
-IP addresses (using the IPInfoDB) and detecting known fingerprints of
-blockpages or DNS responses using the FingerprintDB.
+IP addresses (using the IPInfoDB).
 
-The data flow of the observation generation pipeline looks as follows:
+Each each measurement ends up producing observations that are all of the same
+type and are written to the same DB table.
 
-```mermaid
-graph TD
-    IPInfoDB[(IPInfoDB)] --> MsmtProcessor
-    FingerprintDB[(FingerprintDB)] --> MsmtProcessor
+This has the benefit that we don't need to lookup the observations we care about
+in several disparate tables, but can do it all in the same one, which is
+incredibly fast.
 
-    Msmt[Raw Measurement] --> MsmtProcessor{{"measurement_processor()"}}
-    MsmtProcessor --> TCPObservations
-    MsmtProcessor --> DNSObservations
-    MsmtProcessor --> TLSObservations
-    MsmtProcessor --> HTTPObservations
+A side effect is that we end up with tables are can be a bit sparse (several
+columns are NULL).
+
+The tricky part, in the case of complex tests like web_connectivity, is to
+figure out which individual sub measurements fit into the same observation row.
+For example we would like to have the TCP connect result to appear in the same
+row as the DNS query that lead to it with the TLS handshake towards that IP,
+port combination.
+
+You can run the observation generation with a clickhouse backend like so:
+```
+poetry run python -m oonidata mkobs --clickhouse clickhouse://localhost/ --data-dir tests/data/datadir/ --start-day 2022-08-01 --end-day 2022-10-01 --create-tables --parallelism 20
 ```
 
+Here is the list of supported observations so far:
+* [x] WebObservation, which has information about DNS, TCP, TLS and HTTP(s)
+* [x] WebControlObservation, has the control measurements run by web connectivity (is used to generate ground truths)
+* [ ] CircumventionToolObservation, still needs to be designed and implemented
+  (ideally we would use the same for OpenVPN, Psiphon, VanillaTor)
 
-The `measurement_processor` stage can be run either in a streaming fashion as
-measurements are uploaded to the collector or in batch mode by reprocessing
-existing raw measurements.
+### Response body archving
 
-```mermaid
-graph LR
-    P((Probe)) --> M{{Measurement}}
-    BE --> P
-    M --> PL[(Analysis)]
-    PL --> O{{Observations}}
-    O --> PL
-    PL --> BE{{ExperimentResult}}
-    BE --> E((Explorer))
-    O --> E
+It is optionally possible to also create WAR archives of HTTP response bodies
+when running the observation generation.
+
+This is enabled by passing the extra command line argument `--archives-dir`.
+
+Whenever a response body is detected in a measurement it is sent to the
+archiving queue which takes the response body, looks up in the database if it
+has seen it already (so we don't store exact duplicate bodies).
+If we haven't archived it yet, we write the body to a WAR file and record it's
+sha1 hash together with the filename where we wrote it to into a database.
+
+These WAR archives can then be mined asynchronously for blockpages using the
+fingerprint hunter command:
 ```
+oonidata fphunt --data-dir tests/data/datadir/ --archives-dir warchives/ --parallelism 20
+```
+
+When a blockpage matching the fingerprint is detected, the relevant database row
+for that fingerprint is updated with the ID of the fingerprint which was
+detected.
+
+### Ground Truth generation
+
+In order to establish if something is being blocked or not, we need some ground truth for comparison.
+
+The goal of the ground truth generation task is to build a ground truth
+database, which contains all the ground truths for every target that has been
+tested in a particular day.
+
+Currently it's implemented using the WebControlObservations, but in the future
+we could just use other WebObservation.
+
+Each ground truth database is actually just a sqlite3 database. For a given day
+it's approximately 150MB in size and we load them in memory when we are running
+the analysis workflow.
 
 ### ExperimentResult generation
 
-The data flow of the blocking event generation pipeline looks as follows:
-```mermaid
-classDiagram
-    direction RL
+An experiment result is the interpretation of one or more observations with a
+determination of whether the target is `BLOCKED`, `DOWN` or `OK`.
 
-    ExperimentResult --* WebsiteExperimentResult
-    ExperimentResult --* WhatsAppExperimentResult
+For each of these states a confidence indicator is given which is an estimate of the
+likelyhood of that result to be accurate.
 
-    ExperimentResult : +String measurement_uid
-    ExperimentResult : +datetime timestamp
-    ExperimentResult : +int probe_asn
-    ExperimentResult : +String probe_cc
-    ExperimentResult : +String network_type
-    ExperimentResult : +struct resolver
-    ExperimentResult : +List[str] observation_ids
-    ExperimentResult : +List[BlockingEvent] blocking_events
-    ExperimentResult : +float ok_confidence
+For each of the 3 states, it's possible also specify a `blocking_detail`, which
+gives more information as to why the block might be occurring.
 
-    ExperimentResult : +bool anomaly
-    ExperimentResult : +bool confirmed
+It's important to note that for a given measurement, multiple experiment results
+can be generated, because a target might be blocked in multiple ways or be OK in
+some regards, but not in orders.
 
-    class WebsiteExperimentResult {
-      +String domain_name
-      +String website_name
-    }
+This is best explained through a concrete example. Let's say a censor is
+blocking https://facebook.com/ with the following logic:
+* any DNS query for facebook.com get's as answer "127.0.0.1"
+* any TCP connect request to 157.240.231.35 gets a RST
+* any TLS handshake with SNI facebook.com gets a RST
 
-    class WhatsAppExperimentResult {
-        +float web_ok_confidence
-        +String web_blocking_detail
+In this scenario, assuming the probe has discovered other IPs for facebook.com
+through other means (ex. through the test helper or DoH as web_connectivity 0.5
+does), we would like to emit the following experiment results:
+* BLOCKED, `dns.bogon`, `facebook.com`
+* BLOCKED, `tcp.rst`, `157.240.231.35:80`
+* BLOCKED, `tcp.rst`, `157.240.231.35:443`
+* OK, `tcp.ok`, `157.240.231.100:80`
+* OK, `tcp.ok`, `157.240.231.100:443`
+* BLOCKED, `tls.rst`, `157.240.231.35:443`
+* BLOCKED, `tls.rst`, `157.240.231.100:443`
 
-        +float registration_ok_confidence
-        +String registration_blocking_detail
-
-        +float endpoints_ok_confidence
-        +String endpoints_blocking_detail
-    }
-
-    class BlockingEvent {
-        blocking_type: +BlockingType
-        blocking_subject: +String
-        blocking_detail: +String
-        blocking_meta: +json
-        confidence: +float
-    }
-
-    class BlockingType {
-        <<enumeration>>
-        OK
-        BLOCKED
-        NATIONAL_BLOCK
-        ISP_BLOCK
-        LOCAL_BLOCK
-        SERVER_SIDE_BLOCK
-        DOWN
-        THROTTLING
-    }
-```
-
-```mermaid
-graph
-    M{{Measurement}} --> OGEN[[observationGen]]
-    OGEN --> |many| O{{Observations}}
-    O --> CGEN[[controlGen]]
-    O --> ODB[(ObservationDB)]
-    ODB --> CGEN
-    CGEN --> |many| CTRL{{Controls}}
-    CTRL --> A[[Analysis]]
-    FDB[(FingerprintDB)] --> A
-    NDB[(NetInfoDB)] --> A
-    O --> A
-    A --> |one| ER{{ExperimentResult}}
-    ER --> |many| BE{{BlockingEvents}}
-```
-
-Some precautions need to be taken when running the `verdict_generator()` in
-batch compared to running it in streaming mode.
-The challenge is that you don't want to have to regenerate baselines that often
-because it's an expensive process.
-
-Let us first discuss the usage of the Verdict generation in the context of a
-batch workflow. When in batch mode, we will take all the Observations in the desired
-`time_interval` and `target`. In practice what we would do is process the data
-in daily batches and apply the `GROUP BY` clause to a particular target.
-It is possible to parallelise these task across multiple cores (and possibly
-even across multiple nodes).
-
-A baseline is some ground truth information about the target on that given day,
-we generate this once and then apply it to all the observations for that target
-from every testing session to establish the outcome of the verdict.
-
-It's reasonable to do this over a time window of a day, because that will mean
-that the baseline will be pertaining to at most 24h from the observation.
-
-The challenge is when you want to do something similar for data as it comes in.
-The problem there is that if you use data from the last day, you will end up
-with a delta from the observation that can be up to 48h, which might be to much.
-OTOH if you use data from the current day, you may not have enough data.
-Moreover, it means that the result of the `verdict_generator` in batch mode
-will differ from a run in streaming, which can lead to inconsistent results.
-
-I think we would like to have the property of having results be as close as
-possible to the batch run, while in streaming mode, and have some way of getting
-eventual consistency.
-
-The proposed solution is to generate baselines for all the targets (which is a
-small set and can even be kept in memory) on a rolling 1h basis. This way
-verdicts can be calculated based on a baseline that will be from a delta of at
-most 24h.
-
-Once the day is finished, we can re-run the verdict generation using the batch
-workflow and mark for deletion all the verdicts generated in streaming mode, leading
-to an eventual consistency.
-
-The possible outcomes for the verdict are:
-
-* dns.blockpage
-* dns.bogon
-* dns.nxdomain
-* dns.{failure}
-* dns.inconsistent
-* tls.mitm
-* tls.{failure}
-* http.{failure}
-* https.{failure}
-* http.blockpage
-* http.bodydiff
-* tcp.{failure}
-
+This way we are fully characterising the block in all the methods through which
+it is implemented.
 
 ### Current pipeline
 
