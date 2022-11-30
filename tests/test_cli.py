@@ -115,7 +115,6 @@ def test_full_worfklow(cli_runner, datadir, tmp_path: Path):
             tmp_path.absolute(),
         ],
     )
-    print(result)
     assert result.exit_code == 0
     result = cli_runner.invoke(
         cli,
