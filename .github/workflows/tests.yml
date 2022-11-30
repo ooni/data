@@ -12,9 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
-        # TODO: re-enable once I fix the clickhouse setup on macOS
-        # os: [Ubuntu, MacOS]
-        os: Ubuntu
+        os: [Ubuntu]
         python-version: [3.7, 3.8, 3.9, "3.10"]
     defaults:
       run:
