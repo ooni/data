@@ -137,7 +137,6 @@ def sync(
     default=multiprocessing.cpu_count() + 2,
     help="number of processes to use. Only works when writing to a database",
 )
-@click.option("--start-at-idx", type=int, default=0)
 @click.option(
     "--fast-fail",
     is_flag=True,
@@ -163,7 +162,6 @@ def mkobs(
     data_dir: Path,
     archives_dir: Optional[Path],
     parallelism: int,
-    start_at_idx: int,
     fast_fail: bool,
     create_tables: bool,
     drop_tables: bool,
@@ -208,7 +206,6 @@ def mkobs(
         data_dir=data_dir,
         archives_dir=archives_dir,
         parallelism=parallelism,
-        start_at_idx=start_at_idx,
         fast_fail=fast_fail,
     )
 

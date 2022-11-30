@@ -322,13 +322,11 @@ def process_day(
     day: date,
     test_name=[],
     probe_cc=[],
-    start_at_idx=0,
     fast_fail=False,
     progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
 ) -> Generator[
     Tuple[int, str, Optional[List[Tuple[str, bytes]]], Optional[bytes]], None, None
 ]:
-    t0 = time.monotonic()
     bucket_date = day.strftime("%Y-%m-%d")
 
     statsd_client = statsd.StatsClient("localhost", 8125)
@@ -342,12 +340,6 @@ def process_day(
             progress_callback=progress_callback,
         )
     ):
-        # TODO: in multithreading environment this doesn't really make a lot of
-        # sense. It's still useful for debugging to slice a specific date and
-        # reprocess it.
-        if idx <= start_at_idx:
-            continue
-
         msmt = None
         try:
             t = PerfTimer()
@@ -406,7 +398,6 @@ class ObservationMakerWorker(mp.Process):
         test_name: List[str],
         clickhouse: Optional[str],
         csv_dir: Optional[pathlib.Path],
-        start_at_idx: int,
         fast_fail: bool,
         process_id: int,
         log_level: int = logging.INFO,
@@ -426,7 +417,6 @@ class ObservationMakerWorker(mp.Process):
         self.test_name = test_name
         self.clickhouse = clickhouse
         self.csv_dir = csv_dir
-        self.start_at_idx = start_at_idx
         self.fast_fail = fast_fail
         self.process_id = process_id
 
@@ -501,7 +491,6 @@ class ObservationMakerWorker(mp.Process):
                     day=day,
                     test_name=self.test_name,
                     probe_cc=self.probe_cc,
-                    start_at_idx=self.start_at_idx,
                     fast_fail=self.fast_fail,
                     progress_callback=progress_callback,
                 ):
@@ -671,7 +660,6 @@ def start_observation_maker(
     data_dir: pathlib.Path,
     archives_dir: Optional[pathlib.Path],
     parallelism: int,
-    start_at_idx: int,
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
@@ -715,7 +703,6 @@ def start_observation_maker(
             test_name=test_name,
             clickhouse=clickhouse,
             csv_dir=csv_dir,
-            start_at_idx=start_at_idx,
             fast_fail=fast_fail,
             log_level=log_level,
             process_id=idx,
