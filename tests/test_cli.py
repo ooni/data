@@ -89,20 +89,14 @@ def test_full_worfklow(cli_runner, datadir, tmp_path: Path):
         cli,
         [
             "mkgt",
-            "--probe-cc",
-            "BA",
             "--start-day",
             "2022-10-20",
             "--end-day",
             "2022-10-21",
-            "--test-name",
-            "web_connectivity",
             "--data-dir",
             datadir,
             "--clickhouse",
             "clickhouse://localhost/",
-            "--archives-dir",
-            tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
@@ -110,15 +104,15 @@ def test_full_worfklow(cli_runner, datadir, tmp_path: Path):
     result = cli_runner.invoke(
         cli,
         [
-            "mkgt",
-            "--probe-cc",
-            "BA",
+            "fphunt",
             "--start-day",
             "2022-10-20",
             "--end-day",
             "2022-10-21",
             "--data-dir",
             datadir,
+            "--archives-dir",
+            tmp_path.absolute(),
         ],
     )
     result = cli_runner.invoke(

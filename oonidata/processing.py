@@ -768,7 +768,7 @@ def run_experiment_results(
     db_writer: ClickhouseConnection,
     clickhouse: str,
 ):
-    statsd_client = statsd.TCPStatsClient("localhost", 8125, timeout=0.5)
+    statsd_client = statsd.StatsClient("localhost", 8125)
 
     column_names = [f for f in ExperimentResult._fields]
     db_lookup = ClickhouseConnection(clickhouse)
