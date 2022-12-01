@@ -54,12 +54,19 @@ def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
     assert len(list(tmp_path.glob("*.warc.gz"))) == 1
 
 
-def test_full_worfklow(cli_runner, datadir, tmp_path: Path):
+def test_full_worfklow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path):
     db = ClickhouseConnection(conn_url="clickhouse://localhost")
     try:
         db.execute("SELECT 1")
     except:
         pytest.skip("no database connection")
+
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+    except ImportError:
+        pass
+    else:
+        cleanup_on_sigterm()
 
     result = cli_runner.invoke(
         cli,
