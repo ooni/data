@@ -37,7 +37,6 @@ from warcio.statusandheaders import StatusAndHeaders
 from oonidata.datautils import PerfTimer
 from oonidata.experiments.control import (
     BodyDB,
-    ReducedWebGroundTruthDB,
     WebGroundTruthDB,
     iter_web_ground_truths,
 )
@@ -868,7 +867,7 @@ class ExperimentResultMakerWorker(mp.Process):
                     clickhouse=self.clickhouse,
                 ):
                     self.progress_queue.put(1)
-            except Exception as exc:
+            except Exception:
                 log.error(f"failed to process {day}", exc_info=True)
 
             log.info(f"finished processing day {day}")
