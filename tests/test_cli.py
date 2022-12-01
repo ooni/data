@@ -61,13 +61,6 @@ def test_full_worfklow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: 
     except:
         pytest.skip("no database connection")
 
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
-    else:
-        cleanup_on_sigterm()
-
     result = cli_runner.invoke(
         cli,
         [
