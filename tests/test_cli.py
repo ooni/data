@@ -62,10 +62,6 @@ def test_full_worfklow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: 
     except:
         pytest.skip("no database connection")
 
-    # pytest-cov seems to not be able to accurately measure coverage when
-    # calling fork()
-    mp.set_start_method("spawn")
-
     result = cli_runner.invoke(
         cli,
         [
