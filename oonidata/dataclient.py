@@ -425,6 +425,7 @@ def list_file_entries(prefix: Prefix) -> List[FileEntry]:
 
 class ProgressStatus(Enum):
     LISTING = "listing"
+    LISTING_BEGIN = "listing_begin"
     DOWNLOAD_BEGIN = "download_begin"
     DOWNLOADING = "downloading"
 
@@ -443,12 +444,15 @@ class MeasurementListProgress(NamedTuple):
 
 
 def make_listing_progress(
-    current_prefix_idx: int, total_prefixes: int, total_file_entries: int
+    current_prefix_idx: int,
+    total_prefixes: int,
+    total_file_entries: int,
+    progress_status: ProgressStatus = ProgressStatus.LISTING,
 ):
     return MeasurementListProgress(
         current_prefix_idx=current_prefix_idx,
         total_prefixes=total_prefixes,
-        progress_status=ProgressStatus.LISTING,
+        progress_status=progress_status,
         current_file_entry_idx=0,
         total_file_entries=total_file_entries,
         current_file_entry_bytes=0,
@@ -523,6 +527,7 @@ def get_file_entries(
                 current_prefix_idx=0,
                 total_prefixes=total_prefixes,
                 total_file_entries=0,
+                progress_status=ProgressStatus.LISTING_BEGIN,
             )
         )
     with multiprocessing.pool.ThreadPool() as pool:

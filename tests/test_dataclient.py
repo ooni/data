@@ -1,5 +1,4 @@
 from datetime import date, datetime
-from re import I
 
 from oonidata.dataclient import (
     date_interval,
@@ -74,7 +73,10 @@ def test_get_file_entries_for_cc():
 
     def progress_callback(p):
         assert p.total_prefixes == 10
-        assert p.progress_status == ProgressStatus.LISTING
+        assert (
+            p.progress_status == ProgressStatus.LISTING_BEGIN
+            or p.progress_status == ProgressStatus.LISTING
+        )
 
     fe_list = get_file_entries(
         probe_cc="IT",
@@ -160,3 +162,15 @@ def test_iter_measurements(caplog):
     # We ought to probably come up with a workaround in the meantime
     # assert msmt_count_jsonl == msmt_count_cans
     # assert report_id_jsonl == report_id_cans
+
+    count = 0
+    for _ in iter_measurements(
+        start_day=date(2022, 10, 20),
+        end_day=date(2022, 10, 21),
+        probe_cc=["BA"],
+        test_name=["web_connectivity"],
+        from_cans=True,
+        progress_callback=lambda x: print(x),
+    ):
+        count += 1
+    assert count == 200

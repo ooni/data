@@ -1,5 +1,6 @@
 from datetime import datetime, date, timedelta
 import logging
+import time
 from typing import Iterable, List, Any, Tuple, Union, Dict
 from dataclasses import dataclass
 from functools import partial, singledispatch
@@ -26,6 +27,35 @@ from oonidata.dataformat import (
 
 
 log = logging.getLogger("oonidata.datautils")
+
+class PerfTimer:
+    def __init__(self):
+        self.t0 = time.perf_counter_ns()
+        self._runtime = None
+
+    @property
+    def runtime(self):
+        if not self._runtime:
+            self._runtime = (time.perf_counter_ns() - self.t0)
+        return self._runtime
+
+    @property
+    def ms(self):
+        return self.runtime / 10**6
+
+    @property
+    def pretty(self):
+        runtime = self.runtime
+        if runtime < 10**3:
+            return f"{runtime}ns"
+
+        if runtime < 10**6:
+            return f"{round(runtime/10**3, 2)}μs"
+
+        if runtime < 10**9:
+            return f"{round(runtime/10**6, 2)}ms"
+
+        return f"{round(runtime/10**9, 2)}s"
 
 META_TITLE_REGEXP = re.compile(
     b'<meta.*?property="og:title".*?content="(.*?)"', re.IGNORECASE | re.DOTALL
@@ -120,6 +150,8 @@ bogon_ipv6_ranges = [
     ipaddress.ip_network("::ffff:0:0/96"),
     # IPv4-compatible addresses
     ipaddress.ip_network("::/96"),
+    # Local-Use IPv4/IPv6 Translation Prefix RFC 8215
+    ipaddress.ip_network("64:ff9b:1::/48"),
     # Remotely triggered black hole addresses
     ipaddress.ip_network("100::/64"),
     # Overlay routable cryptographic hash identifiers (ORCHID)
@@ -193,30 +225,18 @@ bogon_ipv6_ranges = [
 ]
 
 
-def is_ipv4_bogon(ip: str) -> bool:
-    try:
-        ipv4addr = ipaddress.IPv4Address(ip)
-    except ipaddress.AddressValueError:
-        return False
-    if any([ipv4addr in ip_range for ip_range in bogon_ipv4_ranges]):
-        return True
-    return False
-
-
-def is_ipv6_bogon(ip: str) -> bool:
-    try:
-        ipv6addr = ipaddress.IPv6Address(ip)
-    except ipaddress.AddressValueError:
-        return False
-    if any([ipv6addr in ip_range for ip_range in bogon_ipv6_ranges]):
-        return True
-    return False
-
-
 def is_ip_bogon(ip: str) -> bool:
-    ipaddr = ipaddress.ip_address(ip)
-    if any([ipaddr in ip_range for ip_range in bogon_ipv4_ranges + bogon_ipv6_ranges]):
-        return True
+    try:
+        ipaddr = ipaddress.ip_address(ip)
+        if any(
+            [ipaddr in ip_range for ip_range in bogon_ipv4_ranges + bogon_ipv6_ranges]
+        ):
+            return True
+    except ValueError:
+        # This that aren't IP addresses are not bogons either
+        # TODO: probably remove this once we figure out why this is happening in
+        # some of the data
+        return False
     return False
 
 
@@ -408,3 +428,8 @@ def one_day_dict(day: date) -> Dict[str, Any]:
     start_day = datetime(year=day.year, month=day.month, day=day.day)
     end_day = start_day + timedelta(days=1)
     return {"start_day": start_day, "end_day": end_day}
+
+
+def removeprefix(s: str, prefix: str):
+    return s[len(prefix) :]
+ 

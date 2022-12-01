@@ -37,11 +37,6 @@ SAMPLE_MEASUREMENTS = [
         "https://aysor.am",
     ),
     (
-        "20220608121828.356206_RU_webconnectivity_80e3fa60eb2cd026",
-        "20220608T120927Z_webconnectivity_RU_41668_n1_wuoaKW00hbGU12Yw",
-        "http://proxy.org/",
-    ),
-    (
         "20220608122138.241075_IR_webconnectivity_c4240e52c7ca025f",
         "20220608T122003Z_webconnectivity_IR_58224_n1_AcrDNmCaHeCbDoNj",
         "https://www.youtube.com/",
@@ -106,23 +101,28 @@ SAMPLE_MEASUREMENTS = [
         "20221012T235950Z_dnscheck_US_10396_n1_EhBJEeRzCdMRTLDH",
         "dot://dns.quad9.net/",
     ),
+    (
+        "20221114002335.786418_BR_webconnectivity_6b203219ec4ded0e",
+        "20221114T002124Z_webconnectivity_BR_27699_n1_knqvcofoEIxHMpzj",
+        "https://cdt.org/",
+    ),
 ]
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def datadir():
     return DATA_DIR
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def fingerprintdb(datadir):
     return FingerprintDB(
-        datadir=DATA_DIR,
+        datadir=datadir,
         download=True,
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def netinfodb():
     return NetinfoDB(
         datadir=DATA_DIR,
@@ -130,7 +130,7 @@ def netinfodb():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def raw_measurements():
     output_dir = FIXTURE_PATH / "raw_measurements"
     if (output_dir / "signal" / "2022-10-01").exists():
@@ -145,7 +145,7 @@ def raw_measurements():
     return output_dir
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def measurements():
     measurement_dir = FIXTURE_PATH / "measurements"
     measurement_dir.mkdir(parents=True, exist_ok=True)

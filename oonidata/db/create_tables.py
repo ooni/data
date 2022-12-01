@@ -1,19 +1,15 @@
 from datetime import datetime
+from enum import Enum
 
 from typing import Optional, Tuple, List, Any, Type, Mapping, Dict
 from dataclasses import fields
 from oonidata.observations import (
-    NettestObservation,
-    Observation,
-    DNSObservation,
-    TCPObservation,
-    TLSObservation,
-    HTTPObservation,
+    ObservationBase,
+    WebControlObservation,
+    WebObservation,
 )
 from oonidata.experiments.experiment_result import (
-    BlockingType,
     ExperimentResult,
-    BlockingEvent,
 )
 
 
@@ -37,16 +33,16 @@ def typing_to_clickhouse(t: Any) -> str:
         return "Nullable(Int8)"
 
     if t == datetime:
-        return "Datetime64(6)"
+        return "Datetime"
 
     if t == Optional[datetime]:
-        return "Nullable(Datetime64(6))"
+        return "Nullable(Datetime)"
 
     if t == float:
         return "Float64"
 
     if t == dict:
-        return "JSON"
+        return "String"
 
     if t == Optional[float]:
         return "Nullable(Float64)"
@@ -60,42 +56,28 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Optional[List[Tuple[str, bytes]]]:
         return "Nullable(Array(Array(String)))"
 
-    if t == BlockingType:
-        return "String"
-
-    if t == List[BlockingEvent]:
-        columns = []
-        for name, type in BlockingEvent.__annotations__.items():
-            type_str = typing_to_clickhouse(type)
-            columns.append(f"         {name} {type_str}")
-        columns_str = ",\n".join(columns)
-
-        s = "Nested (\n"
-        s += columns_str
-        s += "\n     )"
-        return s
-
     if t in (Mapping[str, str], Dict[str, str]):
         return "Map(String, String)"
 
     raise Exception(f"Unhandled type {t}")
 
 
-def create_query_for_observation(obs_class: Type[Observation]) -> Tuple[str, str]:
+def create_query_for_observation(obs_class: Type[ObservationBase]) -> Tuple[str, str]:
     columns = []
     for f in fields(obs_class):
         type_str = typing_to_clickhouse(f.type)
         columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
+    index_str = ",\n".join(obs_class.__table_index__)
 
     return (
         f"""
-    CREATE TABLE {obs_class.__table_name__} (
+    CREATE TABLE IF NOT EXISTS {obs_class.__table_name__} (
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
-    ORDER BY (timestamp, observation_id, measurement_uid)
+    ORDER BY ({index_str})
     SETTINGS index_granularity = 8192;
     """,
         obs_class.__table_name__,
@@ -104,47 +86,35 @@ def create_query_for_observation(obs_class: Type[Observation]) -> Tuple[str, str
 
 def create_query_for_experiment_result() -> Tuple[str, str]:
     columns = []
-    for f in fields(ExperimentResult):
-        type_str = typing_to_clickhouse(f.type)
-        columns.append(f"     {f.name} {type_str}")
+    for f in ExperimentResult._fields:
+        t = ExperimentResult.__annotations__.get(f)
+        type_str = typing_to_clickhouse(t)
+        columns.append(f"     {f} {type_str}")
 
     columns_str = ",\n".join(columns)
+    table_name = ExperimentResult.__table_name__
 
     return (
         f"""
-    CREATE TABLE experiment_result (
+    CREATE TABLE IF NOT EXISTS {table_name} (
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
-    ORDER BY (timestamp, observation_id, measurement_uid)
+    ORDER BY (measurement_uid, experiment_result_id)
     SETTINGS index_granularity = 8192;
     """,
         "experiment_result",
     )
 
 
+create_queries = [
+    create_query_for_observation(WebObservation),
+    create_query_for_observation(WebControlObservation),
+    create_query_for_experiment_result(),
+]
+
+
 def main():
-    create_queries = [
-        create_query_for_observation(DNSObservation),
-        create_query_for_observation(TCPObservation),
-        create_query_for_observation(TLSObservation),
-        create_query_for_observation(HTTPObservation),
-        create_query_for_observation(NettestObservation),
-        create_query_for_experiment_result(),
-        (
-            """
-        CREATE TABLE dns_consistency_tls_baseline (
-            ip String,
-            domain_name String,
-            timestamp Datetime
-        )
-        ENGINE = ReplacingMergeTree
-        ORDER BY (ip, domain_name, timestamp)
-        SETTINGS index_granularity = 8192;
-        """,
-            "dns_consistency_tls_baseline",
-        ),
-    ]
     for query, table_name in create_queries:
         print(f"clickhouse-client -q 'DROP TABLE {table_name}';")
         print("cat <<EOF | clickhouse-client -nm")

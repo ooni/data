@@ -1,283 +1,437 @@
-from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta, datetime
 import logging
+import sqlite3
+from collections.abc import Iterable
 
-from typing import Any, Dict, Optional, Tuple, List
-from urllib.parse import urlparse
-from oonidata.dataformat import WebConnectivity, WebConnectivityControl
-from oonidata.datautils import one_day_dict
+from typing import Any, Generator, Optional, Tuple, List, NamedTuple
+from oonidata.netinfo import NetinfoDB
+from oonidata.observations import WebControlObservation, WebObservation
 
 from oonidata.db.connections import ClickhouseConnection
 
 log = logging.getLogger("oonidata.processing")
 
 
-@dataclass
-class TCPControl:
-    address: str
-    reachable_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
-    unreachable_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
+class WebGroundTruth(NamedTuple):
+    vp_asn: int
+    vp_cc: str
+    is_trusted_vp: bool
+
+    hostname: str
+    ip: Optional[str]
+    port: Optional[int]
+
+    dns_failure: Optional[str]
+    dns_success: Optional[bool]
+
+    tcp_failure: Optional[str]
+    tcp_success: Optional[bool]
+
+    tls_failure: Optional[str]
+    tls_success: Optional[bool]
+    tls_is_certificate_valid: Optional[bool]
+
+    http_request_url: Optional[str]
+    http_failure: Optional[str]
+    http_success: Optional[bool]
+    http_response_body_length: Optional[int]
+
+    timestamp: datetime
+    count: int
+
+    ip_asn: Optional[int]
+    ip_as_org_name: Optional[str]
 
 
-def make_tcp_control_map(
-    day: date, domain_name: str, db: ClickhouseConnection
-) -> Dict[str, TCPControl]:
-    tcp_control_map = {}
-    q_params = one_day_dict(day)
-    q_params["domain_name"] = domain_name
+def iter_ground_truths_from_web_control(
+    web_control_observations: List[WebControlObservation],
+    netinfodb: NetinfoDB,
+    count: int = 1,
+) -> Generator[Tuple[Tuple[str, ...], List], None, None]:
+    # TODO: pass a netinfodb to lookup the ip_asn and ip_as_org_name
+    for obs in web_control_observations:
+        ip_as_org_name = ""
+        ip_asn = 0
+        if obs.ip:
+            ip_info = netinfodb.lookup_ip(obs.measurement_start_time, obs.ip)
+            ip_asn = ip_info.as_info.asn
+            ip_as_org_name = ip_info.as_info.as_org_name
 
-    q = """SELECT probe_cc, probe_asn, ip, port, failure FROM obs_tcp
-    WHERE domain_name = %(domain_name)s 
-    AND timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s
-    GROUP BY probe_cc, probe_asn, ip, port, failure;
-    """
-    res = db.execute(q, q_params)
-    if isinstance(res, list) and len(res) > 0:
-        for probe_cc, probe_asn, ip, port, failure in res:
-            address = f"{ip}:{port}"
-            tcp_control_map[address] = tcp_control_map.get(address, TCPControl(address))
-            if not failure:
-                tcp_control_map[address].reachable_cc_asn.append((probe_cc, probe_asn))
-            else:
-                tcp_control_map[address].unreachable_cc_asn.append(
-                    (probe_cc, probe_asn)
-                )
-    return tcp_control_map
-
-
-@dataclass
-class HTTPControl:
-    url: str
-    failure_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
-    ok_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
-
-    response_body_length: int = 0
-    response_body_sha1: str = ""
-    response_body_title: str = ""
-    response_body_meta_title: str = ""
-
-    response_status_code: int = 0
-
-
-def maybe_get_first(l: list, default_value: Any = None) -> Optional[Any]:
-    try:
-        return l[0]
-    except IndexError:
-        return default_value
+        wgt = WebGroundTruth(
+            vp_asn=0,
+            vp_cc="ZZ",
+            timestamp=obs.measurement_start_time,
+            is_trusted_vp=True,
+            hostname=obs.hostname,
+            ip=obs.ip,
+            ip_asn=ip_asn,
+            ip_as_org_name=ip_as_org_name,
+            port=obs.port,
+            dns_failure=obs.dns_failure,
+            dns_success=obs.dns_success,
+            tcp_failure=obs.tcp_failure,
+            tcp_success=obs.tcp_success,
+            tls_failure=obs.tls_failure,
+            tls_success=obs.tls_success,
+            tls_is_certificate_valid=obs.tls_failure is None
+            and obs.tls_success is True,
+            http_request_url=obs.http_request_url,
+            http_failure=obs.http_failure,
+            http_success=obs.http_success,
+            http_response_body_length=obs.http_response_body_length,
+            count=count,
+        )
+        yield WebGroundTruth._fields, list(wgt)
 
 
-def make_http_control_map(
-    day: date, domain_name: str, db: ClickhouseConnection
-) -> Dict[str, HTTPControl]:
-    http_control_map = {}
-
-    q_params = one_day_dict(day)
-    q_params["domain_name"] = domain_name
-
-    q = """SELECT probe_cc, probe_asn, request_url, failure FROM obs_http
-    WHERE domain_name = %(domain_name)s 
-    AND timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s
-    GROUP BY probe_cc, probe_asn, request_url, failure;
-    """
-    res = db.execute(q, q_params)
-    if isinstance(res, list) and len(res) > 0:
-        for probe_cc, probe_asn, request_url, failure in res:
-            http_control_map[request_url] = http_control_map.get(
-                request_url, HTTPControl(request_url)
-            )
-            if not failure:
-                http_control_map[request_url].ok_cc_asn.append((probe_cc, probe_asn))
-            else:
-                http_control_map[request_url].failure_cc_asn.append(
-                    (probe_cc, probe_asn)
-                )
-
-    q = """SELECT request_url,
-    topK(1)(response_body_sha1),
-    topK(1)(response_body_length),
-    topK(1)(response_body_title),
-    topK(1)(response_body_meta_title),
-    topK(1)(response_status_code)
-    FROM obs_http
-    WHERE failure IS NULL
-    AND domain_name = %(domain_name)s 
-    AND timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s
-    GROUP BY request_url;
-    """
-    res = db.execute(q, q_params)
-    if isinstance(res, list) and len(res) > 0:
-        for (
-            request_url,
-            response_body_sha1,
-            response_body_length,
-            response_body_title,
-            response_body_meta_title,
-            response_status_code,
-        ) in res:
-            http_control_map[request_url] = http_control_map.get(
-                request_url, HTTPControl(request_url)
-            )
-            http_control_map[request_url].response_body_sha1 = maybe_get_first(
-                response_body_sha1, ""
-            )
-            http_control_map[request_url].response_body_length = maybe_get_first(
-                response_body_length, ""
-            )
-            http_control_map[request_url].response_body_title = maybe_get_first(
-                response_body_title, ""
-            )
-            http_control_map[request_url].response_body_meta_title = maybe_get_first(
-                response_body_meta_title, ""
-            )
-            http_control_map[request_url].response_status_code = maybe_get_first(
-                response_status_code, ""
-            )
-
-    return http_control_map
-
-
-@dataclass
-class DNSControl:
-    domain: str
-    nxdomain_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
-    failure_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
-    ok_cc_asn: List[Tuple[str, int]] = field(default_factory=list)
-    tls_consistent_answers: List[str] = field(default_factory=list)
-    answers_map: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
-
-
-def make_dns_control(
-    day: date, domain_name: str, db: ClickhouseConnection
-) -> DNSControl:
-    dns_baseline = DNSControl(domain_name)
-
-    q_params = one_day_dict(day)
-    q_params["domain_name"] = domain_name
-
-    q = """SELECT DISTINCT(ip) FROM obs_tls
-    WHERE is_certificate_valid = 1 
-    AND domain_name = %(domain_name)s 
-    AND timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s;
-    """
-    res = db.execute(q, q_params)
-    if isinstance(res, list) and len(res) > 0:
-        dns_baseline.tls_consistent_answers = [row[0] for row in res]
-
-    q = """SELECT probe_cc, probe_asn, failure, answer FROM obs_dns
-    WHERE domain_name = %(domain_name)s 
-    AND timestamp >= %(start_day)s
-    AND timestamp <= %(end_day)s
-    GROUP BY probe_cc, probe_asn, failure, answer;
-    """
-    res = db.execute(q, q_params)
-    if isinstance(res, list) and len(res) > 0:
-        for probe_cc, probe_asn, failure, ip in res:
-            if not failure:
-                dns_baseline.ok_cc_asn.append((probe_cc, probe_asn))
-                dns_baseline.answers_map[probe_cc] = dns_baseline.answers_map.get(
-                    probe_cc, []
-                )
-                if ip:
-                    dns_baseline.answers_map[probe_cc].append((probe_asn, ip))
-                else:
-                    log.error(
-                        f"No IP present for {domain_name} {probe_cc} ({probe_asn}) in baseline"
-                    )
-            else:
-                dns_baseline.failure_cc_asn.append((probe_cc, probe_asn))
-                if failure == "dns_nxdomain_error":
-                    dns_baseline.nxdomain_cc_asn.append((probe_cc, probe_asn))
-
-    return dns_baseline
-
-
-def make_dns_control_from_wc(
-    msmt_input: str, control: WebConnectivityControl
-) -> DNSControl:
-    domain_name = urlparse(msmt_input).hostname
-
-    assert domain_name is not None, "domain_name is None"
-
-    if not control or not control.dns:
-        return DNSControl(domain=domain_name)
-
-    nxdomain_cc_asn = []
-    if control.dns.failure == "dns_nxdomain_error":
-        nxdomain_cc_asn.append(("ZZ", 0))
-
-    ok_cc_asn = []
-    failure_cc_asn = []
-    if control.dns.failure is not None:
-        failure_cc_asn.append(("ZZ", 0))
-    else:
-        ok_cc_asn.append(("ZZ", 0))
-
-    answers_map = {}
-    if control.dns.addrs:
-        answers_map["ZZ"] = [(0, ip) for ip in control.dns.addrs]
-
-    return DNSControl(
-        domain=domain_name,
-        answers_map=answers_map,
-        ok_cc_asn=ok_cc_asn,
-        nxdomain_cc_asn=nxdomain_cc_asn,
-        failure_cc_asn=failure_cc_asn,
+def iter_web_ground_truths(
+    db: ClickhouseConnection, netinfodb: NetinfoDB, measurement_day: date
+) -> Generator[Tuple[List[str], List], None, None]:
+    start_day = measurement_day.strftime("%Y-%m-%d")
+    end_day = (measurement_day + timedelta(days=1)).strftime("%Y-%m-%d")
+    column_names = [
+        "timestamp",
+        "hostname",
+        "ip",
+        "port",
+        "dns_failure",
+        "dns_success",
+        "tcp_failure",
+        "tcp_success",
+        "tls_failure",
+        "tls_success",
+        "tls_is_certificate_valid",
+        "http_request_url",
+        "http_failure",
+        "http_success",
+    ]
+    q = """
+    SELECT (
+        toStartOfDay(measurement_start_time) as timestamp,
+        hostname,
+        ip,
+        port,
+        dns_failure,
+        dns_success,
+        tcp_failure,
+        tcp_success,
+        tls_failure,
+        tls_success,
+        (tls_failure is NULL AND tls_success = 1) AS tls_is_certificate_valid,
+        http_request_url,
+        http_failure,
+        http_success,
+        arrayMax(topK(1)(http_response_body_length)) as http_response_body_length,
+        COUNT()
     )
+    FROM obs_web_ctrl
+    WHERE measurement_start_time > %(start_day)s AND measurement_start_time < %(end_day)s
+    """
+    q += "GROUP BY "
+    q += ",".join(column_names)
+
+    for res in db.execute_iter(q, dict(start_day=start_day, end_day=end_day)):
+        row = res[0]
+
+        c_names = column_names + [
+            "http_response_body_length",
+            "count",
+            "ip_asn",
+            "ip_as_org_name",
+            "vp_asn",
+            "vp_cc",
+            "is_trusted_vp",
+        ]
+        row_extra: List[Any] = [None, None]
+        # TODO move this directly into the obs_web_ctrl table
+        if row[2]:
+            ip_info = netinfodb.lookup_ip(row[0], row[2])
+            row_extra = [ip_info.as_info.asn, ip_info.as_info.as_org_name]
+
+        # vp_asn, vp_cc, is_trusted_vp
+        row_extra.append(0)
+        row_extra.append("ZZ")
+        row_extra.append(1)
+
+        yield c_names, row + tuple(row_extra)
 
 
-def make_tcp_control_from_wc(
-    control: WebConnectivityControl,
-) -> Dict[str, TCPControl]:
-    if not control or not control.tcp_connect:
-        return {}
+class WebGroundTruthDB:
+    """
+    The Web Ground Truth database is used by the websites experiment results
+    processor for looking up ground truths related to a particular set of
+    measurements.
 
-    tcp_b_map = {}
-    for key, status in control.tcp_connect.items():
-        if status.failure == None:
-            tcp_b_map[key] = TCPControl(address=key, reachable_cc_asn=[("ZZ", 0)])
-        else:
-            tcp_b_map[key] = TCPControl(address=key, unreachable_cc_asn=[("ZZ", 0)])
-    return tcp_b_map
+    Currently it's implemented through an in-memory SQLite databases which
+    contains all the ground_truths for a particular day.
+    """
 
+    _indexes = (
+        ("hostname_idx", "hostname, vp_asn, vp_cc"),
+        ("ip_port_idx", "ip, port, vp_asn, vp_cc"),
+        ("http_request_url_idx", "http_request_url, vp_asn, vp_cc"),
+    )
+    column_names = WebGroundTruth._fields
 
-def make_http_control_from_wc(
-    msmt: WebConnectivity, control: WebConnectivityControl
-) -> Dict[str, HTTPControl]:
-    if not control or not control.http_request:
-        return {}
+    def __init__(self, connect_str: str = ":memory:"):
+        self._table_name = "ground_truth"
+        self.db = sqlite3.connect(connect_str)
+        self.db.execute("pragma synchronous = normal;")
+        self.db.execute("pragma journal_mode = WAL;")
+        self.db.execute("pragma temp_store = memory;")
 
-    if not msmt.test_keys.requests:
-        return {}
+    def build_from_rows(self, rows: Iterable):
+        self.db.execute(self.create_query)
+        self.db.commit()
 
-    http_b_map = {}
-    # We make the baseline apply to every URL in the response chain, XXX evaluate how much this is a good idea
-    for http_transaction in msmt.test_keys.requests:
-        if not http_transaction.request:
-            continue
-
-        url = http_transaction.request.url
-        if control.http_request.failure == None:
-            http_b_map[url] = HTTPControl(
-                url=url,
-                response_body_title=control.http_request.title or "",
-                response_body_length=control.http_request.body_length or 0,
-                response_status_code=control.http_request.status_code or 0,
-                response_body_meta_title="",
-                response_body_sha1="",
-                ok_cc_asn=[("ZZ", 0)],
+        for column_names, row in rows:
+            v_str = ",".join(["?" for _ in range(len(column_names))])
+            q_insert_with_values = (
+                f"{self.insert_query(column_names=column_names)} VALUES ({v_str})"
             )
-        else:
-            http_b_map[url] = HTTPControl(
-                url=url,
-                response_body_title="",
-                response_body_length=0,
-                response_status_code=0,
-                response_body_meta_title="",
-                response_body_sha1="",
-                failure_cc_asn=[("ZZ", 0)],
+            self.db.execute(q_insert_with_values, row)
+        self.db.commit()
+        self.db.execute("pragma vacuum;")
+        self.db.execute("pragma optimize;")
+        self.create_indexes()
+
+    def build_from_existing(self, db_str: str):
+        with sqlite3.connect(db_str) as src_db:
+            self.db = sqlite3.connect(":memory:")
+            src_db.backup(self.db)
+
+    def close(self):
+        self.db.close()
+
+    def create_indexes(self):
+        for idx_name, idx_value in self._indexes:
+            self.db.execute(
+                f"CREATE INDEX {self._table_name}_{idx_name} ON {self._table_name}({idx_value})"
             )
-    return http_b_map
+        self.db.commit()
+
+    @property
+    def create_query(self):
+        return f"""
+        CREATE TABLE {self._table_name} (
+            vp_asn INT,
+            vp_cc TEXT,
+            is_trusted_vp INT,
+
+            timestamp TEXT,
+
+            hostname TEXT,
+            ip TEXT,
+            ip_asn INT,
+            ip_as_org_name TEXT,
+            port TEXT,
+
+            dns_failure TEXT,
+            dns_success INT,
+
+            tcp_failure TEXT,
+            tcp_success INT,
+
+            tls_failure TEXT,
+            tls_success INT,
+            tls_is_certificate_valid INT,
+
+            http_request_url TEXT,
+            http_failure TEXT,
+            http_success INT,
+            http_response_body_length INT,
+            count INT
+        )
+    """
+
+    def insert_query(self, column_names: List[str]):
+        c_str = ",".join(column_names)
+        q_str = f"INSERT INTO {self._table_name} ({c_str})\n"
+        return q_str
+
+    def select_query(
+        self,
+        table_name: str,
+        probe_cc: str,
+        probe_asn: int,
+        hostnames: Optional[List[str]] = None,
+        ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
+        http_request_urls: Optional[List[str]] = None,
+    ) -> Tuple[str, List]:
+        assert (
+            hostnames or ip_ports or http_request_urls
+        ), "one of either hostnames or ip_ports or http_request_urls should be set"
+        c_str = ",\n".join(
+            map(
+                lambda r: r if r != "count" else "SUM(count) as count",
+                self.column_names,
+            )
+        )
+        q = f"""
+        SELECT
+        {c_str}
+        FROM {table_name}
+        WHERE vp_asn != ? AND vp_cc != ? AND (
+        """
+        # We want to exclude all the ground truths that are from the same
+        # vantage point as the probe
+        q_args = [probe_cc, probe_asn]
+
+        sub_query_parts = []
+        if hostnames:
+            sub_q = "("
+            sub_q += "OR ".join(
+                # When hostname was supplied, we only care about it in relation to DNS resolutions
+                [" hostname = ? AND dns_success = 1 " for _ in range(len(hostnames))]
+            )
+            sub_q += ")"
+            q_args += hostnames
+            sub_query_parts.append(sub_q)
+
+        if ip_ports:
+            sub_q = "("
+            ip_port_l = []
+            for ip, port in ip_ports:
+                assert ip is not None, "empty IP in query"
+                ip_port_q = "(ip = ?"
+                q_args.append(ip)
+                if port is not None:
+                    ip_port_q += " AND port = ?"
+                    q_args.append(port)
+                ip_port_q += ")"
+                ip_port_l.append(ip_port_q)
+            sub_q += "OR ".join(ip_port_l)
+            sub_q += ")"
+            sub_query_parts.append(sub_q)
+
+        if http_request_urls:
+            sub_q = "("
+            sub_q += "OR ".join(
+                [" http_request_url = ?" for _ in range(len(http_request_urls))]
+            )
+            sub_q += ")"
+            q_args += http_request_urls
+            sub_query_parts.append(sub_q)
+
+        q += "OR ".join(sub_query_parts)
+        q += ")"
+        q += "GROUP BY "
+        aggregate_columns = list(self.column_names)
+        aggregate_columns.remove("count")
+        q += ", ".join(aggregate_columns)
+        return q, q_args
+
+    def iter_select(
+        self,
+        probe_cc: str,
+        probe_asn: int,
+        hostnames: Optional[List[str]] = None,
+        ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
+        http_request_urls: Optional[List[str]] = None,
+    ) -> Generator[Tuple[Tuple[str, ...], Any], None, None]:
+        q, q_args = self.select_query(
+            table_name=self._table_name,
+            probe_cc=probe_cc,
+            probe_asn=probe_asn,
+            hostnames=hostnames,
+            ip_ports=ip_ports,
+            http_request_urls=http_request_urls,
+        )
+        for row in self.db.execute(q, q_args):
+            yield self.column_names, row
+
+    def lookup(
+        self,
+        probe_cc: str,
+        probe_asn: int,
+        hostnames: Optional[List[str]] = None,
+        ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
+        http_request_urls: Optional[List[str]] = None,
+    ) -> List[WebGroundTruth]:
+        iter_rows = self.iter_select(
+            probe_cc=probe_cc,
+            probe_asn=probe_asn,
+            hostnames=hostnames,
+            ip_ports=ip_ports,
+            http_request_urls=http_request_urls,
+        )
+        matches = []
+        for column_names, row in iter_rows:
+            gt = WebGroundTruth(**dict(zip(column_names, row)))
+            matches.append(gt)
+        return matches
+
+    def lookup_by_web_obs(self, web_obs: List[WebObservation]) -> List[WebGroundTruth]:
+        """
+        Returns the list of WebGroundTruth that are relevant to a particular set
+        of related web observations.
+
+        Every web_obs in the list needs to be related to the same probe_cc,
+        probe_asn pair.
+        """
+        to_lookup_hostnames = set()
+        to_lookup_ip_ports = set()
+        to_lookup_http_request_urls = set()
+        probe_cc = web_obs[0].probe_cc
+        probe_asn = web_obs[0].probe_asn
+        for web_o in web_obs:
+            # All the observations in this group should be coming from the
+            # same probe
+            assert web_o.probe_cc == probe_cc
+            assert web_o.probe_asn == probe_asn
+            if web_o.hostname is not None:
+                to_lookup_hostnames.add(web_o.hostname)
+            if web_o.ip is not None:
+                to_lookup_ip_ports.add((web_o.ip, web_o.port))
+            if web_o.http_request_url is not None:
+                to_lookup_http_request_urls.add(web_o.http_request_url)
+
+        return self.lookup(
+            probe_cc=probe_cc,
+            probe_asn=probe_asn,
+            ip_ports=list(to_lookup_ip_ports),
+            http_request_urls=list(to_lookup_http_request_urls),
+            hostnames=list(to_lookup_hostnames),
+        )
+
+
+class ReducedWebGroundTruthDB(WebGroundTruthDB):
+    def __init__(self, db: sqlite3.Connection, idx: int):
+        self._table_name = f"ground_truth_reduced_{idx}"
+
+        self.db = db
+        self.db.execute(self.create_query)
+        self.db.commit()
+
+    def build(
+        self,
+        probe_cc: str,
+        probe_asn: int,
+        hostnames: Optional[List[str]] = None,
+        ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
+        http_request_urls: Optional[List[str]] = None,
+    ):
+        c_str = ",\n".join(self.column_names)
+        s_query, q_args = self.select_query(
+            table_name="ground_truth",
+            probe_cc=probe_cc,
+            probe_asn=probe_asn,
+            hostnames=hostnames,
+            ip_ports=ip_ports,
+            http_request_urls=http_request_urls,
+        )
+        q = f"INSERT INTO {self._table_name} ({c_str})\n{s_query}"
+        self.db.execute(q, q_args)
+        self.db.commit()
+        self.create_indexes()
+
+    def drop(self):
+        self.db.execute(f"DROP TABLE {self._table_name}")
+
+
+class BodyDB:
+    def __init__(self, db: ClickhouseConnection):
+        self.db = db
+
+    def lookup(self, body_sha1: str) -> List[str]:
+        return []

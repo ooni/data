@@ -11,6 +11,7 @@ from collections import OrderedDict, namedtuple
 from dataclasses import dataclass
 
 import xml.etree.ElementTree as ET
+import orjson
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -107,7 +108,7 @@ class NetinfoDB:
 
         try:
             with (self.ip2country_as_dir / "all_as_org_map.json").open() as in_file:
-                self.as_org_map = json.load(in_file)
+                self.as_org_map = orjson.loads(in_file.read())
         except FileNotFoundError:
             log.error("unable to find all_as_org_map.json. Try setting download = True")
             raise
@@ -202,9 +203,6 @@ class NetinfoDB:
             cc="ZZ",
         )
 
-        db_path = self.find_db_for_date(day.date())
-        assert db_path is not None
-
         try:
             if is_ip_bogon(ip):
                 return IPInfo(
@@ -219,6 +217,9 @@ class NetinfoDB:
         except ValueError:
             return unknown_ipinfo
 
+        db_path = self.find_db_for_date(day.date())
+        assert db_path is not None
+
         reader = self.get_reader(db_path)
         res = None
         try:
@@ -227,7 +228,7 @@ class NetinfoDB:
             pass
 
         if not res:
-            log.error(f"Failed to lookup {ip}")
+            log.debug(f"Failed to lookup {ip}")
             return unknown_ipinfo
 
         return IPInfo(
