@@ -662,13 +662,6 @@ def start_observation_maker(
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
-    else:
-        cleanup_on_sigterm()
-
     shutdown_event = mp.Event()
     worker_shutdown_event = mp.Event()
 
@@ -980,13 +973,6 @@ def start_ground_truth_builder(
     parallelism: int,
     log_level: int = logging.INFO,
 ):
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
-    else:
-        cleanup_on_sigterm()
-
     shutdown_event = mp.Event()
     worker_shutdown_event = mp.Event()
 
@@ -1045,13 +1031,6 @@ def start_experiment_result_maker(
     rebuild_ground_truths: bool,
     log_level: int = logging.INFO,
 ):
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-    except ImportError:
-        pass
-    else:
-        cleanup_on_sigterm()
-
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
 
     shutdown_event = mp.Event()
