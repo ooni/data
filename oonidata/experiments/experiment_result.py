@@ -2,10 +2,7 @@ import logging
 from typing import Any, Dict, Generator, List, Optional, NamedTuple, Mapping, Tuple
 from enum import Enum
 from datetime import datetime
-import dataclasses
-from dataclasses import dataclass, field
 
-from oonidata.compat import add_slots
 from oonidata.observations import (
     MeasurementMeta,
 )
@@ -28,18 +25,9 @@ class BlockingScope(Enum):
     UNKNOWN = "u"
 
 
-class BlockingStatus(Enum):
-    # k: everything is OK
-    OK = "k"
-    # b: blocking is happening with an unknown scope
-    BLOCKED = "b"
-    # d: the subject is down
-    DOWN = "d"
-
-
-def fp_scope_to_status_scope(
+def fp_to_scope(
     scope: Optional[str],
-) -> Tuple[BlockingStatus, BlockingScope]:
+) -> BlockingScope:
     # "nat" national level blockpage
     # "isp" ISP level blockpage
     # "prod" text pattern related to a middlebox product
@@ -47,30 +35,42 @@ def fp_scope_to_status_scope(
     # "vbw" vague blocking word
     # "fp" fingerprint for false positives
     if scope == "nat":
-        return BlockingStatus.BLOCKED, BlockingScope.NATIONAL_BLOCK
+        return BlockingScope.NATIONAL_BLOCK
     elif scope == "isp":
-        return BlockingStatus.BLOCKED, BlockingScope.ISP_BLOCK
+        return BlockingScope.ISP_BLOCK
     elif scope == "inst":
-        return BlockingStatus.DOWN, BlockingScope.LOCAL_BLOCK
+        return BlockingScope.LOCAL_BLOCK
     elif scope == "fp":
-        return BlockingStatus.DOWN, BlockingScope.SERVER_SIDE_BLOCK
+        return BlockingScope.SERVER_SIDE_BLOCK
 
-    return BlockingStatus.BLOCKED, BlockingScope.UNKNOWN
+    return BlockingScope.UNKNOWN
 
 
-class BlockingEvent(NamedTuple):
-    blocking_status: BlockingStatus
-    blocking_scope: BlockingScope
-    blocking_subject: str
-    blocking_detail: str
-    blocking_meta: Mapping[str, str]
-    confidence: float
+class Scores(NamedTuple):
+    ok: float
+    down: float
+    blocked: float
+
+
+class Outcome(NamedTuple):
+    observation_id: str
+    subject: str
+    scope: BlockingScope
+    category: str
+    detail: str
+    meta: Mapping[str, str]
+    label: str
+
+    ok_score: float
+    down_score: float
+    blocked_score: float
 
 
 class ExperimentResult(NamedTuple):
     __table_name__ = "experiment_result"
 
     measurement_uid: str
+    observation_id: str
     report_id: str
     input: Optional[str]
     timestamp: datetime
@@ -90,22 +90,48 @@ class ExperimentResult(NamedTuple):
     resolver_as_cc: Optional[str]
     resolver_cc: Optional[str]
 
-    observation_ids: List[str]
-
     anomaly: bool
     confirmed: bool
 
-    blocking_meta: Mapping[str, str]
-    blocking_status: str
-    blocking_scope: str
-    blocking_subject: str
-    blocking_detail: str
-    blocking_confidence: float
+    ## These fields will be shared by multiple experiment results in a given
+    ## measurement
+    # Indicates the experiment group for this particular result, ex. im,
+    # websites, circumvention
+    experiment_group: str
+    # The domain name for the specified target
+    domain_name: str
+    # A string indicating the name of the target, ex. Signal, Facebook website
+    target_name: str
+
+    ## These fields are unique to a particular experiment result
+    # A string indicating the subject of this experiment result, for example an
+    # IP:port combination.
+    subject: str
+    # In the event of blocking, indicates to what extent the blocking is
+    # happening: ISP, National, Local, Server Side, Throttling, Unknown
+    outcome_scope: str
+    # Specifies the category of the outcome, usually indicating the protocol for
+    # which we saw the block, ex. dns, tcp, tls, http, https
+    outcome_category: str
+    # Specifies, within the given class, what were the details of the outcome, ex. connection_reset, timeout, etc.
+    outcome_detail: str
+    # Additional metadata which can be used by an analyst to understand why the
+    # analysis engine came to a certain conclusion
+    outcome_meta: Mapping[str, str]
+
+    # An additional label useful for assessing the metrics of the analysis
+    # engine.
+    # For example it can be used to include the blocking fingerprint flag.
+    outcome_label: str
+
+    # These are scores which estimate the likelyhood of this particular subject
+    # being reachable, down or blocked.
+    # The sum of all the scores for a given outcome will be 1.0
+    ok_score: float
+    down_score: float
+    blocked_score: float
 
     experiment_result_id: str
-    experiment_group: str
-    domain_name: str
-    target_name: str
 
 
 def iter_experiment_results(
@@ -115,11 +141,10 @@ def iter_experiment_results(
     confirmed: bool,
     domain_name: str,
     target_name: str,
-    observation_ids: List[str],
-    be_list: List[BlockingEvent],
+    outcomes: List[Outcome],
 ) -> Generator[ExperimentResult, None, None]:
     created_at = datetime.utcnow()
-    for idx, be in enumerate(be_list):
+    for idx, outcome in enumerate(outcomes):
         yield ExperimentResult(
             measurement_uid=obs.measurement_uid,
             created_at=created_at,
@@ -142,11 +167,14 @@ def iter_experiment_results(
             confirmed=confirmed,
             domain_name=domain_name,
             target_name=target_name,
-            observation_ids=observation_ids,
-            blocking_meta=be.blocking_meta,
-            blocking_confidence=be.confidence,
-            blocking_status=be.blocking_status.value,
-            blocking_scope=be.blocking_scope.value,
-            blocking_subject=be.blocking_subject,
-            blocking_detail=be.blocking_detail,
+            observation_id=outcome.observation_id,
+            subject=outcome.subject,
+            outcome_scope=outcome.scope.value,
+            outcome_category=outcome.category,
+            outcome_detail=outcome.detail,
+            outcome_meta=outcome.meta,
+            outcome_label=outcome.label,
+            ok_score=outcome.ok_score,
+            down_score=outcome.down_score,
+            blocked_score=outcome.blocked_score,
         )
