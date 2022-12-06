@@ -447,15 +447,21 @@ def make_observation_in_day(
 
     statsd_client = statsd.StatsClient("localhost", 8125)
 
-    prev_range = None
+    prev_ranges = []
     if isinstance(db, ClickhouseConnection):
-        prev_range = get_prev_range(
-            db=db,
-            table_name="obs_web",
-            bucket_date=bucket_date,
-            test_name=test_name,
-            probe_cc=probe_cc,
-        )
+        for table_name in ["obs_web", "obs_web_ctrl"]:
+            prev_ranges.append(
+                (
+                    table_name,
+                    get_prev_range(
+                        db=db,
+                        table_name=table_name,
+                        bucket_date=bucket_date,
+                        test_name=test_name,
+                        probe_cc=probe_cc,
+                    ),
+                )
+            )
 
     for idx, msmt_dict in enumerate(
         iter_measurements(
@@ -508,8 +514,9 @@ def make_observation_in_day(
                 db.close()
                 raise exc
 
-    if prev_range and isinstance(db, ClickhouseConnection):
-        maybe_delete_prev_range(db=db, prev_range=prev_range, table_name="obs_web")
+    if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
+        for table_name, pr in prev_ranges:
+            maybe_delete_prev_range(db=db, prev_range=pr, table_name=table_name)
     db.close()
 
 
