@@ -183,7 +183,6 @@ def make_dns_outcome(
 
     if fp:
         outcome_scope = fp_to_scope(fp.scope)
-        print(f"SCOPE {outcome_scope}")
         if outcome_scope != BlockingScope.SERVER_SIDE_BLOCK:
             outcome_label = f"blocked"
         outcome_meta["fingerprint"] = fp.name
