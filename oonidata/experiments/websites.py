@@ -593,7 +593,7 @@ def make_http_outcome(
             scope=BlockingScope.UNKNOWN,
             label="",
             subject=blocking_subject,
-            category="tls",
+            category=outcome_category,
             detail=outcome_detail,
             meta=outcome_meta,
             ok_score=scores.ok,
