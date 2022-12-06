@@ -449,7 +449,7 @@ def make_observation_in_day(
 
     prev_ranges = []
     if isinstance(db, ClickhouseConnection):
-        for table_name in ["obs_web", "obs_web_ctrl"]:
+        for table_name in ["obs_web"]:
             prev_ranges.append(
                 (
                     table_name,

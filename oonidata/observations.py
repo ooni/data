@@ -876,7 +876,7 @@ def iter_web_observations(
 @dataclass
 class WebControlObservation(ObservationBase):
     __table_name__ = "obs_web_ctrl"
-    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
+    __table_index__ = ("measurement_uid", "measurement_start_time")
 
     hostname: str
     observation_id: str = ""
