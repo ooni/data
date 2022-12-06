@@ -14,7 +14,7 @@ from multiprocessing.synchronize import Event as EventClass
 
 from threading import Lock, Thread
 from base64 import b32decode
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from typing import (
     Callable,
@@ -314,7 +314,125 @@ def start_fingerprint_hunter(
     pool.join()
 
 
-def process_day(
+class PrevRange(NamedTuple):
+    bucket_date: Optional[str]
+    start_timestamp: Optional[datetime]
+    end_timestamp: Optional[datetime]
+    max_created_at: Optional[datetime]
+    min_created_at: Optional[datetime]
+    where: str
+
+
+def get_prev_range(
+    db: ClickhouseConnection,
+    table_name: str,
+    test_name: List[str],
+    probe_cc: List[str],
+    bucket_date: Optional[str] = None,
+    timestamp: Optional[datetime] = None,
+) -> PrevRange:
+    """
+    We lookup the range of previously generated rows so we can drop
+    them from the database once we have finished processing.
+
+    We can't rely just on deduplication happening at the clickhouse level,
+    because we might in the future add or remove certain rows, so it's
+    more robust to just drop them once we are done reprocessing.
+
+    Moreover, you don't have any guarantee on when the deduplication is
+    happening, which means that if you run queries while the reprocessing is
+    happening you don't know when exactly it's going to be safe to run
+    deduplcated queries on the DB.
+
+    For observation tables we use the bucket_date field. For experiment results
+    we use a range of timestamp in a day.
+    In both cases we delimit the range via the created_at column and any
+    additional filters that may have been applied to the reprocessing process.
+
+    TODO: while the reprocessing is running we should probably flag this
+    bucket as reprocessing in progress and guard against running queries for
+    it.
+    """
+    q = f"SELECT MAX(created_at), MIN(created_at) FROM {table_name} "
+    assert (
+        timestamp or bucket_date
+    ), "either timestamp or bucket_date should be provided"
+    start_timestamp = None
+    end_timestamp = None
+    where = None
+    where = "WHERE bucket_date = %(bucket_date)s"
+    q_args = {"bucket_date": bucket_date}
+    if timestamp:
+        start_timestamp = timestamp
+        end_timestamp = timestamp + timedelta(days=1)
+        q_args = {"start_timestamp": start_timestamp, "end_timestamp": end_timestamp}
+        where = (
+            "WHERE timestamp >= %(start_timestamp)s AND timestamp < %(end_timestamp)s"
+        )
+
+    if len(test_name) > 0:
+        test_name_list = []
+        for tn in test_name:
+            # sanitize the test_names. It should not be a security issue since
+            # it's not user provided, but better safe than sorry
+            assert tn.replace("_", "").isalnum(), f"not alphabetic testname {tn}"
+            test_name_list.append(f"'{tn}'")
+        where += " AND test_name IN ({})".format(",".join(test_name_list))
+    if len(probe_cc) > 0:
+        probe_cc_list = []
+        for cc in probe_cc:
+            assert cc.replace("_", "").isalnum(), f"not alphabetic probe_cc"
+            probe_cc_list.append(f"'{cc}'")
+        where += " AND probe_cc IN ({})".format(",".join(probe_cc_list))
+
+    prev_obs_range = db.execute(q + where, q_args)
+    assert isinstance(prev_obs_range, list) and len(prev_obs_range) == 1
+    max_created_at, min_created_at = prev_obs_range[0]
+
+    # We pad it by 1 second to take into account the time resolution downgrade
+    # happening when going from clickhouse to python data types
+    if max_created_at and min_created_at:
+        max_created_at += timedelta(seconds=1)
+        min_created_at -= timedelta(seconds=1)
+
+    return PrevRange(
+        max_created_at=max_created_at,
+        min_created_at=min_created_at,
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
+        where=where,
+        bucket_date=bucket_date,
+    )
+
+
+def maybe_delete_prev_range(
+    db: ClickhouseConnection, table_name: str, prev_range: PrevRange
+):
+    """
+    We perform a lightweight delete of all the rows which have been
+    regenerated, so we don't have any duplicates in the table
+    """
+    if not prev_range.max_created_at:
+        return
+
+    db.execute("SET allow_experimental_lightweight_delete = true;")
+    q_args = {
+        "max_created_at": prev_range.max_created_at,
+        "min_created_at": prev_range.min_created_at,
+    }
+    if prev_range.bucket_date:
+        q_args["bucket_date"] = prev_range.bucket_date
+    elif prev_range.start_timestamp:
+        q_args["start_timestamp"] = prev_range.start_timestamp
+        q_args["end_timestamp"] = prev_range.end_timestamp
+    else:
+        raise Exception("either bucket_date or timestamps should be set")
+
+    where = f"{prev_range.where} AND created_at <= %(max_created_at)s AND created_at >= %(min_created_at)s"
+    return db.execute(f"DELETE FROM {table_name} " + where, q_args)
+
+
+def make_observation_in_day(
     db: Union[ClickhouseConnection, CSVConnection],
     netinfodb: NetinfoDB,
     day: date,
@@ -328,6 +446,16 @@ def process_day(
     bucket_date = day.strftime("%Y-%m-%d")
 
     statsd_client = statsd.StatsClient("localhost", 8125)
+
+    prev_range = None
+    if isinstance(db, ClickhouseConnection):
+        prev_range = get_prev_range(
+            db=db,
+            table_name="obs_web",
+            bucket_date=bucket_date,
+            test_name=test_name,
+            probe_cc=probe_cc,
+        )
 
     for idx, msmt_dict in enumerate(
         iter_measurements(
@@ -380,6 +508,8 @@ def process_day(
                 db.close()
                 raise exc
 
+    if prev_range and isinstance(db, ClickhouseConnection):
+        maybe_delete_prev_range(db=db, prev_range=prev_range, table_name="obs_web")
     db.close()
 
 
@@ -483,7 +613,7 @@ class ObservationMakerWorker(mp.Process):
             except queue.Empty:
                 continue
             try:
-                for request_tup in process_day(
+                for request_tup in make_observation_in_day(
                     db=db,
                     netinfodb=netinfodb,
                     day=day,
@@ -758,6 +888,14 @@ def run_experiment_results(
     column_names = [f for f in ExperimentResult._fields]
     db_lookup = ClickhouseConnection(clickhouse)
 
+    prev_range = get_prev_range(
+        db=db_lookup,
+        table_name=ExperimentResult.__table_name__,
+        timestamp=datetime.combine(day, datetime.min.time()),
+        test_name=[],
+        probe_cc=probe_cc,
+    )
+
     log.info(f"loading ground truth DB for {day}")
     t = PerfTimer()
     ground_truth_db_path = (
@@ -815,6 +953,10 @@ def run_experiment_results(
         except:
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate er for {web_obs_ids}", exc_info=True)
+
+    maybe_delete_prev_range(
+        db=db_lookup, prev_range=prev_range, table_name=ExperimentResult.__table_name__
+    )
 
 
 class ExperimentResultMakerWorker(mp.Process):
