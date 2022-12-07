@@ -822,6 +822,7 @@ def start_observation_maker(
                 shutdown_event,
                 log_level,
             ),
+            daemon=True
         )
         archiver_thread.start()
 
@@ -1020,8 +1021,9 @@ class ExperimentResultMakerWorker(mp.Process):
             except Exception:
                 log.error(f"failed to process {day}", exc_info=True)
 
-            log.info(f"finished processing day {day}")
-            self.day_queue.task_done()
+            finally:
+                log.info(f"finished processing day {day}")
+                self.day_queue.task_done()
 
         log.info("process is done")
         try:
