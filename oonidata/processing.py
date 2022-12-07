@@ -668,6 +668,7 @@ class ObservationMakerWorker(mp.Process):
                     self.archiver_queue.put(self.archive_path, timeout=5)
                 except:
                     log.error("failed to put on the archiver_queue", exc_info=True)
+                log.info("closed and added to archiver_queue")
 
 
 def run_archiver_thread(
