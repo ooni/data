@@ -649,6 +649,7 @@ class ObservationMakerWorker(mp.Process):
         log.info("process is done")
         try:
             db.close()
+            log.info("database closed")
         except Exception as exc:
             log.error("failed to flush database", exc_info=True)
             self.status_queue.put(
@@ -659,9 +660,15 @@ class ObservationMakerWorker(mp.Process):
                 )
             )
         finally:
-            if self.archive_fh and self.archiver_queue:
+            if self.archive_fh:
+                log.info("closing archiver_fh")
                 self.archive_fh.close()
-                self.archiver_queue.put(self.archive_path)
+            if self.archiver_queue:
+                log.info("adding path to the archiver_queue")
+                try:
+                    self.archiver_queue.put(self.archive_path, timeout=5)
+                except:
+                    log.error("failed to put on the archiver_queue", exc_info=True)
 
 
 def run_archiver_thread(
