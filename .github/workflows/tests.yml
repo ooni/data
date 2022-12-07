@@ -66,6 +66,8 @@ jobs:
         run: poetry install
 
       - name: Run all tests
+        env:
+          PYTHONUNBUFFERED: "1"
         run: poetry run pytest -s --full-trace --setup-show --cov=./ --cov-report=xml --cov-report=term tests
 
       - name: Upload coverage to codecov
