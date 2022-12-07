@@ -46,8 +46,8 @@ def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
             datadir,
             "--csv-dir",
             tmp_path.absolute(),
-            "--archives-dir",
-            tmp_path.absolute(),
+            # "--archives-dir",
+            # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
@@ -79,8 +79,8 @@ def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: 
             datadir,
             "--clickhouse",
             "clickhouse://localhost/",
-            "--archives-dir",
-            tmp_path.absolute(),
+            # "--archives-dir",
+            # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
@@ -136,17 +136,18 @@ def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: 
     )
     assert result.exit_code == 0
 
-    result = cli_runner.invoke(
-        cli,
-        [
-            "fphunt",
-            "--data-dir",
-            datadir,
-            "--archives-dir",
-            tmp_path.absolute(),
-        ],
-    )
-    assert result.exit_code == 0
+    # result = cli_runner.invoke(
+    #    cli,
+    #    [
+    #        "fphunt",
+    #        "--data-dir",
+    #        datadir,
+    #        "--archives-dir",
+    #        tmp_path.absolute(),
+    #    ],
+    # )
+    # assert result.exit_code == 0
+
     result = cli_runner.invoke(
         cli,
         [
