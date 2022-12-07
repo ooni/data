@@ -686,7 +686,7 @@ def run_archiver_thread(
             archive_path = archiver_queue.get(block=True, timeout=0.1)
         except queue.Empty:
             continue
-
+        log.info(f"archiving {archive_path}")
         try:
             with gzip.open(archive_path, "rb") as in_file:
                 requests_unpacker = msgpack.Unpacker(in_file, raw=False)
