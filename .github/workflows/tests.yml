@@ -38,10 +38,10 @@ jobs:
       - name: Add poetry to PATH
         run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Set up venv cache
+      - name: Set up poetry cache
         uses: actions/cache@v3
         with:
-          path: .venv
+          path: "$HOME/.cache/pypoetry/virtualenvs"
           key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/poetry.lock') }}
 
       - name: Set up test data cache
@@ -71,7 +71,7 @@ jobs:
       - name: Run all tests
         env:
           PYTHONUNBUFFERED: "1"
-        run: poetry run pytest -s --full-trace -v --setup-show --cov=./ --cov-report=xml --cov-report=term tests
+        run: poetry run pytest -s --full-trace --log-level=INFO  --log-cli-level=INFO -v --setup-show --cov=./ --cov-report=xml --cov-report=term tests
 
       - name: Upload coverage to codecov
         uses: codecov/codecov-action@v3
