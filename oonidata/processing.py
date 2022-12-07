@@ -1162,8 +1162,11 @@ def start_ground_truth_builder(
         p.join()
         p.close()
 
-    shutdown_event.set()
+    log.info("waiting for progress queue to finish")
     progress_queue.join()
+    log.info("sending shutdown event progress thread")
+    shutdown_event.set()
+    log.info("waiting on progress queue")
     progress_thread.join()
 
 
@@ -1224,15 +1227,18 @@ def start_experiment_result_maker(
     log.info("waiting for the day queue to finish")
     day_queue.join()
 
-    log.info(f"sending shutdown signal to workers")
+    log.info("sending shutdown signal to workers")
     worker_shutdown_event.set()
 
-    log.info(f"waiting for workers to finish running")
+    log.info("waiting for workers to finish running")
     for idx, p in enumerate(workers):
         log.info(f"waiting worker {idx} to stop")
         p.join()
         p.close()
 
-    shutdown_event.set()
+    log.info("waiting for progress queue to finish")
     progress_queue.join()
+    log.info("sending shutdown event progress thread")
+    shutdown_event.set()
+    log.info("waiting on progress queue")
     progress_thread.join()
