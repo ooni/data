@@ -415,7 +415,8 @@ def maybe_delete_prev_range(
     if not prev_range.max_created_at:
         return
 
-    db.execute("SET allow_experimental_lightweight_delete = true;")
+    # Disabled due to: https://github.com/ClickHouse/ClickHouse/issues/40651
+    # db.execute("SET allow_experimental_lightweight_delete = true;")
     q_args = {
         "max_created_at": prev_range.max_created_at,
         "min_created_at": prev_range.min_created_at,
@@ -429,7 +430,7 @@ def maybe_delete_prev_range(
         raise Exception("either bucket_date or timestamps should be set")
 
     where = f"{prev_range.where} AND created_at <= %(max_created_at)s AND created_at >= %(min_created_at)s"
-    return db.execute(f"DELETE FROM {table_name} " + where, q_args)
+    return db.execute(f"ALTER TABLE {table_name} DELETE " + where, q_args)
 
 
 def make_observation_in_day(
