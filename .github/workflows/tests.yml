@@ -65,6 +65,9 @@ jobs:
       - name: Install dependencies
         run: poetry install
 
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+
       - name: Run all tests
         env:
           PYTHONUNBUFFERED: "1"
