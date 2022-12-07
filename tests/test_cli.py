@@ -52,7 +52,7 @@ def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
     )
     assert result.exit_code == 0
     assert len(list(tmp_path.glob("*.csv"))) == 2
-    assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
 
 
 def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path):
@@ -84,7 +84,7 @@ def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: 
         ],
     )
     assert result.exit_code == 0
-    assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
     res = db.execute(
         "SELECT COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
     )
