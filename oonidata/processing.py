@@ -642,8 +642,9 @@ class ObservationMakerWorker(mp.Process):
                         traceback=traceback.format_exc(),
                     )
                 )
-            log.info(f"finished processing day {day_str}")
-            self.day_queue.task_done()
+            finally:
+                log.info(f"finished processing day {day_str}")
+                self.day_queue.task_done()
 
         log.info("process is done")
         try:
@@ -657,10 +658,10 @@ class ObservationMakerWorker(mp.Process):
                     traceback=traceback.format_exc(),
                 )
             )
-
-        if self.archive_fh and self.archiver_queue:
-            self.archive_fh.close()
-            self.archiver_queue.put(self.archive_path)
+        finally:
+            if self.archive_fh and self.archiver_queue:
+                self.archive_fh.close()
+                self.archiver_queue.put(self.archive_path)
 
 
 def run_archiver_thread(
@@ -822,7 +823,7 @@ def start_observation_maker(
                 shutdown_event,
                 log_level,
             ),
-            daemon=True
+            daemon=True,
         )
         archiver_thread.start()
 
@@ -1028,7 +1029,7 @@ class ExperimentResultMakerWorker(mp.Process):
         log.info("process is done")
         try:
             db_writer.close()
-        except Exception as exc:
+        except:
             log.error("failed to flush database", exc_info=True)
 
 
@@ -1044,9 +1045,11 @@ def run_progress_thread(
         except queue.Empty:
             continue
 
-        pbar.update()
-        pbar.set_description(desc)
-        status_queue.task_done()
+        try:
+            pbar.update()
+            pbar.set_description(desc)
+        finally:
+            status_queue.task_done()
 
 
 def maybe_build_web_ground_truth(
@@ -1112,8 +1115,9 @@ class GroundTrutherWorker(mp.Process):
             except:
                 log.error(f"failed to build ground truth for {day}", exc_info=True)
 
-            self.day_queue.task_done()
-            self.progress_queue.put(1)
+            finally:
+                self.day_queue.task_done()
+                self.progress_queue.put(1)
 
 
 def start_ground_truth_builder(
