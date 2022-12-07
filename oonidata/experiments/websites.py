@@ -29,10 +29,21 @@ log = logging.getLogger("oonidata.processing")
 CLOUD_PROVIDERS_ASNS = [
     13335,  # Cloudflare: https://www.peeringdb.com/net/4224
     20940,  # Akamai: https://www.peeringdb.com/net/2
+    9002,  # Akamai RETN
     396982,  # Google Cloud: https://www.peeringdb.com/net/30878
 ]
 
-CLOUD_PROVIDERS_AS_ORGS = ["Akamai Technologies, Inc.".lower()]
+CLOUD_PROVIDERS_AS_ORGS_SUBSTRINGS = ["akamai"]
+
+
+def is_cloud_provider(asn: Optional[int], as_org_name: Optional[str]):
+    if asn and asn in CLOUD_PROVIDERS_ASNS:
+        return True
+    if as_org_name and any(
+        [ss in as_org_name.lower() for ss in CLOUD_PROVIDERS_AS_ORGS_SUBSTRINGS]
+    ):
+        return True
+    return False
 
 
 def encode_address(ip: str, port: int) -> str:
@@ -416,11 +427,7 @@ def make_dns_outcome(
             blocked_score=blocked_score,
         )
 
-    if (
-        web_o.ip_asn in CLOUD_PROVIDERS_ASNS
-        or (web_o.ip_as_org_name and web_o.ip_as_org_name.lower())
-        in CLOUD_PROVIDERS_AS_ORGS
-    ):
+    if is_cloud_provider(asn=web_o.ip_asn, as_org_name=web_o.ip_as_org_name):
         # Cloud providers are a common source of false positives. Let's just
         # mark them as ok with a low confidence
         outcome_meta["why"] = "answer is cloud service provider"
@@ -518,7 +525,7 @@ def make_tls_outcome(
             blocked_score = 0.7
 
         if web_o.tls_failure in ("connection_closed", "connection_reset"):
-            blocked_score = 0.85
+            blocked_score += 0.15
 
         return Outcome(
             observation_id=web_o.observation_id,
