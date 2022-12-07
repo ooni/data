@@ -860,10 +860,11 @@ def start_observation_maker(
     log.info("sending shutdown event")
     worker_shutdown_event.set()
 
-    log.info(f"waiting for workers to finish running")
+    log.info(f"waiting for observation workers to finish running")
     for idx, p in enumerate(observation_workers):
-        log.info(f"waiting observation_maker {idx} to stop")
+        log.info(f"waiting observation_maker {idx} to join")
         p.join()
+        log.info(f"waiting observation_maker {idx} to close")
         p.close()
 
     if archiver_queue:
@@ -1163,10 +1164,11 @@ def start_ground_truth_builder(
     log.info(f"sending shutdown signal to workers")
     worker_shutdown_event.set()
 
-    log.info(f"waiting for workers to finish running")
+    log.info(f"waiting for ground truth workers to finish running")
     for idx, p in enumerate(workers):
-        log.info(f"waiting worker {idx} to stop")
+        log.info(f"waiting worker {idx} to join")
         p.join()
+        log.info(f"waiting worker {idx} to close")
         p.close()
 
     log.info("waiting for progress queue to finish")
@@ -1237,10 +1239,11 @@ def start_experiment_result_maker(
     log.info("sending shutdown signal to workers")
     worker_shutdown_event.set()
 
-    log.info("waiting for workers to finish running")
+    log.info("waiting for experiment workers to finish running")
     for idx, p in enumerate(workers):
-        log.info(f"waiting worker {idx} to stop")
+        log.info(f"waiting worker {idx} to join")
         p.join()
+        log.info(f"waiting worker {idx} to close")
         p.close()
 
     log.info("waiting for progress queue to finish")
