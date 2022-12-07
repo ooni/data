@@ -109,12 +109,12 @@ SAMPLE_MEASUREMENTS = [
 ]
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def datadir():
     return DATA_DIR
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def fingerprintdb(datadir):
     return FingerprintDB(
         datadir=datadir,
@@ -122,20 +122,15 @@ def fingerprintdb(datadir):
     )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def netinfodb():
-    try:
-        return NetinfoDB(
-            datadir=DATA_DIR,
-            download=True,
-        )
-    except Exception as exc:
-        print("FAILED TO create NetinfoDB")
-        print(exc)
-        raise exc
+    return NetinfoDB(
+        datadir=DATA_DIR,
+        download=True,
+    )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def raw_measurements():
     output_dir = FIXTURE_PATH / "raw_measurements"
     if (output_dir / "signal" / "2022-10-01").exists():
@@ -150,7 +145,7 @@ def raw_measurements():
     return output_dir
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def measurements():
     measurement_dir = FIXTURE_PATH / "measurements"
     measurement_dir.mkdir(parents=True, exist_ok=True)
