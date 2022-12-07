@@ -710,7 +710,8 @@ def run_archiver_thread(
                     src="archiver", exception=exc, traceback=traceback.format_exc()
                 )
             )
-        archiver_queue.task_done()
+        finally:
+            archiver_queue.task_done()
     try:
         response_archiver.close()
     except Exception as exc:
