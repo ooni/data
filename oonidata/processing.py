@@ -660,12 +660,11 @@ class ObservationMakerWorker(mp.Process):
                 )
             )
         finally:
-            if self.archive_fh:
-                log.info("closing archiver_fh")
-                self.archive_fh.close()
-            if self.archiver_queue:
-                log.info("adding path to the archiver_queue")
+            # We only add to the queue if we have an archive
+            if self.archive_fh and self.archiver_queue:
+                log.info("closing archiver_fh and adding to queue")
                 try:
+                    self.archive_fh.close()
                     self.archiver_queue.put(self.archive_path, timeout=5)
                 except:
                     log.error("failed to put on the archiver_queue", exc_info=True)
