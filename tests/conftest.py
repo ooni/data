@@ -124,10 +124,15 @@ def fingerprintdb(datadir):
 
 @pytest.fixture(scope="session")
 def netinfodb():
-    return NetinfoDB(
-        datadir=DATA_DIR,
-        download=True,
-    )
+    try:
+        return NetinfoDB(
+            datadir=DATA_DIR,
+            download=True,
+        )
+    except Exception as exc:
+        print("FAILED TO create NetinfoDB")
+        print(exc)
+        raise exc
 
 
 @pytest.fixture(scope="session")
