@@ -10,12 +10,11 @@ from oonidata.dataformat import (
 from oonidata.datautils import validate_cert_chain
 from oonidata.experiments.control import (
     iter_ground_truths_from_web_control,
+    WebGroundTruthDB,
 )
-from oonidata.experiments.experiment_result import BlockingScope, BlockingStatus
 from oonidata.experiments.signal import make_signal_experiment_result
 from oonidata.experiments.websites import (
     make_website_experiment_result,
-    WebGroundTruthDB,
 )
 from oonidata.observations import (
     make_signal_observations,
@@ -89,7 +88,7 @@ def test_signal(fingerprintdb, netinfodb, measurements):
     assert blocking_event[0].confirmed == False
     tls_be = list(
         filter(
-            lambda be: be.blocking_detail.startswith("tls."),
+            lambda be: be.outcome_category == "tls",
             blocking_event,
         )
     )
@@ -111,7 +110,7 @@ def test_signal(fingerprintdb, netinfodb, measurements):
     assert blocking_event[0].anomaly == True
     dns_outcomes = list(
         filter(
-            lambda be: be.blocking_detail.startswith("dns."),
+            lambda be: be.outcome_category == "dns",
             blocking_event,
         )
     )
@@ -126,7 +125,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     er = list(make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb))
     be = list(
         filter(
-            lambda be: be.blocking_scope == "n",
+            lambda be: be.outcome_scope == "n",
             er,
         )
     )
@@ -138,12 +137,12 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     er = list(make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb))
     be = list(
         filter(
-            lambda be: be.blocking_status == "b",
+            lambda be: be.blocked_score > 0.5,
             er,
         )
     )
     assert len(be) == 1
-    assert be[0].blocking_detail == "dns.inconsistent.bogon"
+    assert be[0].outcome_detail == "inconsistent.bogon"
 
     msmt_path = measurements[
         "20220627125833.737451_FR_webconnectivity_bca9ad9d3371919a"
@@ -151,13 +150,13 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     er = make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb)
     be = list(
         filter(
-            lambda be: be.blocking_status == "b",
+            lambda be: be.blocked_score > 0.6,
             er,
         )
     )
     # TODO: is it reasonable to double count NXDOMAIN for AAAA and A queries?
     assert len(be) == 2
-    assert be[0].blocking_detail == "dns.inconsistent.nxdomain"
+    assert be[0].outcome_detail == "inconsistent.nxdomain"
 
     msmt_path = measurements[
         "20220625234824.235023_HU_webconnectivity_3435a5df0e743d39"
@@ -165,13 +164,13 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
     er = list(make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb))
     be = list(
         filter(
-            lambda be: be.blocking_status == "k",
+            lambda be: be.ok_score > 0.5,
             er,
         )
     )
     nok_be = list(
         filter(
-            lambda be: be.blocking_status != "k",
+            lambda be: be.ok_score < 0.5,
             er,
         )
     )
@@ -231,4 +230,4 @@ def test_website_experiment_result_ok(fingerprintdb, netinfodb, measurements):
     assert len(experiment_results) == 4
     assert experiment_results[0].anomaly == False
     for er in experiment_results:
-        assert er.blocking_status == "k"
+        assert er.ok_score > 0.5

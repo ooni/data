@@ -46,16 +46,16 @@ def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
             datadir,
             "--csv-dir",
             tmp_path.absolute(),
-            "--archives-dir",
-            tmp_path.absolute(),
+            # "--archives-dir",
+            # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
     assert len(list(tmp_path.glob("*.csv"))) == 2
-    assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
 
 
-def test_full_worfklow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path):
+def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path):
     db = ClickhouseConnection(conn_url="clickhouse://localhost")
     try:
         db.execute("SELECT 1")
@@ -79,16 +79,46 @@ def test_full_worfklow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: 
             datadir,
             "--clickhouse",
             "clickhouse://localhost/",
-            "--archives-dir",
-            tmp_path.absolute(),
+            # "--archives-dir",
+            # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
-    assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
     res = db.execute(
         "SELECT COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
     )
     assert res[0][0] == 200  # type: ignore
+    res = db.execute(
+        "SELECT COUNT() FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
+    )
+    obs_count = res[0][0]  # type: ignore
+
+    result = cli_runner.invoke(
+        cli,
+        [
+            "mkobs",
+            "--probe-cc",
+            "BA",
+            "--start-day",
+            "2022-10-20",
+            "--end-day",
+            "2022-10-21",
+            "--test-name",
+            "web_connectivity",
+            "--create-tables",
+            "--data-dir",
+            datadir,
+            "--clickhouse",
+            "clickhouse://localhost/",
+        ],
+    )
+    assert result.exit_code == 0
+    res = db.execute(
+        "SELECT COUNT() FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
+    )
+    # By re-running it against the same date, we should still get the same observation count
+    assert res[0][0] == obs_count  # type: ignore
 
     result = cli_runner.invoke(
         cli,
@@ -106,17 +136,18 @@ def test_full_worfklow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: 
     )
     assert result.exit_code == 0
 
-    result = cli_runner.invoke(
-        cli,
-        [
-            "fphunt",
-            "--data-dir",
-            datadir,
-            "--archives-dir",
-            tmp_path.absolute(),
-        ],
-    )
-    assert result.exit_code == 0
+    # result = cli_runner.invoke(
+    #    cli,
+    #    [
+    #        "fphunt",
+    #        "--data-dir",
+    #        datadir,
+    #        "--archives-dir",
+    #        tmp_path.absolute(),
+    #    ],
+    # )
+    # assert result.exit_code == 0
+
     result = cli_runner.invoke(
         cli,
         [

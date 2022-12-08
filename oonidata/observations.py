@@ -154,10 +154,12 @@ def make_measurement_meta(
     probe_as_info = netinfodb.lookup_asn(measurement_start_time, probe_asn)
 
     resolver_ip = msmt.resolver_ip
-    client_resolver = None
     resolver_is_scrubbed = False
-    if msmt.test_keys and msmt.test_keys.client_resolver:
+    try:
         client_resolver = msmt.test_keys.client_resolver
+    except AttributeError:
+        # Not all tests have in their test_keys client_resolver
+        client_resolver = None
 
     if client_resolver == "[scrubbed]" or resolver_ip == "[scrubbed]":
         resolver_is_scrubbed = True
@@ -834,7 +836,7 @@ def iter_web_observations(
     q_kwargs = dict(
         start_day=measurement_day.strftime("%Y-%m-%d"),
         end_day=(measurement_day + timedelta(days=1)).strftime("%Y-%m-%d"),
-        test_name=test_name
+        test_name=test_name,
     )
 
     column_names = [f.name for f in dataclasses.fields(WebObservation)]
@@ -874,7 +876,7 @@ def iter_web_observations(
 @dataclass
 class WebControlObservation(ObservationBase):
     __table_name__ = "obs_web_ctrl"
-    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
+    __table_index__ = ("measurement_uid", "measurement_start_time")
 
     hostname: str
     observation_id: str = ""

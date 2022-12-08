@@ -14,7 +14,7 @@ from multiprocessing.synchronize import Event as EventClass
 
 from threading import Lock, Thread
 from base64 import b32decode
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from typing import (
     Callable,
@@ -37,7 +37,6 @@ from warcio.statusandheaders import StatusAndHeaders
 from oonidata.datautils import PerfTimer
 from oonidata.experiments.control import (
     BodyDB,
-    ReducedWebGroundTruthDB,
     WebGroundTruthDB,
     iter_web_ground_truths,
 )
@@ -315,7 +314,126 @@ def start_fingerprint_hunter(
     pool.join()
 
 
-def process_day(
+class PrevRange(NamedTuple):
+    bucket_date: Optional[str]
+    start_timestamp: Optional[datetime]
+    end_timestamp: Optional[datetime]
+    max_created_at: Optional[datetime]
+    min_created_at: Optional[datetime]
+    where: str
+
+
+def get_prev_range(
+    db: ClickhouseConnection,
+    table_name: str,
+    test_name: List[str],
+    probe_cc: List[str],
+    bucket_date: Optional[str] = None,
+    timestamp: Optional[datetime] = None,
+) -> PrevRange:
+    """
+    We lookup the range of previously generated rows so we can drop
+    them from the database once we have finished processing.
+
+    We can't rely just on deduplication happening at the clickhouse level,
+    because we might in the future add or remove certain rows, so it's
+    more robust to just drop them once we are done reprocessing.
+
+    Moreover, you don't have any guarantee on when the deduplication is
+    happening, which means that if you run queries while the reprocessing is
+    happening you don't know when exactly it's going to be safe to run
+    deduplcated queries on the DB.
+
+    For observation tables we use the bucket_date field. For experiment results
+    we use a range of timestamp in a day.
+    In both cases we delimit the range via the created_at column and any
+    additional filters that may have been applied to the reprocessing process.
+
+    TODO: while the reprocessing is running we should probably flag this
+    bucket as reprocessing in progress and guard against running queries for
+    it.
+    """
+    q = f"SELECT MAX(created_at), MIN(created_at) FROM {table_name} "
+    assert (
+        timestamp or bucket_date
+    ), "either timestamp or bucket_date should be provided"
+    start_timestamp = None
+    end_timestamp = None
+    where = None
+    where = "WHERE bucket_date = %(bucket_date)s"
+    q_args = {"bucket_date": bucket_date}
+    if timestamp:
+        start_timestamp = timestamp
+        end_timestamp = timestamp + timedelta(days=1)
+        q_args = {"start_timestamp": start_timestamp, "end_timestamp": end_timestamp}
+        where = (
+            "WHERE timestamp >= %(start_timestamp)s AND timestamp < %(end_timestamp)s"
+        )
+
+    if len(test_name) > 0:
+        test_name_list = []
+        for tn in test_name:
+            # sanitize the test_names. It should not be a security issue since
+            # it's not user provided, but better safe than sorry
+            assert tn.replace("_", "").isalnum(), f"not alphabetic testname {tn}"
+            test_name_list.append(f"'{tn}'")
+        where += " AND test_name IN ({})".format(",".join(test_name_list))
+    if len(probe_cc) > 0:
+        probe_cc_list = []
+        for cc in probe_cc:
+            assert cc.replace("_", "").isalnum(), f"not alphabetic probe_cc"
+            probe_cc_list.append(f"'{cc}'")
+        where += " AND probe_cc IN ({})".format(",".join(probe_cc_list))
+
+    prev_obs_range = db.execute(q + where, q_args)
+    assert isinstance(prev_obs_range, list) and len(prev_obs_range) == 1
+    max_created_at, min_created_at = prev_obs_range[0]
+
+    # We pad it by 1 second to take into account the time resolution downgrade
+    # happening when going from clickhouse to python data types
+    if max_created_at and min_created_at:
+        max_created_at += timedelta(seconds=1)
+        min_created_at -= timedelta(seconds=1)
+
+    return PrevRange(
+        max_created_at=max_created_at,
+        min_created_at=min_created_at,
+        start_timestamp=start_timestamp,
+        end_timestamp=end_timestamp,
+        where=where,
+        bucket_date=bucket_date,
+    )
+
+
+def maybe_delete_prev_range(
+    db: ClickhouseConnection, table_name: str, prev_range: PrevRange
+):
+    """
+    We perform a lightweight delete of all the rows which have been
+    regenerated, so we don't have any duplicates in the table
+    """
+    if not prev_range.max_created_at:
+        return
+
+    # Disabled due to: https://github.com/ClickHouse/ClickHouse/issues/40651
+    # db.execute("SET allow_experimental_lightweight_delete = true;")
+    q_args = {
+        "max_created_at": prev_range.max_created_at,
+        "min_created_at": prev_range.min_created_at,
+    }
+    if prev_range.bucket_date:
+        q_args["bucket_date"] = prev_range.bucket_date
+    elif prev_range.start_timestamp:
+        q_args["start_timestamp"] = prev_range.start_timestamp
+        q_args["end_timestamp"] = prev_range.end_timestamp
+    else:
+        raise Exception("either bucket_date or timestamps should be set")
+
+    where = f"{prev_range.where} AND created_at <= %(max_created_at)s AND created_at >= %(min_created_at)s"
+    return db.execute(f"ALTER TABLE {table_name} DELETE " + where, q_args)
+
+
+def make_observation_in_day(
     db: Union[ClickhouseConnection, CSVConnection],
     netinfodb: NetinfoDB,
     day: date,
@@ -329,6 +447,22 @@ def process_day(
     bucket_date = day.strftime("%Y-%m-%d")
 
     statsd_client = statsd.StatsClient("localhost", 8125)
+
+    prev_ranges = []
+    if isinstance(db, ClickhouseConnection):
+        for table_name in ["obs_web"]:
+            prev_ranges.append(
+                (
+                    table_name,
+                    get_prev_range(
+                        db=db,
+                        table_name=table_name,
+                        bucket_date=bucket_date,
+                        test_name=test_name,
+                        probe_cc=probe_cc,
+                    ),
+                )
+            )
 
     for idx, msmt_dict in enumerate(
         iter_measurements(
@@ -381,6 +515,9 @@ def process_day(
                 db.close()
                 raise exc
 
+    if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
+        for table_name, pr in prev_ranges:
+            maybe_delete_prev_range(db=db, prev_range=pr, table_name=table_name)
     db.close()
 
 
@@ -484,7 +621,7 @@ class ObservationMakerWorker(mp.Process):
             except queue.Empty:
                 continue
             try:
-                for request_tup in process_day(
+                for request_tup in make_observation_in_day(
                     db=db,
                     netinfodb=netinfodb,
                     day=day,
@@ -505,12 +642,14 @@ class ObservationMakerWorker(mp.Process):
                         traceback=traceback.format_exc(),
                     )
                 )
-            log.info(f"finished processing day {day_str}")
-            self.day_queue.task_done()
+            finally:
+                log.info(f"finished processing day {day_str}")
+                self.day_queue.task_done()
 
         log.info("process is done")
         try:
             db.close()
+            log.info("database closed")
         except Exception as exc:
             log.error("failed to flush database", exc_info=True)
             self.status_queue.put(
@@ -520,10 +659,16 @@ class ObservationMakerWorker(mp.Process):
                     traceback=traceback.format_exc(),
                 )
             )
-
-        if self.archive_fh and self.archiver_queue:
-            self.archive_fh.close()
-            self.archiver_queue.put(self.archive_path)
+        finally:
+            # We only add to the queue if we have an archive
+            if self.archive_fh and self.archiver_queue:
+                log.info("closing archiver_fh and adding to queue")
+                try:
+                    self.archive_fh.close()
+                    self.archiver_queue.put(self.archive_path, timeout=5)
+                except:
+                    log.error("failed to put on the archiver_queue", exc_info=True)
+                log.info("closed and added to archiver_queue")
 
 
 def run_archiver_thread(
@@ -541,7 +686,7 @@ def run_archiver_thread(
             archive_path = archiver_queue.get(block=True, timeout=0.1)
         except queue.Empty:
             continue
-
+        log.info(f"archiving {archive_path}")
         try:
             with gzip.open(archive_path, "rb") as in_file:
                 requests_unpacker = msgpack.Unpacker(in_file, raw=False)
@@ -565,7 +710,8 @@ def run_archiver_thread(
                     src="archiver", exception=exc, traceback=traceback.format_exc()
                 )
             )
-        archiver_queue.task_done()
+        finally:
+            archiver_queue.task_done()
     try:
         response_archiver.close()
     except Exception as exc:
@@ -685,6 +831,7 @@ def start_observation_maker(
                 shutdown_event,
                 log_level,
             ),
+            daemon=True,
         )
         archiver_thread.start()
 
@@ -721,10 +868,11 @@ def start_observation_maker(
     log.info("sending shutdown event")
     worker_shutdown_event.set()
 
-    log.info(f"waiting for workers to finish running")
+    log.info(f"waiting for observation workers to finish running")
     for idx, p in enumerate(observation_workers):
-        log.info(f"waiting observation_maker {idx} to stop")
+        log.info(f"waiting observation_maker {idx} to join")
         p.join()
+        log.info(f"waiting observation_maker {idx} to close")
         p.close()
 
     if archiver_queue:
@@ -758,6 +906,14 @@ def run_experiment_results(
 
     column_names = [f for f in ExperimentResult._fields]
     db_lookup = ClickhouseConnection(clickhouse)
+
+    prev_range = get_prev_range(
+        db=db_lookup,
+        table_name=ExperimentResult.__table_name__,
+        timestamp=datetime.combine(day, datetime.min.time()),
+        test_name=[],
+        probe_cc=probe_cc,
+    )
 
     log.info(f"loading ground truth DB for {day}")
     t = PerfTimer()
@@ -817,6 +973,10 @@ def run_experiment_results(
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate er for {web_obs_ids}", exc_info=True)
 
+    maybe_delete_prev_range(
+        db=db_lookup, prev_range=prev_range, table_name=ExperimentResult.__table_name__
+    )
+
 
 class ExperimentResultMakerWorker(mp.Process):
     def __init__(
@@ -868,16 +1028,17 @@ class ExperimentResultMakerWorker(mp.Process):
                     clickhouse=self.clickhouse,
                 ):
                     self.progress_queue.put(1)
-            except Exception as exc:
+            except Exception:
                 log.error(f"failed to process {day}", exc_info=True)
 
-            log.info(f"finished processing day {day}")
-            self.day_queue.task_done()
+            finally:
+                log.info(f"finished processing day {day}")
+                self.day_queue.task_done()
 
         log.info("process is done")
         try:
             db_writer.close()
-        except Exception as exc:
+        except:
             log.error("failed to flush database", exc_info=True)
 
 
@@ -893,9 +1054,11 @@ def run_progress_thread(
         except queue.Empty:
             continue
 
-        pbar.update()
-        pbar.set_description(desc)
-        status_queue.task_done()
+        try:
+            pbar.update()
+            pbar.set_description(desc)
+        finally:
+            status_queue.task_done()
 
 
 def maybe_build_web_ground_truth(
@@ -961,8 +1124,9 @@ class GroundTrutherWorker(mp.Process):
             except:
                 log.error(f"failed to build ground truth for {day}", exc_info=True)
 
-            self.day_queue.task_done()
-            self.progress_queue.put(1)
+            finally:
+                self.day_queue.task_done()
+                self.progress_queue.put(1)
 
 
 def start_ground_truth_builder(
@@ -1008,14 +1172,18 @@ def start_ground_truth_builder(
     log.info(f"sending shutdown signal to workers")
     worker_shutdown_event.set()
 
-    log.info(f"waiting for workers to finish running")
+    log.info(f"waiting for ground truth workers to finish running")
     for idx, p in enumerate(workers):
-        log.info(f"waiting worker {idx} to stop")
+        log.info(f"waiting worker {idx} to join")
         p.join()
+        log.info(f"waiting worker {idx} to close")
         p.close()
 
-    shutdown_event.set()
+    log.info("waiting for progress queue to finish")
     progress_queue.join()
+    log.info("sending shutdown event progress thread")
+    shutdown_event.set()
+    log.info("waiting on progress queue")
     progress_thread.join()
 
 
@@ -1076,15 +1244,19 @@ def start_experiment_result_maker(
     log.info("waiting for the day queue to finish")
     day_queue.join()
 
-    log.info(f"sending shutdown signal to workers")
+    log.info("sending shutdown signal to workers")
     worker_shutdown_event.set()
 
-    log.info(f"waiting for workers to finish running")
+    log.info("waiting for experiment workers to finish running")
     for idx, p in enumerate(workers):
-        log.info(f"waiting worker {idx} to stop")
+        log.info(f"waiting worker {idx} to join")
         p.join()
+        log.info(f"waiting worker {idx} to close")
         p.close()
 
-    shutdown_event.set()
+    log.info("waiting for progress queue to finish")
     progress_queue.join()
+    log.info("sending shutdown event progress thread")
+    shutdown_event.set()
+    log.info("waiting on progress queue")
     progress_thread.join()
