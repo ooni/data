@@ -7,7 +7,8 @@ from oonidata.analysis.datasources import load_measurement
 from oonidata.dataclient import stream_jsonl
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
-from oonidata.processing import ResponseArchiver, fingerprint_hunter
+from oonidata.workers.response_archiver import ResponseArchiver
+from oonidata.workers.fingerprint_hunter import fingerprint_hunter
 from oonidata.transforms import measurement_to_observations
 from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
 
