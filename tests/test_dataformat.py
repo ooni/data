@@ -1,10 +1,9 @@
 from base64 import b64encode
 from copy import deepcopy
+from oonidata.analysis.datasources import load_measurement
 
-import orjson
-
-from oonidata.dataformat import WebConnectivity, load_measurement, HTTPTransaction
-from oonidata.apiclient import get_raw_measurement
+from oonidata.models.dataformats import HTTPTransaction
+from oonidata.models.nettests.web_connectivity import WebConnectivity
 
 
 def test_dataformat_web_connectivity(measurements):

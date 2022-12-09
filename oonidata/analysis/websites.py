@@ -1,13 +1,14 @@
 from collections import defaultdict
 from dataclasses import dataclass
+import dataclasses
 import ipaddress
-import time
-from typing import Any, Generator, Iterable, NamedTuple, Optional, List, Tuple, Dict
-from oonidata.experiments.control import (
+from typing import Any, Generator, Iterable, NamedTuple, Optional, List, Dict
+from oonidata.db.connections import ClickhouseConnection
+from oonidata.analysis.control import (
     WebGroundTruth,
     BodyDB,
 )
-from oonidata.experiments.experiment_result import (
+from oonidata.models.experiment_result import (
     BlockingScope,
     Outcome,
     Scores,
@@ -17,10 +18,7 @@ from oonidata.experiments.experiment_result import (
 )
 
 from oonidata.fingerprintdb import FingerprintDB
-
-from oonidata.observations import (
-    WebObservation,
-)
+from oonidata.models.observations import WebControlObservation, WebObservation
 
 import logging
 
@@ -34,6 +32,23 @@ CLOUD_PROVIDERS_ASNS = [
 ]
 
 CLOUD_PROVIDERS_AS_ORGS_SUBSTRINGS = ["akamai"]
+
+
+def get_web_ctrl_observations(
+    db: ClickhouseConnection, measurement_uid: str
+) -> List[WebControlObservation]:
+    obs_list = []
+    column_names = [f.name for f in dataclasses.fields(WebControlObservation)]
+    q = "SELECT ("
+    q += ",\n".join(column_names)
+    q += ") FROM obs_web_ctrl WHERE measurement_uid = %(measurement_uid)s"
+
+    for res in db.execute_iter(q, {"measurement_uid": measurement_uid}):
+        row = res[0]
+        obs_list.append(
+            WebControlObservation(**{k: row[idx] for idx, k in enumerate(column_names)})
+        )
+    return obs_list
 
 
 def is_cloud_provider(asn: Optional[int], as_org_name: Optional[str]):

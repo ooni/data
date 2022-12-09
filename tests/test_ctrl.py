@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 import pytest
 from oonidata.db.connections import ClickhouseConnection
-from oonidata.experiments.control import (
+from oonidata.analysis.control import (
     WebGroundTruthDB,
     ReducedWebGroundTruthDB,
     iter_web_ground_truths,

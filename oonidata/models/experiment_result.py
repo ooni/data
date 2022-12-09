@@ -3,9 +3,7 @@ from typing import Any, Dict, Generator, List, Optional, NamedTuple, Mapping, Tu
 from enum import Enum
 from datetime import datetime
 
-from oonidata.observations import (
-    MeasurementMeta,
-)
+from oonidata.models.observations import MeasurementMeta
 
 log = logging.getLogger("oonidata.events")
 

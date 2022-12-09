@@ -2,7 +2,7 @@ from datetime import date, timedelta
 import logging
 from oonidata.datautils import PerfTimer
 from oonidata.db.connections import ClickhouseConnection
-from oonidata.experiments.control import BodyDB
+from oonidata.analysis.control import BodyDB
 from oonidata.processing import maybe_build_web_ground_truth, run_experiment_results
 
 

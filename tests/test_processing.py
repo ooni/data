@@ -2,19 +2,17 @@ import gzip
 from pathlib import Path
 import sqlite3
 from unittest.mock import MagicMock
+from oonidata.analysis.datasources import load_measurement
 
-from oonidata.dataformat import WebConnectivity, DNSCheck, load_measurement
-from oonidata.observations import (
-    make_http_observations,
-    make_observations,
-    make_web_connectivity_observations,
-    make_dnscheck_observations,
-)
 from oonidata.dataclient import stream_jsonl
+from oonidata.models.nettests.dnscheck import DNSCheck
+from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.processing import ResponseArchiver, fingerprint_hunter
+from oonidata.transforms import measurement_to_observations
+from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
 
 
-def test_insert_query_for_observation(measurements):
+def test_insert_query_for_observation(measurements, netinfodb):
 
     http_blocked = load_measurement(
         msmt_path=measurements[
@@ -22,10 +20,10 @@ def test_insert_query_for_observation(measurements):
         ]
     )
     assert isinstance(http_blocked, WebConnectivity)
+    mt = MeasurementTransformer(measurement=http_blocked, netinfodb=netinfodb)
     all_web_obs = [
         obs
-        for obs in make_http_observations(
-            http_blocked,
+        for obs in mt.make_http_observations(
             http_blocked.test_keys.requests,
         )
     ]
@@ -40,9 +38,7 @@ def test_web_connectivity_processor(netinfodb, measurements):
     )
     assert isinstance(msmt, WebConnectivity)
 
-    web_obs_list, web_ctrl_list = make_web_connectivity_observations(
-        msmt, netinfodb=netinfodb
-    )
+    web_obs_list, web_ctrl_list = measurement_to_observations(msmt, netinfodb=netinfodb)
     assert len(web_obs_list) == 3
     assert len(web_ctrl_list) == 3
 
@@ -55,7 +51,7 @@ def test_dnscheck_processor(measurements, netinfodb):
         msmt_path=measurements["20221013000000.517636_US_dnscheck_bfd6d991e70afa0e"]
     )
     assert isinstance(msmt, DNSCheck)
-    obs_list = make_dnscheck_observations(msmt=msmt, netinfodb=netinfodb)[0]
+    obs_list = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)[0]
     assert len(obs_list) == 20
 
 
@@ -64,7 +60,7 @@ def test_full_processing(raw_measurements, netinfodb):
         with msmt_path.open("rb") as in_file:
             for msmt_dict in stream_jsonl(in_file):
                 msmt = load_measurement(msmt_dict)
-                make_observations(
+                measurement_to_observations(
                     msmt=msmt,
                     netinfodb=netinfodb,
                 )

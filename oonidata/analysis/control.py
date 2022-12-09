@@ -4,8 +4,8 @@ import sqlite3
 from collections.abc import Iterable
 
 from typing import Any, Generator, Optional, Tuple, List, NamedTuple
+from oonidata.models.observations import WebControlObservation, WebObservation
 from oonidata.netinfo import NetinfoDB
-from oonidata.observations import WebControlObservation, WebObservation
 
 from oonidata.db.connections import ClickhouseConnection
 

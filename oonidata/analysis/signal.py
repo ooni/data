@@ -1,6 +1,6 @@
 from typing import List, Generator
 
-from oonidata.experiments.experiment_result import (
+from oonidata.models.experiment_result import (
     BlockingScope,
     ExperimentResult,
     Outcome,
@@ -8,10 +8,7 @@ from oonidata.experiments.experiment_result import (
     iter_experiment_results,
 )
 from oonidata.fingerprintdb import FingerprintDB
-from oonidata.netinfo import NetinfoDB
-from oonidata.observations import (
-    WebObservation,
-)
+from oonidata.models.observations import WebObservation
 
 
 def make_signal_experiment_result(

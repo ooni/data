@@ -18,7 +18,6 @@ from datetime import date, datetime, timedelta
 
 from typing import (
     Callable,
-    Dict,
     Generator,
     List,
     NamedTuple,
@@ -34,24 +33,18 @@ from tqdm import tqdm
 from warcio.warcwriter import WARCWriter
 from warcio.archiveiterator import ArchiveIterator
 from warcio.statusandheaders import StatusAndHeaders
+from oonidata.analysis.datasources import iter_web_observations, load_measurement
 from oonidata.datautils import PerfTimer
-from oonidata.experiments.control import (
+from oonidata.analysis.control import (
     BodyDB,
     WebGroundTruthDB,
     iter_web_ground_truths,
 )
-from oonidata.experiments.experiment_result import ExperimentResult
-from oonidata.experiments.websites import make_website_experiment_result
+from oonidata.models.experiment_result import ExperimentResult
+from oonidata.analysis.websites import make_website_experiment_result
 
 from oonidata.fingerprintdb import FingerprintDB, Fingerprint
-from oonidata.observations import (
-    iter_web_observations,
-    make_observations,
-)
-from oonidata.dataformat import (
-    WebConnectivity,
-    load_measurement,
-)
+from oonidata.models.nettests import WebConnectivity
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.dataclient import (
@@ -64,6 +57,7 @@ from oonidata.db.connections import (
     ClickhouseConnection,
     CSVConnection,
 )
+from oonidata.transforms import measurement_to_observations
 
 log = logging.getLogger("oonidata.processing")
 
@@ -477,7 +471,7 @@ def make_observation_in_day(
         try:
             t = PerfTimer()
             msmt = load_measurement(msmt_dict)
-            for observations in make_observations(msmt, netinfodb=netinfodb):
+            for observations in measurement_to_observations(msmt, netinfodb=netinfodb):
                 if len(observations) == 0:
                     continue
 

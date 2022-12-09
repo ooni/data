@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import multiprocessing as mp
 import pytest
 from oonidata.cli import cli
 from oonidata.db.connections import ClickhouseConnection

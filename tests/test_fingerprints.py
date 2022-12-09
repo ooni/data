@@ -1,4 +1,5 @@
-from oonidata.dataformat import WebConnectivity, load_measurement
+from oonidata.analysis.datasources import load_measurement
+from oonidata.models.nettests.web_connectivity import WebConnectivity
 
 
 def test_fingerprintdb(fingerprintdb, measurements):
