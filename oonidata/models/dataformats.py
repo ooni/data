@@ -9,7 +9,6 @@ import hashlib
 from typing import Optional, Tuple, Union, List, Dict
 
 from dataclasses import dataclass
-from functools import cached_property
 
 from oonidata.datautils import guess_decode
 from oonidata.models.base_model import BaseModel
@@ -81,47 +80,65 @@ class HTTPBase(BaseModel):
     headers: Optional[Dict[str, str]] = None
     headers_list: Optional[HeadersList] = None
 
-    @cached_property
-    def body_str(self) -> Optional[str]:
-        if self.body is None:
-            return None
-        return maybe_binary_data_to_str(self.body)
+    __body_str = None
+    __body_bytes = None
+    __headers_list_str = None
+    __headers_list_bytes = None
 
-    @cached_property
+    @property
+    def body_str(self) -> Optional[str]:
+        if self.body_bytes is None:
+            return None
+        if self.__body_str is not None:
+            return self.__body_str
+        self.__body_str = guess_decode(self.body_bytes)
+        return self.__body_str
+
+    @property
     def body_bytes(self) -> Optional[bytes]:
         if self.body is None:
             return None
-        return maybe_binary_data_to_bytes(self.body)
+        if self.__body_bytes is not None:
+            return self.__body_bytes
+        self.__body_bytes = maybe_binary_data_to_bytes(self.body)
+        return self.__body_bytes
 
-    @cached_property
+    @property
+    def headers_list_str(self) -> Optional[List[Tuple[str, str]]]:
+        if not self.headers_list:
+            return None
+        if self.__headers_list_str is not None:
+            return self.__headers_list_str
+        self.__headers_list_str = [
+            (maybe_binary_data_to_str(k), maybe_binary_data_to_str(v))
+            for k, v in self.headers_list
+        ]
+        return self.__headers_list_str
+
+    @property
+    def headers_list_bytes(self) -> Optional[List[Tuple[str, bytes]]]:
+        if not self.headers_list:
+            return None
+        if self.__headers_list_bytes is not None:
+            return self.__headers_list_bytes
+
+        self.__headers_list_bytes = [
+            (guess_decode(maybe_binary_data_to_bytes(k)), maybe_binary_data_to_bytes(v))
+            for k, v in self.headers_list
+        ]
+        return self.__headers_list_bytes
+
+    @property
     def headers_str(self) -> Optional[Dict[str, str]]:
         if not self.headers_list_str:
             return None
         return {k: v for k, v in self.headers_list_str}
 
-    @cached_property
+    @property
     def headers_bytes(self) -> Optional[Dict[str, bytes]]:
         if not self.headers_list_bytes:
             return None
         return {k: v for k, v in self.headers_list_bytes}
-
-    @cached_property
-    def headers_list_str(self) -> Optional[List[Tuple[str, str]]]:
-        if not self.headers_list:
-            return None
-        return [
-            (maybe_binary_data_to_str(k), maybe_binary_data_to_str(v))
-            for k, v in self.headers_list
-        ]
-
-    @cached_property
-    def headers_list_bytes(self) -> Optional[List[Tuple[str, bytes]]]:
-        if not self.headers_list:
-            return None
-        return [
-            (guess_decode(maybe_binary_data_to_bytes(k)), maybe_binary_data_to_bytes(v))
-            for k, v in self.headers_list
-        ]
 
     def get_first_http_header_str(
         self,
