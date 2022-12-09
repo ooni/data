@@ -393,3 +393,11 @@ class WebGroundTruthDB:
             http_request_urls=list(to_lookup_http_request_urls),
             hostnames=list(to_lookup_hostnames),
         )
+
+
+class BodyDB:
+    def __init__(self, db: ClickhouseConnection):
+        self.db = db
+
+    def lookup(self, body_sha1: str) -> List[str]:
+        return []
