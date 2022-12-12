@@ -1,13 +1,12 @@
 from datetime import datetime, date, timedelta
+import hashlib
 import logging
 import time
-from typing import Iterable, List, Any, Tuple, Union, Dict
+from typing import Iterable, List, Any, Tuple, Dict
 from dataclasses import dataclass
 from functools import partial, singledispatch
 import re
 import ipaddress
-
-from base64 import b64decode
 
 from OpenSSL.crypto import load_certificate, FILETYPE_PEM, FILETYPE_ASN1
 from OpenSSL.crypto import X509Store, X509StoreContext
@@ -17,16 +16,8 @@ from cryptography.x509.oid import ExtensionOID, NameOID
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 
-
-from oonidata.dataformat import (
-    HeadersListBytes,
-    HeadersListStr,
-    BinaryData,
-    guess_decode,
-)
-
-
 log = logging.getLogger("oonidata.datautils")
+
 
 class PerfTimer:
     def __init__(self):
@@ -36,7 +27,7 @@ class PerfTimer:
     @property
     def runtime(self):
         if not self._runtime:
-            self._runtime = (time.perf_counter_ns() - self.t0)
+            self._runtime = time.perf_counter_ns() - self.t0
         return self._runtime
 
     @property
@@ -56,6 +47,7 @@ class PerfTimer:
             return f"{round(runtime/10**6, 2)}ms"
 
         return f"{round(runtime/10**9, 2)}s"
+
 
 META_TITLE_REGEXP = re.compile(
     b'<meta.*?property="og:title".*?content="(.*?)"', re.IGNORECASE | re.DOTALL
@@ -79,47 +71,39 @@ def get_html_title(body: bytes) -> str:
     return ""
 
 
-def get_first_http_header(
-    header_name: str,
-    header_list: HeadersListBytes,
-    case_sensitive: bool = False,
-) -> bytes:
-    if not header_list:
-        return b""
-
-    if case_sensitive == False:
-        header_name = header_name.lower()
-
-    for k, v in header_list:
-        if case_sensitive == False:
-            k = k.lower()
-
-        if header_name == k:
-            return v
-
-    return b""
+def guess_decode(s: bytes) -> str:
+    """
+    best effort decoding of a string of bytes
+    """
+    for encoding in ("ascii", "utf-8", "latin1", "iso-8859-1"):
+        try:
+            return s.decode(encoding)
+        except UnicodeDecodeError:
+            pass
+    log.warning(f"unable to decode '{s}'")
+    return s.decode("ascii", "ignore")
 
 
-# TODO: come up with some nicer way to refactor this stuff so we don't have so much duplicate functions
-def get_first_http_header_str(
-    header_name: str,
-    header_list: HeadersListStr,
-    case_sensitive: bool = False,
-) -> Union[bytes, str, None]:
-    if not header_list:
-        return ""
-
-    if case_sensitive == False:
-        header_name = header_name.lower()
-
-    for k, v in header_list:
-        if case_sensitive == False:
-            k = k.lower()
-
-        if header_name == k:
-            return v
-
-    return ""
+def trivial_id(raw: bytes, msm: Dict) -> str:
+    """Generate a trivial id of the measurement to allow upsert if needed
+    This is used for legacy (before measurement_uid) measurements
+    - Deterministic / stateless with no DB interaction
+    - Malicious/bugged msmts with collisions on report_id/input/test_name lead
+    to different hash values avoiding the collision
+    - Malicious/duplicated msmts that are semantically identical to the "real"
+    one lead to harmless collisions
+    - Sortable by date
+    """
+    VER = "01"
+    h = hashlib.shake_128(raw).hexdigest(15)
+    try:
+        t = msm.get("measurement_start_time") or ""
+        t = datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+        ts = t.strftime("%Y%m%d")
+    except:
+        ts = "00000000"
+    tid = f"{VER}{ts}{h}"
+    return tid
 
 
 # This comes from: https://ipinfo.io/bogon and https://publicdata.caida.org/datasets/bogon/bogon-bn-agg/
@@ -274,9 +258,7 @@ def get_san_list(cert: x509.Certificate) -> List[str]:
         return []
 
 
-def get_certificate_meta(peer_cert: BinaryData) -> CertificateMeta:
-    raw_cert = b64decode(peer_cert.data)
-    assert raw_cert, "either peer_cert or raw_cert must be specified"
+def get_certificate_meta(raw_cert: bytes) -> CertificateMeta:
     cert = x509.load_der_x509_certificate(raw_cert, default_backend())
 
     return CertificateMeta(
@@ -432,4 +414,3 @@ def one_day_dict(day: date) -> Dict[str, Any]:
 
 def removeprefix(s: str, prefix: str):
     return s[len(prefix) :]
- 

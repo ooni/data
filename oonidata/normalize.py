@@ -14,7 +14,7 @@ import uuid
 import yaml
 import yaml.parser
 
-from oonidata.dataformat import trivial_id
+from oonidata.datautils import trivial_id
 
 log = logging.getLogger("normalize")
 

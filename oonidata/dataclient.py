@@ -24,9 +24,8 @@ from botocore.config import Config as botoConfig
 
 from tqdm.contrib.logging import tqdm_logging_redirect
 
-from oonidata.datautils import trim_measurement
+from oonidata.datautils import trim_measurement, trivial_id
 from oonidata.normalize import iter_yaml_msmt_normalized
-from oonidata.dataformat import trivial_id
 
 LEGACY_BUCKET_NAME = "ooni-data"
 MC_BUCKET_NAME = "ooni-data-eu-fra"

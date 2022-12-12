@@ -3,7 +3,6 @@ import multiprocessing
 from pathlib import Path
 import sqlite3
 import sys
-import traceback
 from typing import List, Optional
 from datetime import date, timedelta, datetime
 from typing import List, Optional
@@ -17,7 +16,7 @@ from oonidata.dataclient import (
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.db.create_tables import create_queries
 from oonidata.netinfo import NetinfoDB
-from oonidata.processing import (
+from oonidata.workers import (
     start_experiment_result_maker,
     start_fingerprint_hunter,
     start_observation_maker,

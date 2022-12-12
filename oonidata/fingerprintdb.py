@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 import requests
 
-from oonidata.dataformat import guess_decode
+from oonidata.datautils import guess_decode
 
 
 @dataclass

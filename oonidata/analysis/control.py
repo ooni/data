@@ -4,8 +4,8 @@ import sqlite3
 from collections.abc import Iterable
 
 from typing import Any, Generator, Optional, Tuple, List, NamedTuple
+from oonidata.models.observations import WebControlObservation, WebObservation
 from oonidata.netinfo import NetinfoDB
-from oonidata.observations import WebControlObservation, WebObservation
 
 from oonidata.db.connections import ClickhouseConnection
 
@@ -393,40 +393,6 @@ class WebGroundTruthDB:
             http_request_urls=list(to_lookup_http_request_urls),
             hostnames=list(to_lookup_hostnames),
         )
-
-
-class ReducedWebGroundTruthDB(WebGroundTruthDB):
-    def __init__(self, db: sqlite3.Connection, idx: int):
-        self._table_name = f"ground_truth_reduced_{idx}"
-
-        self.db = db
-        self.db.execute(self.create_query)
-        self.db.commit()
-
-    def build(
-        self,
-        probe_cc: str,
-        probe_asn: int,
-        hostnames: Optional[List[str]] = None,
-        ip_ports: Optional[List[Tuple[str, Optional[int]]]] = None,
-        http_request_urls: Optional[List[str]] = None,
-    ):
-        c_str = ",\n".join(self.column_names)
-        s_query, q_args = self.select_query(
-            table_name="ground_truth",
-            probe_cc=probe_cc,
-            probe_asn=probe_asn,
-            hostnames=hostnames,
-            ip_ports=ip_ports,
-            http_request_urls=http_request_urls,
-        )
-        q = f"INSERT INTO {self._table_name} ({c_str})\n{s_query}"
-        self.db.execute(q, q_args)
-        self.db.commit()
-        self.create_indexes()
-
-    def drop(self):
-        self.db.execute(f"DROP TABLE {self._table_name}")
 
 
 class BodyDB:

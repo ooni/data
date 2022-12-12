@@ -2,9 +2,8 @@ from datetime import date, datetime
 
 import pytest
 from oonidata.db.connections import ClickhouseConnection
-from oonidata.experiments.control import (
+from oonidata.analysis.control import (
     WebGroundTruthDB,
-    ReducedWebGroundTruthDB,
     iter_web_ground_truths,
 )
 
@@ -116,22 +115,3 @@ def test_web_ground_truth_db():
     )
     assert len(res) == 3
     assert all(r.count == 10 for r in res)
-
-    reduced_db = ReducedWebGroundTruthDB(db=wgt_db.db, idx=0)
-    reduced_db.build(probe_cc="IT", probe_asn=100, ip_ports=[("1.1.1.1", 80)])
-    for row in reduced_db.db.execute(f"SELECT * FROM {reduced_db._table_name}"):
-        pass
-
-    res = reduced_db.lookup(
-        probe_cc="IT",
-        probe_asn=100,
-        http_request_urls=["https://ooni.org/"],
-    )
-    assert len(res) == 0
-    res = reduced_db.lookup(
-        probe_cc="IT",
-        probe_asn=100,
-        ip_ports=[("1.1.1.1", 80)],
-    )
-    assert len(res) == 1
-    assert res[0].count == 10

@@ -1,26 +1,20 @@
 from base64 import b64decode
 from datetime import datetime
 from unittest.mock import MagicMock
-from oonidata.dataformat import (
-    WebConnectivity,
-    load_measurement,
-    Signal,
-    SIGNAL_PEM_STORE,
-)
+from oonidata.analysis.datasources import load_measurement
 from oonidata.datautils import validate_cert_chain
-from oonidata.experiments.control import (
+from oonidata.analysis.control import (
     iter_ground_truths_from_web_control,
     WebGroundTruthDB,
 )
-from oonidata.experiments.signal import make_signal_experiment_result
-from oonidata.experiments.websites import (
+from oonidata.analysis.signal import make_signal_experiment_result
+from oonidata.analysis.websites import (
     make_website_experiment_result,
 )
-from oonidata.observations import (
-    make_signal_observations,
-    make_web_control_observations,
-    make_web_connectivity_observations,
-)
+from oonidata.models.nettests.signal import Signal
+from oonidata.models.nettests.web_connectivity import WebConnectivity
+from oonidata.transforms.nettests.signal import SIGNAL_PEM_STORE
+from oonidata.transforms import measurement_to_observations
 
 
 def test_signal(fingerprintdb, netinfodb, measurements):
@@ -61,7 +55,9 @@ def test_signal(fingerprintdb, netinfodb, measurements):
             pem_cert_store=SIGNAL_PEM_STORE,
         )
 
-    web_observations = make_signal_observations(signal_new_ca, netinfodb=netinfodb)[0]
+    web_observations = measurement_to_observations(signal_new_ca, netinfodb=netinfodb)[
+        0
+    ]
     er = list(
         make_signal_experiment_result(
             web_observations=web_observations,
@@ -75,9 +71,9 @@ def test_signal(fingerprintdb, netinfodb, measurements):
         msmt_path=measurements["20210926222047.205897_UZ_signal_95fab4a2e669573f"]
     )
     assert isinstance(signal_blocked_uz, Signal)
-    web_observations = make_signal_observations(signal_blocked_uz, netinfodb=netinfodb)[
-        0
-    ]
+    web_observations = measurement_to_observations(
+        signal_blocked_uz, netinfodb=netinfodb
+    )[0]
     blocking_event = list(
         make_signal_experiment_result(
             web_observations=web_observations,
@@ -98,9 +94,9 @@ def test_signal(fingerprintdb, netinfodb, measurements):
         msmt_path=measurements["20221018174612.488229_IR_signal_f8640b28061bec06"]
     )
     assert isinstance(signal_blocked_ir, Signal)
-    web_observations = make_signal_observations(signal_blocked_ir, netinfodb=netinfodb)[
-        0
-    ]
+    web_observations = measurement_to_observations(
+        signal_blocked_ir, netinfodb=netinfodb
+    )[0]
     blocking_event = list(
         make_signal_experiment_result(
             web_observations=web_observations,
@@ -181,14 +177,16 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
 def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
     msmt = load_measurement(msmt_path=msmt_path)
     assert isinstance(msmt, WebConnectivity)
-    web_observations = make_web_connectivity_observations(msmt, netinfodb=netinfodb)[0]
+    web_observations, web_control_observations = measurement_to_observations(
+        msmt, netinfodb=netinfodb
+    )
 
     assert msmt.test_keys.control
     assert isinstance(msmt.input, str)
     web_ground_truth_db = WebGroundTruthDB()
     web_ground_truth_db.build_from_rows(
         rows=iter_ground_truths_from_web_control(
-            web_control_observations=make_web_control_observations(msmt),
+            web_control_observations=web_control_observations,
             netinfodb=netinfodb,
         ),
     )
