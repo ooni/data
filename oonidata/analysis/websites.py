@@ -691,10 +691,43 @@ def make_tls_outcome(
             blocked_score=0.0,
         )
 
-    if web_o.tls_is_certificate_valid == False:
-        # TODO: this is wrong. We need to consider the baseline to establish TLS
-        # MITM, because the cert might be invalid also from other location (eg.
-        # it expired) and not due to censorship.
+    ground_truths = filter(
+        lambda gt: gt.http_request_url and gt.hostname == web_o.hostname,
+        web_ground_truths,
+    )
+    failure_cc_asn = set()
+    ok_cc_asn = set()
+    ok_count = 0
+    failure_count = 0
+    for gt in ground_truths:
+        # We don't check for strict == True, since depending on the DB engine
+        # True could also be represented as 1
+        if gt.http_success is None:
+            continue
+
+        if gt.http_success:
+            if gt.is_trusted_vp:
+                ok_count += gt.count
+            else:
+                ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
+        else:
+            if gt.is_trusted_vp:
+                failure_count += gt.count
+            else:
+                failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
+
+    # Untrusted Vantage Points (i.e. not control measurements) only count
+    # once per probe_cc, probe_asn pair to avoid spammy probes poisoning our
+    # data
+    failure_count += len(failure_cc_asn)
+    ok_count += len(ok_cc_asn)
+    outcome_meta["ok_count"] = str(ok_count)
+    outcome_meta["failure_count"] = str(failure_count)
+
+    scores = ok_vs_nok_score(ok_count=ok_count, nok_count=failure_count)
+
+    # FIXME: we currently use the HTTP control as a proxy to establish ground truth for TLS
+    if web_o.tls_is_certificate_valid == False and failure_count == 0:
         outcome_meta["why"] = "invalid TLS certificate"
         return Outcome(
             observation_id=web_o.observation_id,
@@ -709,7 +742,7 @@ def make_tls_outcome(
             blocked_score=0.8,
         )
 
-    elif web_o.tls_failure:
+    elif web_o.tls_failure and failure_count == 0:
         # We only consider it to be a TLS level verdict if we haven't seen any
         # blocks in TCP
         blocking_detail = f"{web_o.tls_failure}"
@@ -735,6 +768,25 @@ def make_tls_outcome(
             down_score=1 - blocked_score,
             blocked_score=blocked_score,
         )
+
+    elif web_o.tls_failure or web_o.tls_is_certificate_valid:
+        outcome_detail = f"{web_o.http_failure}"
+        if web_o.tls_is_certificate_valid:
+            outcome_detail = "bad_cert"
+
+        return Outcome(
+            observation_id=web_o.observation_id,
+            scope=BlockingScope.UNKNOWN,
+            label="",
+            subject=blocking_subject,
+            category="tls",
+            detail=outcome_detail,
+            meta=outcome_meta,
+            ok_score=0.0,
+            down_score=scores.down,
+            blocked_score=scores.blocked,
+        )
+
 
     return Outcome(
         observation_id=web_o.observation_id,
