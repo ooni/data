@@ -157,18 +157,26 @@ def make_tcp_outcome(
     )
     unreachable_cc_asn = set()
     reachable_cc_asn = set()
+    ok_count = 0
+    nok_count = 0
     for gt in ground_truths:
         # We don't check for strict == True, since depending on the DB engine
         # True could also be represented as 1
         if gt.tcp_success is None:
             continue
         if gt.tcp_success:
-            reachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
+            if gt.is_trusted_vp:
+                ok_count += 1
+            else:
+                reachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
         else:
-            unreachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
+            if gt.is_trusted_vp:
+                nok_count += 1
+            else:
+                unreachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
 
-    reachable_count = len(reachable_cc_asn)
-    unreachable_count = len(unreachable_cc_asn)
+    reachable_count = ok_count + len(reachable_cc_asn)
+    unreachable_count = nok_count + len(unreachable_cc_asn)
     blocking_meta = {
         "unreachable_count": str(unreachable_count),
         "reachable_count": str(reachable_count),
