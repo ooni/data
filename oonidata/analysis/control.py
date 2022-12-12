@@ -224,7 +224,7 @@ class WebGroundTruthDB:
             ip TEXT,
             ip_asn INT,
             ip_as_org_name TEXT,
-            port TEXT,
+            port INT,
 
             dns_failure TEXT,
             dns_success INT,

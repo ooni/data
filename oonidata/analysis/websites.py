@@ -88,7 +88,7 @@ def confidence_estimate(x, factor=0.8, clamping=0.9):
     This function was derived by looking for an exponential function in
     the form f(x) = c1*a^x + c2 and solving for f(0) = 0 and f(10) = 1,
     giving us a function in the form f(x) = (a^x - 1) / (a^10 - 1). We
-    then choose the magic value of 0.6 by looking for a solution in a
+    then choose the magic value of 0.5 by looking for a solution in a
     where f(1) ~= 0.5, doing a bit of plots and choosing a curve that
     looks reasonably sloped.
     """
@@ -117,10 +117,7 @@ def ok_vs_nok_score(
     down_score = 1 - blocked_score
     total_count = ok_count + nok_count
     if total_count > 0:
-        blocked_score = min(
-            1.0,
-            ok_count / total_count * blocking_factor * confidence_estimate(total_count, clamping=1.0, factor=1.0),
-        )
+        blocked_score = min(1.0, ok_count / total_count * blocking_factor)
         down_score = 1 - blocked_score
 
     return Scores(ok=0.0, blocked=blocked_score, down=down_score)

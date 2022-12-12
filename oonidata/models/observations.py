@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import dataclasses
 from datetime import datetime
 from typing import (
     Optional,
@@ -6,8 +7,11 @@ from typing import (
     Tuple,
 )
 
+from tabulate import tabulate
+
 from oonidata.compat import add_slots
 from oonidata.models.dataformats import Failure
+from oonidata.datautils import maybe_elipse
 
 
 @add_slots
@@ -59,6 +63,17 @@ class MeasurementMeta(ObservationBase):
     resolver_as_org_name_probe: str
 
     bucket_date: str
+
+
+def print_nice(obs):
+    rows = []
+    meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
+    headers = [f.name for f in dataclasses.fields(obs[0])]
+    headers = list(filter(lambda k: k not in meta_fields, headers))
+    for o in obs:
+        rows.append([maybe_elipse(getattr(o, k)) for k in headers])
+    headers = [maybe_elipse(h, 5) for h in headers]
+    print(tabulate(rows, headers=headers))
 
 
 @add_slots
