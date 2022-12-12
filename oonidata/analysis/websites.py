@@ -314,7 +314,7 @@ def compute_dns_failure_outcomes(
             scores = ok_vs_nok_score(
                 ok_count=dns_ground_truth.ok_count,
                 nok_count=dns_ground_truth.nxdomain_count,
-                blocking_factor=1.0,
+                blocking_factor=0.9,
             )
         outcome_subject = (
             f"{web_o.hostname}@{web_o.dns_engine}-{web_o.dns_engine_resolver_address}"
@@ -786,7 +786,6 @@ def make_tls_outcome(
             down_score=scores.down,
             blocked_score=scores.blocked,
         )
-
 
     return Outcome(
         observation_id=web_o.observation_id,
