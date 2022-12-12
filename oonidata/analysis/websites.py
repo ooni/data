@@ -97,33 +97,33 @@ def confidence_estimate(x, factor=0.8, clamping=0.9):
 
 
 def ok_vs_nok_score(
-    ok_count: int,
-    nok_count: int,
-    blocking_factor: float = 0.8,
-    down_factor: float = 0.8,
+    ok_count: int, nok_count: int, blocking_factor: float = 0.8
 ) -> Scores:
     """
     This is a very simplistic estimation that just looks at the proportions of
     failures to reachable measurement to establish if something is blocked or
     not.
-    If we see in the ground truth reachable_count = 1, unreachable_count = 0,
-    this will leads to a blocking_score of 0.8, down_score of 0.0 and ok_score
-    of 0.2.
-    OTOH, if we see something an amibigious ground truth, such as
-    reachable_count = 1, unreachable_count = 1, we get:
-    blocking_score = 0.4, down_score = 0.4, ok_score = 0.2, which basically
-    means we have no idea what is going on.
-    TODO: do we want to use a variable multiplicative factor of 0.8 depending
-    on the type of tcp_failure we are seeing?
+
+    It assumes that what we are calculating the ok_vs_nok score is some kind of
+    failure, which means the outcome is either that the target is down or
+    blocked.
+
+    In order to determine which of the two cases it is, we look at the ground
+    truth.
     """
-    blocked_score = 0.3
-    down_score = 0.3
+    # We set this to 0.65 so that for the default value and lack of any ground
+    # truth, we end up with blocked_score = 0.52 and down_score = 0.48
+    blocked_score = min(1.0, 0.65 * blocking_factor)
+    down_score = 1 - blocked_score
     total_count = ok_count + nok_count
     if total_count > 0:
-        blocked_score = ok_count / total_count * blocking_factor
-        down_score = nok_count / total_count * down_factor
-    ok_score = 1 - blocked_score - down_score
-    return Scores(ok=ok_score, blocked=blocked_score, down=down_score)
+        blocked_score = min(
+            1.0,
+            ok_count / total_count * blocking_factor * confidence_estimate(total_count, clamping=1.0, factor=1.0),
+        )
+        down_score = 1 - blocked_score
+
+    return Scores(ok=0.0, blocked=blocked_score, down=down_score)
 
 
 def make_tcp_outcome(
@@ -301,8 +301,6 @@ def compute_dns_failure_outcomes(
         scores = ok_vs_nok_score(
             ok_count=dns_ground_truth.ok_count,
             nok_count=dns_ground_truth.failure_count,
-            blocking_factor=0.8,
-            down_factor=0.8,
         )
 
         blocking_detail = f"failure.{web_o.dns_failure}"
@@ -311,8 +309,7 @@ def compute_dns_failure_outcomes(
             scores = ok_vs_nok_score(
                 ok_count=dns_ground_truth.ok_count,
                 nok_count=dns_ground_truth.nxdomain_count,
-                blocking_factor=0.9,
-                down_factor=0.9,
+                blocking_factor=1.0,
             )
         outcome_subject = (
             f"{web_o.hostname}@{web_o.dns_engine}-{web_o.dns_engine_resolver_address}"
@@ -770,6 +767,8 @@ def make_http_outcome(
     if web_o.http_failure:
         failure_cc_asn = set()
         ok_cc_asn = set()
+        ok_count = 0
+        failure_count = 0
         for gt in ground_truths:
             # We don't check for strict == True, since depending on the DB engine
             # True could also be represented as 1
@@ -777,12 +776,21 @@ def make_http_outcome(
                 continue
 
             if gt.http_success:
-                ok_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
+                if gt.is_trusted_vp:
+                    ok_count += gt.count
+                else:
+                    ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
             else:
-                failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
+                if gt.is_trusted_vp:
+                    failure_count += gt.count
+                else:
+                    failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
 
-        failure_count = len(failure_cc_asn)
-        ok_count = len(ok_cc_asn)
+        # Untrusted Vantage Points (i.e. not control measurements) only count
+        # once per probe_cc, probe_asn pair to avoid spammy probes poisoning our
+        # data
+        failure_count += len(failure_cc_asn)
+        ok_count += len(ok_cc_asn)
         outcome_meta["ok_count"] = str(ok_count)
         outcome_meta["failure_count"] = str(failure_count)
         scores = ok_vs_nok_score(ok_count=ok_count, nok_count=failure_count)
