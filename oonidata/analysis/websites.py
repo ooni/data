@@ -932,8 +932,8 @@ def make_http_outcome(
                 < 0.7
             )
         ):
-            outcome_meta["response_body_length"] = web_o.http_response_body_length
-            outcome_meta["ctrl_response_body_length"] = response_body_length
+            outcome_meta["response_body_length"] = str(web_o.http_response_body_length)
+            outcome_meta["ctrl_response_body_length"] = str(response_body_length)
             blocking_detail = f"http.body-diff"
             return Outcome(
                 observation_id=web_o.observation_id,
