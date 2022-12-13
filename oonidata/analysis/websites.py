@@ -77,7 +77,7 @@ def encode_address(ip: str, port: int) -> str:
     return addr
 
 
-def confidence_estimate(x, factor=0.8, clamping=0.9):
+def confidence_estimate(x: int, factor: float = 0.8, clamping: float = 0.9):
     """
     Gives an estimate of confidence given the number of datapoints that are
     consistent (x).
@@ -820,35 +820,46 @@ def make_http_outcome(
     ground_truths = filter(
         lambda gt: gt.http_request_url == web_o.http_request_url, web_ground_truths
     )
-    if web_o.http_failure:
-        failure_cc_asn = set()
-        ok_cc_asn = set()
-        ok_count = 0
-        failure_count = 0
-        for gt in ground_truths:
-            # We don't check for strict == True, since depending on the DB engine
-            # True could also be represented as 1
-            if gt.http_success is None:
-                continue
+    failure_cc_asn = set()
+    ok_cc_asn = set()
+    ok_count = 0
+    failure_count = 0
+    response_body_len_count = defaultdict(int)
+    for gt in ground_truths:
+        # We don't check for strict == True, since depending on the DB engine
+        # True could also be represented as 1
+        if gt.http_success is None:
+            continue
 
-            if gt.http_success:
-                if gt.is_trusted_vp:
-                    ok_count += gt.count
-                else:
-                    ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
+        if gt.http_response_body_length:
+            response_body_len_count[gt.http_response_body_length] += gt.count
+
+        if gt.http_success:
+            if gt.is_trusted_vp:
+                ok_count += gt.count
             else:
-                if gt.is_trusted_vp:
-                    failure_count += gt.count
-                else:
-                    failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
+                ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
+        else:
+            if gt.is_trusted_vp:
+                failure_count += gt.count
+            else:
+                failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
 
-        # Untrusted Vantage Points (i.e. not control measurements) only count
-        # once per probe_cc, probe_asn pair to avoid spammy probes poisoning our
-        # data
-        failure_count += len(failure_cc_asn)
-        ok_count += len(ok_cc_asn)
-        outcome_meta["ok_count"] = str(ok_count)
-        outcome_meta["failure_count"] = str(failure_count)
+    response_body_length = 0
+    if len(response_body_len_count) > 0:
+        response_body_length = max(response_body_len_count.items(), key=lambda x: x[1])[
+            0
+        ]
+
+    # Untrusted Vantage Points (i.e. not control measurements) only count
+    # once per probe_cc, probe_asn pair to avoid spammy probes poisoning our
+    # data
+    failure_count += len(failure_cc_asn)
+    ok_count += len(ok_cc_asn)
+    outcome_meta["ok_count"] = str(ok_count)
+    outcome_meta["failure_count"] = str(failure_count)
+
+    if web_o.http_failure:
         scores = ok_vs_nok_score(ok_count=ok_count, nok_count=failure_count)
 
         outcome_detail = f"{web_o.http_failure}"
@@ -906,32 +917,36 @@ def make_http_outcome(
             )
 
     if not request_is_encrypted:
-        # TODO we don't currently do any of this to keep things simple.
-        # We should probably do mining of the body dumps to figure out if there
+        # TODO: We should probably do mining of the body dumps to figure out if there
         # are blockpages in there instead of relying on a per-measurement heuristic
-        """
-        ground_truths = filter(lambda gt: gt.http_response_body_length, ground_truths)
-        if web_o.http_response_body_sha1 == http_ctrl.response_body_sha1:
-            return ok_be
+
+        # TODO: we don't have this
+        # if web_o.http_response_body_sha1 == http_ctrl.response_body_sha1:
+        #    return ok_be
 
         if (
             web_o.http_response_body_length
-            and http_ctrl.response_body_length
+            and response_body_length
             and (
-                (web_o.http_response_body_length + 1.0)
-                / (http_ctrl.response_body_length + 1.0)
+                (web_o.http_response_body_length + 1.0) / (response_body_length + 1.0)
                 < 0.7
             )
         ):
-            blocking_detail = f"{detail_prefix}diff.body"
-            return BlockingEvent(
-                blocking_type=BlockingType.BLOCKED,
-                blocking_subject=blocking_subject,
-                blocking_detail=blocking_detail,
-                blocking_meta={"why": "inconsistent body length"},
-                confidence=0.6,
+            outcome_meta["response_body_length"] = web_o.http_response_body_length
+            outcome_meta["ctrl_response_body_length"] = response_body_length
+            blocking_detail = f"http.body-diff"
+            return Outcome(
+                observation_id=web_o.observation_id,
+                scope=BlockingScope.UNKNOWN,
+                label="",
+                subject=blocking_subject,
+                category=outcome_category,
+                detail=blocking_detail,
+                meta=outcome_meta,
+                ok_score=0.3,
+                down_score=0.0,
+                blocked_score=0.7,
             )
-        """
 
     return Outcome(
         observation_id=web_o.observation_id,
