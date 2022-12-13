@@ -768,7 +768,7 @@ def make_tls_outcome(
             blocked_score=blocked_score,
         )
 
-    elif web_o.tls_failure or not web_o.tls_is_certificate_valid:
+    elif web_o.tls_failure:
         outcome_detail = f"{web_o.http_failure}"
         scores = ok_vs_nok_score(
             ok_count=ok_count, nok_count=failure_count, blocking_factor=0.7
