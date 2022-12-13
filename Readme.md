@@ -37,7 +37,7 @@ poetry run python -m oonidata --help
 
 The analysis engine is made up of several components:
 * Observation generation
-* Response body archving
+* Response body archiving
 * Ground truth generation
 * Experiment result generation
 
@@ -109,7 +109,7 @@ Here is the list of supported observations so far:
 * [ ] CircumventionToolObservation, still needs to be designed and implemented
   (ideally we would use the same for OpenVPN, Psiphon, VanillaTor)
 
-### Response body archving
+### Response body archiving
 
 It is optionally possible to also create WAR archives of HTTP response bodies
 when running the observation generation.
