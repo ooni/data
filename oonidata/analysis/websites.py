@@ -725,8 +725,6 @@ def make_tls_outcome(
     outcome_meta["ok_count"] = str(ok_count)
     outcome_meta["failure_count"] = str(failure_count)
 
-    scores = ok_vs_nok_score(ok_count=ok_count, nok_count=failure_count)
-
     # FIXME: we currently use the HTTP control as a proxy to establish ground truth for TLS
     if web_o.tls_is_certificate_valid == False and failure_count == 0:
         outcome_meta["why"] = "invalid TLS certificate"
@@ -772,6 +770,9 @@ def make_tls_outcome(
 
     elif web_o.tls_failure or not web_o.tls_is_certificate_valid:
         outcome_detail = f"{web_o.http_failure}"
+        scores = ok_vs_nok_score(
+            ok_count=ok_count, nok_count=failure_count, blocking_factor=0.7
+        )
 
         # TODO: it looks like this is being computed wrongly in the observation
         # generation.
