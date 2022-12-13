@@ -2,6 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import dataclasses
 import ipaddress
+import math
 from typing import Any, Generator, Iterable, NamedTuple, Optional, List, Dict
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.analysis.control import (
@@ -314,7 +315,7 @@ def compute_dns_failure_outcomes(
             scores = ok_vs_nok_score(
                 ok_count=dns_ground_truth.ok_count,
                 nok_count=dns_ground_truth.nxdomain_count,
-                blocking_factor=0.9,
+                blocking_factor=0.85,
             )
         outcome_subject = (
             f"{web_o.hostname}@{web_o.dns_engine}-{web_o.dns_engine_resolver_address}"
@@ -928,6 +929,11 @@ def make_http_outcome(
         if (
             web_o.http_response_body_length
             and response_body_length
+            # We need to ignore redirects as we should only be doing matching of the response body on the last element in the chain
+            and (
+                not web_o.http_response_header_location
+                and not math.floor(web_o.http_response_status_code or 0 / 100) == 3
+            )
             and (
                 (web_o.http_response_body_length + 1.0) / (response_body_length + 1.0)
                 < 0.7
