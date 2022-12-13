@@ -770,9 +770,9 @@ def make_tls_outcome(
             blocked_score=blocked_score,
         )
 
-    elif web_o.tls_failure or web_o.tls_is_certificate_valid:
+    elif web_o.tls_failure or not web_o.tls_is_certificate_valid:
         outcome_detail = f"{web_o.http_failure}"
-        if web_o.tls_is_certificate_valid:
+        if not web_o.tls_is_certificate_valid:
             outcome_detail = "bad_cert"
 
         return Outcome(
