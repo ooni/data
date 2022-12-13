@@ -831,7 +831,8 @@ def make_http_outcome(
         if gt.http_success is None:
             continue
 
-        if gt.http_response_body_length:
+        # TODO: figure out why some are negative
+        if gt.http_response_body_length and gt.http_response_body_length > 0:
             response_body_len_count[gt.http_response_body_length] += gt.count
 
         if gt.http_success:
