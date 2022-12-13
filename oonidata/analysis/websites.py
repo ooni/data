@@ -772,8 +772,11 @@ def make_tls_outcome(
 
     elif web_o.tls_failure or not web_o.tls_is_certificate_valid:
         outcome_detail = f"{web_o.http_failure}"
-        if not web_o.tls_is_certificate_valid:
-            outcome_detail = "bad_cert"
+
+        # TODO: it looks like this is being computed wrongly in the observation
+        # generation.
+        # if not web_o.tls_is_certificate_valid:
+        #   outcome_detail = "bad_cert"
 
         return Outcome(
             observation_id=web_o.observation_id,
