@@ -768,16 +768,13 @@ def make_tls_outcome(
             blocked_score=blocked_score,
         )
 
-    elif web_o.tls_failure:
+    elif web_o.tls_failure or web_o.tls_is_certificate_valid == False:
         outcome_detail = f"{web_o.tls_failure}"
         scores = ok_vs_nok_score(
             ok_count=ok_count, nok_count=failure_count, blocking_factor=0.7
         )
-
-        # TODO: it looks like this is being computed wrongly in the observation
-        # generation.
-        # if not web_o.tls_is_certificate_valid:
-        #   outcome_detail = "bad_cert"
+        if web_o.tls_is_certificate_valid == False:
+            outcome_detail = "bad_cert"
 
         return Outcome(
             observation_id=web_o.observation_id,
