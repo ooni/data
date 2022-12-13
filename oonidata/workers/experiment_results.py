@@ -155,16 +155,19 @@ class ExperimentResultMakerWorker(mp.Process):
 
             log.info(f"generating experiment results from {day}")
             try:
-                for _ in run_experiment_results(
-                    day=day,
-                    probe_cc=self.probe_cc,
-                    fingerprintdb=fingerprintdb,
-                    data_dir=self.data_dir,
-                    body_db=body_db,
-                    db_writer=db_writer,
-                    clickhouse=self.clickhouse,
+                for idx, _ in enumerate(
+                    run_experiment_results(
+                        day=day,
+                        probe_cc=self.probe_cc,
+                        fingerprintdb=fingerprintdb,
+                        data_dir=self.data_dir,
+                        body_db=body_db,
+                        db_writer=db_writer,
+                        clickhouse=self.clickhouse,
+                    )
                 ):
-                    self.progress_queue.put(1)
+                    if idx % 100 == 0:
+                        self.progress_queue.put(100)
             except Exception:
                 log.error(f"failed to process {day}", exc_info=True)
 
