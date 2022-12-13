@@ -180,7 +180,15 @@ def make_tcp_outcome(
         "reachable_count": str(reachable_count),
     }
 
-    scores = ok_vs_nok_score(ok_count=reachable_count, nok_count=unreachable_count)
+    blocking_factor = 0.7
+    if web_o.tls_failure == "connection_reset":
+        blocking_factor = 0.8
+
+    scores = ok_vs_nok_score(
+        ok_count=reachable_count,
+        nok_count=unreachable_count,
+        blocking_factor=blocking_factor,
+    )
     return Outcome(
         observation_id=web_o.observation_id,
         scope=BlockingScope.UNKNOWN,
