@@ -471,8 +471,13 @@ def check_wc_style_consistency(
         ground_truth_asns.add(gt.ip_asn)
         ground_truth_as_org_names.add(gt.ip_as_org_name.lower())
 
+    contains_matching_asn_answer = False
+    contains_matching_cc_answer = False
+    system_answers = 0
     for web_o in dns_observations:
         outcome_meta = outcome_fingerprint.meta.copy()
+        if web_o.dns_engine == "system":
+            system_answers += 1
 
         if web_o.dns_answer_asn in ground_truth_asns:
             outcome_meta["why"] = "answer in matches AS of trusted answers"
@@ -574,36 +579,51 @@ def check_wc_style_consistency(
                 blocked_score=0.4,
             )
 
-        outcome_meta["why"] = "unable to determine consistency through ground truth"
-        blocked_score = 0.6
+        if web_o.dns_answer_asn == web_o.probe_asn:
+            contains_matching_asn_answer = True
+        elif web_o.ip_as_cc == web_o.probe_cc:
+            contains_matching_cc_answer = True
+
+    outcome_meta = {}
+    outcome_meta["why"] = "unable to determine consistency through ground truth"
+    blocked_score = 0.6
+    outcome_detail = "inconsistent"
+
+    # It's quite unlikely that a censor will return multiple answers
+    if system_answers > 1:
+        outcome_meta["why"] += ", but multiple system_answers"
+        blocked_score = 0.4
+        outcome_detail = "ok"
+
+    # It's more common to answer to DNS queries for blocking with IPs managed by
+    # the ISP (ex. to serve their blockpage).
+    # So we give this a bit higher confidence
+    if contains_matching_asn_answer and system_answers > 1:
+        blocked_score = 0.8
+        outcome_meta["why"] = "answer matches probe_asn"
         outcome_detail = "inconsistent"
 
-        # It's more common to answer to DNS queries for blocking with IPs managed by
-        # the ISP (ex. to serve their blockpage).
-        # So we give this a bit higher confidence
-        if web_o.dns_answer_asn == web_o.probe_asn:
-            blocked_score = 0.8
-            outcome_meta["why"] = "answer matches probe_asn"
-        # It's common to do this also in the country, for example when the blockpage
-        # is centrally managed (ex. case in IT, ID)
-        elif web_o.ip_as_cc == web_o.probe_cc:
-            outcome_meta["why"] = "answer matches probe_cc"
-            blocked_score = 0.7
+    # It's common to do this also in the country, for example when the blockpage
+    # is centrally managed (ex. case in IT, ID)
+    elif contains_matching_cc_answer:
+        blocked_score = 0.7
+        outcome_meta["why"] = "answer matches probe_cc"
+        outcome_detail = "inconsistent"
 
-        # We haven't managed to figured out if the DNS resolution was a good one, so
-        # we are going to assume it's bad.
-        return Outcome(
-            observation_id=web_o.observation_id,
-            scope=outcome_fingerprint.scope,
-            label=outcome_fingerprint.label,
-            subject=get_outcome_subject(web_o),
-            category="dns",
-            detail=outcome_detail,
-            meta=outcome_meta,
-            ok_score=1 - blocked_score,
-            down_score=0.0,
-            blocked_score=blocked_score,
-        )
+    # We haven't managed to figured out if the DNS resolution was a good one, so
+    # we are going to assume it's bad.
+    return Outcome(
+        observation_id=dns_observations[0].observation_id,
+        scope=outcome_fingerprint.scope,
+        label=outcome_fingerprint.label,
+        subject="all@all",
+        category="dns",
+        detail=outcome_detail,
+        meta=outcome_meta,
+        ok_score=1 - blocked_score,
+        down_score=0.0,
+        blocked_score=blocked_score,
+    )
 
 
 def compute_dns_consistency_outcomes(
