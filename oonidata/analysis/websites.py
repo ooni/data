@@ -586,6 +586,7 @@ def check_wc_style_consistency(
 
     outcome_meta = {}
     outcome_meta["why"] = "unable to determine consistency through ground truth"
+    outcome_meta["system_answers"] = system_answers
     blocked_score = 0.6
     outcome_detail = "inconsistent"
 
@@ -612,6 +613,16 @@ def check_wc_style_consistency(
 
     # We haven't managed to figured out if the DNS resolution was a good one, so
     # we are going to assume it's bad.
+    # TODO: Currently web_connectivity assumes that if the last request was HTTPS and it was successful, then the whole measurement was OK.
+    # see: https://github.com/ooni/probe-cli/blob/a0dc65641d7a31e116d9411ecf9e69ed1955e792/internal/engine/experiment/webconnectivity/summary.go#L98
+    # This seems a little bit too strong. We probably ought to do this only if
+    # the redirect chain was a good one, because it will lead to false negatives
+    # in cases in which the redirect is triggered by the middlebox.
+    # Imagine a case like this:
+    # http://example.com/ -> 302 -> https://blockpage.org/
+    #
+    # The certificate for blockpage.org can be valid, but it's not what we
+    # wanted.
     return Outcome(
         observation_id=dns_observations[0].observation_id,
         scope=outcome_fingerprint.scope,
