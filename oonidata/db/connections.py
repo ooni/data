@@ -77,7 +77,7 @@ class ClickhouseConnection(DatabaseConnection):
         for table_name, rows in self._row_buffer.items():
             self.flush_rows(table_name=table_name, rows=rows)
             self._row_buffer[table_name] = []
-        self.client.disconnect_connection()
+        self.client.disconnect()
 
 
 CSVConnectionHandle = namedtuple("CSVConnectionHandle", ["fh", "writer"])
