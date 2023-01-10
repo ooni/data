@@ -361,6 +361,7 @@ def start_observation_maker(
     # flush all their bodies to the archiver thread
     log.info("sending shutdown event")
     worker_shutdown_event.set()
+    status_queue.join()
 
     log.info(f"waiting for observation workers to finish running")
     for idx, p in enumerate(observation_workers):
@@ -372,7 +373,6 @@ def start_observation_maker(
     if archiver_queue:
         log.info("waiting for archiving to finish")
         archiver_queue.join()
-    status_queue.join()
 
     # We are done, we can now tell everybody to go home
     log.info("sending shutdown event")

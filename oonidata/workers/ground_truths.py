@@ -135,6 +135,9 @@ def start_ground_truth_builder(
     log.info(f"sending shutdown signal to workers")
     worker_shutdown_event.set()
 
+    log.info("waiting for progress queue to finish")
+    progress_queue.join()
+
     log.info(f"waiting for ground truth workers to finish running")
     for idx, p in enumerate(workers):
         log.info(f"waiting worker {idx} to join")
@@ -142,8 +145,6 @@ def start_ground_truth_builder(
         log.info(f"waiting worker {idx} to close")
         p.close()
 
-    log.info("waiting for progress queue to finish")
-    progress_queue.join()
     log.info("sending shutdown event progress thread")
     shutdown_event.set()
     log.info("waiting on progress queue")
