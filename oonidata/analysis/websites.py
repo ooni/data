@@ -586,7 +586,7 @@ def check_wc_style_consistency(
 
     outcome_meta = {}
     outcome_meta["why"] = "unable to determine consistency through ground truth"
-    outcome_meta["system_answers"] = system_answers
+    outcome_meta["system_answers"] = str(system_answers)
     blocked_score = 0.6
     outcome_detail = "inconsistent"
 
