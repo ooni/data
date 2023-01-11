@@ -12,6 +12,8 @@ from oonidata.netinfo import NetinfoDB
 from oonidata.dataclient import sync_measurements
 from oonidata.apiclient import get_measurement_dict, get_raw_measurement
 
+from .explorer_urls import EXPLORER_URLS, get_report_id_input
+
 FIXTURE_PATH = Path(os.path.dirname(os.path.realpath(__file__))) / "data"
 DATA_DIR = FIXTURE_PATH / "datadir"
 
@@ -157,6 +159,22 @@ def measurements():
             continue
         msmt = get_measurement_dict(report_id=report_id, input=input_)
         with sampled_measurements[msmt_uid].open("wb") as out_file:
+            out_file.write(orjson.dumps(msmt))
+    return sampled_measurements
+
+
+@pytest.fixture
+def explorer_urls():
+    sampled_measurements = {}
+
+    measurement_dir = FIXTURE_PATH / "measurements" / "explorer_urls"
+    measurement_dir.mkdir(parents=True, exist_ok=True)
+    for key, explorer_url in EXPLORER_URLS.items():
+        report_id, input_ = get_report_id_input(explorer_url)
+        sampled_measurements[key] = measurement_dir / f"{key}.json"
+
+        msmt = get_measurement_dict(report_id=report_id, input=input_)
+        with sampled_measurements[key].open("wb") as out_file:
             out_file.write(orjson.dumps(msmt))
     return sampled_measurements
 

@@ -14,8 +14,6 @@ from typing import (
     Union,
 )
 
-from tabulate import tabulate
-
 from oonidata.models.dataformats import (
     DNSAnswer,
     DNSQuery,
@@ -69,23 +67,6 @@ def normalize_failure(failure: Failure):
         if substring in failure:
             return new_failure
     return failure
-
-
-def maybe_elipse(s, max_len=16):
-    if isinstance(s, str) and len(s) > max_len:
-        return s[:max_len] + "…"
-    return s
-
-
-def print_nice(obs):
-    rows = []
-    meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
-    headers = [f.name for f in dataclasses.fields(obs[0])]
-    headers = list(filter(lambda k: k not in meta_fields, headers))
-    for o in obs:
-        rows.append([maybe_elipse(getattr(o, k)) for k in headers])
-    headers = [maybe_elipse(h, 5) for h in headers]
-    print(tabulate(rows, headers=headers))
 
 
 def make_timestamp(measurement_start_time: datetime, t: Optional[float] = None):
@@ -829,4 +810,3 @@ class MeasurementTransformer:
 
     def make_observations(self, measurement):
         assert RuntimeError("make_observations is not implemented")
-

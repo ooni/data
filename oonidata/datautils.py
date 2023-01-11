@@ -414,3 +414,9 @@ def one_day_dict(day: date) -> Dict[str, Any]:
 
 def removeprefix(s: str, prefix: str):
     return s[len(prefix) :]
+
+
+def maybe_elipse(s, max_len=16):
+    if isinstance(s, str) and len(s) > max_len:
+        return s[:max_len] + "…"
+    return s

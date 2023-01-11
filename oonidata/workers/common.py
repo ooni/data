@@ -239,12 +239,12 @@ def run_progress_thread(
     log.info("starting error handling thread")
     while not shutdown_event.is_set():
         try:
-            res = status_queue.get(block=True, timeout=0.1)
+            count = status_queue.get(block=True, timeout=0.1)
         except queue.Empty:
             continue
 
         try:
-            pbar.update()
+            pbar.update(count)
             pbar.set_description(desc)
         finally:
             status_queue.task_done()

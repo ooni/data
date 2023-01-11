@@ -2,6 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import dataclasses
 import ipaddress
+import math
 from typing import Any, Generator, Iterable, NamedTuple, Optional, List, Dict
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.analysis.control import (
@@ -77,7 +78,7 @@ def encode_address(ip: str, port: int) -> str:
     return addr
 
 
-def confidence_estimate(x, factor=0.8, clamping=0.9):
+def confidence_estimate(x: int, factor: float = 0.8, clamping: float = 0.9):
     """
     Gives an estimate of confidence given the number of datapoints that are
     consistent (x).
@@ -88,7 +89,7 @@ def confidence_estimate(x, factor=0.8, clamping=0.9):
     This function was derived by looking for an exponential function in
     the form f(x) = c1*a^x + c2 and solving for f(0) = 0 and f(10) = 1,
     giving us a function in the form f(x) = (a^x - 1) / (a^10 - 1). We
-    then choose the magic value of 0.6 by looking for a solution in a
+    then choose the magic value of 0.5 by looking for a solution in a
     where f(1) ~= 0.5, doing a bit of plots and choosing a curve that
     looks reasonably sloped.
     """
@@ -97,33 +98,30 @@ def confidence_estimate(x, factor=0.8, clamping=0.9):
 
 
 def ok_vs_nok_score(
-    ok_count: int,
-    nok_count: int,
-    blocking_factor: float = 0.8,
-    down_factor: float = 0.8,
+    ok_count: int, nok_count: int, blocking_factor: float = 0.8
 ) -> Scores:
     """
     This is a very simplistic estimation that just looks at the proportions of
     failures to reachable measurement to establish if something is blocked or
     not.
-    If we see in the ground truth reachable_count = 1, unreachable_count = 0,
-    this will leads to a blocking_score of 0.8, down_score of 0.0 and ok_score
-    of 0.2.
-    OTOH, if we see something an amibigious ground truth, such as
-    reachable_count = 1, unreachable_count = 1, we get:
-    blocking_score = 0.4, down_score = 0.4, ok_score = 0.2, which basically
-    means we have no idea what is going on.
-    TODO: do we want to use a variable multiplicative factor of 0.8 depending
-    on the type of tcp_failure we are seeing?
+
+    It assumes that what we are calculating the ok_vs_nok score is some kind of
+    failure, which means the outcome is either that the target is down or
+    blocked.
+
+    In order to determine which of the two cases it is, we look at the ground
+    truth.
     """
-    blocked_score = 0.3
-    down_score = 0.3
+    # We set this to 0.65 so that for the default value and lack of any ground
+    # truth, we end up with blocked_score = 0.52 and down_score = 0.48
+    blocked_score = min(1.0, 0.65 * blocking_factor)
+    down_score = 1 - blocked_score
     total_count = ok_count + nok_count
     if total_count > 0:
-        blocked_score = ok_count / total_count * blocking_factor
-        down_score = nok_count / total_count * down_factor
-    ok_score = 1 - blocked_score - down_score
-    return Scores(ok=ok_score, blocked=blocked_score, down=down_score)
+        blocked_score = min(1.0, ok_count / total_count * blocking_factor)
+        down_score = 1 - blocked_score
+
+    return Scores(ok=0.0, blocked=blocked_score, down=down_score)
 
 
 def make_tcp_outcome(
@@ -157,24 +155,40 @@ def make_tcp_outcome(
     )
     unreachable_cc_asn = set()
     reachable_cc_asn = set()
+    ok_count = 0
+    nok_count = 0
     for gt in ground_truths:
         # We don't check for strict == True, since depending on the DB engine
         # True could also be represented as 1
         if gt.tcp_success is None:
             continue
         if gt.tcp_success:
-            reachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
+            if gt.is_trusted_vp:
+                ok_count += 1
+            else:
+                reachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
         else:
-            unreachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
+            if gt.is_trusted_vp:
+                nok_count += 1
+            else:
+                unreachable_cc_asn.add((gt.vp_cc, gt.vp_asn))
 
-    reachable_count = len(reachable_cc_asn)
-    unreachable_count = len(unreachable_cc_asn)
+    reachable_count = ok_count + len(reachable_cc_asn)
+    unreachable_count = nok_count + len(unreachable_cc_asn)
     blocking_meta = {
         "unreachable_count": str(unreachable_count),
         "reachable_count": str(reachable_count),
     }
 
-    scores = ok_vs_nok_score(ok_count=reachable_count, nok_count=unreachable_count)
+    blocking_factor = 0.7
+    if web_o.tls_failure == "connection_reset":
+        blocking_factor = 0.8
+
+    scores = ok_vs_nok_score(
+        ok_count=reachable_count,
+        nok_count=unreachable_count,
+        blocking_factor=blocking_factor,
+    )
     return Outcome(
         observation_id=web_o.observation_id,
         scope=BlockingScope.UNKNOWN,
@@ -301,8 +315,6 @@ def compute_dns_failure_outcomes(
         scores = ok_vs_nok_score(
             ok_count=dns_ground_truth.ok_count,
             nok_count=dns_ground_truth.failure_count,
-            blocking_factor=0.8,
-            down_factor=0.8,
         )
 
         blocking_detail = f"failure.{web_o.dns_failure}"
@@ -311,8 +323,7 @@ def compute_dns_failure_outcomes(
             scores = ok_vs_nok_score(
                 ok_count=dns_ground_truth.ok_count,
                 nok_count=dns_ground_truth.nxdomain_count,
-                blocking_factor=0.9,
-                down_factor=0.9,
+                blocking_factor=0.85,
             )
         outcome_subject = (
             f"{web_o.hostname}@{web_o.dns_engine}-{web_o.dns_engine_resolver_address}"
@@ -460,8 +471,13 @@ def check_wc_style_consistency(
         ground_truth_asns.add(gt.ip_asn)
         ground_truth_as_org_names.add(gt.ip_as_org_name.lower())
 
+    contains_matching_asn_answer = False
+    contains_matching_cc_answer = False
+    system_answers = 0
     for web_o in dns_observations:
         outcome_meta = outcome_fingerprint.meta.copy()
+        if web_o.dns_engine == "system":
+            system_answers += 1
 
         if web_o.dns_answer_asn in ground_truth_asns:
             outcome_meta["why"] = "answer in matches AS of trusted answers"
@@ -563,36 +579,62 @@ def check_wc_style_consistency(
                 blocked_score=0.4,
             )
 
-        outcome_meta["why"] = "unable to determine consistency through ground truth"
-        blocked_score = 0.6
+        if web_o.dns_answer_asn == web_o.probe_asn:
+            contains_matching_asn_answer = True
+        elif web_o.ip_as_cc == web_o.probe_cc:
+            contains_matching_cc_answer = True
+
+    outcome_meta = {}
+    outcome_meta["why"] = "unable to determine consistency through ground truth"
+    outcome_meta["system_answers"] = str(system_answers)
+    blocked_score = 0.6
+    outcome_detail = "inconsistent"
+
+    # It's quite unlikely that a censor will return multiple answers
+    if system_answers > 1:
+        outcome_meta["why"] += ", but multiple system_answers"
+        blocked_score = 0.4
+        outcome_detail = "ok"
+
+    # It's more common to answer to DNS queries for blocking with IPs managed by
+    # the ISP (ex. to serve their blockpage).
+    # So we give this a bit higher confidence
+    if contains_matching_asn_answer and system_answers > 1:
+        blocked_score = 0.8
+        outcome_meta["why"] = "answer matches probe_asn"
         outcome_detail = "inconsistent"
 
-        # It's more common to answer to DNS queries for blocking with IPs managed by
-        # the ISP (ex. to serve their blockpage).
-        # So we give this a bit higher confidence
-        if web_o.dns_answer_asn == web_o.probe_asn:
-            blocked_score = 0.8
-            outcome_meta["why"] = "answer matches probe_asn"
-        # It's common to do this also in the country, for example when the blockpage
-        # is centrally managed (ex. case in IT, ID)
-        elif web_o.ip_as_cc == web_o.probe_cc:
-            outcome_meta["why"] = "answer matches probe_cc"
-            blocked_score = 0.7
+    # It's common to do this also in the country, for example when the blockpage
+    # is centrally managed (ex. case in IT, ID)
+    elif contains_matching_cc_answer:
+        blocked_score = 0.7
+        outcome_meta["why"] = "answer matches probe_cc"
+        outcome_detail = "inconsistent"
 
-        # We haven't managed to figured out if the DNS resolution was a good one, so
-        # we are going to assume it's bad.
-        return Outcome(
-            observation_id=web_o.observation_id,
-            scope=outcome_fingerprint.scope,
-            label=outcome_fingerprint.label,
-            subject=get_outcome_subject(web_o),
-            category="dns",
-            detail=outcome_detail,
-            meta=outcome_meta,
-            ok_score=1 - blocked_score,
-            down_score=0.0,
-            blocked_score=blocked_score,
-        )
+    # We haven't managed to figured out if the DNS resolution was a good one, so
+    # we are going to assume it's bad.
+    # TODO: Currently web_connectivity assumes that if the last request was HTTPS and it was successful, then the whole measurement was OK.
+    # see: https://github.com/ooni/probe-cli/blob/a0dc65641d7a31e116d9411ecf9e69ed1955e792/internal/engine/experiment/webconnectivity/summary.go#L98
+    # This seems a little bit too strong. We probably ought to do this only if
+    # the redirect chain was a good one, because it will lead to false negatives
+    # in cases in which the redirect is triggered by the middlebox.
+    # Imagine a case like this:
+    # http://example.com/ -> 302 -> https://blockpage.org/
+    #
+    # The certificate for blockpage.org can be valid, but it's not what we
+    # wanted.
+    return Outcome(
+        observation_id=dns_observations[0].observation_id,
+        scope=outcome_fingerprint.scope,
+        label=outcome_fingerprint.label,
+        subject="all@all",
+        category="dns",
+        detail=outcome_detail,
+        meta=outcome_meta,
+        ok_score=1 - blocked_score,
+        down_score=0.0,
+        blocked_score=blocked_score,
+    )
 
 
 def compute_dns_consistency_outcomes(
@@ -689,10 +731,41 @@ def make_tls_outcome(
             blocked_score=0.0,
         )
 
-    if web_o.tls_is_certificate_valid == False:
-        # TODO: this is wrong. We need to consider the baseline to establish TLS
-        # MITM, because the cert might be invalid also from other location (eg.
-        # it expired) and not due to censorship.
+    ground_truths = filter(
+        lambda gt: gt.http_request_url and gt.hostname == web_o.hostname,
+        web_ground_truths,
+    )
+    failure_cc_asn = set()
+    ok_cc_asn = set()
+    ok_count = 0
+    failure_count = 0
+    for gt in ground_truths:
+        # We don't check for strict == True, since depending on the DB engine
+        # True could also be represented as 1
+        if gt.http_success is None:
+            continue
+
+        if gt.http_success:
+            if gt.is_trusted_vp:
+                ok_count += gt.count
+            else:
+                ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
+        else:
+            if gt.is_trusted_vp:
+                failure_count += gt.count
+            else:
+                failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
+
+    # Untrusted Vantage Points (i.e. not control measurements) only count
+    # once per probe_cc, probe_asn pair to avoid spammy probes poisoning our
+    # data
+    failure_count += len(failure_cc_asn)
+    ok_count += len(ok_cc_asn)
+    outcome_meta["ok_count"] = str(ok_count)
+    outcome_meta["failure_count"] = str(failure_count)
+
+    # FIXME: we currently use the HTTP control as a proxy to establish ground truth for TLS
+    if web_o.tls_is_certificate_valid == False and failure_count == 0:
         outcome_meta["why"] = "invalid TLS certificate"
         return Outcome(
             observation_id=web_o.observation_id,
@@ -707,7 +780,7 @@ def make_tls_outcome(
             blocked_score=0.8,
         )
 
-    elif web_o.tls_failure:
+    elif web_o.tls_failure and failure_count == 0:
         # We only consider it to be a TLS level verdict if we haven't seen any
         # blocks in TCP
         blocking_detail = f"{web_o.tls_failure}"
@@ -732,6 +805,27 @@ def make_tls_outcome(
             ok_score=0.0,
             down_score=1 - blocked_score,
             blocked_score=blocked_score,
+        )
+
+    elif web_o.tls_failure or web_o.tls_is_certificate_valid == False:
+        outcome_detail = f"{web_o.tls_failure}"
+        scores = ok_vs_nok_score(
+            ok_count=ok_count, nok_count=failure_count, blocking_factor=0.7
+        )
+        if web_o.tls_is_certificate_valid == False:
+            outcome_detail = "bad_cert"
+
+        return Outcome(
+            observation_id=web_o.observation_id,
+            scope=BlockingScope.UNKNOWN,
+            label="",
+            subject=blocking_subject,
+            category="tls",
+            detail=outcome_detail,
+            meta=outcome_meta,
+            ok_score=0.0,
+            down_score=scores.down,
+            blocked_score=scores.blocked,
         )
 
     return Outcome(
@@ -767,24 +861,47 @@ def make_http_outcome(
     ground_truths = filter(
         lambda gt: gt.http_request_url == web_o.http_request_url, web_ground_truths
     )
-    if web_o.http_failure:
-        failure_cc_asn = set()
-        ok_cc_asn = set()
-        for gt in ground_truths:
-            # We don't check for strict == True, since depending on the DB engine
-            # True could also be represented as 1
-            if gt.http_success is None:
-                continue
+    failure_cc_asn = set()
+    ok_cc_asn = set()
+    ok_count = 0
+    failure_count = 0
+    response_body_len_count = defaultdict(int)
+    for gt in ground_truths:
+        # We don't check for strict == True, since depending on the DB engine
+        # True could also be represented as 1
+        if gt.http_success is None:
+            continue
 
-            if gt.http_success:
-                ok_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
+        # TODO: figure out why some are negative
+        if gt.http_response_body_length and gt.http_response_body_length > 0:
+            response_body_len_count[gt.http_response_body_length] += gt.count
+
+        if gt.http_success:
+            if gt.is_trusted_vp:
+                ok_count += gt.count
+            else:
+                ok_cc_asn.add((gt.vp_cc, gt.vp_asn))
+        else:
+            if gt.is_trusted_vp:
+                failure_count += gt.count
             else:
                 failure_cc_asn.add((gt.vp_cc, gt.vp_asn, gt.count))
 
-        failure_count = len(failure_cc_asn)
-        ok_count = len(ok_cc_asn)
-        outcome_meta["ok_count"] = str(ok_count)
-        outcome_meta["failure_count"] = str(failure_count)
+    response_body_length = 0
+    if len(response_body_len_count) > 0:
+        response_body_length = max(response_body_len_count.items(), key=lambda x: x[1])[
+            0
+        ]
+
+    # Untrusted Vantage Points (i.e. not control measurements) only count
+    # once per probe_cc, probe_asn pair to avoid spammy probes poisoning our
+    # data
+    failure_count += len(failure_cc_asn)
+    ok_count += len(ok_cc_asn)
+    outcome_meta["ok_count"] = str(ok_count)
+    outcome_meta["failure_count"] = str(failure_count)
+
+    if web_o.http_failure:
         scores = ok_vs_nok_score(ok_count=ok_count, nok_count=failure_count)
 
         outcome_detail = f"{web_o.http_failure}"
@@ -842,32 +959,41 @@ def make_http_outcome(
             )
 
     if not request_is_encrypted:
-        # TODO we don't currently do any of this to keep things simple.
-        # We should probably do mining of the body dumps to figure out if there
+        # TODO: We should probably do mining of the body dumps to figure out if there
         # are blockpages in there instead of relying on a per-measurement heuristic
-        """
-        ground_truths = filter(lambda gt: gt.http_response_body_length, ground_truths)
-        if web_o.http_response_body_sha1 == http_ctrl.response_body_sha1:
-            return ok_be
+
+        # TODO: we don't have this
+        # if web_o.http_response_body_sha1 == http_ctrl.response_body_sha1:
+        #    return ok_be
 
         if (
             web_o.http_response_body_length
-            and http_ctrl.response_body_length
+            and response_body_length
+            # We need to ignore redirects as we should only be doing matching of the response body on the last element in the chain
             and (
-                (web_o.http_response_body_length + 1.0)
-                / (http_ctrl.response_body_length + 1.0)
+                not web_o.http_response_header_location
+                and not math.floor(web_o.http_response_status_code or 0 / 100) == 3
+            )
+            and (
+                (web_o.http_response_body_length + 1.0) / (response_body_length + 1.0)
                 < 0.7
             )
         ):
-            blocking_detail = f"{detail_prefix}diff.body"
-            return BlockingEvent(
-                blocking_type=BlockingType.BLOCKED,
-                blocking_subject=blocking_subject,
-                blocking_detail=blocking_detail,
-                blocking_meta={"why": "inconsistent body length"},
-                confidence=0.6,
+            outcome_meta["response_body_length"] = str(web_o.http_response_body_length)
+            outcome_meta["ctrl_response_body_length"] = str(response_body_length)
+            blocking_detail = f"http.body-diff"
+            return Outcome(
+                observation_id=web_o.observation_id,
+                scope=BlockingScope.UNKNOWN,
+                label="",
+                subject=blocking_subject,
+                category=outcome_category,
+                detail=blocking_detail,
+                meta=outcome_meta,
+                ok_score=0.3,
+                down_score=0.0,
+                blocked_score=0.7,
             )
-        """
 
     return Outcome(
         observation_id=web_o.observation_id,
