@@ -277,12 +277,16 @@ def get_df_blocking_of_domain_in_asn(
 
 def plot_blocking_of_domain_in_asn(
     df=None,
+    data_name=None,
     domain_name=None,
     probe_cc=None,
     probe_asn=None,
     start_time="2022-11-03",
     end_time="2022-12-03",
 ):
+    if df is None and data_name:
+        df = alt.NamedData(data_name)
+
     if df is None:
         df = get_df_blocking_of_domain_in_asn(
             domain_name=domain_name,
@@ -415,7 +419,10 @@ def get_df_blocking_world_map(blocking_threshold=0.7):
     return df_final
 
 
-def plot_blocking_world_map(df=None, blocking_threshold=0.7):
+def plot_blocking_world_map(df=None, data_name=None, blocking_threshold=0.7):
+    if df is None and data_name:
+        df = alt.NamedData(data_name)
+
     if df is None:
         df = get_df_blocking_world_map(blocking_threshold=blocking_threshold)
 
