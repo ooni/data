@@ -413,6 +413,10 @@ def iter_file_entries(prefix: Prefix) -> Generator[FileEntry, None, None]:
     for r in paginator.paginate(Bucket=prefix.bucket_name, Prefix=prefix.prefix):
         for obj_dict in r.get("Contents", []):
             try:
+                if obj_dict["Key"].endswith(".json.gz"):
+                    # We ignore the legacy can index files
+                    continue
+
                 yield FileEntry.from_obj_dict(prefix.bucket_name, obj_dict)
             except ValueError as exc:
                 log.error(exc)
