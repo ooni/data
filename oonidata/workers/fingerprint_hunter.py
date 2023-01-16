@@ -91,6 +91,10 @@ def start_fingerprint_hunter(
     parallelism: int,
     log_level: int = logging.INFO,
 ):
+    # Use spawn to avoid race condition that leads to deadlocks on unix
+    # See: https://bugs.python.org/issue6721
+    mp.set_start_method("spawn")
+
     archive_queue = mp.Queue()
 
     sqlite_path = archives_dir / "graveyard.sqlite3"

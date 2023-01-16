@@ -100,6 +100,10 @@ def start_ground_truth_builder(
     parallelism: int,
     log_level: int = logging.INFO,
 ):
+    # Use spawn to avoid race condition that leads to deadlocks on unix
+    # See: https://bugs.python.org/issue6721
+    mp.set_start_method("spawn")
+
     shutdown_event = mp.Event()
     worker_shutdown_event = mp.Event()
 
