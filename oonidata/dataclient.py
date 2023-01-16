@@ -413,6 +413,10 @@ def iter_file_entries(prefix: Prefix) -> Generator[FileEntry, None, None]:
     for r in paginator.paginate(Bucket=prefix.bucket_name, Prefix=prefix.prefix):
         for obj_dict in r.get("Contents", []):
             try:
+                if obj_dict["Key"].endswith(".json.gz"):
+                    # We ignore the legacy can index files
+                    continue
+
                 yield FileEntry.from_obj_dict(prefix.bucket_name, obj_dict)
             except ValueError as exc:
                 log.error(exc)
@@ -613,12 +617,23 @@ def iter_measurements(
             )
 
 
-def make_filename(max_string_size: Optional[int], fe: FileEntry) -> str:
+def make_filename(
+    filter_probe_cc: List[str], max_string_size: Optional[int], fe: FileEntry
+) -> str:
     flags = ""
     if max_string_size:
         flags = f"_max{max_string_size}"
     ts = fe.timestamp.strftime("%Y%m%d%H")
-    filename = f"{ts}_{fe.probe_cc}_{fe.testname}{flags}.jsonl.gz"
+
+    probe_cc = fe.probe_cc
+    # Legacy file entries don't have a probe_cc in the filename, so we replace
+    # the probe_cc component with whatever the user passed as filter
+    if probe_cc == None:
+        probe_cc = "ALL"
+        if len(filter_probe_cc) > 0:
+            probe_cc = "-".join(sorted(filter_probe_cc))
+
+    filename = f"{ts}_{probe_cc}_{fe.testname}{flags}.jsonl.gz"
     return filename
 
 
@@ -643,7 +658,7 @@ def download_file_entry_list(
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = output_dir / make_filename(max_string_size, fe_list[0])
+    output_path = output_dir / make_filename(probe_cc, max_string_size, fe_list[0])
 
     with gzip.open(output_path.with_suffix(".tmp"), "wb") as out_file:
         for fe in fe_list:
@@ -705,7 +720,7 @@ def sync_measurements(
                 output_dir
                 / fe.testname
                 / fe.timestamp.strftime("%Y-%m-%d")
-                / make_filename(max_string_size, fe)
+                / make_filename(probe_cc, max_string_size, fe)
             )
             if dst_path.exists():
                 continue
