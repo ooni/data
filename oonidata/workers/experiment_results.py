@@ -194,10 +194,6 @@ def start_experiment_result_maker(
     rebuild_ground_truths: bool,
     log_level: int = logging.INFO,
 ):
-    # Use spawn to avoid race condition that leads to deadlocks on unix
-    # See: https://bugs.python.org/issue6721
-    mp.set_start_method("spawn")
-
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
 
     shutdown_event = mp.Event()
