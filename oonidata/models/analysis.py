@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import dataclasses
 from datetime import datetime
 from typing import List, Optional
 
@@ -63,7 +64,7 @@ class WebsiteAnalysis:
     dns_ground_truth_ok_cc_asn_count: Optional[int] = None
     dns_ground_truth_failure_cc_asn_count: Optional[int] = None
     dns_ground_truth_nxdomain_cc_asn_count: Optional[int] = None
-    dns_consistency_system_answers: Optional[List[str]] = None
+    dns_consistency_system_answers: List[str] = dataclasses.field(default_factory=list)
     dns_consistency_system_success: Optional[bool] = None
     dns_consistency_system_failure: Optional[str] = None
     dns_consistency_system_answer_count: Optional[int] = None
@@ -84,7 +85,7 @@ class WebsiteAnalysis:
     dns_consistency_system_is_resolver_probe_cc_match: Optional[bool] = None
     dns_consistency_system_answer_ip_ground_truth_asn_count: Optional[int] = None
     dns_consistency_system_answer_asn_ground_truth_asn_count: Optional[int] = None
-    dns_consistency_other_answers: Optional[List[str]] = None
+    dns_consistency_other_answers: List[str] = dataclasses.field(default_factory=list)
     dns_consistency_other_success: Optional[bool] = None
     dns_consistency_other_failure: Optional[str] = None
     dns_consistency_other_answer_count: Optional[int] = None
