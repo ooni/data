@@ -403,7 +403,7 @@ def make_dns_analysis(
         else:
             if dns_consistency_other is not None:
                 log.warn(
-                    "more than one alternative resolver in query list. overriding."
+                    f"more than one alternative resolver in query list. overriding. {dns_observations[0].report_id}?input={dns_observations[0].input}"
                 )
             dns_consistency_other = check_dns_consistency(
                 fingerprintdb=fingerprintdb,
