@@ -24,11 +24,7 @@ import logging
 
 log = logging.getLogger("oonidata.processing")
 
-SYSTEM_RESOLVERS = [
-    "system",
-    "getaddrinfo",
-    "golang_net_resolver"
-]
+SYSTEM_RESOLVERS = ["system", "getaddrinfo", "golang_net_resolver", "go", "unknown"]
 CLOUD_PROVIDERS_ASNS = [
     13335,  # Cloudflare: https://www.peeringdb.com/net/4224
     20940,  # Akamai: https://www.peeringdb.com/net/2
@@ -322,7 +318,7 @@ def check_dns_consistency(
             # the last value. It's probably OK for now.
             consistency_results.answer_fp_name = fp.name
 
-        if web_o.dns_engine in SYSTEM_RESOLVERS:
+        if not web_o.dns_engine or web_o.dns_engine in SYSTEM_RESOLVERS:
             # TODO: do the same thing for the non-system resolver
             if web_o.resolver_asn == web_o.probe_asn:
                 consistency_results.is_resolver_probe_asn_match = True
