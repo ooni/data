@@ -595,7 +595,6 @@ def make_http_analysis(
     return http_analysis
 
 
-
 def make_website_analysis(
     web_observations: List[WebObservation],
     web_ground_truths: List[WebGroundTruth],
@@ -639,7 +638,8 @@ def make_website_analysis(
             except:
                 log.error(f"Invalid IP in {web_o.ip}")
 
-        dns_analysis = dns_analysis_by_hostname.pop(web_o.hostname)
+        dns_analysis = dns_analysis_by_hostname.get(web_o.hostname, None)
+
         tcp_analysis = None
         tls_analysis = None
         http_analysis = None
