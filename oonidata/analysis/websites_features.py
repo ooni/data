@@ -400,7 +400,7 @@ def make_dns_analysis(
                 dns_observations=dns_observations,
                 dns_ground_truth=dns_ground_truth,
             )
-        else:
+        elif resolver_str.startswith("udp"):
             if dns_consistency_other is not None:
                 log.warn(
                     f"more than one alternative resolver in query list. overriding. {dns_observations[0].report_id}?input={dns_observations[0].input}"
@@ -410,6 +410,9 @@ def make_dns_analysis(
                 dns_observations=dns_observations,
                 dns_ground_truth=dns_ground_truth,
             )
+        elif resolver_str.startswith("doh"):
+            # TODO: currently we ignore doh answers. Maybe we can do something with them in the future.
+            pass
 
     assert dns_consistency_system is not None, "could not find system DNS resolution"
 
