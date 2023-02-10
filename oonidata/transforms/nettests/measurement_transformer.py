@@ -562,6 +562,7 @@ def make_measurement_meta(
         software_version=msmt.software_version,
         test_name=msmt.test_name,
         test_version=msmt.test_version,
+        # engine_version, engine_name, architecture
         network_type=msmt.annotations.get("network_type", "unknown"),
         platform=msmt.annotations.get("platform", "unknown"),
         origin=msmt.annotations.get("origin", "unknown"),
