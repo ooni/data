@@ -237,7 +237,8 @@ def dns_observations_by_resolver(
 ) -> Dict[str, List[WebObservation]]:
     by_resolver = defaultdict(list)
     for dns_o in dns_observations:
-        key = f"{dns_o.dns_engine}-{dns_o.dns_engine_resolver_address}"
+        dns_engine = dns_o.dns_engine or "system"
+        key = f"{dns_engine}-{dns_o.dns_engine_resolver_address}"
         by_resolver[key].append(dns_o)
     return by_resolver
 
