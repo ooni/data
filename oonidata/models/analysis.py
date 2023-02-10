@@ -6,6 +6,12 @@ from typing import List, Optional
 @dataclass
 class WebsiteAnalysis:
     __table_name__ = "website_analysis"
+    __table_index__ = (
+        "analysis_id",
+        "measurement_uid",
+        "observation_id",
+        "measurement_start_time",
+    )
 
     analysis_id: str
     measurement_uid: str
