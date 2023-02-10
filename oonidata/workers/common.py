@@ -40,6 +40,7 @@ def get_prev_range(
     probe_cc: List[str],
     bucket_date: Optional[str] = None,
     timestamp: Optional[datetime] = None,
+    timestamp_column: str = "timestamp",
 ) -> PrevRange:
     """
     We lookup the range of previously generated rows so we can drop
@@ -76,9 +77,7 @@ def get_prev_range(
         start_timestamp = timestamp
         end_timestamp = timestamp + timedelta(days=1)
         q_args = {"start_timestamp": start_timestamp, "end_timestamp": end_timestamp}
-        where = (
-            "WHERE timestamp >= %(start_timestamp)s AND timestamp < %(end_timestamp)s"
-        )
+        where = f"WHERE {timestamp_column} >= %(start_timestamp)s AND {timestamp_column} < %(end_timestamp)s"
 
     if len(test_name) > 0:
         test_name_list = []

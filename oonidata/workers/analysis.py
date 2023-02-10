@@ -51,6 +51,7 @@ def run_analysis(
         timestamp=datetime.combine(day, datetime.min.time()),
         test_name=[],
         probe_cc=probe_cc,
+        timestamp_column="measurement_start_time",
     )
 
     log.info(f"loading ground truth DB for {day}")
