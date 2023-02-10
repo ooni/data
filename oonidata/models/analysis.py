@@ -19,7 +19,7 @@ class WebsiteAnalysis:
     observation_id: str
     report_id: str
     input: Optional[str]
-    timestamp: datetime
+    measurement_start_time: datetime
     created_at: datetime
 
     probe_asn: int

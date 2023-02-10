@@ -667,7 +667,7 @@ def make_website_analysis(
             created_at=created_at,
             report_id=web_o.report_id,
             input=web_o.input,
-            timestamp=web_o.measurement_start_time,
+            measurement_start_time=web_o.measurement_start_time,
             probe_asn=web_o.probe_asn,
             probe_cc=web_o.probe_cc,
             probe_as_org_name=web_o.probe_as_org_name,
