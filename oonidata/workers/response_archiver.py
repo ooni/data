@@ -1,5 +1,4 @@
 from datetime import date, timedelta
-import gzip
 import io
 import queue
 import time
@@ -12,18 +11,19 @@ import multiprocessing as mp
 from multiprocessing.synchronize import Event as EventClass
 from threading import Lock
 from base64 import b32decode
-import traceback
 
 from typing import (
     List,
     Optional,
     Tuple,
 )
+import orjson
 
 from warcio.warcwriter import WARCWriter
 from warcio.statusandheaders import StatusAndHeaders
 from oonidata.analysis.datasources import load_measurement
 from oonidata.dataclient import date_interval, iter_measurements
+from oonidata.fingerprintdb import FingerprintDB, Fingerprint
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 
 log = logging.getLogger("oonidata.processing")
@@ -81,11 +81,9 @@ class ResponseArchiver:
         status_code: int,
         request_url: str,
         response_headers: List[Tuple[str, bytes]],
-        response_body: Optional[bytes],
+        response_body: bytes,
+        matched_fingerprints: List[Fingerprint],
     ):
-        if not response_body:
-            return
-
         response_body_sha1 = hashlib.sha1(response_body).hexdigest()
 
         if self.is_already_archived(response_body_sha1):
@@ -127,9 +125,25 @@ class ResponseArchiver:
 
         self._warc_writer.write_record(record)
         self.record_idx += 1
+
+        response_fingerprints = []
+        is_fingerprint_false_positive = 0
+        for fp in matched_fingerprints:
+            if fp.scope == "fp":
+                is_fingerprint_false_positive = 1
+            response_fingerprints.append(fp.name)
+
         self.db_conn.execute(
-            "INSERT INTO oonibodies_archive (response_body_sha1, archive_filename, record_idx) VALUES (?, ?, ?)",
-            (response_body_sha1, self.archive_path.name, self.record_idx),
+            """INSERT INTO oonibodies_archive (response_body_sha1, archive_filename, record_idx, is_fingerprint_false_positive, response_fingerprints) 
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                response_body_sha1,
+                self.archive_path.name,
+                self.record_idx,
+                is_fingerprint_false_positive,
+                orjson.dumps(response_fingerprints),
+            ),
         )
         self.db_conn.commit()
 
@@ -168,20 +182,20 @@ class ResponseArchiver:
         self._fh = None
 
 
-def start_response_archiver(
-    probe_cc: List[str],
-    test_name: List[str],
-    start_day: date,
-    end_day: date,
-    clickhouse: Optional[str],
-    archives_dir: pathlib.Path,
-    log_level: int = logging.INFO,
-):
+def response_archiver_worker(day_queue, probe_cc, test_name, archives_dir, data_dir):
     def progress_callback(p):
         print(p)
 
-    response_archiver = ResponseArchiver(dst_dir=archives_dir)
-    for day in date_interval(start_day, end_day):
+    fingerprintdb = FingerprintDB(datadir=data_dir)
+
+    process_id = mp.current_process()._identity[0]
+    machine_id = f"oonidata{process_id}"
+    response_archiver = ResponseArchiver(dst_dir=archives_dir, machine_id=machine_id)
+    while True:
+        try:
+            day = day_queue.get(block=True, timeout=0.1)
+        except queue.Empty:
+            continue
         log.info(f"Archiving bodies for {day}")
         for idx, msmt_dict in enumerate(
             iter_measurements(
@@ -204,15 +218,27 @@ def start_response_archiver(
                             continue
                         request_url = http_transaction.request.url
                         status_code = http_transaction.response.code or 0
+
                         response_headers = (
                             http_transaction.response.headers_list_bytes or []
                         )
+                        # XXX: currently the fingerprint matching only supports str. Maybe we should extend it to work on bytes.
+                        response_headers_str = (
+                            http_transaction.response.headers_list_str or []
+                        )
                         response_body = http_transaction.response.body_bytes
+                        if not response_body:
+                            continue
+
+                        matched_fingerprints = fingerprintdb.match_http(
+                            response_body=response_body, headers=response_headers_str
+                        )
                         response_archiver.archive_http_transaction(
                             status_code=status_code,
                             request_url=request_url,
                             response_headers=response_headers,
                             response_body=response_body,
+                            matched_fingerprints=matched_fingerprints,
                         )
             except Exception:
                 msmt_str = ""
@@ -221,3 +247,33 @@ def start_response_archiver(
                     if msmt.input:
                         msmt_str += f"?input={msmt.input}"
                 log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
+
+
+def start_response_archiver(
+    probe_cc: List[str],
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    clickhouse: Optional[str],
+    archives_dir: pathlib.Path,
+    data_dir: pathlib.Path,
+    parallelism: int,
+    log_level: int = logging.INFO,
+):
+    day_queue = mp.Queue()
+
+    pool = mp.Pool(
+        processes=parallelism,
+        initializer=response_archiver_worker,
+        initargs=(day_queue, probe_cc, test_name, archives_dir, data_dir),
+    )
+    for day in date_interval(start_day, end_day):
+        day_queue.put(day)
+
+    for _ in range(parallelism):
+        day_queue.put(None)
+
+    pool.close()
+
+    log.info("waiting for the worker processes to finish")
+    pool.join()

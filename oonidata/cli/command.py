@@ -303,14 +303,23 @@ def mkgt(
 @start_day_option
 @end_day_option
 @click.option("--clickhouse", type=str)
+@click.option("--data-dir", type=Path, required=True)
 @click.option("--archives-dir", type=Path, required=True)
+@click.option(
+    "--parallelism",
+    type=int,
+    default=multiprocessing.cpu_count() + 2,
+    help="number of processes to use. Only works when writing to a database",
+)
 def mkbodies(
     probe_cc: List[str],
     test_name: List[str],
     start_day: date,
     end_day: date,
     clickhouse: str,
+    data_dir: Path,
     archives_dir: Path,
+    parallelism: int,
 ):
     """
     Make response body archives
@@ -320,8 +329,10 @@ def mkbodies(
         test_name=test_name,
         start_day=start_day,
         end_day=end_day,
+        data_dir=data_dir,
         archives_dir=archives_dir,
         clickhouse=clickhouse,
+        parallelism=parallelism,
     )
 
 
