@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 import gzip
 import io
 import queue
@@ -19,10 +20,11 @@ from typing import (
     Tuple,
 )
 
-import msgpack
 from warcio.warcwriter import WARCWriter
 from warcio.statusandheaders import StatusAndHeaders
-from oonidata.workers.common import StatusMessage
+from oonidata.analysis.datasources import load_measurement
+from oonidata.dataclient import date_interval, iter_measurements
+from oonidata.models.nettests.web_connectivity import WebConnectivity
 
 log = logging.getLogger("oonidata.processing")
 
@@ -166,53 +168,56 @@ class ResponseArchiver:
         self._fh = None
 
 
-def run_archiver_thread(
-    status_queue: mp.JoinableQueue,
-    archiver_queue: mp.JoinableQueue,
+def start_response_archiver(
+    probe_cc: List[str],
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    clickhouse: Optional[str],
     archives_dir: pathlib.Path,
-    shutdown_event: EventClass,
-    log_level: int,
+    log_level: int = logging.INFO,
 ):
-    log.setLevel(log_level)
-    log.info("starting archiver")
+    def progress_callback(p):
+        print(p)
+
     response_archiver = ResponseArchiver(dst_dir=archives_dir)
-    while not shutdown_event.is_set():
-        try:
-            archive_path = archiver_queue.get(block=True, timeout=0.1)
-        except queue.Empty:
-            continue
-        log.info(f"archiving {archive_path}")
-        try:
-            with gzip.open(archive_path, "rb") as in_file:
-                requests_unpacker = msgpack.Unpacker(in_file, raw=False)
-                for (
-                    status_code,
-                    request_url,
-                    response_headers,
-                    response_body,
-                ) in requests_unpacker:
-                    response_archiver.archive_http_transaction(
-                        status_code=status_code,
-                        request_url=request_url,
-                        response_headers=response_headers,
-                        response_body=response_body,
-                    )
-                archive_path.unlink()
-        except Exception as exc:
-            log.error(f"failed to process requests", exc_info=True)
-            status_queue.put(
-                StatusMessage(
-                    src="archiver", exception=exc, traceback=traceback.format_exc()
-                )
+    for day in date_interval(start_day, end_day):
+        log.info(f"Archiving bodies for {day}")
+        for idx, msmt_dict in enumerate(
+            iter_measurements(
+                probe_cc=probe_cc,
+                test_name=test_name,
+                start_day=day,
+                end_day=day + timedelta(days=1),
+                progress_callback=progress_callback,
             )
-        finally:
-            archiver_queue.task_done()
-    try:
-        response_archiver.close()
-    except Exception as exc:
-        log.error(f"failed to close archiver", exc_info=True)
-        status_queue.put(
-            StatusMessage(
-                src="archiver", exception=exc, traceback=traceback.format_exc()
-            )
-        )
+        ):
+            msmt = None
+            try:
+                msmt = load_measurement(msmt_dict)
+                if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
+                    for http_transaction in msmt.test_keys.requests:
+                        if (
+                            not http_transaction.response
+                            or not http_transaction.request
+                        ):
+                            continue
+                        request_url = http_transaction.request.url
+                        status_code = http_transaction.response.code or 0
+                        response_headers = (
+                            http_transaction.response.headers_list_bytes or []
+                        )
+                        response_body = http_transaction.response.body_bytes
+                        response_archiver.archive_http_transaction(
+                            status_code=status_code,
+                            request_url=request_url,
+                            response_headers=response_headers,
+                            response_body=response_body,
+                        )
+            except Exception:
+                msmt_str = ""
+                if msmt:
+                    msmt_str = msmt.report_id
+                    if msmt.input:
+                        msmt_str += f"?input={msmt.input}"
+                log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
