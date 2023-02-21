@@ -1,7 +1,6 @@
 import logging
 import multiprocessing
 from pathlib import Path
-import sqlite3
 import sys
 from typing import List, Optional
 from datetime import date, timedelta, datetime
@@ -21,6 +20,7 @@ from oonidata.workers import (
     start_fingerprint_hunter,
     start_observation_maker,
     start_ground_truth_builder,
+    start_response_archiver,
 )
 
 
@@ -129,7 +129,6 @@ def sync(
     required=True,
     help="data directory to store fingerprint and geoip databases",
 )
-@click.option("--archives-dir", type=Path)
 @click.option(
     "--parallelism",
     type=int,
@@ -159,7 +158,6 @@ def mkobs(
     csv_dir: Optional[Path],
     clickhouse: Optional[str],
     data_dir: Path,
-    archives_dir: Optional[Path],
     parallelism: int,
     fast_fail: bool,
     create_tables: bool,
@@ -187,10 +185,6 @@ def mkobs(
             for query, table_name in create_queries:
                 if drop_tables:
                     db.execute(f"DROP TABLE IF EXISTS {table_name};")
-                    if archives_dir:
-                        conn = sqlite3.connect(archives_dir / "graveyard.sqlite3")
-                        conn.execute("DROP TABLE IF EXISTS oonibodies_archive")
-                        conn.commit()
                 db.execute(query)
 
     NetinfoDB(datadir=data_dir, download=True)
@@ -203,7 +197,6 @@ def mkobs(
         csv_dir=csv_dir,
         clickhouse=clickhouse,
         data_dir=data_dir,
-        archives_dir=archives_dir,
         parallelism=parallelism,
         fast_fail=fast_fail,
     )
@@ -300,6 +293,45 @@ def mkgt(
         end_day=end_day,
         clickhouse=clickhouse,
         data_dir=data_dir,
+        parallelism=parallelism,
+    )
+
+
+@cli.command()
+@probe_cc_option
+@test_name_option
+@start_day_option
+@end_day_option
+@click.option("--clickhouse", type=str)
+@click.option("--data-dir", type=Path, required=True)
+@click.option("--archives-dir", type=Path, required=True)
+@click.option(
+    "--parallelism",
+    type=int,
+    default=multiprocessing.cpu_count() + 2,
+    help="number of processes to use. Only works when writing to a database",
+)
+def mkbodies(
+    probe_cc: List[str],
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    clickhouse: str,
+    data_dir: Path,
+    archives_dir: Path,
+    parallelism: int,
+):
+    """
+    Make response body archives
+    """
+    start_response_archiver(
+        probe_cc=probe_cc,
+        test_name=test_name,
+        start_day=start_day,
+        end_day=end_day,
+        data_dir=data_dir,
+        archives_dir=archives_dir,
+        clickhouse=clickhouse,
         parallelism=parallelism,
     )
 

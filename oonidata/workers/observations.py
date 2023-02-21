@@ -1,6 +1,4 @@
-import gzip
 import queue
-import time
 import pathlib
 import logging
 import traceback
@@ -14,19 +12,15 @@ from datetime import date, timedelta
 
 from typing import (
     Callable,
-    Generator,
     List,
     Optional,
-    Tuple,
     Union,
 )
 
-import msgpack
 import statsd
 from oonidata.analysis.datasources import load_measurement
 from oonidata.datautils import PerfTimer
 
-from oonidata.models.nettests import WebConnectivity
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.dataclient import (
@@ -46,7 +40,6 @@ from oonidata.workers.common import (
     maybe_delete_prev_range,
     run_status_thread,
 )
-from oonidata.workers.response_archiver import run_archiver_thread
 
 log = logging.getLogger("oonidata.processing")
 
@@ -59,9 +52,7 @@ def make_observation_in_day(
     probe_cc=[],
     fast_fail=False,
     progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
-) -> Generator[
-    Tuple[int, str, Optional[List[Tuple[str, bytes]]], Optional[bytes]], None, None
-]:
+):
     bucket_date = day.strftime("%Y-%m-%d")
 
     statsd_client = statsd.StatsClient("localhost", 8125)
@@ -108,17 +99,6 @@ def make_observation_in_day(
                 db.write_rows(
                     table_name=table_name, rows=rows, column_names=column_names
                 )
-            if isinstance(msmt, WebConnectivity) and msmt.test_keys.requests:
-                for http_transaction in msmt.test_keys.requests:
-                    if not http_transaction.response or not http_transaction.request:
-                        continue
-                    request_url = http_transaction.request.url
-                    status_code = http_transaction.response.code or 0
-                    response_headers = (
-                        http_transaction.response.headers_list_bytes or []
-                    )
-                    response_body = http_transaction.response.body_bytes
-                    yield status_code, request_url, response_headers, response_body
             statsd_client.timing("make_observations.timed", t.ms)
             statsd_client.incr("make_observations.msmt_count")
         except Exception as exc:
@@ -144,8 +124,6 @@ class ObservationMakerWorker(mp.Process):
         self,
         status_queue: mp.JoinableQueue,
         day_queue: mp.JoinableQueue,
-        archiver_queue: Optional[mp.JoinableQueue],
-        archives_dir: Optional[pathlib.Path],
         shutdown_event: EventClass,
         data_dir: pathlib.Path,
         probe_cc: List[str],
@@ -159,13 +137,7 @@ class ObservationMakerWorker(mp.Process):
         super().__init__(daemon=True)
         assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
-        if archives_dir:
-            assert (
-                archives_dir and archiver_queue
-            ), "when archives_dir is set also the queue needs to be set"
-
         self.day_queue = day_queue
-        self.archiver_queue = archiver_queue
         self.data_dir = data_dir
         self.probe_cc = probe_cc
         self.test_name = test_name
@@ -176,39 +148,11 @@ class ObservationMakerWorker(mp.Process):
 
         self.shutdown_event = shutdown_event
 
-        self.archives_dir = archives_dir
-        self.archive_ts = int(time.time())
-        self.current_archive_file_idx = 0
-        self.archive_fh = None
-        self.body_buffer_size = 100_000_000
-
         self.status_queue = status_queue
 
         log.setLevel(log_level)
 
-    @property
-    def archive_path(self):
-        if self.archives_dir:
-            return (
-                self.archives_dir
-                / f"bodydump-{self.process_id}-{self.archive_ts}-{self.current_archive_file_idx}.msgpack.gz"
-            )
-
     def run(self):
-        def maybe_write_request_tuple(request_tuple):
-            if not self.archive_path or not self.archiver_queue:
-                return
-
-            if not self.archive_fh:
-                self.archive_fh = gzip.open(self.archive_path, "wb")
-
-            self.archive_fh.write(msgpack.packb(request_tuple, use_bin_type=True))  # type: ignore
-            if self.archive_fh.tell() > self.body_buffer_size:
-                self.archive_fh.close()
-                self.archiver_queue.put(self.archive_path)
-                self.current_archive_file_idx += 1
-                self.archive_fh = None
-
         current_idx = 0
         day_str = ""
 
@@ -239,7 +183,7 @@ class ObservationMakerWorker(mp.Process):
             except queue.Empty:
                 continue
             try:
-                for request_tup in make_observation_in_day(
+                make_observation_in_day(
                     db=db,
                     netinfodb=netinfodb,
                     day=day,
@@ -247,10 +191,7 @@ class ObservationMakerWorker(mp.Process):
                     probe_cc=self.probe_cc,
                     fast_fail=self.fast_fail,
                     progress_callback=progress_callback,
-                ):
-                    maybe_write_request_tuple(request_tuple=request_tup)
-                    current_idx += 1
-                    day_str = day.strftime("%Y-%m-%d")
+                )
             except Exception as exc:
                 log.error(f"failed to process {day}", exc_info=True)
                 self.status_queue.put(
@@ -277,16 +218,6 @@ class ObservationMakerWorker(mp.Process):
                     traceback=traceback.format_exc(),
                 )
             )
-        finally:
-            # We only add to the queue if we have an archive
-            if self.archive_fh and self.archiver_queue:
-                log.info("closing archiver_fh and adding to queue")
-                try:
-                    self.archive_fh.close()
-                    self.archiver_queue.put(self.archive_path, timeout=5)
-                except:
-                    log.error("failed to put on the archiver_queue", exc_info=True)
-                log.info("closed and added to archiver_queue")
 
 
 def start_observation_maker(
@@ -297,7 +228,6 @@ def start_observation_maker(
     csv_dir: Optional[pathlib.Path],
     clickhouse: Optional[str],
     data_dir: pathlib.Path,
-    archives_dir: Optional[pathlib.Path],
     parallelism: int,
     fast_fail: bool,
     log_level: int = logging.INFO,
@@ -312,31 +242,12 @@ def start_observation_maker(
     )
     status_thread.start()
 
-    archiver_thread = None
-    archiver_queue = None
-    if archives_dir:
-        archiver_queue = mp.JoinableQueue()
-        archiver_thread = Thread(
-            target=run_archiver_thread,
-            args=(
-                status_queue,
-                archiver_queue,
-                archives_dir,
-                shutdown_event,
-                log_level,
-            ),
-            daemon=True,
-        )
-        archiver_thread.start()
-
     observation_workers = []
     day_queue = mp.JoinableQueue()
     for idx in range(parallelism):
         worker = ObservationMakerWorker(
             status_queue=status_queue,
             day_queue=day_queue,
-            archiver_queue=archiver_queue,
-            archives_dir=archives_dir,
             shutdown_event=worker_shutdown_event,
             data_dir=data_dir,
             probe_cc=probe_cc,
@@ -370,17 +281,9 @@ def start_observation_maker(
         log.info(f"waiting observation_maker {idx} to close")
         p.close()
 
-    if archiver_queue:
-        log.info("waiting for archiving to finish")
-        archiver_queue.join()
-
     # We are done, we can now tell everybody to go home
     log.info("sending shutdown event")
     shutdown_event.set()
-
-    if archiver_thread:
-        log.info("waiting on archiver thread")
-        archiver_thread.join()
 
     # Shutdown the status thread
     log.info("shutting down the status thread")
