@@ -92,6 +92,7 @@ def test_archive_http_transaction(measurements, tmpdir):
                 status_code=status_code,
                 response_headers=response_headers,
                 response_body=response_body,
+                matched_fingerprints=[]
             )
 
     warc_files = list(dst_dir.glob("*.warc.gz"))
@@ -129,6 +130,7 @@ def test_fingerprint_hunter(fingerprintdb, measurements, tmpdir):
                 status_code=status_code,
                 response_headers=response_headers,
                 response_body=response_body,
+                matched_fingerprints=[]
             )
 
     archive_path = list(archives_dir.glob("*.warc.gz"))[0]
