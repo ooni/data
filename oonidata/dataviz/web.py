@@ -7,6 +7,8 @@ from oonidata.dataviz.viz import (
     get_df_blocking_world_map,
     get_df_blocking_of_domain_in_asn,
     get_df_blocking_of_domain_by_asn,
+    get_df_dns_analysis,
+    get_df_dns_analysis_raw,
 )
 from flask import Flask, request, render_template
 
@@ -79,6 +81,22 @@ def viz_blocking_of_domain_by_asn():
         endpoint="chart_blocking_of_domain_by_asn",
         query_args=request.args.to_dict(),
     )
+
+
+@app.route("/api/_/data/dns_analysis")
+def data_dns_analysis():
+    return get_df_dns_analysis(
+        start_day="2023-01-01", end_day="2023-01-02", limit=100
+    ).to_json(orient="records")
+
+
+@app.route("/api/_/data/dns_analysis_raw")
+def data_dns_analysis_raw():
+    return get_df_dns_analysis_raw(
+        measurement_uid=request.args["measurement_uid"],
+        start_day="2023-01-01",
+        end_day="2023-01-02",
+    ).to_json(orient="records")
 
 
 @app.route("/")

@@ -40,6 +40,548 @@ citizenlab_global_tl["domain_name"] = citizenlab_global_tl["url"].apply(
 )
 
 
+def get_df_dns_analysis_raw(
+    measurement_uid, start_day="2023-01-01", end_day="2023-01-02"
+):
+    params = {
+        "start_day": start_day,
+        "end_day": end_day,
+        "measurement_uid": measurement_uid,
+    }
+    q = """
+    SELECT * FROM (
+    SELECT 
+        report_id,
+        input,
+        measurement_uid,
+        probe_cc,
+        probe_asn,
+        probe_as_org_name,
+        measurement_start_time,
+        resolver_ip,
+        resolver_asn,
+        resolver_cc, 
+        resolver_as_org_name,
+        resolver_as_cc,
+        resolver_is_scrubbed,
+        resolver_asn_probe,
+        resolver_as_org_name_probe,
+        dns_engine_resolver_address,
+        dns_engine,
+        dns_query_type,
+        hostname,
+        any(dns_failure) as exp_dns_failure,
+        any(ip_is_bogon) OR 0 as exp_answer_contains_bogon,
+        any(ip_as_cc = probe_cc) OR 0 as exp_answer_contains_matching_probe_cc,
+        any(dns_answer_asn = probe_asn) OR 0 as exp_answer_contains_matching_probe_asn,
+        any(lower(ip_as_org_name) = lower(probe_as_org_name)) OR 0 as exp_answer_contains_matching_probe_as_org_name,
+        groupArrayIf(
+            tuple(dns_answer, dns_answer_asn, dns_answer_as_org_name, ip_as_cc), 
+            dns_answer IS NOT NULL
+        ) as dns_answers
+    FROM obs_web
+    WHERE
+    measurement_start_time > %(start_day)s
+    AND measurement_start_time < %(end_day)s
+    AND measurement_uid = %(measurement_uid)s
+    AND test_name = 'web_connectivity'
+    AND (dns_answer IS NOT NULL OR dns_failure IS NOT NULL)
+    GROUP BY report_id,
+        input,
+        measurement_uid,
+        probe_cc,
+        probe_asn,
+        probe_as_org_name,
+        measurement_start_time,
+        resolver_ip,
+        resolver_asn,
+        resolver_cc, 
+        resolver_as_org_name,
+        resolver_as_cc,
+        resolver_is_scrubbed,
+        resolver_asn_probe,
+        resolver_as_org_name_probe,
+        dns_engine_resolver_address,
+        dns_engine, hostname, dns_query_type
+) as exp
+LEFT JOIN (
+    SELECT 
+        hostname,
+        answers,
+        failure_asns,
+        nxdomain_asns,
+        ok_asns,
+        ctrl_answers,
+        ctrl_failures
+    FROM (
+        SELECT 
+        hostname,
+
+        groupArrayIf(tuple(dns_answer, ip_as_org_name, ip_asn, answer_asns, tls_consistent_asns), dns_answer IS NOT NULL) as answers,
+
+        anyIf(failure_asns, dns_answer IS NULL) as failure_asns,
+
+        anyIf(nxdomain_asns, dns_answer IS NULL) as nxdomain_asns,
+
+        arrayReduce('groupUniqArray', arrayFlatten(groupUniqArray(answer_asns))) as ok_asns
+        FROM (
+            SELECT 
+            hostname,
+            dns_answer,
+            ip_as_org_name,
+            ip_asn,
+            groupUniqArrayIf(tuple(probe_cc, probe_asn), tls_is_certificate_valid = 1) as tls_consistent_asns,
+            groupUniqArrayIf(tuple(probe_cc, probe_asn), dns_failure IS NULL) as answer_asns,
+            groupUniqArrayIf(tuple(probe_cc, probe_asn), dns_failure IS NOT NULL) as failure_asns,
+            groupUniqArrayIf(tuple(probe_cc, probe_asn), dns_failure = 'dns_nxdomain_error') as nxdomain_asns
+            FROM obs_web
+            WHERE
+            measurement_start_time > %(start_day)s
+            AND measurement_start_time < %(end_day)s
+            AND (dns_answer IS NOT NULL OR dns_failure IS NOT NULL)
+            GROUP BY hostname, dns_answer, ip_as_org_name, ip_asn
+        ) GROUP BY hostname
+    ) as obs
+    FULL OUTER JOIN (
+        SELECT 
+        hostname,
+        groupUniqArrayIf(tuple(ip, ip_count), dns_failure IS NULL) as ctrl_answers,
+        groupArrayIf(tuple(dns_failure, failure_count), dns_failure IS NOT NULL) as ctrl_failures
+        FROM (
+            SELECT
+            hostname,
+            ip,
+            COUNT() as ip_count,
+            dns_failure,
+            COUNT() as failure_count
+            FROM obs_web_ctrl
+            WHERE 
+            measurement_start_time > %(start_day)s
+            AND measurement_start_time < %(end_day)s
+            AND (
+                dns_success = 1
+                OR dns_failure IS NOT NULL
+            )
+            GROUP BY hostname, ip, dns_failure
+        ) GROUP BY hostname
+    ) as ctrl
+    USING hostname
+) as dns_gt
+USING hostname 
+    """
+    return click_query(q, **params)
+
+
+def get_df_dns_analysis(start_day="2023-01-01", end_day="2023-01-02", limit=100):
+    params = {"start_day": start_day, "end_day": end_day}
+    q = """WITH
+arrayDistinct(arrayMap(x -> x.1, exp.dns_answers)) as exp_dns_answers_ips,
+arrayDistinct(arrayMap(x -> x.2, exp.dns_answers)) as exp_dns_answers_asns,
+arrayDistinct(arrayMap(x -> lower(x.3), exp.dns_answers)) as exp_dns_answers_as_org_names,
+
+-- tuple(dns_answer, ip_as_org_name, ip_asn, answer_asns, tls_consistent_asns)
+flatten(arrayMap(
+    asn -> arrayFilter(
+        y -> y.3 IS NOT NULL AND asn IS NOT NULL AND assumeNotNull(y.3) = assumeNotNull(asn),
+        dns_gt.answers
+    ),
+    exp_dns_answers_asns
+)) as dns_answers_asn_match,
+
+-- tuple(dns_answer, ip_as_org_name, ip_asn, answer_asns, tls_consistent_asns)
+arrayMap(
+    x -> tuple(
+        x.1,
+        x.2,
+        x.3,
+        -- all answers_asns, except probe_asn
+        arrayFilter(
+            y -> y.1 != exp.probe_cc OR y.2 != exp.probe_asn,
+            x.4
+        ),
+        -- all tls_consistent_asns, except probe_asn
+        arrayFilter(
+            y -> y.1 != exp.probe_cc OR y.2 != exp.probe_asn,
+            x.5
+        )
+    ),
+    dns_answers_asn_match
+) as dns_answers_asn_match_no_asn,
+
+arrayMap(
+    x -> tuple(
+        x.2,
+        x.3,
+        length(x.4),
+        length(x.5)
+    ), dns_answers_asn_match_no_asn
+) as dns_answers_asn_match_no_asn_counts_tup,
+
+-- dns_answers in the ground_truth that match the AS ORG name of the answers in the experiment
+-- tuple(dns_answer, ip_as_org_name, ip_asn, answer_asns, tls_consistent_asns)
+flatten(arrayMap(
+    asorgname -> arrayFilter(
+        y -> y.2 IS NOT NULL AND asorgname IS NOT NULL AND lower(assumeNotNull(y.2)) = lower(assumeNotNull(asorgname)),
+        dns_gt.answers
+    ),
+    exp_dns_answers_as_org_names
+)) as dns_answers_as_org_name_match,
+
+-- filter the sub-lists in the answers to exclude the ones from the VP of the probe
+-- tuple(dns_answer, ip_as_org_name, ip_asn, answer_asns, tls_consistent_asns)
+arrayMap(
+    x -> tuple(
+        x.1, -- dns_answer
+        x.2, -- ip_as_org_name
+        x.3, -- ip_asn
+        -- all answers_asns, except probe_asn
+        arrayFilter(
+            y -> y.1 != exp.probe_cc OR y.2 != exp.probe_asn,
+            x.4
+        ),
+        -- all tls_consistent_asns, except probe_asn
+        arrayFilter(
+            y -> y.1 != exp.probe_cc OR y.2 != exp.probe_asn,
+            x.5
+        )
+    ),
+    dns_answers_as_org_name_match
+) as dns_answers_as_org_name_match_no_asn,
+
+-- tuple(dns_answer, ip_as_org_name, ip_asn, answer_asns, tls_consistent_asns)
+arrayMap(
+    ip -> arrayFirst(
+        y -> y.1 IS NOT NULL AND ip IS NOT NULL AND assumeNotNull(y.1) = assumeNotNull(ip),
+        dns_gt.answers
+    ),
+    exp_dns_answers_ips
+) as dns_answers_match,
+
+-- tuple(dns_answer, ip_as_org_name, ip_asn, answer_asns, tls_consistent_asns)
+arrayMap(
+    x -> tuple(
+        x.1, -- dns_answer
+        x.2, -- ip_as_org_name
+        x.3, -- ip_asn
+        -- all answers_asns, except probe_asn
+        arrayFilter(
+            y -> y.1 != exp.probe_cc OR y.2 != exp.probe_asn,
+            x.4
+        ),
+        -- all tls_consistent_asns, except probe_asn
+        arrayFilter(
+            y -> y.1 != exp.probe_cc OR y.2 != exp.probe_asn,
+            x.5
+        )
+    ),
+    dns_answers_match
+) as dns_answers_match_no_asn,
+
+arrayMap(
+    x -> tuple(
+        x.2, -- ip_as_org_name
+        x.3, -- ip_asn
+        length(x.4), -- all_answers
+        length(x.5) -- tls_consistent
+    ), dns_answers_match_no_asn
+) as dns_answers_match_no_asn_counts_tup,
+
+arrayFilter(
+    x -> indexOf(exp_dns_answers_asns, x.2) != 0,
+    dns_answers_asn_match_no_asn_counts_tup
+) as dns_answer_matching_asn,
+
+arrayFilter(
+    x -> indexOf(exp_dns_answers_as_org_names, lower(x.1)) != 0,
+    dns_answers_as_org_name_match_no_asn_counts_tup
+) as dns_answer_matching_as_org_name,
+
+arrayMap(
+    x -> tuple(
+        x.2, -- ip_as_org_name
+        x.3, -- ip_asn
+        length(x.4),
+        length(x.5)
+    ), dns_answers_as_org_name_match_no_asn
+) as dns_answers_as_org_name_match_no_asn_counts_tup
+
+
+SELECT
+    exp.report_id,
+    exp.input,
+    exp.measurement_uid,
+    exp.probe_cc,
+    exp.probe_asn,
+    exp.measurement_start_time,
+    exp.resolver_ip,
+    exp.resolver_asn,
+    exp.resolver_cc, 
+    exp.resolver_as_org_name,
+    exp.resolver_as_cc,
+    exp.resolver_is_scrubbed,
+    exp.resolver_asn_probe,
+    exp.resolver_as_org_name_probe,
+    exp.dns_engine_resolver_address,
+    exp.dns_engine,
+    exp.hostname,
+    exp.exp_dns_failure,
+
+    -- tuple(dns_answer, dns_answer_asn, dns_answer_as_org_name)
+    exp.dns_answers as exp_dns_answers,
+    
+    length(exp_dns_answers) as exp_dns_answers_count,
+    exp.exp_answer_contains_bogon,
+    
+    exp.exp_answer_contains_matching_probe_cc,
+    exp.exp_answer_contains_matching_probe_asn,
+    exp.exp_answer_contains_matching_probe_as_org_name,
+
+    arraySum(arrayMap(x -> length(x.4), dns_gt.answers)) as dns_answers_all_asn_count,
+
+    arraySum(
+        arrayMap(
+            x -> x.3,
+            dns_answers_match_no_asn_counts_tup
+        )
+    ) as dns_answers_ip_match_all_count,
+
+    --dns_answers_asn_match_tls_consistent_include_probe_count,
+    --dns_answers_as_org_name_match_tls_consistent_include_probe_count,
+
+    arraySum(
+        arrayMap(
+            x -> x.4,
+            dns_answers_match_no_asn_counts_tup
+        )
+    ) as dns_answers_ip_match_tls_consistent_count,
+
+    arraySum(
+        arrayMap(
+            x -> length(x.5),
+            dns_answers_match
+        )
+    ) as dns_answers_ip_match_tls_consistent_include_probe_count,
+
+    arraySum(
+        arrayMap(
+            x -> x.2,
+            arrayFilter(
+                x -> indexOf(exp_dns_answers_ips, x.1) != 0,
+                dns_gt.ctrl_answers
+            )
+        )
+    ) as dns_answers_ip_match_ctrl_count,
+
+    arraySum(
+        arrayMap(
+            x -> x.3,
+            dns_answer_matching_asn
+        )
+    ) as dns_answers_asn_match_all_count,
+
+    arraySum(
+        arrayMap(
+            x -> x.4,
+            dns_answer_matching_asn
+        )
+    ) as dns_answers_asn_match_tls_consistent_count,
+
+    arraySum(
+        arrayMap(
+            x -> x.3,
+            dns_answer_matching_as_org_name
+        )
+    ) as dns_answers_as_org_name_match_all_count,
+
+    arraySum(
+        arrayMap(
+            x -> x.4,
+            dns_answer_matching_as_org_name
+        )
+    ) as dns_answers_as_org_name_match_tls_consistent_count,
+
+    -- tuple(probe_cc, probe_asn)
+    --dns_gt.failure_asns,
+
+    length(arrayFilter(
+        x -> x.1 != exp.probe_cc OR x.2 != exp.probe_asn, 
+        dns_gt.failure_asns
+    )) as failure_asn_count,
+
+    -- tuple(probe_cc, probe_asn)
+    --dns_gt.nxdomain_asns,
+    
+    -- All ASNS with NXDOMAIN != (probe_cc, probe_asn)
+    length(arrayFilter(
+        x -> x.1 != exp.probe_cc OR x.2 != exp.probe_asn, 
+        dns_gt.nxdomain_asns
+    )) as nxdomain_asn_count,
+
+    -- tuple(probe_cc, probe_asn)
+    --dns_gt.ok_asns,
+
+    -- All ASNS with NXDOMAIN != (probe_cc, probe_asn)
+    length(arrayFilter(
+        x -> x.1 != exp.probe_cc OR x.2 != exp.probe_asn, 
+        dns_gt.ok_asns
+    )) as ok_asn_count,
+
+    -- tuple(ip, ip_count)
+    --dns_gt.ctrl_answers,
+
+    -- tuple(dns_failure, failure_count)
+    --dns_gt.ctrl_failures,
+
+    --dns_answers_ip_match_ctrl_count,
+    --ctrl_failures_count
+
+
+    arraySum(
+        arrayMap(
+            x -> x.2,
+            arrayFilter(
+                x -> exp_dns_failure IS NOT NULL AND x.1 = exp_dns_failure,
+                dns_gt.ctrl_failures
+            )
+        )
+    ) as ctrl_matching_failures_count,
+
+    arraySum(
+        arrayMap(
+            x -> x.2,
+            arrayFilter(
+                x -> x.1 IS NOT NULL,
+                dns_gt.ctrl_failures
+            )
+        )
+    ) as ctrl_failure_count
+
+FROM (
+    SELECT 
+        report_id,
+        input,
+        measurement_uid,
+        probe_cc,
+        probe_asn,
+        probe_as_org_name,
+        measurement_start_time,
+        resolver_ip,
+        resolver_asn,
+        resolver_cc, 
+        resolver_as_org_name,
+        resolver_as_cc,
+        resolver_is_scrubbed,
+        resolver_asn_probe,
+        resolver_as_org_name_probe,
+        dns_engine_resolver_address,
+        dns_engine,
+        dns_query_type,
+        hostname,
+        any(dns_failure) as exp_dns_failure,
+        any(ip_is_bogon) OR 0 as exp_answer_contains_bogon,
+        any(ip_as_cc = probe_cc) OR 0 as exp_answer_contains_matching_probe_cc,
+        any(dns_answer_asn = probe_asn) OR 0 as exp_answer_contains_matching_probe_asn,
+        any(lower(ip_as_org_name) = lower(probe_as_org_name)) OR 0 as exp_answer_contains_matching_probe_as_org_name,
+        groupArrayIf(
+            tuple(dns_answer, dns_answer_asn, dns_answer_as_org_name, ip_as_cc), 
+            dns_answer IS NOT NULL
+        ) as dns_answers
+    FROM obs_web
+    WHERE
+    measurement_start_time > %(start_day)s
+    AND measurement_start_time < %(end_day)s
+    AND test_name = 'web_connectivity'
+    AND (dns_answer IS NOT NULL OR dns_failure IS NOT NULL)
+    GROUP BY report_id,
+        input,
+        measurement_uid,
+        probe_cc,
+        probe_asn,
+        probe_as_org_name,
+        measurement_start_time,
+        resolver_ip,
+        resolver_asn,
+        resolver_cc, 
+        resolver_as_org_name,
+        resolver_as_cc,
+        resolver_is_scrubbed,
+        resolver_asn_probe,
+        resolver_as_org_name_probe,
+        dns_engine_resolver_address,
+        dns_engine, hostname, dns_query_type
+) as exp
+LEFT JOIN (
+    SELECT 
+        hostname,
+        answers,
+        failure_asns,
+        nxdomain_asns,
+        ok_asns,
+        ctrl_answers,
+        ctrl_failures
+    FROM (
+        SELECT 
+        hostname,
+
+        groupArrayIf(tuple(dns_answer, ip_as_org_name, ip_asn, answer_asns, tls_consistent_asns), dns_answer IS NOT NULL) as answers,
+
+        anyIf(failure_asns, dns_answer IS NULL) as failure_asns,
+
+        anyIf(nxdomain_asns, dns_answer IS NULL) as nxdomain_asns,
+
+        arrayReduce('groupUniqArray', arrayFlatten(groupUniqArray(answer_asns))) as ok_asns
+        FROM (
+            SELECT 
+            hostname,
+            dns_answer,
+            ip_as_org_name,
+            ip_asn,
+            groupUniqArrayIf(tuple(probe_cc, probe_asn), tls_is_certificate_valid = 1) as tls_consistent_asns,
+            groupUniqArrayIf(tuple(probe_cc, probe_asn), dns_failure IS NULL) as answer_asns,
+            groupUniqArrayIf(tuple(probe_cc, probe_asn), dns_failure IS NOT NULL) as failure_asns,
+            groupUniqArrayIf(tuple(probe_cc, probe_asn), dns_failure = 'dns_nxdomain_error') as nxdomain_asns
+            FROM obs_web
+            WHERE
+            measurement_start_time > %(start_day)s
+            AND measurement_start_time < %(end_day)s
+            AND (dns_answer IS NOT NULL OR dns_failure IS NOT NULL)
+            GROUP BY hostname, dns_answer, ip_as_org_name, ip_asn
+        ) GROUP BY hostname
+    ) as obs
+    FULL OUTER JOIN (
+        SELECT 
+        hostname,
+        groupUniqArrayIf(tuple(ip, ip_count), dns_failure IS NULL) as ctrl_answers,
+        groupArrayIf(tuple(dns_failure, failure_count), dns_failure IS NOT NULL) as ctrl_failures
+        FROM (
+            SELECT
+            hostname,
+            ip,
+            COUNT() as ip_count,
+            dns_failure,
+            COUNT() as failure_count
+            FROM obs_web_ctrl
+            WHERE 
+            measurement_start_time > %(start_day)s
+            AND measurement_start_time < %(end_day)s
+            AND (
+                dns_success = 1
+                OR dns_failure IS NOT NULL
+            )
+            GROUP BY hostname, ip, dns_failure
+        ) GROUP BY hostname
+    ) as ctrl
+    USING hostname
+) as dns_gt
+USING hostname 
+    """
+    if limit > 0:
+        params["limit"] = limit
+        q += "LIMIT %(limit)d"
+
+    return click_query(q, **params)
+
+
 def get_df_blocking_of_domain_by_asn(
     domain_name, probe_cc, start_time="2022-11-03", end_time="2022-12-03"
 ):
