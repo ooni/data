@@ -527,7 +527,7 @@ def make_measurement_meta(
     resolver_as_cc = ""
 
     resolver_asn_probe = msmt.resolver_asn
-    if resolver_asn_probe is None:
+    if resolver_asn_probe in (None, ""):
         resolver_asn_probe = 0
     else:
         resolver_asn_probe = int(resolver_asn_probe[2:])
@@ -549,6 +549,7 @@ def make_measurement_meta(
     if isinstance(input_, list):
         input_ = ":".join(input_)
 
+    annotations = msmt.annotations or {}
     return MeasurementMeta(
         measurement_uid=msmt.measurement_uid,
         probe_asn=probe_asn,
@@ -562,9 +563,9 @@ def make_measurement_meta(
         software_version=msmt.software_version,
         test_name=msmt.test_name,
         test_version=msmt.test_version,
-        network_type=msmt.annotations.get("network_type", "unknown"),
-        platform=msmt.annotations.get("platform", "unknown"),
-        origin=msmt.annotations.get("origin", "unknown"),
+        network_type=annotations.get("network_type", "unknown"),
+        platform=annotations.get("platform", "unknown"),
+        origin=annotations.get("origin", "unknown"),
         resolver_ip=resolver_ip,
         resolver_cc=resolver_cc,
         resolver_asn=resolver_asn,
@@ -804,7 +805,7 @@ class MeasurementTransformer:
 
         for idx, obs in enumerate(web_obs_list):
             obs.observation_id = f"{obs.measurement_uid}_{idx}"
-            obs.created_at = datetime.utcnow()
+            obs.created_at = datetime.utcnow().replace(microsecond=0)
 
         return web_obs_list
 

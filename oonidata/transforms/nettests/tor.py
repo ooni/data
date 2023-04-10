@@ -7,6 +7,9 @@ from oonidata.transforms.nettests.measurement_transformer import MeasurementTran
 class TorTransformer(MeasurementTransformer):
     def make_observations(self, msmt: Tor) -> Tuple[List[WebObservation]]:
         web_obs_list = []
+        if not msmt.test_keys or not msmt.test_keys.targets:
+            return (web_obs_list,)
+
         for target_id, target_msmt in msmt.test_keys.targets.items():
             http_observations = self.make_http_observations(target_msmt.requests)
             dns_observations = self.make_dns_observations(target_msmt.queries)
