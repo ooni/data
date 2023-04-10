@@ -33,10 +33,10 @@ def typing_to_clickhouse(t: Any) -> str:
         return "Nullable(Int8)"
 
     if t == datetime:
-        return "Datetime"
+        return "Datetime('UTC')"
 
     if t == Optional[datetime]:
-        return "Nullable(Datetime)"
+        return "Nullable(Datetime('UTC'))"
 
     if t == float:
         return "Float64"
