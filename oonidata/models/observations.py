@@ -109,8 +109,8 @@ class HTTPObservation:
     response_headers_list: Optional[List[Tuple[str, bytes]]] = field(
         default_factory=list
     )
-    response_header_location: Optional[bytes] = None
-    response_header_server: Optional[bytes] = None
+    response_header_location: Optional[str] = None
+    response_header_server: Optional[str] = None
     request_redirect_from: Optional[str] = None
     request_body_is_truncated: Optional[bool] = None
 
@@ -310,8 +310,8 @@ class WebObservation(MeasurementMeta):
     http_response_body_sha1: Optional[str] = None
 
     http_response_status_code: Optional[int] = None
-    http_response_header_location: Optional[bytes] = None
-    http_response_header_server: Optional[bytes] = None
+    http_response_header_location: Optional[str] = None
+    http_response_header_server: Optional[str] = None
     http_request_redirect_from: Optional[str] = None
     http_request_body_is_truncated: Optional[bool] = None
 

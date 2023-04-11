@@ -143,7 +143,7 @@ def test_wc_observations_chained(netinfodb, measurements):
     assert len(web_obs) == 4
 
 
-def test_dns_check_obs(netinfodb, measurements):
+def test_dnscheck_obs(netinfodb, measurements):
     msmt = load_measurement(
         msmt_path=measurements["20221013000000.517636_US_dnscheck_bfd6d991e70afa0e"]
     )

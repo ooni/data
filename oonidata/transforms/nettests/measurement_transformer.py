@@ -134,20 +134,19 @@ def measurement_to_http_observation(
     hrro.response_headers_list = http_transaction.response.headers_list_bytes
 
     hrro.response_header_location = (
-        http_transaction.response.get_first_http_header_bytes("location")
+        http_transaction.response.get_first_http_header_str("location")
     )
-    hrro.response_header_location = (
-        http_transaction.response.get_first_http_header_bytes("server")
+    hrro.response_header_server = (
+        http_transaction.response.get_first_http_header_str("server")
     )
 
     try:
         prev_request = requests_list[idx + 1]
-        prev_location = (
-            hrro.response_header_location
-        ) = http_transaction.response.get_first_http_header_bytes("server")
-        if prev_location == hrro.request_url:
-            assert prev_request.request
-            hrro.request_redirect_from = prev_request.request.url
+        if prev_request and prev_request.response:
+            prev_location = prev_request.response.get_first_http_header_str("location")
+            if prev_location == hrro.request_url:
+                assert prev_request.request
+                hrro.request_redirect_from = prev_request.request.url
     except (IndexError, UnicodeDecodeError, AttributeError):
         pass
     return hrro

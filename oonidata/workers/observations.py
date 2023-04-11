@@ -99,8 +99,8 @@ def make_observation_in_day(
                 db.write_rows(
                     table_name=table_name, rows=rows, column_names=column_names
                 )
-            statsd_client.timing("make_observations.timed", t.ms)
-            statsd_client.incr("make_observations.msmt_count")
+            statsd_client.timing("make_observations.timed", t.ms, rate=0.1)
+            statsd_client.incr("make_observations.msmt_count", rate=0.1)
         except Exception as exc:
             msmt_str = ""
             if msmt:
@@ -151,4 +151,4 @@ def start_observation_maker(
     t = dask.persist(*task_list)
     progress(t)
 
-    t.compute()
+    dask.compute(*task_list)
