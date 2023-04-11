@@ -22,6 +22,7 @@ from oonidata.workers import (
     start_ground_truth_builder,
     start_response_archiver,
 )
+from oonidata.workers.analysis import start_analysis
 
 
 log = logging.getLogger("oonidata")
@@ -250,9 +251,74 @@ def mker(
     if create_tables:
         with ClickhouseConnection(clickhouse) as db:
             for query, table_name in create_queries:
+                click.echo(f"Running create query for {table_name}")
                 db.execute(query)
 
     start_experiment_result_maker(
+        probe_cc=probe_cc,
+        test_name=test_name,
+        start_day=start_day,
+        end_day=end_day,
+        clickhouse=clickhouse,
+        data_dir=data_dir,
+        parallelism=parallelism,
+        fast_fail=fast_fail,
+        rebuild_ground_truths=rebuild_ground_truths,
+    )
+
+
+@cli.command()
+@probe_cc_option
+@test_name_option
+@start_day_option
+@end_day_option
+@click.option("--clickhouse", type=str, required=True)
+@click.option(
+    "--data-dir",
+    type=Path,
+    required=True,
+    help="data directory to store fingerprint and geoip databases",
+)
+@click.option(
+    "--parallelism",
+    type=int,
+    default=multiprocessing.cpu_count() + 2,
+    help="number of processes to use. Only works when writing to a database",
+)
+@click.option(
+    "--fast-fail",
+    is_flag=True,
+    help="should we fail immediately when we encounter an error?",
+)
+@click.option(
+    "--create-tables",
+    is_flag=True,
+    help="should we attempt to create the required clickhouse tables",
+)
+@click.option(
+    "--rebuild-ground-truths",
+    is_flag=True,
+    help="should we force the rebuilding of ground truths",
+)
+def mkanalysis(
+    probe_cc: List[str],
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    clickhouse: str,
+    data_dir: Path,
+    parallelism: int,
+    fast_fail: bool,
+    create_tables: bool,
+    rebuild_ground_truths: bool,
+):
+    if create_tables:
+        with ClickhouseConnection(clickhouse) as db:
+            for query, table_name in create_queries:
+                click.echo(f"Running create query for {table_name}")
+                db.execute(query)
+
+    start_analysis(
         probe_cc=probe_cc,
         test_name=test_name,
         start_day=start_day,
