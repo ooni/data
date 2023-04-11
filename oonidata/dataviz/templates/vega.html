@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/vega"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed"></script>
+</head>
+
+<body>
+
+  <div id="vis"></div>
+
+  <script type="text/javascript">
+    vegaEmbed("#vis", "{{ url_for(endpoint, **query_args | default({})) | safe }}").then(function (result) {
+      console.log(result)
+    }).catch(console.error);
+  </script>
+</body>
+
+</html>

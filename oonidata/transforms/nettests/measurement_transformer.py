@@ -55,17 +55,38 @@ unknown_failure_map = (
         "dns_temporary_failure",
     ),
     ("certificate has expired or is not yet valid", "ssl_invalid_certificate"),
+    ("connect: network is unreachable", "network_unreachable"),
+    ("connect: no route to host", "host_unreachable"),
+    ("read: operation timed out", "generic_timeout_error"),
+    ("tls: first record does not look like a TLS handshake", "invalid_record"),
+    ("tls: internal error", "internal_error"),
+    (
+        "An existing connection was forcibly closed by the remote host",
+        "connection_reset",
+    ),
+    ("tls: access denied", "access_denied"),
+    (
+        "A socket operation was attempted to an unreachable network",
+        "network_unreachable",
+    ),
+    (
+        "No connection could be made because the target machine actively refused it",
+        "connection_refused",
+    ),
+    # TODO: Is it fair to map these errors to this? Technically I think it's a different errno
+    ("address family not supported by protocol", "network_unreachable"),
+    ("connect: can't assign requested address", "network_unreachable"),
 )
 
 
 def normalize_failure(failure: Failure):
-    # TODO: implement a mapping between known unknowns to cleanup the data a bit
     if not failure:
         return failure
 
-    for substring, new_failure in unknown_failure_map:
-        if substring in failure:
-            return new_failure
+    if failure.startswith("unknown_failure"):
+        for substring, new_failure in unknown_failure_map:
+            if substring in failure:
+                return new_failure
     return failure
 
 

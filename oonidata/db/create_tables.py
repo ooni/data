@@ -6,6 +6,7 @@ from dataclasses import fields
 from oonidata.models.experiment_result import (
     ExperimentResult,
 )
+from oonidata.models.analysis import WebsiteAnalysis
 from oonidata.models.observations import (
     ObservationBase,
     WebControlObservation,
@@ -107,10 +108,33 @@ def create_query_for_experiment_result() -> Tuple[str, str]:
     )
 
 
+def create_query_for_analysis(base_class) -> Tuple[str, str]:
+    columns = []
+    for f in fields(base_class):
+        type_str = typing_to_clickhouse(f.type)
+        columns.append(f"     {f.name} {type_str}")
+
+    columns_str = ",\n".join(columns)
+    index_str = ",\n".join(base_class.__table_index__)
+
+    return (
+        f"""
+    CREATE TABLE IF NOT EXISTS {base_class.__table_name__} (
+{columns_str}
+    )
+    ENGINE = ReplacingMergeTree
+    ORDER BY ({index_str})
+    SETTINGS index_granularity = 8192;
+    """,
+        base_class.__table_name__,
+    )
+
+
 create_queries = [
     create_query_for_observation(WebObservation),
     create_query_for_observation(WebControlObservation),
     create_query_for_experiment_result(),
+    create_query_for_analysis(WebsiteAnalysis),
 ]
 
 
