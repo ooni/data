@@ -133,11 +133,11 @@ def measurement_to_http_observation(
     hrro.response_status_code = http_transaction.response.code
     hrro.response_headers_list = http_transaction.response.headers_list_bytes
 
-    hrro.response_header_location = (
-        http_transaction.response.get_first_http_header_str("location")
+    hrro.response_header_location = http_transaction.response.get_first_http_header_str(
+        "location"
     )
-    hrro.response_header_server = (
-        http_transaction.response.get_first_http_header_str("server")
+    hrro.response_header_server = http_transaction.response.get_first_http_header_str(
+        "server"
     )
 
     try:
@@ -565,6 +565,9 @@ def make_measurement_meta(
         network_type=annotations.get("network_type", "unknown"),
         platform=annotations.get("platform", "unknown"),
         origin=annotations.get("origin", "unknown"),
+        engine_name=annotations.get("engine_name", "unknown"),
+        engine_version=annotations.get("engine_version", "unknown"),
+        architecture=annotations.get("architecture", "unknown"),
         resolver_ip=resolver_ip,
         resolver_cc=resolver_cc,
         resolver_asn=resolver_asn,

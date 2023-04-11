@@ -45,6 +45,9 @@ class MeasurementMeta(ObservationBase):
     network_type: str
     platform: str
     origin: str
+    engine_name: str
+    engine_version: str
+    architecture: str
 
     resolver_ip: str
     resolver_asn: int

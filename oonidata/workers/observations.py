@@ -36,7 +36,7 @@ from oonidata.workers.common import (
 log = logging.getLogger("oonidata.processing")
 
 
-@dask.delayed
+@dask.delayed  # type: ignore # not working due to https://github.com/dask/dask/issues/9710
 def make_observation_in_day(
     probe_cc: List[str],
     test_name: List[str],
@@ -99,8 +99,8 @@ def make_observation_in_day(
                 db.write_rows(
                     table_name=table_name, rows=rows, column_names=column_names
                 )
-            statsd_client.timing("make_observations.timed", t.ms, rate=0.1)
-            statsd_client.incr("make_observations.msmt_count", rate=0.1)
+            statsd_client.timing("make_observations.timed", t.ms, rate=0.1)  # type: ignore # broken due to https://github.com/jsocol/pystatsd/issues/146
+            statsd_client.incr("make_observations.msmt_count", rate=0.1)  # type: ignore # broken due to https://github.com/jsocol/pystatsd/issues/146
         except Exception as exc:
             msmt_str = ""
             if msmt:
@@ -148,7 +148,7 @@ def start_observation_maker(
         )
         task_list.append(t)
 
-    t = dask.persist(*task_list)
+    t = dask.persist(*task_list)  # type: ignore # not working due to https://github.com/dask/dask/issues/9710
     progress(t)
 
-    dask.compute(*task_list)
+    dask.compute(*task_list)  # type: ignore # not working due to https://github.com/dask/dask/issues/9710
