@@ -411,12 +411,13 @@ def make_web_observation(
     tls_o: Optional[TLSObservation] = None,
     http_o: Optional[HTTPObservation] = None,
     target_id: Optional[str] = None,
+    probe_analysis: Optional[str] = None
 ) -> WebObservation:
     assert (
         dns_o or tcp_o or tls_o or http_o
     ), "dns_o or tcp_o or tls_o or http_o should be not null"
 
-    web_obs = WebObservation(target_id=target_id, **dataclasses.asdict(msmt_meta))
+    web_obs = WebObservation(target_id=target_id, probe_analysis=probe_analysis, **dataclasses.asdict(msmt_meta))
     dns_ip = None
     if dns_o and dns_o.answer:
         try:
@@ -734,6 +735,7 @@ class MeasurementTransformer:
         tls_observations: List[TLSObservation] = [],
         http_observations: List[HTTPObservation] = [],
         target_id: Optional[str] = None,
+        probe_analysis: Optional[str] = None
     ) -> List[WebObservation]:
         """
         Returns a list of WebObservations by mapping all related
@@ -767,6 +769,7 @@ class MeasurementTransformer:
                     tls_o=tls_o,
                     http_o=http_o,
                     target_id=target_id,
+                    probe_analysis=probe_analysis,
                 )
             )
             if tcp_o:
@@ -795,6 +798,7 @@ class MeasurementTransformer:
                     tls_o=tls_o,
                     http_o=http_o,
                     target_id=target_id,
+                    probe_analysis=probe_analysis,
                 )
             )
 
@@ -813,6 +817,7 @@ class MeasurementTransformer:
                     tls_o=tls_o,
                     http_o=http_o,
                     target_id=target_id,
+                    probe_analysis=probe_analysis,
                 )
             )
 
@@ -823,6 +828,7 @@ class MeasurementTransformer:
                     netinfodb=self.netinfodb,
                     http_o=http_o,
                     target_id=target_id,
+                    probe_analysis=probe_analysis,
                 )
             )
 

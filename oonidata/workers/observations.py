@@ -148,7 +148,5 @@ def start_observation_maker(
         )
         task_list.append(t)
 
-    t = dask.persist(*task_list)  # type: ignore # not working due to https://github.com/dask/dask/issues/9710
+    t = dask_client.persist(task_list)
     progress(t)
-
-    dask.compute(*task_list)  # type: ignore # not working due to https://github.com/dask/dask/issues/9710
