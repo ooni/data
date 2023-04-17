@@ -11,7 +11,8 @@ from typing import (
 import statsd
 
 import dask
-from dask.distributed import Client, progress
+from dask.distributed import Client as DaskClient
+from dask.distributed import progress as dask_progress
 
 from oonidata.analysis.datasources import load_measurement
 from oonidata.datautils import PerfTimer
@@ -131,7 +132,7 @@ def start_observation_maker(
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
-    dask_client = Client(threads_per_worker=4, n_workers=parallelism)
+    dask_client = DaskClient(threads_per_worker=4, n_workers=parallelism)
 
     assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
@@ -149,4 +150,4 @@ def start_observation_maker(
         task_list.append(t)
 
     t = dask_client.persist(task_list)
-    progress(t)
+    dask_progress(t)

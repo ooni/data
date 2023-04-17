@@ -319,7 +319,9 @@ class WebObservation(MeasurementMeta):
     http_request_redirect_from: Optional[str] = None
     http_request_body_is_truncated: Optional[bool] = None
 
+    # probe level analysis
     probe_analysis: Optional[str] = None
+
     # All of these fields are added as part of a post-processing stage
     pp_http_response_fingerprints: List[str] = field(default_factory=list)
     pp_http_fingerprint_country_consistent: Optional[bool] = None
@@ -330,3 +332,28 @@ class WebObservation(MeasurementMeta):
 
     pp_dns_fingerprint_id: Optional[str] = None
     pp_dns_fingerprint_country_consistent: Optional[bool] = None
+
+
+@add_slots
+@dataclass
+class HTTPMiddleboxObservation(MeasurementMeta):
+    __table_name__ = "obs_http_middlebox"
+    __table_index__ = ("measurement_uid", "measurement_start_time")
+
+    observation_id: str = ""
+
+    bucket_date: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    # Set the payload returned by the HTTP Invalid Request Line test
+    hirl_diff_0: Optional[str] = None
+    hirl_diff_1: Optional[str] = None
+    hirl_diff_2: Optional[str] = None
+    hirl_diff_3: Optional[str] = None
+    hirl_diff_4: Optional[str] = None
+    hirl_failure: Optional[str] = None
+    hirl_success: Optional[bool] = None
+
+    hfm_diff: Optional[str] = None
+    hfm_failure: Optional[str] = None
+    hfm_success: Optional[bool] = None

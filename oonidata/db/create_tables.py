@@ -11,6 +11,7 @@ from oonidata.models.observations import (
     ObservationBase,
     WebControlObservation,
     WebObservation,
+    HTTPMiddleboxObservation
 )
 
 
@@ -133,6 +134,7 @@ def create_query_for_analysis(base_class) -> Tuple[str, str]:
 create_queries = [
     create_query_for_observation(WebObservation),
     create_query_for_observation(WebControlObservation),
+    create_query_for_observation(HTTPMiddleboxObservation),
     create_query_for_experiment_result(),
     create_query_for_analysis(WebsiteAnalysis),
 ]
