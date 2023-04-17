@@ -1,3 +1,4 @@
+import math
 import pathlib
 import logging
 import dataclasses
@@ -13,6 +14,7 @@ import statsd
 import dask
 from dask.distributed import Client as DaskClient
 from dask.distributed import progress as dask_progress
+from dask.distributed import wait as dask_wait
 
 from oonidata.analysis.datasources import load_measurement
 from oonidata.datautils import PerfTimer
@@ -87,6 +89,12 @@ def make_observation_in_day(
         try:
             t = PerfTimer()
             msmt = load_measurement(msmt_dict)
+            if not msmt.test_keys:
+                log.error(
+                    f"measurement with empty test_keys: ({msmt.measurement_uid})",
+                    exc_info=True,
+                )
+                continue
             for observations in measurement_to_observations(msmt, netinfodb=netinfodb):
                 if len(observations) == 0:
                     continue
@@ -105,9 +113,7 @@ def make_observation_in_day(
         except Exception as exc:
             msmt_str = ""
             if msmt:
-                msmt_str = msmt.report_id
-                if msmt.input:
-                    msmt_str += f"?input={msmt.input}"
+                msmt_str = msmt.measurement_uid
             log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
 
             if fast_fail:
@@ -132,7 +138,11 @@ def start_observation_maker(
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
-    dask_client = DaskClient(threads_per_worker=4, n_workers=parallelism)
+    # See: https://stackoverflow.com/questions/51099685/best-practices-in-setting-number-of-dask-workers
+    dask_client = DaskClient(
+        threads_per_worker=2,
+        n_workers=parallelism,
+    )
 
     assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
@@ -149,5 +159,7 @@ def start_observation_maker(
         )
         task_list.append(t)
 
-    t = dask_client.persist(task_list)
-    dask_progress(t)
+    futures = dask_client.compute(task_list)
+    dask_progress(futures)
+    print("waiting on task_list")
+    dask_wait(futures)

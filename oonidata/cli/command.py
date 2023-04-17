@@ -218,7 +218,7 @@ def mkobs(
 @click.option(
     "--parallelism",
     type=int,
-    default=multiprocessing.cpu_count() + 2,
+    default=multiprocessing.cpu_count(),
     help="number of processes to use. Only works when writing to a database",
 )
 @click.option(
