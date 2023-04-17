@@ -186,7 +186,7 @@ def stream_jsonlz4(body: io.BytesIO):
             try:
                 msmt = orjson.loads(line)
             except ValueError:
-                log.error("oldcan: unable to parse json measurement")
+                log.error("stream_jsonlz4: unable to parse json measurement")
                 continue
 
             msmt_uid = trivial_id(line, msmt)  # type: ignore due to bad types in lz4
@@ -224,7 +224,7 @@ def stream_oldcan(body: io.BytesIO, s3path: str) -> Generator[dict, None, None]:
                         try:
                             msmt = orjson.loads(line)
                         except ValueError:
-                            log.error("oldcan: unable to parse json measurement")
+                            log.error("stream_oldcan: unable to parse json measurement")
                             continue
 
                         msmt_uid = trivial_id(line, msmt)
@@ -280,7 +280,7 @@ class FileEntry:
         elif self.ext == "json.lz4":
             yield from stream_jsonlz4(body)
         elif self.ext == "yaml.lz4":
-            yield from stream_jsonlz4(body)
+            yield from stream_yamllz4(body, self.s3path)
         else:
             log.error(
                 f"found a file with an unknown extension: {self.ext} s3://{self.bucket_name}/{self.s3path}"
@@ -533,29 +533,27 @@ def get_file_entries(
                 progress_status=ProgressStatus.LISTING_BEGIN,
             )
         )
-    with multiprocessing.pool.ThreadPool() as pool:
-        for fe_list in pool.imap_unordered(list_file_entries, prefix_list):
-            for fe in fe_list:
-                if not fe.matches_filter(
-                    ccs, testnames, start_timestamp, end_timestamp
-                ):
-                    continue
 
-                if from_cans == True and not fe.is_can:
-                    continue
-                if from_cans == False and fe.is_can:
-                    continue
+    for prefix in prefix_list:
+        for fe in iter_file_entries(prefix):
+            if not fe.matches_filter(ccs, testnames, start_timestamp, end_timestamp):
+                continue
 
-                file_entries.append(fe)
-            prefix_idx += 1
-            if progress_callback:
-                progress_callback(
-                    make_listing_progress(
-                        current_prefix_idx=prefix_idx,
-                        total_prefixes=total_prefixes,
-                        total_file_entries=len(file_entries),
-                    )
+            if from_cans == True and not fe.is_can:
+                continue
+            if from_cans == False and fe.is_can:
+                continue
+
+            file_entries.append(fe)
+        prefix_idx += 1
+        if progress_callback:
+            progress_callback(
+                make_listing_progress(
+                    current_prefix_idx=prefix_idx,
+                    total_prefixes=total_prefixes,
+                    total_file_entries=len(file_entries),
                 )
+            )
 
     return file_entries
 
