@@ -3,6 +3,7 @@ from copy import deepcopy
 from oonidata.analysis.datasources import load_measurement
 
 from oonidata.models.dataformats import HTTPTransaction
+from oonidata.models.nettests.telegram import Telegram
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 
 
@@ -28,6 +29,18 @@ def test_dataformat_web_connectivity(measurements):
     assert msmt.test_keys
     assert msmt.test_keys.requests
     assert len(msmt.test_keys.requests) > 0
+
+
+def test_dataformat_telegram(measurements):
+    msmt = load_measurement(
+        msmt_path=measurements["20230427235943.206438_US_telegram_ac585306869eca7b"]
+    )
+    assert msmt.measurement_start_time.startswith("2023")
+    assert isinstance(msmt, Telegram)
+    assert msmt.test_keys
+    assert msmt.test_keys.requests
+    assert len(msmt.test_keys.requests) > 0
+    assert msmt.test_keys.telegram_web_status == "ok"
 
 
 def test_http_transaction():
