@@ -6,10 +6,14 @@ from .signal import Signal
 from .tor import Tor
 from .web_connectivity import WebConnectivity
 from .whatsapp import Whatsapp
+from .http_invalid_request_line import HTTPInvalidRequestLine
+from .http_header_field_manipulation import HTTPHeaderFieldManipulation
 
-SUPPORTED_CLASSES = [WebConnectivity, Tor, DNSCheck, Signal, Whatsapp, BaseMeasurement]
+SUPPORTED_CLASSES = [
+    HTTPHeaderFieldManipulation, HTTPInvalidRequestLine, WebConnectivity, Tor, DNSCheck, Signal, Whatsapp, BaseMeasurement
+]
 SupportedDataformats = Union[
-    WebConnectivity, Tor, DNSCheck, Signal, Whatsapp, BaseMeasurement
+    HTTPHeaderFieldManipulation, HTTPInvalidRequestLine, WebConnectivity, Tor, DNSCheck, Signal, Whatsapp, BaseMeasurement
 ]
 
 NETTEST_MODELS = {

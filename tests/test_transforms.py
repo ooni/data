@@ -13,9 +13,10 @@ def test_wc_v5_observations(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs = measurement_to_observations(msmt, netinfodb=netinfodb)[0]
+    web_obs, web_ctrl_obs = measurement_to_observations(msmt, netinfodb=netinfodb)
     assert isinstance(web_obs[0], WebObservation)
     assert len(web_obs) == 15
+    assert len(web_ctrl_obs) == 13
 
 
 def test_http_observations(measurements, netinfodb):
@@ -143,7 +144,7 @@ def test_wc_observations_chained(netinfodb, measurements):
     assert len(web_obs) == 4
 
 
-def test_dns_check_obs(netinfodb, measurements):
+def test_dnscheck_obs(netinfodb, measurements):
     msmt = load_measurement(
         msmt_path=measurements["20221013000000.517636_US_dnscheck_bfd6d991e70afa0e"]
     )

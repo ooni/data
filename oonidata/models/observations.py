@@ -45,6 +45,9 @@ class MeasurementMeta(ObservationBase):
     network_type: str
     platform: str
     origin: str
+    engine_name: str
+    engine_version: str
+    architecture: str
 
     resolver_ip: str
     resolver_asn: int
@@ -109,8 +112,8 @@ class HTTPObservation:
     response_headers_list: Optional[List[Tuple[str, bytes]]] = field(
         default_factory=list
     )
-    response_header_location: Optional[bytes] = None
-    response_header_server: Optional[bytes] = None
+    response_header_location: Optional[str] = None
+    response_header_server: Optional[str] = None
     request_redirect_from: Optional[str] = None
     request_body_is_truncated: Optional[bool] = None
 
@@ -197,7 +200,7 @@ class TCPObservation:
 @dataclass
 class WebControlObservation(ObservationBase):
     __table_name__ = "obs_web_ctrl"
-    __table_index__ = ("measurement_uid", "measurement_start_time")
+    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
 
     hostname: str
     observation_id: str = ""
@@ -216,6 +219,7 @@ class WebControlObservation(ObservationBase):
 
     tls_failure: Optional[str] = None
     tls_success: Optional[bool] = None
+    tls_server_name: Optional[str] = None
 
     http_request_url: Optional[str] = None
     http_failure: Optional[str] = None
@@ -310,10 +314,13 @@ class WebObservation(MeasurementMeta):
     http_response_body_sha1: Optional[str] = None
 
     http_response_status_code: Optional[int] = None
-    http_response_header_location: Optional[bytes] = None
-    http_response_header_server: Optional[bytes] = None
+    http_response_header_location: Optional[str] = None
+    http_response_header_server: Optional[str] = None
     http_request_redirect_from: Optional[str] = None
     http_request_body_is_truncated: Optional[bool] = None
+
+    # probe level analysis
+    probe_analysis: Optional[str] = None
 
     # All of these fields are added as part of a post-processing stage
     pp_http_response_fingerprints: List[str] = field(default_factory=list)
@@ -325,3 +332,28 @@ class WebObservation(MeasurementMeta):
 
     pp_dns_fingerprint_id: Optional[str] = None
     pp_dns_fingerprint_country_consistent: Optional[bool] = None
+
+
+@add_slots
+@dataclass
+class HTTPMiddleboxObservation(MeasurementMeta):
+    __table_name__ = "obs_http_middlebox"
+    __table_index__ = ("measurement_uid", "measurement_start_time")
+
+    observation_id: str = ""
+
+    bucket_date: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    # Set the payload returned by the HTTP Invalid Request Line test
+    hirl_diff_0: Optional[str] = None
+    hirl_diff_1: Optional[str] = None
+    hirl_diff_2: Optional[str] = None
+    hirl_diff_3: Optional[str] = None
+    hirl_diff_4: Optional[str] = None
+    hirl_failure: Optional[str] = None
+    hirl_success: Optional[bool] = None
+
+    hfm_diff: Optional[str] = None
+    hfm_failure: Optional[str] = None
+    hfm_success: Optional[bool] = None

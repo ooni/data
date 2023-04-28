@@ -69,11 +69,9 @@ def make_web_control_observations(
 
     if msmt.test_keys.control.tls_handshake:
         for addr, res in msmt.test_keys.control.tls_handshake.items():
-            obs = None
             if addr in addr_map:
                 obs = addr_map[addr]
-
-            if obs is None:
+            else:
                 p = urlparse("//" + addr)
                 obs = deepcopy(obs_base)
                 assert p.hostname, "missing hostname in tls_handshakes control key"
@@ -81,7 +79,10 @@ def make_web_control_observations(
                 obs.port = p.port
 
             obs.tls_failure = res.failure
+            obs.tls_server_name = res.server_name
             obs.tls_success = res.failure is None
+
+            addr_map[addr] = obs
 
     mapped_dns_ips = set()
     for obs in addr_map.values():
@@ -126,11 +127,15 @@ class WebConnectivityTransformer(MeasurementTransformer):
             tls_handshakes=msmt.test_keys.tls_handshakes,
             network_events=msmt.test_keys.network_events,
         )
+        probe_analysis = msmt.test_keys.blocking
+        if probe_analysis is False:
+            probe_analysis = "false"
         web_observations = self.consume_web_observations(
             dns_observations=dns_observations,
             tcp_observations=tcp_observations,
             tls_observations=tls_observations,
             http_observations=http_observations,
+            probe_analysis=probe_analysis,
         )
         web_ctrl_observations = make_web_control_observations(msmt)
         return (web_observations, web_ctrl_observations)

@@ -16,8 +16,6 @@ class BaseMeasurement(BaseModel):
 
     __test_name__ = "generic"
 
-    annotations: Dict[str, str]
-
     input: Union[str, List[str], None]
     report_id: str
 
@@ -26,7 +24,6 @@ class BaseMeasurement(BaseModel):
 
     probe_asn: str
     probe_cc: str
-    probe_ip: Optional[str]
 
     test_name: str
     test_version: str
@@ -37,6 +34,8 @@ class BaseMeasurement(BaseModel):
 
     test_keys: BaseTestKeys
 
+    probe_ip: Optional[str] = None
+    annotations: Optional[Dict[str, str]] = None
     resolver_asn: Optional[str] = None
     resolver_ip: Optional[str] = None
     resolver_network_name: Optional[str] = None

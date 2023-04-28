@@ -102,7 +102,7 @@ def measurement_to_http_observation(
     requests_list: List[HTTPTransaction],
     idx: int,
     http_transaction: HTTPTransaction,
-) -> Optional["HTTPObservation"]:
+) -> Optional[HTTPObservation]:
     if not http_transaction.request:
         # This is a very malformed request, we don't consider it a valid
         # observation as we don't know what it's referring to.
@@ -154,21 +154,20 @@ def measurement_to_http_observation(
     hrro.response_status_code = http_transaction.response.code
     hrro.response_headers_list = http_transaction.response.headers_list_bytes
 
-    hrro.response_header_location = (
-        http_transaction.response.get_first_http_header_bytes("location")
+    hrro.response_header_location = http_transaction.response.get_first_http_header_str(
+        "location"
     )
-    hrro.response_header_location = (
-        http_transaction.response.get_first_http_header_bytes("server")
+    hrro.response_header_server = http_transaction.response.get_first_http_header_str(
+        "server"
     )
 
     try:
         prev_request = requests_list[idx + 1]
-        prev_location = (
-            hrro.response_header_location
-        ) = http_transaction.response.get_first_http_header_bytes("server")
-        if prev_location == hrro.request_url:
-            assert prev_request.request
-            hrro.request_redirect_from = prev_request.request.url
+        if prev_request and prev_request.response:
+            prev_location = prev_request.response.get_first_http_header_str("location")
+            if prev_location == hrro.request_url:
+                assert prev_request.request
+                hrro.request_redirect_from = prev_request.request.url
     except (IndexError, UnicodeDecodeError, AttributeError):
         pass
     return hrro
@@ -412,12 +411,17 @@ def make_web_observation(
     tls_o: Optional[TLSObservation] = None,
     http_o: Optional[HTTPObservation] = None,
     target_id: Optional[str] = None,
+    probe_analysis: Optional[str] = None,
 ) -> WebObservation:
     assert (
         dns_o or tcp_o or tls_o or http_o
     ), "dns_o or tcp_o or tls_o or http_o should be not null"
 
-    web_obs = WebObservation(target_id=target_id, **dataclasses.asdict(msmt_meta))
+    web_obs = WebObservation(
+        target_id=target_id,
+        probe_analysis=probe_analysis,
+        **dataclasses.asdict(msmt_meta),
+    )
     dns_ip = None
     if dns_o and dns_o.answer:
         try:
@@ -548,9 +552,10 @@ def make_measurement_meta(
     resolver_as_cc = ""
 
     resolver_asn_probe = msmt.resolver_asn
-    if resolver_asn_probe is None:
+    if resolver_asn_probe in (None, ""):
         resolver_asn_probe = 0
     else:
+        assert resolver_asn_probe is not None
         resolver_asn_probe = int(resolver_asn_probe[2:])
     resolver_as_org_name_probe = msmt.resolver_network_name or ""
     if resolver_ip == "[scrubbed]":
@@ -570,6 +575,7 @@ def make_measurement_meta(
     if isinstance(input_, list):
         input_ = ":".join(input_)
 
+    annotations = msmt.annotations or {}
     return MeasurementMeta(
         measurement_uid=msmt.measurement_uid,
         probe_asn=probe_asn,
@@ -583,10 +589,12 @@ def make_measurement_meta(
         software_version=msmt.software_version,
         test_name=msmt.test_name,
         test_version=msmt.test_version,
-        # engine_version, engine_name, architecture
-        network_type=msmt.annotations.get("network_type", "unknown"),
-        platform=msmt.annotations.get("platform", "unknown"),
-        origin=msmt.annotations.get("origin", "unknown"),
+        network_type=annotations.get("network_type", "unknown"),
+        platform=annotations.get("platform", "unknown"),
+        origin=annotations.get("origin", "unknown"),
+        engine_name=annotations.get("engine_name", "unknown"),
+        engine_version=annotations.get("engine_version", "unknown"),
+        architecture=annotations.get("architecture", "unknown"),
         resolver_ip=resolver_ip,
         resolver_cc=resolver_cc,
         resolver_asn=resolver_asn,
@@ -732,6 +740,7 @@ class MeasurementTransformer:
         tls_observations: List[TLSObservation] = [],
         http_observations: List[HTTPObservation] = [],
         target_id: Optional[str] = None,
+        probe_analysis: Optional[str] = None,
     ) -> List[WebObservation]:
         """
         Returns a list of WebObservations by mapping all related
@@ -765,6 +774,7 @@ class MeasurementTransformer:
                     tls_o=tls_o,
                     http_o=http_o,
                     target_id=target_id,
+                    probe_analysis=probe_analysis,
                 )
             )
             if tcp_o:
@@ -793,6 +803,7 @@ class MeasurementTransformer:
                     tls_o=tls_o,
                     http_o=http_o,
                     target_id=target_id,
+                    probe_analysis=probe_analysis,
                 )
             )
 
@@ -811,6 +822,7 @@ class MeasurementTransformer:
                     tls_o=tls_o,
                     http_o=http_o,
                     target_id=target_id,
+                    probe_analysis=probe_analysis,
                 )
             )
 
@@ -821,12 +833,13 @@ class MeasurementTransformer:
                     netinfodb=self.netinfodb,
                     http_o=http_o,
                     target_id=target_id,
+                    probe_analysis=probe_analysis,
                 )
             )
 
         for idx, obs in enumerate(web_obs_list):
             obs.observation_id = f"{obs.measurement_uid}_{idx}"
-            obs.created_at = datetime.utcnow()
+            obs.created_at = datetime.utcnow().replace(microsecond=0)
 
         return web_obs_list
 

@@ -4,11 +4,13 @@ from oonidata.transforms.nettests.dnscheck import DNSCheckTransformer
 from oonidata.transforms.nettests.signal import SignalTransformer
 from oonidata.transforms.nettests.tor import TorTransformer
 from oonidata.transforms.nettests.web_connectivity import WebConnectivityTransformer
+from oonidata.transforms.nettests.http_invalid_request_line import HTTPInvalidRequestLineTransformer
 
 NETTEST_TRANSFORMERS = {
     "dnscheck": DNSCheckTransformer,
     "signal": SignalTransformer,
     "tor": TorTransformer,
+    "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
 }
 

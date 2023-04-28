@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import typing
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 from oonidata.compat import add_slots
 from oonidata.models.base_model import BaseModel
 from oonidata.models.dataformats import (
@@ -72,7 +72,7 @@ class WebConnectivityTestKeys(BaseModel):
     headers_match: Optional[bool] = None
     title_match: Optional[bool] = None
     accessible: Optional[bool] = None
-    blocking: Union[str, bool, None] = None
+    blocking: Union[str, Literal[False], None] = None
 
     control: Optional[WebConnectivityControl] = None
     tls_handshakes: Optional[List[TLSHandshake]] = None

@@ -178,6 +178,17 @@ class NetinfoDB:
         """
         Returns information about a particular ASN on a given day, if known.
         """
+        if asn == 0:
+            return ASInfo(asn=asn, as_org_name="Unknown", as_cc="ZZ", as_name="Unknown")
+
+        if asn >= 64512 and asn <= 65535:
+            return ASInfo(
+                asn=asn,
+                as_org_name="Private use (RFC1930)",
+                as_cc="ZZ",
+                as_name="Private use (RFC1930)",
+            )
+
         day_str = day.strftime("%Y%m%d")
         org_name, name, country = ("", "", "")
         try:

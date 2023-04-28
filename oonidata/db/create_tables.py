@@ -11,6 +11,7 @@ from oonidata.models.observations import (
     ObservationBase,
     WebControlObservation,
     WebObservation,
+    HTTPMiddleboxObservation
 )
 
 
@@ -34,10 +35,10 @@ def typing_to_clickhouse(t: Any) -> str:
         return "Nullable(Int8)"
 
     if t == datetime:
-        return "Datetime"
+        return "Datetime64(3, 'UTC')"
 
     if t == Optional[datetime]:
-        return "Nullable(Datetime)"
+        return "Nullable(Datetime64(3, 'UTC'))"
 
     if t == float:
         return "Float64"
@@ -133,6 +134,7 @@ def create_query_for_analysis(base_class) -> Tuple[str, str]:
 create_queries = [
     create_query_for_observation(WebObservation),
     create_query_for_observation(WebControlObservation),
+    create_query_for_observation(HTTPMiddleboxObservation),
     create_query_for_experiment_result(),
     create_query_for_analysis(WebsiteAnalysis),
 ]
