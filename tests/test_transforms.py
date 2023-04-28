@@ -1,3 +1,4 @@
+from typing import List
 from oonidata.analysis.datasources import load_measurement
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.telegram import Telegram
@@ -159,5 +160,16 @@ def test_telegram_obs(netinfodb, measurements):
         msmt_path=measurements["20230427235943.206438_US_telegram_ac585306869eca7b"]
     )
     assert isinstance(msmt, Telegram)
-    web_obs = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)[0]
+    web_obs: List[WebObservation] = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb
+    )[0]
+    for wo in web_obs:
+        if wo.dns_engine:
+            assert wo.dns_t
+        if wo.tcp_success is not None:
+            assert wo.tcp_t
+        if wo.http_request_url:
+            assert wo.http_t
+        if wo.tls_cipher_suite:
+            assert wo.tls_t
     assert len(web_obs) == 33

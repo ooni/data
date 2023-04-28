@@ -118,6 +118,7 @@ class HTTPObservation:
     request_body_is_truncated: Optional[bool] = None
 
     transaction_id: Optional[int] = None
+    t: Optional[float] = None
 
     @property
     def request_is_encrypted(self):
@@ -160,6 +161,7 @@ class TLSObservation:
     handshake_time: Optional[float] = None
 
     transaction_id: Optional[int] = None
+    t: Optional[float] = None
 
 
 @add_slots
@@ -180,6 +182,7 @@ class DNSObservation:
     answer_as_org_name: Optional[str] = None
 
     transaction_id: Optional[int] = None
+    t: Optional[float] = None
 
 
 @add_slots
@@ -193,6 +196,7 @@ class TCPObservation:
     success: bool
     failure: Failure
 
+    t: Optional[float] = None
     transaction_id: Optional[int] = None
 
 
@@ -265,10 +269,12 @@ class WebObservation(MeasurementMeta):
     # from the probe
     dns_answer_asn: Optional[int] = None
     dns_answer_as_org_name: Optional[str] = None
+    dns_t: Optional[float] = None
 
     # TCP related observation
     tcp_failure: Optional[Failure] = None
     tcp_success: Optional[bool] = None
+    tcp_t: Optional[float] = None
 
     # TLS related observation
     tls_failure: Optional[Failure] = None
@@ -295,6 +301,7 @@ class WebObservation(MeasurementMeta):
     tls_handshake_write_bytes: Optional[float] = None
     tls_handshake_last_operation: Optional[str] = None
     tls_handshake_time: Optional[float] = None
+    tls_t: Optional[float] = None
 
     # HTTP related observation
     http_request_url: Optional[str] = None
@@ -318,6 +325,7 @@ class WebObservation(MeasurementMeta):
     http_response_header_server: Optional[str] = None
     http_request_redirect_from: Optional[str] = None
     http_request_body_is_truncated: Optional[bool] = None
+    http_t: Optional[float] = None
 
     # probe level analysis
     probe_analysis: Optional[str] = None
