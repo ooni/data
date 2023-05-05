@@ -129,6 +129,7 @@ def measurement_to_http_observation(
         failure=normalize_failure(http_transaction.failure),
         timestamp=make_timestamp(msmt_meta.measurement_start_time, http_transaction.t),
         transaction_id=http_transaction.transaction_id,
+        t=http_transaction.t,
     )
 
     if http_transaction.address:
@@ -186,6 +187,7 @@ def measurement_to_dns_observation(
         failure=normalize_failure(query.failure),
         timestamp=make_timestamp(msmt_meta.measurement_start_time, query.t),
         transaction_id=query.transaction_id,
+        t=query.t,
     )
 
     if not answer:
@@ -216,6 +218,7 @@ def measurement_to_tcp_observation(
         failure=normalize_failure(res.status.failure),
         success=res.status.success,
         transaction_id=res.transaction_id,
+        t=res.t,
     )
 
     return tcpo
@@ -289,6 +292,7 @@ def measurement_to_tls_observation(
         end_entity_certificate_san_list=[],
         failure=normalize_failure(tls_h.failure),
         transaction_id=tls_h.transaction_id,
+        t=tls_h.t,
     )
 
     if tls_h.address:

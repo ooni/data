@@ -108,6 +108,11 @@ SAMPLE_MEASUREMENTS = [
         "20221114T002124Z_webconnectivity_BR_27699_n1_knqvcofoEIxHMpzj",
         "https://cdt.org/",
     ),
+    (
+        "20230427235943.206438_US_telegram_ac585306869eca7b",
+        "20230427T235935Z_telegram_US_7018_n1_pDGUuqH8ozxn8zJ4",
+        None,
+    ),
 ]
 
 
