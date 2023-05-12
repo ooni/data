@@ -70,14 +70,14 @@ class HTTPInvalidRequestLineTransformer(MeasurementTransformer):
         for i in [0, 1, 2, 3, 4]:
             try:
                 if msmt.test_keys.sent[i] != msmt.test_keys.received[i]:
-                    idx = detect_target_index(msmt.test_keys.sent[i])
+                    target_idx = detect_target_index(msmt.test_keys.sent[i])
                     received_data = maybe_binary_data_to_bytes(
-                        msmt.test_keys.received[idx]
+                        msmt.test_keys.received[i]
                     )
                     assert isinstance(
                         received_data, bytes
                     ), "received data is not bytes"
-                    setattr(mb_obs, f"hirl_diff_{idx}", received_data)
+                    setattr(mb_obs, f"hirl_diff_{target_idx}", received_data)
             except IndexError:
                 mb_obs.hirl_failure = f"missing_received_{i}"
                 mb_obs.hirl_success = False
