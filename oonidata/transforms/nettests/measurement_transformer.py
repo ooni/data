@@ -47,47 +47,28 @@ log = logging.getLogger("oonidata.transforms")
 
 unknown_failure_map = (
     (
-        "This is usually a temporary error during hostname resolution and means that the local server did not receive a response from an authoritative server",
-        "dns_temporary_failure",
-    ),
-    (
-        "Der angeforderte Name ist gültig, es wurden jedoch keine Daten des angeforderten Typs gefunden",
-        "dns_temporary_failure",
-    ),
-    ("certificate has expired or is not yet valid", "ssl_invalid_certificate"),
-    ("connect: network is unreachable", "network_unreachable"),
-    ("connect: no route to host", "host_unreachable"),
-    ("read: operation timed out", "generic_timeout_error"),
-    ("tls: first record does not look like a TLS handshake", "invalid_record"),
-    ("tls: internal error", "internal_error"),
-    (
-        "An existing connection was forcibly closed by the remote host",
-        "connection_reset",
-    ),
-    ("tls: access denied", "access_denied"),
-    (
         "A socket operation was attempted to an unreachable network",
         "network_unreachable",
     ),
+    ("connect: network is unreachable", "network_unreachable"),
     (
         "No connection could be made because the target machine actively refused it",
         "connection_refused",
     ),
     ("connect: can't assign requested address", "address_not_available"),
-    (": connect: cannot assign requested address", "address_not_available"),
     (": server misbehaving", "dns_server_misbehaving"),
-    (": read: connection refused", "connection_refused"),
-    (": connect: network is unreachable", "network_unreachable"),
-    ("tls: first record does not look like a TLS handshake", "tls_bad_first_record"),
+    ("tls: first record does not look like a TLS handshake", "invalid_record"),
     ("remote error: tls: handshake failure", "tls_handshake_failure"),
     ("remote error: tls: illegal parameter", "tls_illegal_parameter"),
+    ("certificate has expired or is not yet valid", "ssl_invalid_certificate"),
+    ("tls: internal error", "internal_error"),
+    ("tls: access denied", "access_denied"),
+    (": read: connection refused", "connection_refused"),
     (
         "connectex: No connection could be made because the target machine actively refused it",
         "connection_refused",
     ),
     ("read: connection refused", "connection_refused"),
-    ("remote error: tls: access denied", "tls_access_denied"),
-    ("remote error: tls: internal error", "tls_internal_error"),
     (
         "HTTP/1.x transport connection broken: malformed HTTP version",
         "http_malformed_response",
@@ -100,10 +81,14 @@ unknown_failure_map = (
     ("stream error: stream ID", "http_stream_error"),
     # This looks more like a golang-bug: https://github.com/golang/go/issues/31259
     ("readLoopPeekFailLocked: <nil>", "http_golang_bug"),
-    (": connect: no route to host", "host_unreachable"),
+    ("connect: no route to host", "host_unreachable"),
     (
         "getaddrinfow: The requested name is valid, but no data of the requested type was found.",
         "dns_no_answer",
+    ),
+    (
+        "An existing connection was forcibly closed by the remote host",
+        "connection_reset",
     ),
     (
         "wsarecv: Se ha forzado la interrupción de una conexión existente por el host remoto.",
@@ -120,6 +105,14 @@ unknown_failure_map = (
     (
         "wsarecv: Uma ligação existente foi forçada a fechar pelo anfitrião remoto",
         "connection_reset",
+    ),
+    (
+        "This is usually a temporary error during hostname resolution and means that the local server did not receive a response from an authoritative server",
+        "dns_temporary_failure",
+    ),
+    (
+        "Der angeforderte Name ist gültig, es wurden jedoch keine Daten des angeforderten Typs gefunden",
+        "dns_temporary_failure",
     ),
     (
         "getaddrinfow: Ceci est habituellement une erreur temporaire qui se produit durant la résolution du nom d’hôte et qui signifie que le serveur local n’a pas reçu de réponse d’un serveur faisant autorité",
