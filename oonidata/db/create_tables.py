@@ -1,8 +1,9 @@
 from datetime import datetime
 from enum import Enum
 
-from typing import Optional, Tuple, List, Any, Type, Mapping, Dict
+from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict
 from dataclasses import fields
+from oonidata.db.connections import ClickhouseConnection
 from oonidata.models.experiment_result import (
     ExperimentResult,
 )
@@ -11,7 +12,7 @@ from oonidata.models.observations import (
     ObservationBase,
     WebControlObservation,
     WebObservation,
-    HTTPMiddleboxObservation
+    HTTPMiddleboxObservation,
 )
 
 
@@ -138,6 +139,121 @@ create_queries = [
     create_query_for_experiment_result(),
     create_query_for_analysis(WebsiteAnalysis),
 ]
+
+
+class TableDoesNotExistError(Exception):
+    pass
+
+
+def get_column_map_from_create_query(s):
+    column_begin = False
+    columns = {}
+    for line in s.split("\n"):
+        line = line.strip()
+        if line == ")":
+            break
+
+        if line == "(":
+            column_begin = True
+            continue
+
+        if column_begin is False:
+            continue
+
+        first_space_idx = line.index(" ")
+        column_name = line[:first_space_idx]
+        type_name = line[first_space_idx + 1 :]
+
+        column_name = column_name.replace("`", "")
+        type_name = type_name.rstrip(",")
+        columns[column_name] = type_name
+    return columns
+
+
+class ColumnDiff(NamedTuple):
+    table_name: str
+    column_name: str
+    expected_type: Optional[str]
+    actual_type: Optional[str]
+
+    def get_sql_migration(self):
+        if self.expected_type == None:
+            s = f"-- {self.actual_type} PRESENT\n"
+            s += f"ALTER TABLE {self.table_name} DROP COLUMN {self.column_name};"
+            return s
+        if self.actual_type == None:
+            s = f"-- MISSING {self.expected_type}\n"
+            s += f"ALTER TABLE {self.table_name} ADD COLUMN {self.column_name} {self.expected_type};"
+            return s
+        if self.actual_type != self.expected_type:
+            s = f"-- {self.actual_type} != {self.expected_type}\n"
+            s += f"ALTER TABLE {self.table_name} MODIFY COLUMN {self.column_name} {self.expected_type};"
+            return s
+
+
+def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDiff]:
+    """
+    returns the difference between the current database tables and what we would
+    expect to see.
+    If the list is empty, it means there is no difference, otherwise you will
+    get a list of ColumnDiff which includes the differences in the columns.
+    """
+    table_name = base_class.__table_name__
+    try:
+        res = db.execute(f"SHOW CREATE TABLE {table_name}")
+    except:
+        raise TableDoesNotExistError
+    assert isinstance(res, list)
+    column_map = get_column_map_from_create_query(res[0][0])
+    column_diff = []
+    for f in fields(base_class):
+        expected_type = typing_to_clickhouse(f.type)
+        try:
+            actual_type = column_map.pop(f.name)
+            if expected_type != actual_type:
+                column_diff.append(
+                    ColumnDiff(
+                        table_name=table_name,
+                        column_name=f.name,
+                        expected_type=expected_type,
+                        actual_type=actual_type,
+                    )
+                )
+        except KeyError:
+            column_diff.append(
+                ColumnDiff(
+                    table_name=table_name,
+                    column_name=f.name,
+                    expected_type=expected_type,
+                    actual_type=None,
+                )
+            )
+
+    for column_name, actual_type in column_map.items():
+        column_diff.append(
+            ColumnDiff(
+                table_name=table_name,
+                column_name=column_name,
+                expected_type=None,
+                actual_type=actual_type,
+            )
+        )
+    return column_diff
+
+
+def list_all_table_diffs(db: ClickhouseConnection):
+    for base_class in [WebObservation, WebControlObservation, HTTPMiddleboxObservation]:
+        table_name = base_class.__table_name__
+        try:
+            diff = get_table_column_diff(db=db, base_class=base_class)
+        except TableDoesNotExistError:
+            print(f"# {table_name} does not exist")
+            print("rerun with --create-tables")
+            continue
+        if len(diff) > 0:
+            print(f"# {table_name} diff")
+            for cd in diff:
+                print(cd.get_sql_migration())
 
 
 def main():
