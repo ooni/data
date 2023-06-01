@@ -2,13 +2,15 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Dict, List, Tuple
 from urllib.parse import urlparse
+from oonidata.datautils import is_ip_bogon
 from oonidata.models.nettests import WebConnectivity
 from oonidata.models.observations import WebControlObservation, WebObservation
+from oonidata.netinfo import NetinfoDB
 from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
 
 
 def make_web_control_observations(
-    msmt: WebConnectivity,
+    msmt: WebConnectivity, netinfodb: NetinfoDB
 ) -> List[WebControlObservation]:
     web_ctrl_obs = []
 
@@ -86,7 +88,16 @@ def make_web_control_observations(
 
     mapped_dns_ips = set()
     for obs in addr_map.values():
-        assert obs.ip
+        assert obs.ip, "missing IP in ctrl observation"
+        if obs.ip:
+            obs.ip_is_bogon = is_ip_bogon(obs.ip)
+            ip_info = netinfodb.lookup_ip(obs.measurement_start_time, obs.ip)
+            if ip_info:
+                obs.ip_cc = ip_info.cc
+                obs.ip_asn = ip_info.as_info.asn
+                obs.ip_as_org_name = ip_info.as_info.as_org_name
+                obs.ip_as_cc = ip_info.as_info.as_cc
+
         if obs.ip in dns_ips:
             # We care to include the IPs for which we got a resolution in the
             # same row as the relevant TLS and TCP controls, but if we don't
@@ -137,5 +148,5 @@ class WebConnectivityTransformer(MeasurementTransformer):
             http_observations=http_observations,
             probe_analysis=probe_analysis,
         )
-        web_ctrl_observations = make_web_control_observations(msmt)
+        web_ctrl_observations = make_web_control_observations(msmt, self.netinfodb)
         return (web_observations, web_ctrl_observations)

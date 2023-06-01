@@ -215,6 +215,12 @@ class WebControlObservation(ObservationBase):
     ip: str = ""
     port: Optional[int] = None
 
+    ip_asn: Optional[int] = None
+    ip_as_org_name: Optional[str] = None
+    ip_as_cc: Optional[str] = None
+    ip_cc: Optional[str] = None
+    ip_is_bogon: Optional[bool] = None
+
     dns_failure: Optional[str] = None
     dns_success: Optional[bool] = None
 
