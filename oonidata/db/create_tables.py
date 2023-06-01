@@ -149,17 +149,21 @@ def get_column_map_from_create_query(s):
     column_begin = False
     columns = {}
     for line in s.split("\n"):
-        if line.strip() == ")":
+        line = line.strip()
+        if line == ")":
             break
 
-        if line.strip() == "(":
+        if line == "(":
             column_begin = True
             continue
 
         if column_begin is False:
             continue
 
-        column_name, type_name = line.strip().split(" ")
+        first_space_idx = line.index(" ")
+        column_name = line[:first_space_idx]
+        type_name = line[first_space_idx + 1 :]
+
         column_name = column_name.replace("`", "")
         type_name = type_name.rstrip(",")
         columns[column_name] = type_name
@@ -174,11 +178,17 @@ class ColumnDiff(NamedTuple):
 
     def get_sql_migration(self):
         if self.expected_type == None:
-            return f"ALTER TABLE {self.table_name} DROP COLUMN {self.column_name}"
+            s = f"-- {self.actual_type} PRESENT\n"
+            s += f"ALTER TABLE {self.table_name} DROP COLUMN {self.column_name}"
+            return s
         if self.actual_type == None:
-            return f"ALTER TABLE {self.table_name} ADD COLUMN {self.column_name} {self.expected_type}"
+            s = f"-- MISSING {self.expected_type}\n"
+            s += f"ALTER TABLE {self.table_name} ADD COLUMN {self.column_name} {self.expected_type}"
+            return s
         if self.actual_type != self.expected_type:
-            return f"ALTER TABLE {self.table_name} MODIFY COLUMN {self.column_name} {self.expected_type}"
+            s = f"-- {self.actual_type} != {self.expected_type}\n"
+            s += f"ALTER TABLE {self.table_name} MODIFY COLUMN {self.column_name} {self.expected_type}"
+            return s
 
 
 def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDiff]:
