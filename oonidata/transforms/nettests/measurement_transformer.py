@@ -137,8 +137,7 @@ unknown_failure_map = (
         "getaddrinfow: Éste es normalmente un error temporal durante la resolución de nombres de host y significa que el servidor local no recibió una respuesta de un servidor autoritativo",
         "dns_temporary_failure",
     ),
-    # TODO: Is it fair to map these errors to this? Technically I think it's a different errno
-    ("address family not supported by protocol", "network_unreachable"),
+    ("address family not supported by protocol", "address_family_not_supported"),
 )
 
 
