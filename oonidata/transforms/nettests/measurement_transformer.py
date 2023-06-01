@@ -47,6 +47,66 @@ log = logging.getLogger("oonidata.transforms")
 
 unknown_failure_map = (
     (
+        "A socket operation was attempted to an unreachable network",
+        "network_unreachable",
+    ),
+    ("connect: network is unreachable", "network_unreachable"),
+    (
+        "No connection could be made because the target machine actively refused it",
+        "connection_refused",
+    ),
+    ("connect: can't assign requested address", "address_not_available"),
+    (": server misbehaving", "dns_server_misbehaving"),
+    ("tls: first record does not look like a TLS handshake", "invalid_record"),
+    ("remote error: tls: handshake failure", "tls_handshake_failure"),
+    ("remote error: tls: illegal parameter", "tls_illegal_parameter"),
+    ("certificate has expired or is not yet valid", "ssl_invalid_certificate"),
+    ("tls: internal error", "internal_error"),
+    ("tls: access denied", "access_denied"),
+    (": read: connection refused", "connection_refused"),
+    (
+        "connectex: No connection could be made because the target machine actively refused it",
+        "connection_refused",
+    ),
+    ("read: connection refused", "connection_refused"),
+    (
+        "HTTP/1.x transport connection broken: malformed HTTP version",
+        "http_malformed_response",
+    ),
+    ("net/http: timeout awaiting response headers", "http_timeout"),
+    ("read: operation timed out", "timed_out"),
+    ("connect: operation timed out", "timed_out"),
+    (": No address associated with hostname", "dns_nxdomain_error"),
+    (": connect: bad file descriptor", "bad_file_descriptor"),
+    ("stream error: stream ID", "http_stream_error"),
+    # This looks more like a golang-bug: https://github.com/golang/go/issues/31259
+    ("readLoopPeekFailLocked: <nil>", "http_golang_bug"),
+    ("connect: no route to host", "host_unreachable"),
+    (
+        "getaddrinfow: The requested name is valid, but no data of the requested type was found.",
+        "dns_no_answer",
+    ),
+    (
+        "An existing connection was forcibly closed by the remote host",
+        "connection_reset",
+    ),
+    (
+        "wsarecv: Se ha forzado la interrupción de una conexión existente por el host remoto.",
+        "connection_reset",
+    ),
+    (
+        "wsarecv: An existing connection was forcibly closed by the remote host.",
+        "connection_reset",
+    ),
+    (
+        "wsarecv: Connessione in corso interrotta forzatamente dall'host remoto.",
+        "connection_reset",
+    ),
+    (
+        "wsarecv: Uma ligação existente foi forçada a fechar pelo anfitrião remoto",
+        "connection_reset",
+    ),
+    (
         "This is usually a temporary error during hostname resolution and means that the local server did not receive a response from an authoritative server",
         "dns_temporary_failure",
     ),
@@ -54,28 +114,23 @@ unknown_failure_map = (
         "Der angeforderte Name ist gültig, es wurden jedoch keine Daten des angeforderten Typs gefunden",
         "dns_temporary_failure",
     ),
-    ("certificate has expired or is not yet valid", "ssl_invalid_certificate"),
-    ("connect: network is unreachable", "network_unreachable"),
-    ("connect: no route to host", "host_unreachable"),
-    ("read: operation timed out", "generic_timeout_error"),
-    ("tls: first record does not look like a TLS handshake", "invalid_record"),
-    ("tls: internal error", "internal_error"),
     (
-        "An existing connection was forcibly closed by the remote host",
-        "connection_reset",
-    ),
-    ("tls: access denied", "access_denied"),
-    (
-        "A socket operation was attempted to an unreachable network",
-        "network_unreachable",
+        "getaddrinfow: Ceci est habituellement une erreur temporaire qui se produit durant la résolution du nom d’hôte et qui signifie que le serveur local n’a pas reçu de réponse d’un serveur faisant autorité",
+        "dns_temporary_failure",
     ),
     (
-        "No connection could be made because the target machine actively refused it",
-        "connection_refused",
+        "getaddrinfow: Dies ist normalerweise ein zeitweiliger Fehler bei der Auflösung von Hostnamen. Grund ist, dass der lokale Server keine Rückmeldung vom autorisierenden Server erhalten hat.",
+        "dns_temporary_failure",
     ),
-    # TODO: Is it fair to map these errors to this? Technically I think it's a different errno
-    ("address family not supported by protocol", "network_unreachable"),
-    ("connect: can't assign requested address", "network_unreachable"),
+    (
+        "getaddrinfow: Este é geralmente um erro temporário durante a resolução de nomes de anfitrião e significa que o servidor local não recebeu uma resposta de um servidor autoritário",
+        "dns_temporary_failure",
+    ),
+    (
+        "getaddrinfow: Éste es normalmente un error temporal durante la resolución de nombres de host y significa que el servidor local no recibió una respuesta de un servidor autoritativo",
+        "dns_temporary_failure",
+    ),
+    ("address family not supported by protocol", "address_family_not_supported"),
 )
 
 
