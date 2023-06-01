@@ -13,7 +13,7 @@ from oonidata.dataclient import (
     sync_measurements,
 )
 from oonidata.db.connections import ClickhouseConnection
-from oonidata.db.create_tables import create_queries
+from oonidata.db.create_tables import create_queries, list_all_table_diffs
 from oonidata.netinfo import NetinfoDB
 from oonidata.workers import (
     start_experiment_result_maker,
@@ -417,13 +417,52 @@ def mkbodies(
     help="number of processes to use",
 )
 def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
-
     click.echo("🏹 starting the hunt for blockpage fingerprints!")
     start_fingerprint_hunter(
         archives_dir=archives_dir,
         data_dir=data_dir,
         parallelism=parallelism,
     )
+
+
+@cli.command()
+@click.option("--clickhouse", type=str)
+@click.option(
+    "--create-tables",
+    is_flag=True,
+    help="should we attempt to create the required clickhouse tables",
+)
+@click.option(
+    "--drop-tables",
+    is_flag=True,
+    help="should we drop tables before creating them",
+)
+def checkdb(
+    clickhouse: Optional[str],
+    create_tables: bool,
+    drop_tables: bool,
+):
+    """
+    Check if the database tables require migrations. If the create-tables flag
+    is not specified, it will not perform any operations.
+    """
+    if create_tables:
+        if not clickhouse:
+            click.echo("--clickhouse needs to be specified when creating tables")
+            return 1
+        if drop_tables:
+            click.confirm(
+                "Are you sure you want to drop the tables before creation?", abort=True
+            )
+
+        with ClickhouseConnection(clickhouse) as db:
+            for query, table_name in create_queries:
+                if drop_tables:
+                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
+                db.execute(query)
+
+    with ClickhouseConnection(clickhouse) as db:
+        list_all_table_diffs(db)
 
 
 if __name__ == "__main__":
