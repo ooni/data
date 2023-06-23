@@ -1,4 +1,3 @@
-import math
 import pathlib
 import logging
 import dataclasses
@@ -39,7 +38,6 @@ from oonidata.workers.common import (
 log = logging.getLogger("oonidata.processing")
 
 
-@dask.delayed  # type: ignore # not working due to https://github.com/dask/dask/issues/9710
 def make_observation_in_day(
     probe_cc: List[str],
     test_name: List[str],
@@ -108,8 +106,9 @@ def make_observation_in_day(
                 db.write_rows(
                     table_name=table_name, rows=rows, column_names=column_names
                 )
-            statsd_client.timing("make_observations.timed", t.ms, rate=0.1)  # type: ignore # broken due to https://github.com/jsocol/pystatsd/issues/146
-            statsd_client.incr("make_observations.msmt_count", rate=0.1)  # type: ignore # broken due to https://github.com/jsocol/pystatsd/issues/146
+            # following types ignored due to https://github.com/jsocol/pystatsd/issues/146
+            statsd_client.timing("make_observations.timed", t.ms, rate=0.1)  # type: ignore
+            statsd_client.incr("make_observations.msmt_count", rate=0.1)  # type: ignore
         except Exception as exc:
             msmt_str = ""
             if msmt:
@@ -138,27 +137,44 @@ def start_observation_maker(
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
+    assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
+
+    day_list = list(date_interval(start_day, end_day))
+    # When there is only 1 day or parallelism is set to 1, there is no need to
+    # use dask.
+    if len(day_list) == 1 or parallelism == 1:
+        for day in day_list:
+            make_observation_in_day(
+                probe_cc=probe_cc,
+                test_name=test_name,
+                csv_dir=csv_dir,
+                clickhouse=clickhouse,
+                data_dir=data_dir,
+                fast_fail=fast_fail,
+                day=day,
+            )
+        return
+
     # See: https://stackoverflow.com/questions/51099685/best-practices-in-setting-number-of-dask-workers
     dask_client = DaskClient(
         threads_per_worker=2,
         n_workers=parallelism,
     )
 
-    assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
-
-    task_list = []
-    for day in date_interval(start_day, end_day):
-        t = make_observation_in_day(
-            probe_cc=probe_cc,
-            test_name=test_name,
-            csv_dir=csv_dir,
-            clickhouse=clickhouse,
-            data_dir=data_dir,
-            fast_fail=fast_fail,
-            day=day,
-        )
-        task_list.append(t)
-
+    task_list = map(
+        lambda day: dask.delayed(  # type: ignore # not working due to https://github.com/dask/dask/issues/9710
+            make_observation_in_day(
+                probe_cc=probe_cc,
+                test_name=test_name,
+                csv_dir=csv_dir,
+                clickhouse=clickhouse,
+                data_dir=data_dir,
+                fast_fail=fast_fail,
+                day=day,
+            )
+        ),
+        day_list,
+    )
     futures = dask_client.compute(task_list)
     dask_progress(futures)
     print("waiting on task_list")
