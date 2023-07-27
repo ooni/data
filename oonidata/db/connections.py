@@ -82,8 +82,8 @@ class ClickhouseConnection(DatabaseConnection):
             for row in rows:
                 try:
                     self.execute(query_str, [row])
-                except:
-                    log.error(f"Failed to write {row}")
+                except Exception as exc:
+                    log.error(f"Failed to write {row} ({exc})")
                     with open(f"failing-rows.pickle", "ab") as out_file:
                         pickle.dump({"query_str": query_str, "row": row}, out_file)
 
