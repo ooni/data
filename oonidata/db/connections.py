@@ -1,4 +1,6 @@
 import csv
+import json
+import time
 
 from collections import defaultdict, namedtuple
 from datetime import datetime
@@ -71,7 +73,13 @@ class ClickhouseConnection(DatabaseConnection):
     def flush_rows(self, table_name, rows):
         fields_str = ", ".join(self._column_names[table_name])
         query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
-        self.execute(query_str, rows)
+        try:
+            self.execute(query_str, rows)
+        except:
+            ts = time.time()
+            with open(f"failing-rows-{ts}.json", "w") as out_file:
+                json.dump({"query_str": query_str, "rows": rows}, out_file)
+            raise
 
     def close(self):
         for table_name, rows in self._row_buffer.items():
