@@ -1,5 +1,5 @@
 import csv
-import json
+import pickle
 import time
 
 from collections import defaultdict, namedtuple
@@ -76,10 +76,16 @@ class ClickhouseConnection(DatabaseConnection):
         try:
             self.execute(query_str, rows)
         except:
-            ts = time.time()
-            with open(f"failing-rows-{ts}.json", "w") as out_file:
-                json.dump({"query_str": query_str, "rows": rows}, out_file)
-            raise
+            log.error(
+                f"Failed to write {len(rows)} rows. Trying to savage what is savageable"
+            )
+            for row in rows:
+                try:
+                    self.execute(query_str, [row])
+                except:
+                    log.error(f"Failed to write {row}")
+                    with open(f"failing-rows.pickle", "ab") as out_file:
+                        pickle.dump({"query_str": query_str, "rows": rows}, out_file)
 
     def close(self):
         for table_name, rows in self._row_buffer.items():
