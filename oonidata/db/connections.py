@@ -75,9 +75,9 @@ class ClickhouseConnection(DatabaseConnection):
         query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
         try:
             self.execute(query_str, rows)
-        except:
+        except Exception as exc:
             log.error(
-                f"Failed to write {len(rows)} rows. Trying to savage what is savageable"
+                f"Failed to write {len(rows)} rows. Trying to savage what is savageable. ({exc})"
             )
             for row in rows:
                 try:
