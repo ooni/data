@@ -250,6 +250,10 @@ class FileEntry:
     is_can: bool
     probe_cc: Optional[str] = None
 
+    @property
+    def full_s3path(self):
+        return f"s3://{self.bucket_name}/{self.s3path}"
+
     def matches_filter(
         self,
         ccs: Set[str],
@@ -597,12 +601,16 @@ def iter_measurements(
         )
 
     for idx, fe in enumerate(file_entries):
-        for msmt in fe.stream_measurements():
-            # Legacy cans don't allow us to pre-filter on the probe_cc, so we do
-            # it before returning the data to the caller
-            if ccs and msmt["probe_cc"] not in ccs:
-                continue
-            yield msmt
+        try:
+            for msmt in fe.stream_measurements():
+                # Legacy cans don't allow us to pre-filter on the probe_cc, so we do
+                # it before returning the data to the caller
+                if ccs and msmt["probe_cc"] not in ccs:
+                    continue
+                yield msmt
+        except Exception as exc:
+            log.error(f"failed to stream measurements from {fe.full_s3path}")
+            log.error(exc)
 
         if progress_callback:
             progress_callback(
