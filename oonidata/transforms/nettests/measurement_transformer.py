@@ -136,7 +136,8 @@ unknown_failure_map = (
 
 def normalize_failure(failure: Failure):
     if not failure:
-        return failure
+        # This will set it to None even when it's false
+        return None
 
     if failure.startswith("unknown_failure"):
         for substring, new_failure in unknown_failure_map:

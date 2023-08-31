@@ -288,7 +288,7 @@ class DNSQuery(BaseModel):
 class TCPConnectStatus(BaseModel):
     success: bool
     blocked: Optional[bool] = None
-    failure: Failure = None
+    failure: Union[Failure, bool] = None  # see: https://github.com/ooni/spec/pull/277
 
 
 @add_slots

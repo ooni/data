@@ -1,4 +1,6 @@
 import csv
+import pickle
+import time
 
 from collections import defaultdict, namedtuple
 from datetime import datetime
@@ -71,7 +73,19 @@ class ClickhouseConnection(DatabaseConnection):
     def flush_rows(self, table_name, rows):
         fields_str = ", ".join(self._column_names[table_name])
         query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
-        self.execute(query_str, rows)
+        try:
+            self.execute(query_str, rows)
+        except Exception as exc:
+            log.error(
+                f"Failed to write {len(rows)} rows. Trying to savage what is savageable. ({exc})"
+            )
+            for row in rows:
+                try:
+                    self.execute(query_str, [row])
+                except Exception as exc:
+                    log.error(f"Failed to write {row} ({exc})")
+                    with open(f"failing-rows.pickle", "ab") as out_file:
+                        pickle.dump({"query_str": query_str, "row": row}, out_file)
 
     def close(self):
         for table_name, rows in self._row_buffer.items():
