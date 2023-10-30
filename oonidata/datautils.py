@@ -31,22 +31,33 @@ class PerfTimer:
         return self._runtime
 
     @property
+    def ns(self):
+        return self.runtime
+
+    @property
+    def us(self):
+        return self.runtime / 10**3
+
+    @property
     def ms(self):
         return self.runtime / 10**6
 
     @property
+    def s(self):
+        return self.runtime / 10**9
+
+    @property
     def pretty(self):
-        runtime = self.runtime
-        if runtime < 10**3:
-            return f"{runtime}ns"
+        if self.runtime < 10**3:
+            return f"{self.ns}ns"
 
-        if runtime < 10**6:
-            return f"{round(runtime/10**3, 2)}μs"
+        if self.runtime < 10**6:
+            return f"{round(self.us, 2)}μs"
 
-        if runtime < 10**9:
-            return f"{round(runtime/10**6, 2)}ms"
+        if self.runtime < 10**9:
+            return f"{round(self.ms, 2)}ms"
 
-        return f"{round(runtime/10**9, 2)}s"
+        return f"{round(self.s, 2)}s"
 
 
 META_TITLE_REGEXP = re.compile(
