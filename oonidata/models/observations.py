@@ -360,11 +360,18 @@ class HTTPMiddleboxObservation(MeasurementMeta):
     created_at: Optional[datetime] = None
 
     # Set the payload returned by the HTTP Invalid Request Line test
-    hirl_diff_0: Optional[str] = None
-    hirl_diff_1: Optional[str] = None
-    hirl_diff_2: Optional[str] = None
-    hirl_diff_3: Optional[str] = None
-    hirl_diff_4: Optional[str] = None
+    hirl_sent_0: Optional[str] = None
+    hirl_sent_1: Optional[str] = None
+    hirl_sent_2: Optional[str] = None
+    hirl_sent_3: Optional[str] = None
+    hirl_sent_4: Optional[str] = None
+
+    hirl_received_0: Optional[str] = None
+    hirl_received_1: Optional[str] = None
+    hirl_received_2: Optional[str] = None
+    hirl_received_3: Optional[str] = None
+    hirl_received_4: Optional[str] = None
+
     hirl_failure: Optional[str] = None
     hirl_success: Optional[bool] = None
 

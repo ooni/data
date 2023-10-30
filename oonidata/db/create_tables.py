@@ -56,6 +56,9 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Optional[List[str]]:
         return "Nullable(Array(String))"
 
+    if t == Optional[Tuple[str, str]]:
+        return "Nullable(Tuple(String, String))"
+
     if t == Optional[List[Tuple[str, bytes]]]:
         return "Nullable(Array(Array(String)))"
 

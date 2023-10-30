@@ -110,7 +110,7 @@ def make_observation_in_day(
             statsd_client.timing("make_observations.timed", t.ms, rate=0.1)  # type: ignore
             statsd_client.incr("make_observations.msmt_count", rate=0.1)  # type: ignore
         except Exception as exc:
-            msmt_str = ""
+            msmt_str = msmt_dict.get("report_id", None)
             if msmt:
                 msmt_str = msmt.measurement_uid
             log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
