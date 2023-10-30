@@ -156,12 +156,14 @@ def make_observation_in_day(
                 )
             )
 
+    t = PerfTimer()
     file_entry_batches = list_file_entries_batches(
         probe_cc=probe_cc,
         test_name=test_name,
         start_day=day,
         end_day=day + timedelta(days=1),
     )
+    print(f"running {len(file_entry_batches)} batches took {t.pretty}")
 
     task_list = []
     for batch in file_entry_batches:
