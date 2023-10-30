@@ -607,7 +607,7 @@ def list_file_entries_batches(
     )
     statsd_client.timing("dataclient.get_file_entries.timed", t.ms, rate=0.1)  # type: ignore
     fe_len = len(file_entries)
-    batch_size = int(fe_len / 20)
+    batch_size = int(fe_len / 30)
     print(f"using a batch size of {batch_size}")
     batches = []
     for idx in range(0, fe_len, batch_size):

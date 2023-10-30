@@ -61,8 +61,8 @@ def make_observations_for_file_entry_batch(
             for msmt_dict in stream_measurements(
                 bucket_name=bucket_name, s3path=s3path, ext=ext
             ):
-                # Legacy cans don't allow us to pre-filter on the probe_cc, so we do
-                # it before returning the data to the caller
+                # Legacy cans don't allow us to pre-filter on the probe_cc, so
+                # we need to check for probe_cc consistency in here.
                 if ccs and msmt_dict["probe_cc"] not in ccs:
                     continue
                 msmt = None
