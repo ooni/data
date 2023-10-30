@@ -1,7 +1,7 @@
 import pathlib
 import logging
 import dataclasses
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from typing import (
     List,
@@ -220,6 +220,7 @@ def start_observation_maker(
 ):
     assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
+    db = ClickhouseConnection(clickhouse)
     t_total = PerfTimer()
     total_size, total_msmt_count = 0, 0
     day_list = list(date_interval(start_day, end_day))
@@ -242,6 +243,19 @@ def start_observation_maker(
         msmt_per_sec = round(msmt_count / t.s)
         log.info(
             f"finished processing {day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
+        )
+        db.execute(
+            "INSERT INTO oonidata_processing_logs (key, timestamp, runtime_ms, bytes, msmt_count, comment) VALUES",
+            [
+                [
+                    "oonidata.bucket_processed",
+                    datetime.utcnow(),
+                    t.ms,
+                    size,
+                    msmt_count,
+                    day.strftime("%Y-%m-%d"),
+                ]
+            ],
         )
 
     mb_per_sec = round(total_size / t_total.s / 10**6, 1)

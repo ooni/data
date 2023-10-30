@@ -15,6 +15,20 @@ from oonidata.models.observations import (
     HTTPMiddleboxObservation,
 )
 
+"""
+CREATE TABLE IF NOT EXISTS oonidata_processing_logs 
+(
+    key String,
+    timestamp DateTime('UTC'),
+    runtime_ms Nullable(UInt64),
+    bytes Nullable(UInt64),
+    msmt_count Nullable(UInt32),
+    comment Nullable(String)
+)
+ENGINE = MergeTree
+ORDER BY (timestamp, key)
+"""
+
 
 def typing_to_clickhouse(t: Any) -> str:
     if t == str:
