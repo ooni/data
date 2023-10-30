@@ -183,16 +183,11 @@ def make_observation_in_day(
             probe_cc,
             fast_fail,
         )
-        fire_and_forget(t)
+        # fire_and_forget(t)
         future_list.append(t)
 
     log.info("starting progress monitoring")
     dask_progress(future_list)
-
-    idx = 0
-    for _ in as_completed(future_list):
-        idx += 1
-    log.info(f"{idx} futures completed")
 
     log.info("waiting on task_list")
     dask_wait(future_list)
