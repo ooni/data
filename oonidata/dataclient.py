@@ -24,6 +24,10 @@ from botocore.config import Config as botoConfig
 
 from tqdm.contrib.logging import tqdm_logging_redirect
 
+import statsd
+
+from oonidata.datautils import PerfTimer
+
 from oonidata.datautils import trim_measurement, trivial_id
 from oonidata.normalize import iter_yaml_msmt_normalized
 
@@ -512,7 +516,6 @@ def get_file_entries(
     from_cans: bool,
     progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
 ) -> List[FileEntry]:
-
     ccs = ccs_set(probe_cc)
     testnames = testnames_set(test_name)
 
@@ -578,6 +581,8 @@ def iter_measurements(
     if isinstance(end_day, str):
         end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
 
+    statsd_client = statsd.StatsClient("localhost", 8125)
+    t = PerfTimer()
     if file_entries is None:
         file_entries = get_file_entries(
             start_day=start_day,
@@ -587,6 +592,7 @@ def iter_measurements(
             from_cans=from_cans,
             progress_callback=progress_callback,
         )
+    statsd_client.timing("dataclient.get_file_entries.timed", t.ms, rate=0.1)  # type: ignore
 
     total_file_entry_bytes = sum(map(lambda fe: fe.size, file_entries))
     if progress_callback:
@@ -601,6 +607,7 @@ def iter_measurements(
         )
 
     for idx, fe in enumerate(file_entries):
+        t = PerfTimer()
         try:
             for msmt in fe.stream_measurements():
                 # Legacy cans don't allow us to pre-filter on the probe_cc, so we do
@@ -611,6 +618,8 @@ def iter_measurements(
         except Exception as exc:
             log.error(f"failed to stream measurements from {fe.full_s3path}")
             log.error(exc)
+        statsd_client.timing("dataclient.stream_file_entry.timed", t.ms, rate=0.1)  # type: ignore
+        statsd_client.gauge("dataclient.file_entry.kb_per_sec.gauge", fe.size / 1024 / t.s, rate=0.1)  # type: ignore
 
         if progress_callback:
             progress_callback(
