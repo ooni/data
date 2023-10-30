@@ -115,6 +115,7 @@ def make_observations_for_file_entry_batch(
         statsd_client.timing("oonidata.dataclient.stream_file_entry.timed", t.ms, rate=0.1)  # type: ignore
         statsd_client.gauge("oonidata.dataclient.file_entry.kb_per_sec.gauge", fe_size / 1024 / t.s, rate=0.1)  # type: ignore
     statsd_client.timing("oonidata.dataclient.batch.timed", tbatch.ms)  # type: ignore
+    db.close()
 
 
 def make_observation_in_day(
