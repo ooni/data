@@ -152,12 +152,12 @@ def stream_postcan(body: io.BytesIO, is_compressed=None) -> Generator[dict, None
     mode = None
     read_body = body
     if is_compressed is None:
-        mode = 'r'
+        mode = "r|*"
         read_body = read_to_bytesio(body)
     elif is_compressed == False:
-        mode = 'r:'
+        mode = "r|"
     elif is_compressed == True:
-        mode = 'r:gz'
+        mode = "r|gz"
     assert mode is not None, "failed to detect mode of opening file"
 
     with tarfile.open(fileobj=read_body, mode=mode) as tar:
