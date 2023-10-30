@@ -61,7 +61,7 @@ def make_observations_for_file_entry_batch(
         t = PerfTimer()
         try:
             for msmt_dict in stream_measurements(
-                bucket_name=bucket_name, s3path=s3path, ext=ext
+                bucket_name=bucket_name, s3path=s3path, ext=ext, is_compressed=False
             ):
                 # Legacy cans don't allow us to pre-filter on the probe_cc, so
                 # we need to check for probe_cc consistency in here.

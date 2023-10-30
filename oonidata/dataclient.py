@@ -143,15 +143,24 @@ def stream_jsonl(body: io.BytesIO) -> Generator[dict, None, None]:
             yield orjson.loads(line)
 
 
-def stream_postcan(body: io.BytesIO) -> Generator[dict, None, None]:
+def stream_postcan(body: io.BytesIO, is_compressed=None) -> Generator[dict, None, None]:
     # Since some older postcans have the .gz extension, but are actually not
     # compressed, tar needs to be able to re-seek back to the beginning of the
     # file in the event of it not finding the gzip magic header when operating
     # in "transparent compression mode".
     # When we we fix that in the source data, we might be able to avoid this.
-    read_body = read_to_bytesio(body)
+    mode = None
+    read_body = body
+    if is_compressed is None:
+        mode = 'r'
+        read_body = read_to_bytesio(body)
+    elif is_compressed == False:
+        mode = 'r:'
+    elif is_compressed == True:
+        mode = 'r:gz'
+    assert mode is not None, "failed to detect mode of opening file"
 
-    with tarfile.open(fileobj=read_body) as tar:
+    with tarfile.open(fileobj=read_body, mode=mode) as tar:
         for m in tar:
             if not m.name.endswith(".post"):
                 log.error(f"invalid filename in tar {m.name}")
@@ -241,13 +250,13 @@ def stream_oldcan(body: io.BytesIO, s3path: str) -> Generator[dict, None, None]:
                     yield from iter_yaml_msmt_normalized(in_file, bucket_tstamp, rfn)
 
 
-def stream_measurements(bucket_name, s3path, ext):
+def stream_measurements(bucket_name, s3path, ext, is_compressed=None):
     body = s3.get_object(Bucket=bucket_name, Key=s3path)["Body"]
     log.debug(f"streaming file s3://{bucket_name}/{s3path}")
     if ext == "jsonl.gz":
         yield from stream_jsonl(body)
     elif ext == "tar.gz":
-        yield from stream_postcan(body)
+        yield from stream_postcan(body, is_compressed)
     elif ext == "tar.lz4":
         yield from stream_oldcan(body, s3path)
     elif ext == "json.lz4":
@@ -591,6 +600,7 @@ def list_file_entries_batches(
         probe_cc=probe_cc,
         from_cans=from_cans,
     )
+
     log.info(f"took {t.pretty} to get {len(file_entries)} entries")
     batches = []
     current_batch = []
