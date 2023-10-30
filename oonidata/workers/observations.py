@@ -10,11 +10,10 @@ from typing import (
 
 import statsd
 
-import dask
 from dask.distributed import Client as DaskClient
 from dask.distributed import progress as dask_progress
 from dask.distributed import wait as dask_wait
-from dask.distributed import fire_and_forget, as_completed
+from dask.distributed import as_completed
 
 from oonidata.analysis.datasources import load_measurement
 from oonidata.datautils import PerfTimer
@@ -129,8 +128,6 @@ def make_observation_in_day(
     day: date,
     parallelism: int,
 ):
-    from dask.graph_manipulation import bind
-
     dask_client = DaskClient(
         threads_per_worker=2,
         n_workers=parallelism,
@@ -187,16 +184,18 @@ def make_observation_in_day(
         )
         future_list.append(t)
 
+    log.debug("starting progress monitoring")
+    dask_progress(future_list)
     total_msmt_count = 0
     for _, result in as_completed(future_list, with_results=True):
         total_msmt_count += result  # type: ignore
 
-    log.debug("starting progress monitoring")
-    dask_progress(future_list)
     log.debug("waiting on task_list")
     dask_wait(future_list)
+    mb_per_sec = round(total_size / total_t.s / 10**6, 1)
+    msmt_per_sec = round(total_msmt_count / total_t.s)
     log.info(
-        f"finished processing all batches in {total_t.pretty} speed: {total_size/total_t.s * 10**6}MB/s ({total_msmt_count/total_t.s}msmt/s)"
+        f"finished processing all batches in {total_t.pretty} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
     )
 
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
