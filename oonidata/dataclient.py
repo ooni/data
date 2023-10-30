@@ -573,8 +573,6 @@ def list_file_entries_batches(
     from_cans: bool = True,
     batch_size=10
 ) -> List[FileEntry]:
-    ccs = ccs_set(probe_cc)
-
     if isinstance(start_day, str):
         start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
     if isinstance(end_day, str):
