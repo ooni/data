@@ -14,6 +14,7 @@ import dask
 from dask.distributed import Client as DaskClient
 from dask.distributed import progress as dask_progress
 from dask.distributed import wait as dask_wait
+from dask.distributed import fire_and_forget
 
 from oonidata.analysis.datasources import load_measurement
 from oonidata.datautils import PerfTimer
@@ -182,10 +183,12 @@ def make_observation_in_day(
             )
         )
 
+    fire_and_forget(future_list)
     log.info("starting progress monitoring")
     dask_progress(future_list)
     log.info("waiting on task_list")
     dask_wait(future_list)
+    log.info("future list has finished")
 
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
         for table_name, pr in prev_ranges:
