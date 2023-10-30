@@ -296,22 +296,7 @@ class FileEntry:
         return True
 
     def stream_measurements(self):
-        body = s3.get_object(Bucket=self.bucket_name, Key=self.s3path)["Body"]
-        log.debug(f"streaming file {self}")
-        if self.ext == "jsonl.gz":
-            yield from stream_jsonl(body)
-        elif self.ext == "tar.gz":
-            yield from stream_postcan(body)
-        elif self.ext == "tar.lz4":
-            yield from stream_oldcan(body, self.s3path)
-        elif self.ext == "json.lz4":
-            yield from stream_jsonlz4(body)
-        elif self.ext == "yaml.lz4":
-            yield from stream_yamllz4(body, self.s3path)
-        else:
-            log.error(
-                f"found a file with an unknown extension: {self.ext} s3://{self.bucket_name}/{self.s3path}"
-            )
+        yield from stream_measurements(bucket_name=self.bucket_name, s3path=self.s3path, ext=self.ext)
 
     @staticmethod
     def from_obj_dict(bucket_name: str, obj_dict: dict) -> "FileEntry":
