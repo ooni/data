@@ -42,8 +42,15 @@ log = logging.getLogger("oonidata.processing")
 
 @dask.delayed  # type: ignore
 def make_observations_for_file_entry_batch(
-    file_entry_batch, db, netinfodb, bucket_date, probe_cc, fast_fail
+    file_entry_batch,
+    clickhouse,
+    row_buffer_size,
+    netinfodb,
+    bucket_date,
+    probe_cc,
+    fast_fail,
 ):
+    db = ClickhouseConnection(clickhouse, row_buffer_size=row_buffer_size)
     statsd_client = statsd.StatsClient("localhost", 8125)
     ccs = ccs_set(probe_cc)
     idx = 0
@@ -153,7 +160,13 @@ def make_observation_in_day(
     for batch in file_entry_batches:
         delayed_file_entries.append(
             make_observations_for_file_entry_batch(
-                batch, db, netinfodb, bucket_date, probe_cc, fast_fail
+                batch,
+                clickhouse,
+                10_000,
+                netinfodb,
+                bucket_date,
+                probe_cc,
+                fast_fail,
             )
         )
 
