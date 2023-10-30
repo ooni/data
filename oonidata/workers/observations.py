@@ -41,7 +41,6 @@ from oonidata.workers.common import (
 log = logging.getLogger("oonidata.processing")
 
 
-@dask.delayed  # type: ignore
 def make_observations_for_file_entry_batch(
     file_entry_batch,
     clickhouse,
@@ -168,10 +167,11 @@ def make_observation_in_day(
     )
     print(f"running {len(file_entry_batches)} batches took {t.pretty}")
 
-    task_list = []
+    future_list = []
     for batch in file_entry_batches:
-        task_list.append(
-            make_observations_for_file_entry_batch(
+        future_list.append(
+            dask_client.submit(
+                make_observations_for_file_entry_batch,
                 batch,
                 clickhouse,
                 10_000,
@@ -182,10 +182,9 @@ def make_observation_in_day(
             )
         )
 
-    futures = dask_client.compute(task_list)
-    dask_progress(futures)
+    dask_progress(future_list)
     print("waiting on task_list")
-    dask_wait(task_list)
+    dask_wait(future_list)
 
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
         for table_name, pr in prev_ranges:
