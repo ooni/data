@@ -165,7 +165,7 @@ def make_observation_in_day(
         end_day=day + timedelta(days=1),
         max_batch_size=100_000_000,  # 100 MB
     )
-    print(f"running {len(file_entry_batches)} batches took {t.pretty}")
+    log.info(f"running {len(file_entry_batches)} batches took {t.pretty}")
 
     future_list = []
     for batch in file_entry_batches:
@@ -182,8 +182,9 @@ def make_observation_in_day(
             )
         )
 
+    log.info("starting progress monitoring")
     dask_progress(future_list)
-    print("waiting on task_list")
+    log.info("waiting on task_list")
     dask_wait(future_list)
 
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
