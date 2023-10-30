@@ -571,7 +571,6 @@ def list_file_entries_batches(
     probe_cc: CSVList = None,
     test_name: CSVList = None,
     from_cans: bool = True,
-    batch_size=10
 ) -> List[FileEntry]:
     if isinstance(start_day, str):
         start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
@@ -589,12 +588,15 @@ def list_file_entries_batches(
     )
     statsd_client.timing("dataclient.get_file_entries.timed", t.ms, rate=0.1)  # type: ignore
     fe_len = len(file_entries)
+    batch_size = int(fe_len / 20)
+    print(f"using a batch size of {batch_size}")
     batches = []
     for idx in range(0, fe_len, batch_size):
         start_idx = idx
-        end_idx = min(start_idx+batch_size, fe_len)
+        end_idx = min(start_idx + batch_size, fe_len)
         batches.append(file_entries[start_idx:end_idx])
     return batches
+
 
 def iter_measurements(
     start_day: Union[date, str],

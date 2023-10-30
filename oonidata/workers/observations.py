@@ -158,7 +158,6 @@ def make_observation_in_day(
         test_name=test_name,
         start_day=day,
         end_day=day + timedelta(days=1),
-        batch_size=10,
     )
 
     task_list = []
