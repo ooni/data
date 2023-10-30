@@ -184,21 +184,6 @@ def start_observation_maker(
     assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
     day_list = list(date_interval(start_day, end_day))
-    # When there is only 1 day or parallelism is set to 1, there is no need to
-    # use dask.
-    if len(day_list) == 1 or parallelism == 1:
-        for day in day_list:
-            make_observation_in_day(
-                probe_cc=probe_cc,
-                test_name=test_name,
-                csv_dir=csv_dir,
-                clickhouse=clickhouse,
-                data_dir=data_dir,
-                fast_fail=fast_fail,
-                day=day,
-            )
-        return
-
     # See: https://stackoverflow.com/questions/51099685/best-practices-in-setting-number-of-dask-workers
     dask_client = DaskClient(
         threads_per_worker=2,
