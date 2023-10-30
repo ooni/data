@@ -612,7 +612,10 @@ def list_file_entries_batches(
         current_batch = []
         current_batch_size = 0
         while current_batch_size < max_batch_size:
-            fe = file_entries.pop()
+            try:
+                fe = file_entries.pop()
+            except IndexError:
+                break
             current_batch_size += fe.size
             current_batch.append((fe.bucket_name, fe.s3path, fe.ext, fe.size))
         print(f"batch size {len(current_batch)}")
