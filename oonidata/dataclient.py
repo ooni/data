@@ -616,7 +616,7 @@ def list_file_entries_batches(
         batches.append(
             list(
                 map(
-                    lambda fe: (fe.bucket_name, fe.s3path, fe.ext),
+                    lambda fe: (fe.bucket_name, fe.s3path, fe.ext, fe.size),
                     file_entries[start_idx:end_idx],
                 )
             )

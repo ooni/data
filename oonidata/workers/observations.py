@@ -55,7 +55,7 @@ def make_observations_for_file_entry_batch(
     statsd_client = statsd.StatsClient("localhost", 8125)
     ccs = ccs_set(probe_cc)
     idx = 0
-    for bucket_name, s3path, ext in file_entry_batch:
+    for bucket_name, s3path, ext, fe_size in file_entry_batch:
         t = PerfTimer()
         try:
             for msmt_dict in stream_measurements(
@@ -109,7 +109,7 @@ def make_observations_for_file_entry_batch(
             log.error(f"failed to stream measurements from s3://{bucket_name}/{s3path}")
             log.error(exc)
         statsd_client.timing("oonidata.dataclient.stream_file_entry.timed", t.ms, rate=0.1)  # type: ignore
-        statsd_client.gauge("oonidata.dataclient.file_entry.kb_per_sec.gauge", fe.size / 1024 / t.s, rate=0.1)  # type: ignore
+        statsd_client.gauge("oonidata.dataclient.file_entry.kb_per_sec.gauge", fe_size / 1024 / t.s, rate=0.1)  # type: ignore
 
 
 def make_observation_in_day(
