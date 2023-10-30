@@ -14,7 +14,7 @@ import dask
 from dask.distributed import Client as DaskClient
 from dask.distributed import progress as dask_progress
 from dask.distributed import wait as dask_wait
-from dask.distributed import fire_and_forget
+from dask.distributed import fire_and_forget, as_completed
 
 from oonidata.analysis.datasources import load_measurement
 from oonidata.datautils import PerfTimer
@@ -187,6 +187,10 @@ def make_observation_in_day(
 
     log.info("starting progress monitoring")
     dask_progress(future_list)
+
+    for future in as_completed(future_list):
+        log.info(f"future {future} completed")
+
     log.info("waiting on task_list")
     dask_wait(future_list)
     log.info("future list has finished")
