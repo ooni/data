@@ -250,7 +250,7 @@ def start_observation_maker(
                 [
                     "oonidata.bucket_processed",
                     datetime.utcnow(),
-                    t.ms,
+                    int(t.ms),
                     size,
                     msmt_count,
                     day.strftime("%Y-%m-%d"),
