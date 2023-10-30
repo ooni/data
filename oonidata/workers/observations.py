@@ -117,9 +117,14 @@ def make_observation_in_day(
     data_dir: pathlib.Path,
     fast_fail: bool,
     day: date,
+    parallelism: int,
 ):
     from dask.graph_manipulation import bind
 
+    dask_client = DaskClient(
+        threads_per_worker=2,
+        n_workers=parallelism,
+    )
     statsd_client = statsd.StatsClient("localhost", 8125)
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
 
@@ -156,9 +161,9 @@ def make_observation_in_day(
         batch_size=10,
     )
 
-    delayed_file_entries = []
+    task_list = []
     for batch in file_entry_batches:
-        delayed_file_entries.append(
+        task_list.append(
             make_observations_for_file_entry_batch(
                 batch,
                 clickhouse,
@@ -170,16 +175,16 @@ def make_observation_in_day(
             )
         )
 
-    delayed_cleanup = []
+    futures = dask_client.compute(task_list)
+    dask_progress(futures)
+    print("waiting on task_list")
+    dask_wait(futures)
+
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
         for table_name, pr in prev_ranges:
-            delayed_cleanup.append(
-                dask.delayed(maybe_delete_prev_range)(  # type: ignore
-                    db=db, prev_range=pr, table_name=table_name
-                )
-            )
-    delayed_cleanup.append(dask.delayed(db.close))  # type: ignore
-    return bind(delayed_cleanup, delayed_file_entries)
+            maybe_delete_prev_range(db=db, prev_range=pr, table_name=table_name)
+
+    db.close()
 
 
 def start_observation_maker(
@@ -198,13 +203,8 @@ def start_observation_maker(
 
     day_list = list(date_interval(start_day, end_day))
     # See: https://stackoverflow.com/questions/51099685/best-practices-in-setting-number-of-dask-workers
-    dask_client = DaskClient(
-        threads_per_worker=2,
-        n_workers=parallelism,
-    )
-
-    task_list = map(
-        lambda day: make_observation_in_day(
+    for day in day_list:
+        make_observation_in_day(
             probe_cc=probe_cc,
             test_name=test_name,
             csv_dir=csv_dir,
@@ -212,10 +212,5 @@ def start_observation_maker(
             data_dir=data_dir,
             fast_fail=fast_fail,
             day=day,
-        ),
-        day_list,
-    )
-    futures = dask_client.compute(task_list)
-    dask_progress(futures)
-    print("waiting on task_list")
-    dask_wait(futures)
+            parallelism=parallelism,
+        )
