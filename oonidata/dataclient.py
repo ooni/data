@@ -565,6 +565,39 @@ def get_file_entries(
     return file_entries
 
 
+def list_file_entries_batches(
+    start_day: Union[date, str],
+    end_day: Union[date, str],
+    probe_cc: CSVList = None,
+    test_name: CSVList = None,
+    from_cans: bool = True,
+    batch_size=10
+) -> List[FileEntry]:
+    ccs = ccs_set(probe_cc)
+
+    if isinstance(start_day, str):
+        start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
+    if isinstance(end_day, str):
+        end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
+
+    statsd_client = statsd.StatsClient("localhost", 8125)
+    t = PerfTimer()
+    file_entries = get_file_entries(
+        start_day=start_day,
+        end_day=end_day,
+        test_name=test_name,
+        probe_cc=probe_cc,
+        from_cans=from_cans,
+    )
+    statsd_client.timing("dataclient.get_file_entries.timed", t.ms, rate=0.1)  # type: ignore
+    fe_len = len(file_entries)
+    batches = []
+    for idx in range(0, fe_len, batch_size):
+        start_idx = idx
+        end_idx = min(start_idx+batch_size, fe_len)
+        batches.append(file_entries[start_idx:end_idx])
+    return batches
+
 def iter_measurements(
     start_day: Union[date, str],
     end_day: Union[date, str],
@@ -592,7 +625,7 @@ def iter_measurements(
             from_cans=from_cans,
             progress_callback=progress_callback,
         )
-    statsd_client.timing("dataclient.get_file_entries.timed", t.ms, rate=0.1)  # type: ignore
+    statsd_client.timing("oonidata.dataclient.get_file_entries.timed", t.ms, rate=0.1)  # type: ignore
 
     total_file_entry_bytes = sum(map(lambda fe: fe.size, file_entries))
     if progress_callback:
@@ -618,8 +651,8 @@ def iter_measurements(
         except Exception as exc:
             log.error(f"failed to stream measurements from {fe.full_s3path}")
             log.error(exc)
-        statsd_client.timing("dataclient.stream_file_entry.timed", t.ms, rate=0.1)  # type: ignore
-        statsd_client.gauge("dataclient.file_entry.kb_per_sec.gauge", fe.size / 1024 / t.s, rate=0.1)  # type: ignore
+        statsd_client.timing("oonidata.dataclient.stream_file_entry.timed", t.ms, rate=0.1)  # type: ignore
+        statsd_client.gauge("oonidata.dataclient.file_entry.kb_per_sec.gauge", fe.size / 1024 / t.s, rate=0.1)  # type: ignore
 
         if progress_callback:
             progress_callback(

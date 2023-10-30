@@ -23,6 +23,8 @@ from oonidata.netinfo import NetinfoDB
 from oonidata.dataclient import (
     date_interval,
     iter_measurements,
+    list_file_entries_batches,
+    ccs_set,
 )
 from oonidata.db.connections import (
     ClickhouseConnection,
@@ -38,6 +40,68 @@ from oonidata.workers.common import (
 log = logging.getLogger("oonidata.processing")
 
 
+@dask.delayed  # type: ignore
+def make_observations_for_file_entry_batch(
+    file_entry_batch, db, netinfodb, bucket_date, probe_cc, fast_fail
+):
+    statsd_client = statsd.StatsClient("localhost", 8125)
+    ccs = ccs_set(probe_cc)
+    idx = 0
+    for fe in file_entry_batch:
+        t = PerfTimer()
+        try:
+            for msmt_dict in fe.stream_measurements():
+                # Legacy cans don't allow us to pre-filter on the probe_cc, so we do
+                # it before returning the data to the caller
+                if ccs and msmt_dict["probe_cc"] not in ccs:
+                    continue
+                msmt = None
+                try:
+                    t = PerfTimer()
+                    msmt = load_measurement(msmt_dict)
+                    if not msmt.test_keys:
+                        log.error(
+                            f"measurement with empty test_keys: ({msmt.measurement_uid})",
+                            exc_info=True,
+                        )
+                        continue
+                    for observations in measurement_to_observations(
+                        msmt, netinfodb=netinfodb
+                    ):
+                        if len(observations) == 0:
+                            continue
+
+                        column_names = [
+                            f.name for f in dataclasses.fields(observations[0])
+                        ]
+                        table_name, rows = make_db_rows(
+                            bucket_date=bucket_date,
+                            dc_list=observations,
+                            column_names=column_names,
+                        )
+                        db.write_rows(
+                            table_name=table_name, rows=rows, column_names=column_names
+                        )
+                    # following types ignored due to https://github.com/jsocol/pystatsd/issues/146
+                    statsd_client.timing("oonidata.make_observations.timed", t.ms, rate=0.1)  # type: ignore
+                    statsd_client.incr("oonidata.make_observations.msmt_count", rate=0.1)  # type: ignore
+                    idx += 1
+                except Exception as exc:
+                    msmt_str = msmt_dict.get("report_id", None)
+                    if msmt:
+                        msmt_str = msmt.measurement_uid
+                    log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
+
+                    if fast_fail:
+                        db.close()
+                        raise exc
+        except Exception as exc:
+            log.error(f"failed to stream measurements from {fe.full_s3path}")
+            log.error(exc)
+        statsd_client.timing("oonidata.dataclient.stream_file_entry.timed", t.ms, rate=0.1)  # type: ignore
+        statsd_client.gauge("oonidata.dataclient.file_entry.kb_per_sec.gauge", fe.size / 1024 / t.s, rate=0.1)  # type: ignore
+
+
 def make_observation_in_day(
     probe_cc: List[str],
     test_name: List[str],
@@ -47,6 +111,8 @@ def make_observation_in_day(
     fast_fail: bool,
     day: date,
 ):
+    from dask.graph_manipulation import bind
+
     statsd_client = statsd.StatsClient("localhost", 8125)
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
 
@@ -75,54 +141,32 @@ def make_observation_in_day(
                 )
             )
 
-    for idx, msmt_dict in enumerate(
-        iter_measurements(
-            probe_cc=probe_cc,
-            test_name=test_name,
-            start_day=day,
-            end_day=day + timedelta(days=1),
+    file_entry_batches = list_file_entries_batches(
+        probe_cc=probe_cc,
+        test_name=test_name,
+        start_day=day,
+        end_day=day + timedelta(days=1),
+        batch_size=10,
+    )
+
+    delayed_file_entries = []
+    for batch in file_entry_batches:
+        delayed_file_entries.append(
+            make_observations_for_file_entry_batch(
+                batch, db, netinfodb, bucket_date, probe_cc, fast_fail
+            )
         )
-    ):
-        msmt = None
-        try:
-            t = PerfTimer()
-            msmt = load_measurement(msmt_dict)
-            if not msmt.test_keys:
-                log.error(
-                    f"measurement with empty test_keys: ({msmt.measurement_uid})",
-                    exc_info=True,
-                )
-                continue
-            for observations in measurement_to_observations(msmt, netinfodb=netinfodb):
-                if len(observations) == 0:
-                    continue
 
-                column_names = [f.name for f in dataclasses.fields(observations[0])]
-                table_name, rows = make_db_rows(
-                    bucket_date=bucket_date,
-                    dc_list=observations,
-                    column_names=column_names,
-                )
-                db.write_rows(
-                    table_name=table_name, rows=rows, column_names=column_names
-                )
-            # following types ignored due to https://github.com/jsocol/pystatsd/issues/146
-            statsd_client.timing("make_observations.timed", t.ms, rate=0.1)  # type: ignore
-            statsd_client.incr("make_observations.msmt_count", rate=0.1)  # type: ignore
-        except Exception as exc:
-            msmt_str = msmt_dict.get("report_id", None)
-            if msmt:
-                msmt_str = msmt.measurement_uid
-            log.error(f"failed at idx: {idx} ({msmt_str})", exc_info=True)
-
-            if fast_fail:
-                db.close()
-                raise exc
-
+    delayed_cleanup = []
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
         for table_name, pr in prev_ranges:
-            maybe_delete_prev_range(db=db, prev_range=pr, table_name=table_name)
-    db.close()
+            delayed_cleanup.append(
+                dask.delayed(maybe_delete_prev_range)(  # type: ignore
+                    db=db, prev_range=pr, table_name=table_name
+                )
+            )
+    delayed_cleanup.append(dask.delayed(db.close))  # type: ignore
+    return bind(delayed_cleanup, delayed_file_entries)
 
 
 def start_observation_maker(
@@ -162,16 +206,14 @@ def start_observation_maker(
     )
 
     task_list = map(
-        lambda day: dask.delayed(  # type: ignore # not working due to https://github.com/dask/dask/issues/9710
-            make_observation_in_day(
-                probe_cc=probe_cc,
-                test_name=test_name,
-                csv_dir=csv_dir,
-                clickhouse=clickhouse,
-                data_dir=data_dir,
-                fast_fail=fast_fail,
-                day=day,
-            )
+        lambda day: make_observation_in_day(
+            probe_cc=probe_cc,
+            test_name=test_name,
+            csv_dir=csv_dir,
+            clickhouse=clickhouse,
+            data_dir=data_dir,
+            fast_fail=fast_fail,
+            day=day,
         ),
         day_list,
     )
