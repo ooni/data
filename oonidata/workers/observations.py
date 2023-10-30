@@ -188,8 +188,10 @@ def make_observation_in_day(
     log.info("starting progress monitoring")
     dask_progress(future_list)
 
-    for future in as_completed(future_list):
-        log.info(f"future {future} completed")
+    idx = 0
+    for _ in as_completed(future_list):
+        idx += 1
+    log.info(f"{idx} futures completed")
 
     log.info("waiting on task_list")
     dask_wait(future_list)
