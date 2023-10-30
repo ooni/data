@@ -58,6 +58,7 @@ def make_observations_for_file_entry_batch(
     ccs = ccs_set(probe_cc)
     idx = 0
     for bucket_name, s3path, ext, fe_size in file_entry_batch:
+        log.info(f"processing file s3://{bucket_name}/{s3path}")
         t = PerfTimer()
         try:
             for msmt_dict in stream_measurements(
@@ -107,6 +108,7 @@ def make_observations_for_file_entry_batch(
                     if fast_fail:
                         db.close()
                         raise exc
+            log.info(f"done processing file s3://{bucket_name}/{s3path}")
         except Exception as exc:
             log.error(f"failed to stream measurements from s3://{bucket_name}/{s3path}")
             log.error(exc)
