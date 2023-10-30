@@ -78,7 +78,6 @@ class HTTPInvalidRequestLineTransformer(MeasurementTransformer):
                     assert isinstance(
                         received_data, bytes
                     ), "received data is not bytes"
-                    setattr(mb_obs, f"hirl_diff_{target_idx}", received_data)
                     setattr(mb_obs, f"hirl_received_{target_idx}", received_data)
                     setattr(mb_obs, f"hirl_sent_{target_idx}", sent_data)
 
