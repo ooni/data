@@ -170,18 +170,18 @@ def make_observation_in_day(
 
     future_list = []
     for batch in file_entry_batches:
-        future_list.append(
-            dask_client.submit(
-                make_observations_for_file_entry_batch,
-                batch,
-                clickhouse,
-                10_000,
-                data_dir,
-                bucket_date,
-                probe_cc,
-                fast_fail,
-            )
+        t = dask_client.submit(
+            make_observations_for_file_entry_batch,
+            batch,
+            clickhouse,
+            10_000,
+            data_dir,
+            bucket_date,
+            probe_cc,
+            fast_fail,
         )
+        fire_and_forget(t)
+        future_list.append(t)
 
     log.info("starting progress monitoring")
     dask_progress(future_list)
