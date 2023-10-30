@@ -16,7 +16,7 @@ from functools import partial
 from dataclasses import dataclass
 
 from enum import Enum
-from typing import Callable, Generator, Set, List, Optional, NamedTuple, Union
+from typing import Callable, Generator, Set, List, Optional, NamedTuple, Tuple, Union
 
 import boto3
 from botocore import UNSIGNED as botoSigUNSIGNED
@@ -590,8 +590,8 @@ def list_file_entries_batches(
     probe_cc: CSVList = None,
     test_name: CSVList = None,
     from_cans: bool = True,
-    batch_count=60,
-) -> List[FileEntry]:
+    max_batch_size=100_000_000,
+) -> List[Tuple]:
     if isinstance(start_day, str):
         start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
     if isinstance(end_day, str):
@@ -607,21 +607,16 @@ def list_file_entries_batches(
         from_cans=from_cans,
     )
     statsd_client.timing("dataclient.get_file_entries.timed", t.ms, rate=0.1)  # type: ignore
-    fe_len = len(file_entries)
-    batch_size = int(fe_len / batch_count)
-    print(f"using a batch size of {batch_size}")
     batches = []
-    for idx in range(0, fe_len, batch_size):
-        start_idx = idx
-        end_idx = min(start_idx + batch_size, fe_len)
-        batches.append(
-            list(
-                map(
-                    lambda fe: (fe.bucket_name, fe.s3path, fe.ext, fe.size),
-                    file_entries[start_idx:end_idx],
-                )
-            )
-        )
+    while len(file_entries) > 0:
+        current_batch = []
+        current_batch_size = 0
+        while current_batch_size < max_batch_size:
+            fe = file_entries.pop()
+            current_batch_size += fe.size
+            current_batch.append((fe.bucket_name, fe.s3path, fe.ext, fe.size))
+        print(f"batch size {len(current_batch)}")
+        batches.append(current_batch)
     return batches
 
 

@@ -164,7 +164,7 @@ def make_observation_in_day(
         test_name=test_name,
         start_day=day,
         end_day=day + timedelta(days=1),
-        batch_count=60,
+        max_batch_size=100_000_000,  # 100 MB
     )
     print(f"running {len(file_entry_batches)} batches took {t.pretty}")
 
