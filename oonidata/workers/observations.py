@@ -45,11 +45,12 @@ def make_observations_for_file_entry_batch(
     file_entry_batch,
     clickhouse,
     row_buffer_size,
-    netinfodb,
+    data_dir,
     bucket_date,
     probe_cc,
     fast_fail,
 ):
+    netinfodb = NetinfoDB(datadir=data_dir, download=False)
     tbatch = PerfTimer()
     db = ClickhouseConnection(clickhouse, row_buffer_size=row_buffer_size)
     statsd_client = statsd.StatsClient("localhost", 8125)
@@ -130,7 +131,6 @@ def make_observation_in_day(
         n_workers=parallelism,
     )
     statsd_client = statsd.StatsClient("localhost", 8125)
-    netinfodb = NetinfoDB(datadir=data_dir, download=False)
 
     db = None
     if clickhouse:
@@ -175,7 +175,7 @@ def make_observation_in_day(
                 batch,
                 clickhouse,
                 10_000,
-                netinfodb,
+                data_dir,
                 bucket_date,
                 probe_cc,
                 fast_fail,
