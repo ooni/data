@@ -203,6 +203,7 @@ def make_observation_in_day(
             maybe_delete_prev_range(db=db, prev_range=pr, table_name=table_name)
 
     db.close()
+    return total_size, total_msmt_count
 
 
 def start_observation_maker(
@@ -219,10 +220,13 @@ def start_observation_maker(
 ):
     assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
+    t_total = PerfTimer()
+    total_size, total_msmt_count = 0, 0
     day_list = list(date_interval(start_day, end_day))
     # See: https://stackoverflow.com/questions/51099685/best-practices-in-setting-number-of-dask-workers
     for day in day_list:
-        make_observation_in_day(
+        t = PerfTimer()
+        size, msmt_count = make_observation_in_day(
             probe_cc=probe_cc,
             test_name=test_name,
             csv_dir=csv_dir,
@@ -232,3 +236,19 @@ def start_observation_maker(
             day=day,
             parallelism=parallelism,
         )
+        total_size += size
+        total_msmt_count += msmt_count
+        mb_per_sec = round(size / t.s / 10**6, 1)
+        msmt_per_sec = round(msmt_count / t.s)
+        log.info(
+            f"finished processing {day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
+        )
+
+    mb_per_sec = round(total_size / t_total.s / 10**6, 1)
+    msmt_per_sec = round(total_msmt_count / t_total.s)
+    log.info(
+        f"finished processing {start_day} - {end_day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
+    )
+    log.info(
+        f"{round(total_size/10**9, 2)}GB {total_msmt_count} msmts in {t_total.pretty}"
+    )

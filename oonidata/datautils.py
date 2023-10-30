@@ -19,13 +19,29 @@ from cryptography.hazmat.primitives import hashes, serialization
 log = logging.getLogger("oonidata.datautils")
 
 
+def pretty_long_time(seconds):
+    seconds = int(seconds)
+    days, seconds = divmod(seconds, 86400)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    if days > 0:
+        return f"{days}d{hours}h{minutes}m{seconds}s"
+    elif hours > 0:
+        return f"{hours}h{minutes}m{seconds}s"
+    return f"{minutes}m{seconds}s"
+
+
 class PerfTimer:
-    def __init__(self):
+    def __init__(self, unstoppable=False):
         self.t0 = time.perf_counter_ns()
+        self.unstoppable = unstoppable
         self._runtime = None
 
     @property
     def runtime(self):
+        if self.unstoppable:
+            return time.perf_counter_ns() - self.t0
+
         if not self._runtime:
             self._runtime = time.perf_counter_ns() - self.t0
         return self._runtime
@@ -56,6 +72,9 @@ class PerfTimer:
 
         if self.runtime < 10**9:
             return f"{round(self.ms, 2)}ms"
+
+        if self.s > 120:
+            return pretty_long_time(self.s)
 
         return f"{round(self.s, 2)}s"
 
