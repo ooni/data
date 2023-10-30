@@ -24,6 +24,7 @@ from oonidata.dataclient import (
     date_interval,
     iter_measurements,
     list_file_entries_batches,
+    stream_measurements,
     ccs_set,
 )
 from oonidata.db.connections import (
@@ -54,10 +55,12 @@ def make_observations_for_file_entry_batch(
     statsd_client = statsd.StatsClient("localhost", 8125)
     ccs = ccs_set(probe_cc)
     idx = 0
-    for fe in file_entry_batch:
+    for bucket_name, s3path, ext in file_entry_batch:
         t = PerfTimer()
         try:
-            for msmt_dict in fe.stream_measurements():
+            for msmt_dict in stream_measurements(
+                bucket_name=bucket_name, s3path=s3path, ext=ext
+            ):
                 # Legacy cans don't allow us to pre-filter on the probe_cc, so we do
                 # it before returning the data to the caller
                 if ccs and msmt_dict["probe_cc"] not in ccs:
@@ -174,8 +177,7 @@ def make_observation_in_day(
             )
         )
 
-    futures = dask_client.scatter(task_list)
-    dask_client.submit(futures)
+    futures = dask_client.compute(task_list)
     dask_progress(futures)
     print("waiting on task_list")
     dask_wait(futures)

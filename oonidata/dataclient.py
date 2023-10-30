@@ -242,6 +242,25 @@ def stream_oldcan(body: io.BytesIO, s3path: str) -> Generator[dict, None, None]:
                     yield from iter_yaml_msmt_normalized(in_file, bucket_tstamp, rfn)
 
 
+def stream_measurements(bucket_name, s3path, ext):
+    body = s3.get_object(Bucket=bucket_name, Key=s3path)["Body"]
+    log.debug(f"streaming file s3://{bucket_name}/{s3path}")
+    if ext == "jsonl.gz":
+        yield from stream_jsonl(body)
+    elif ext == "tar.gz":
+        yield from stream_postcan(body)
+    elif ext == "tar.lz4":
+        yield from stream_oldcan(body, s3path)
+    elif ext == "json.lz4":
+        yield from stream_jsonlz4(body)
+    elif ext == "yaml.lz4":
+        yield from stream_yamllz4(body, s3path)
+    else:
+        log.error(
+            f"found a file with an unknown extension: {ext} s3://{bucket_name}/{s3path}"
+        )
+
+
 @dataclass
 class FileEntry:
     s3path: str
@@ -594,7 +613,14 @@ def list_file_entries_batches(
     for idx in range(0, fe_len, batch_size):
         start_idx = idx
         end_idx = min(start_idx + batch_size, fe_len)
-        batches.append(file_entries[start_idx:end_idx])
+        batches.append(
+            list(
+                map(
+                    lambda fe: (fe.bucket_name, fe.s3path, fe.ext),
+                    file_entries[start_idx:end_idx],
+                )
+            )
+        )
     return batches
 
 
