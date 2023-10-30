@@ -577,7 +577,7 @@ def list_file_entries_batches(
     test_name: CSVList = None,
     from_cans: bool = True,
     max_batch_size=100_000_000,
-) -> List[Tuple]:
+) -> Tuple[List[Tuple], int]:
     if isinstance(start_day, str):
         start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
     if isinstance(end_day, str):
@@ -595,6 +595,7 @@ def list_file_entries_batches(
     batches = []
     current_batch = []
     current_batch_size = 0
+    total_size = 0
     while len(file_entries) > 0:
         while current_batch_size < max_batch_size:
             try:
@@ -602,6 +603,7 @@ def list_file_entries_batches(
             except IndexError:
                 break
             current_batch_size += fe.size
+            total_size += fe.size
             current_batch.append((fe.bucket_name, fe.s3path, fe.ext, fe.size))
         log.debug(
             f"batch size for {start_day}-{end_day} ({probe_cc},{test_name}): {len(current_batch)}"
@@ -612,7 +614,7 @@ def list_file_entries_batches(
 
     if len(current_batch) > 0:
         batches.append(current_batch)
-    return batches
+    return batches, total_size
 
 
 def iter_measurements(

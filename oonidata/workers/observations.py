@@ -162,7 +162,8 @@ def make_observation_in_day(
             )
 
     t = PerfTimer()
-    file_entry_batches = list_file_entries_batches(
+    total_t = PerfTimer()
+    file_entry_batches, total_size = list_file_entries_batches(
         probe_cc=probe_cc,
         test_name=test_name,
         start_day=day,
@@ -183,15 +184,15 @@ def make_observation_in_day(
             probe_cc,
             fast_fail,
         )
-        # fire_and_forget(t)
         future_list.append(t)
 
-    log.info("starting progress monitoring")
+    log.debug("starting progress monitoring")
     dask_progress(future_list)
-
-    log.info("waiting on task_list")
+    log.debug("waiting on task_list")
     dask_wait(future_list)
-    log.info("future list has finished")
+    log.info(
+        f"finished processing all batches in {total_t.pretty} {total_size/total_t.s * 10**6}MB/s"
+    )
 
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
         for table_name, pr in prev_ranges:
