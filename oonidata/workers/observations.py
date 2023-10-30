@@ -174,7 +174,7 @@ def make_observation_in_day(
             )
         )
 
-    futures = dask_client.compute(dask_client.scatter(task_list))
+    futures = dask_client.compute(task_list)
     dask_progress(futures)
     print("waiting on task_list")
     dask_wait(futures)
