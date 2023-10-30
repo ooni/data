@@ -591,12 +591,11 @@ def list_file_entries_batches(
         probe_cc=probe_cc,
         from_cans=from_cans,
     )
-    log.debug("dataclient.get_file_entries.timed: {t.ms}")
+    log.info(f"took {t.pretty} to get {len(file_entries)} entries")
     batches = []
     current_batch = []
+    current_batch_size = 0
     while len(file_entries) > 0:
-        current_batch = []
-        current_batch_size = 0
         while current_batch_size < max_batch_size:
             try:
                 fe = file_entries.pop()
@@ -608,6 +607,8 @@ def list_file_entries_batches(
             f"batch size for {start_day}-{end_day} ({probe_cc},{test_name}): {len(current_batch)}"
         )
         batches.append(current_batch)
+        current_batch = []
+        current_batch_size = 0
 
     if len(current_batch) > 0:
         batches.append(current_batch)
