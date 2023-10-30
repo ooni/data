@@ -185,7 +185,7 @@ def make_observation_in_day(
     futures = dask_client.compute(task_list)
     dask_progress(futures)
     print("waiting on task_list")
-    dask_wait(futures)
+    dask_wait(task_list)
 
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
         for table_name, pr in prev_ranges:
