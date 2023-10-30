@@ -116,6 +116,7 @@ def make_observations_for_file_entry_batch(
         statsd_client.gauge("oonidata.dataclient.file_entry.kb_per_sec.gauge", fe_size / 1024 / t.s, rate=0.1)  # type: ignore
     statsd_client.timing("oonidata.dataclient.batch.timed", tbatch.ms)  # type: ignore
     db.close()
+    return idx
 
 
 def make_observation_in_day(
@@ -186,12 +187,16 @@ def make_observation_in_day(
         )
         future_list.append(t)
 
+    total_msmt_count = 0
+    for _, result in as_completed(future_list, with_results=True):
+        total_msmt_count += result  # type: ignore
+
     log.debug("starting progress monitoring")
     dask_progress(future_list)
     log.debug("waiting on task_list")
     dask_wait(future_list)
     log.info(
-        f"finished processing all batches in {total_t.pretty} {total_size/total_t.s * 10**6}MB/s"
+        f"finished processing all batches in {total_t.pretty} speed: {total_size/total_t.s * 10**6}MB/s ({total_msmt_count/total_t.s}msmt/s)"
     )
 
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
