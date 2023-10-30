@@ -593,6 +593,7 @@ def list_file_entries_batches(
     )
     log.debug("dataclient.get_file_entries.timed: {t.ms}")
     batches = []
+    current_batch = []
     while len(file_entries) > 0:
         current_batch = []
         current_batch_size = 0
@@ -606,6 +607,9 @@ def list_file_entries_batches(
         log.debug(
             f"batch size for {start_day}-{end_day} ({probe_cc},{test_name}): {len(current_batch)}"
         )
+        batches.append(current_batch)
+
+    if len(current_batch) > 0:
         batches.append(current_batch)
     return batches
 
