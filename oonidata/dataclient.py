@@ -24,7 +24,6 @@ from botocore.config import Config as botoConfig
 
 from tqdm.contrib.logging import tqdm_logging_redirect
 
-import statsd
 
 from oonidata.datautils import PerfTimer
 
@@ -296,7 +295,9 @@ class FileEntry:
         return True
 
     def stream_measurements(self):
-        yield from stream_measurements(bucket_name=self.bucket_name, s3path=self.s3path, ext=self.ext)
+        yield from stream_measurements(
+            bucket_name=self.bucket_name, s3path=self.s3path, ext=self.ext
+        )
 
     @staticmethod
     def from_obj_dict(bucket_name: str, obj_dict: dict) -> "FileEntry":
@@ -582,7 +583,6 @@ def list_file_entries_batches(
     if isinstance(end_day, str):
         end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
 
-    statsd_client = statsd.StatsClient("localhost", 8125)
     t = PerfTimer()
     file_entries = get_file_entries(
         start_day=start_day,
@@ -591,7 +591,7 @@ def list_file_entries_batches(
         probe_cc=probe_cc,
         from_cans=from_cans,
     )
-    statsd_client.timing("dataclient.get_file_entries.timed", t.ms, rate=0.1)  # type: ignore
+    log.debug("dataclient.get_file_entries.timed: {t.ms}")
     batches = []
     while len(file_entries) > 0:
         current_batch = []
@@ -603,7 +603,9 @@ def list_file_entries_batches(
                 break
             current_batch_size += fe.size
             current_batch.append((fe.bucket_name, fe.s3path, fe.ext, fe.size))
-        print(f"batch size {len(current_batch)}")
+        log.debug(
+            f"batch size for {start_day}-{end_day} ({probe_cc},{test_name}): {len(current_batch)}"
+        )
         batches.append(current_batch)
     return batches
 
@@ -624,8 +626,6 @@ def iter_measurements(
     if isinstance(end_day, str):
         end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
 
-    statsd_client = statsd.StatsClient("localhost", 8125)
-    t = PerfTimer()
     if file_entries is None:
         file_entries = get_file_entries(
             start_day=start_day,
@@ -635,7 +635,6 @@ def iter_measurements(
             from_cans=from_cans,
             progress_callback=progress_callback,
         )
-    statsd_client.timing("oonidata.dataclient.get_file_entries.timed", t.ms, rate=0.1)  # type: ignore
 
     total_file_entry_bytes = sum(map(lambda fe: fe.size, file_entries))
     if progress_callback:
