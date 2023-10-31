@@ -149,12 +149,29 @@ def create_query_for_analysis(base_class) -> Tuple[str, str]:
     )
 
 
+CREATE_QUERY_FOR_LOGS = (
+    """CREATE TABLE IF NOT EXISTS oonidata_processing_logs
+(
+    key String,
+    timestamp DateTime('UTC'),
+    runtime_ms Nullable(UInt64),
+    bytes Nullable(UInt64),
+    msmt_count Nullable(UInt32),
+    comment Nullable(String)
+)
+ENGINE = MergeTree
+ORDER BY (timestamp, key)
+""",
+    "oonidata_processing_logs",
+)
+
 create_queries = [
     create_query_for_observation(WebObservation),
     create_query_for_observation(WebControlObservation),
     create_query_for_observation(HTTPMiddleboxObservation),
     create_query_for_experiment_result(),
     create_query_for_analysis(WebsiteAnalysis),
+    CREATE_QUERY_FOR_LOGS,
 ]
 
 
