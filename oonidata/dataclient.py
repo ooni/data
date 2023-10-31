@@ -661,7 +661,6 @@ def iter_measurements(
         )
 
     for idx, fe in enumerate(file_entries):
-        t = PerfTimer()
         try:
             for msmt in fe.stream_measurements():
                 # Legacy cans don't allow us to pre-filter on the probe_cc, so we do
@@ -672,8 +671,6 @@ def iter_measurements(
         except Exception as exc:
             log.error(f"failed to stream measurements from {fe.full_s3path}")
             log.error(exc)
-        statsd_client.timing("oonidata.dataclient.stream_file_entry.timed", t.ms, rate=0.1)  # type: ignore
-        statsd_client.gauge("oonidata.dataclient.file_entry.kb_per_sec.gauge", fe.size / 1024 / t.s, rate=0.1)  # type: ignore
 
         if progress_callback:
             progress_callback(
