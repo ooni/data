@@ -122,37 +122,30 @@ def make_observation_in_day(
     dask_client: DaskClient,
     probe_cc: List[str],
     test_name: List[str],
-    csv_dir: Optional[pathlib.Path],
     clickhouse: Optional[str],
     data_dir: pathlib.Path,
     fast_fail: bool,
     day: date,
 ):
     statsd_client = statsd.StatsClient("localhost", 8125)
-    db = None
-    if clickhouse:
-        db = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
-    elif csv_dir:
-        db = CSVConnection(csv_dir)
-    assert db, "no DB chosen"
+    db = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
 
     bucket_date = day.strftime("%Y-%m-%d")
 
     prev_ranges = []
-    if isinstance(db, ClickhouseConnection):
-        for table_name in ["obs_web"]:
-            prev_ranges.append(
-                (
-                    table_name,
-                    get_prev_range(
-                        db=db,
-                        table_name=table_name,
-                        bucket_date=bucket_date,
-                        test_name=test_name,
-                        probe_cc=probe_cc,
-                    ),
-                )
+    for table_name in ["obs_web"]:
+        prev_ranges.append(
+            (
+                table_name,
+                get_prev_range(
+                    db=db,
+                    table_name=table_name,
+                    bucket_date=bucket_date,
+                    test_name=test_name,
+                    probe_cc=probe_cc,
+                ),
             )
+        )
 
     t = PerfTimer()
     total_t = PerfTimer()
@@ -193,7 +186,7 @@ def make_observation_in_day(
     )
     statsd_client.timing("oonidata.dataclient.daily.timed", total_t.ms)
 
-    if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
+    if len(prev_ranges) > 0:
         for table_name, pr in prev_ranges:
             maybe_delete_prev_range(db=db, prev_range=pr, table_name=table_name)
 
@@ -206,15 +199,12 @@ def start_observation_maker(
     test_name: List[str],
     start_day: date,
     end_day: date,
-    csv_dir: Optional[pathlib.Path],
     clickhouse: Optional[str],
     data_dir: pathlib.Path,
     parallelism: int,
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
-    assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
-
     dask_client = DaskClient(
         threads_per_worker=2,
         n_workers=parallelism,
@@ -231,7 +221,6 @@ def start_observation_maker(
             dask_client=dask_client,
             probe_cc=probe_cc,
             test_name=test_name,
-            csv_dir=csv_dir,
             clickhouse=clickhouse,
             data_dir=data_dir,
             fast_fail=fast_fail,

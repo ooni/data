@@ -122,7 +122,6 @@ def sync(
 @test_name_option
 @start_day_option
 @end_day_option
-@click.option("--csv-dir", type=Path)
 @click.option("--clickhouse", type=str)
 @click.option(
     "--data-dir",
@@ -156,7 +155,6 @@ def mkobs(
     test_name: List[str],
     start_day: date,
     end_day: date,
-    csv_dir: Optional[Path],
     clickhouse: Optional[str],
     data_dir: Path,
     parallelism: int,
@@ -167,12 +165,6 @@ def mkobs(
     """
     Make observations for OONI measurements and write them into clickhouse or a CSV file
     """
-    if csv_dir:
-        click.echo(
-            "When generating CSV outputs we currently only support parallelism of 1"
-        )
-        parallelism = 1
-
     if create_tables:
         if not clickhouse:
             click.echo("--clickhouse needs to be specified when creating tables")
@@ -195,7 +187,6 @@ def mkobs(
         test_name=test_name,
         start_day=start_day,
         end_day=end_day,
-        csv_dir=csv_dir,
         clickhouse=clickhouse,
         data_dir=data_dir,
         parallelism=parallelism,

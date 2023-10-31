@@ -28,32 +28,6 @@ def test_sync(cli_runner, tmp_path: Path):
     assert len(list((tmp_path / "telegram" / "2022-01-01").iterdir())) == 24
 
 
-def test_mkobs(cli_runner, datadir, fingerprintdb, netinfodb, tmp_path: Path):
-    result = cli_runner.invoke(
-        cli,
-        [
-            "mkobs",
-            "--probe-cc",
-            "BA",
-            "--start-day",
-            "2022-10-20",
-            "--end-day",
-            "2022-10-21",
-            "--test-name",
-            "web_connectivity",
-            "--data-dir",
-            datadir,
-            "--csv-dir",
-            tmp_path.absolute(),
-            # "--archives-dir",
-            # tmp_path.absolute(),
-        ],
-    )
-    assert result.exit_code == 0
-    assert len(list(tmp_path.glob("*.csv"))) == 2
-    # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
-
-
 def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path):
     db = ClickhouseConnection(conn_url="clickhouse://localhost")
     try:
