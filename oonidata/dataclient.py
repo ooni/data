@@ -575,7 +575,6 @@ def list_file_entries_batches(
     probe_cc: CSVList = None,
     test_name: CSVList = None,
     from_cans: bool = True,
-    max_batch_size=100_000_000,
 ) -> Tuple[List[Tuple], int]:
     if isinstance(start_day, str):
         start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
@@ -590,8 +589,14 @@ def list_file_entries_batches(
         probe_cc=probe_cc,
         from_cans=from_cans,
     )
+    total_file_entry_size = sum(map(lambda fe: fe.size, file_entries))
+    max_batch_size = max(
+        60_000_000, int(total_file_entry_size / 100)
+    )  # split into approximately 100 batches or 60 MB each batch, whichever is greater
 
-    log.info(f"took {t.pretty} to get {len(file_entries)} entries")
+    log.info(
+        f"took {t.pretty} to get {len(file_entries)} entries (batch size: {round(max_batch_size/10**6, 2)}MB)"
+    )
     batches = []
     current_batch = []
     current_batch_size = 0

@@ -119,6 +119,7 @@ def make_observations_for_file_entry_batch(
 
 
 def make_observation_in_day(
+    dask_client: DaskClient,
     probe_cc: List[str],
     test_name: List[str],
     csv_dir: Optional[pathlib.Path],
@@ -126,14 +127,8 @@ def make_observation_in_day(
     data_dir: pathlib.Path,
     fast_fail: bool,
     day: date,
-    parallelism: int,
 ):
-    dask_client = DaskClient(
-        threads_per_worker=2,
-        n_workers=parallelism,
-    )
     statsd_client = statsd.StatsClient("localhost", 8125)
-
     db = None
     if clickhouse:
         db = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
@@ -166,7 +161,6 @@ def make_observation_in_day(
         test_name=test_name,
         start_day=day,
         end_day=day + timedelta(days=1),
-        max_batch_size=600_000_000,  # 600 MB
     )
     log.info(f"running {len(file_entry_batches)} batches took {t.pretty}")
 
@@ -197,6 +191,7 @@ def make_observation_in_day(
     log.info(
         f"finished processing all batches in {total_t.pretty} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
     )
+    statsd_client.timing("oonidata.dataclient.daily.timed", total_t.ms)
 
     if len(prev_ranges) > 0 and isinstance(db, ClickhouseConnection):
         for table_name, pr in prev_ranges:
@@ -220,6 +215,11 @@ def start_observation_maker(
 ):
     assert clickhouse or csv_dir, "missing either clickhouse or csv_dir"
 
+    dask_client = DaskClient(
+        threads_per_worker=2,
+        n_workers=parallelism,
+    )
+
     db = ClickhouseConnection(clickhouse)
     t_total = PerfTimer()
     total_size, total_msmt_count = 0, 0
@@ -228,6 +228,7 @@ def start_observation_maker(
     for day in day_list:
         t = PerfTimer()
         size, msmt_count = make_observation_in_day(
+            dask_client=dask_client,
             probe_cc=probe_cc,
             test_name=test_name,
             csv_dir=csv_dir,
@@ -235,7 +236,6 @@ def start_observation_maker(
             data_dir=data_dir,
             fast_fail=fast_fail,
             day=day,
-            parallelism=parallelism,
         )
         total_size += size
         total_msmt_count += msmt_count
