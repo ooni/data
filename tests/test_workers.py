@@ -17,12 +17,21 @@ from oonidata.transforms.nettests.measurement_transformer import MeasurementTran
 
 
 def test_write_observations(measurements, netinfodb, db):
-    bad_msmt_uids = [
+    msmt_uids = [
         ("20210101190046.780850_US_webconnectivity_3296f126f79ca186", "2021-01-01"),
         ("20210101181154.037019_CH_webconnectivity_68ce38aa9e3182c2", "2021-01-01"),
         ("20231031032643.267235_GR_dnscheck_abcbfc460b9424b6", "2023-10-31"),
+        (
+            "20231101164541.763506_NP_httpinvalidrequestline_0cf676868fa36cc4",
+            "2023-10-31",
+        ),
+        (
+            "20231101164544.534107_BR_httpheaderfieldmanipulation_4caa0b0556f0b141",
+            "2023-10-31",
+        ),
+        ("20231101164649.235575_RU_tor_ccf7519bf683c022", "2023-10-31"),
     ]
-    for msmt_uid, bucket_date in bad_msmt_uids:
+    for msmt_uid, bucket_date in msmt_uids:
         msmt = load_measurement(msmt_path=measurements[msmt_uid])
         write_observations_to_db(msmt, netinfodb, db, bucket_date)
     db.close()
