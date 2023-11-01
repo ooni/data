@@ -36,7 +36,7 @@ def wait_for_mutations(table_name):
         res = db.execute(
             f"SELECT * FROM system.mutations WHERE is_done=0 AND table='{table_name}';"
         )
-        if len(res[0]) == 0:  # type: ignore
+        if len(res) == 0:  # type: ignore
             break
         time.sleep(1)
 
