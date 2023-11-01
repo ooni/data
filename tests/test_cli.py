@@ -29,9 +29,7 @@ def test_sync(cli_runner, tmp_path: Path):
     assert len(list((tmp_path / "telegram" / "2022-01-01").iterdir())) == 24
 
 
-def wait_for_mutations(table_name):
-    db = ClickhouseConnection(conn_url="clickhouse://localhost")
-
+def wait_for_mutations(db, table_name):
     while True:
         res = db.execute(
             f"SELECT * FROM system.mutations WHERE is_done=0 AND table='{table_name}';"
@@ -41,13 +39,9 @@ def wait_for_mutations(table_name):
         time.sleep(1)
 
 
-def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path):
-    db = ClickhouseConnection(conn_url="clickhouse://localhost")
-    try:
-        db.execute("SELECT 1")
-    except:
-        pytest.skip("no database connection")
-
+def test_full_workflow(
+    db, cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path
+):
     result = cli_runner.invoke(
         cli,
         [
@@ -102,7 +96,7 @@ def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: 
     assert result.exit_code == 0
 
     # Wait for the mutation to finish running
-    wait_for_mutations("obs_web")
+    wait_for_mutations(db, "obs_web")
     res = db.execute(
         "SELECT COUNT() FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
     )
