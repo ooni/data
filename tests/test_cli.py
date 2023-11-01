@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 import pytest
 from oonidata.cli import cli
@@ -26,6 +27,18 @@ def test_sync(cli_runner, tmp_path: Path):
     assert len(list(tmp_path.iterdir())) == 2
     assert len(list((tmp_path / "telegram").iterdir())) == 1
     assert len(list((tmp_path / "telegram" / "2022-01-01").iterdir())) == 24
+
+
+def wait_for_mutations(table_name):
+    db = ClickhouseConnection(conn_url="clickhouse://localhost")
+
+    while True:
+        res = db.execute(
+            f"SELECT * FROM system.mutations WHERE is_done=0 AND table='{table_name}';"
+        )
+        if len(res[0]) == 0:  # type: ignore
+            break
+        time.sleep(1)
 
 
 def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path):
@@ -87,6 +100,9 @@ def test_full_workflow(cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: 
         ],
     )
     assert result.exit_code == 0
+
+    # Wait for the mutation to finish running
+    wait_for_mutations("obs_web")
     res = db.execute(
         "SELECT COUNT() FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
     )
