@@ -74,10 +74,13 @@ class HTTPInvalidRequestLineTransformer(MeasurementTransformer):
                     received_data = maybe_binary_data_to_bytes(
                         msmt.test_keys.received[i]
                     )
+                    sent_data = maybe_binary_data_to_bytes(msmt.test_keys.sent[i])
                     assert isinstance(
                         received_data, bytes
                     ), "received data is not bytes"
-                    setattr(mb_obs, f"hirl_diff_{target_idx}", received_data)
+                    setattr(mb_obs, f"hirl_received_{target_idx}", received_data)
+                    setattr(mb_obs, f"hirl_sent_{target_idx}", sent_data)
+
             except IndexError:
                 mb_obs.hirl_failure = f"missing_received_{i}"
                 mb_obs.hirl_success = False

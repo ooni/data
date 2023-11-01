@@ -15,6 +15,20 @@ from oonidata.models.observations import (
     HTTPMiddleboxObservation,
 )
 
+"""
+CREATE TABLE IF NOT EXISTS oonidata_processing_logs 
+(
+    key String,
+    timestamp DateTime('UTC'),
+    runtime_ms Nullable(UInt64),
+    bytes Nullable(UInt64),
+    msmt_count Nullable(UInt32),
+    comment Nullable(String)
+)
+ENGINE = MergeTree
+ORDER BY (timestamp, key)
+"""
+
 
 def typing_to_clickhouse(t: Any) -> str:
     if t == str:
@@ -55,6 +69,9 @@ def typing_to_clickhouse(t: Any) -> str:
 
     if t == Optional[List[str]]:
         return "Nullable(Array(String))"
+
+    if t == Optional[Tuple[str, str]]:
+        return "Nullable(Tuple(String, String))"
 
     if t == Optional[List[Tuple[str, bytes]]]:
         return "Nullable(Array(Array(String)))"
@@ -132,12 +149,29 @@ def create_query_for_analysis(base_class) -> Tuple[str, str]:
     )
 
 
+CREATE_QUERY_FOR_LOGS = (
+    """CREATE TABLE IF NOT EXISTS oonidata_processing_logs
+(
+    key String,
+    timestamp DateTime('UTC'),
+    runtime_ms Nullable(UInt64),
+    bytes Nullable(UInt64),
+    msmt_count Nullable(UInt32),
+    comment Nullable(String)
+)
+ENGINE = MergeTree
+ORDER BY (timestamp, key)
+""",
+    "oonidata_processing_logs",
+)
+
 create_queries = [
     create_query_for_observation(WebObservation),
     create_query_for_observation(WebControlObservation),
     create_query_for_observation(HTTPMiddleboxObservation),
     create_query_for_experiment_result(),
     create_query_for_analysis(WebsiteAnalysis),
+    CREATE_QUERY_FOR_LOGS,
 ]
 
 

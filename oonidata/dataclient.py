@@ -16,13 +16,16 @@ from functools import partial
 from dataclasses import dataclass
 
 from enum import Enum
-from typing import Callable, Generator, Set, List, Optional, NamedTuple, Union
+from typing import Callable, Generator, Set, List, Optional, NamedTuple, Tuple, Union
 
 import boto3
 from botocore import UNSIGNED as botoSigUNSIGNED
 from botocore.config import Config as botoConfig
 
 from tqdm.contrib.logging import tqdm_logging_redirect
+
+
+from oonidata.datautils import PerfTimer
 
 from oonidata.datautils import trim_measurement, trivial_id
 from oonidata.normalize import iter_yaml_msmt_normalized
@@ -129,6 +132,7 @@ def read_to_bytesio(body: io.BytesIO) -> io.BytesIO:
     read_body = io.BytesIO()
     shutil.copyfileobj(body, read_body)
     read_body.seek(0)
+    del body
     return read_body
 
 
@@ -146,9 +150,7 @@ def stream_postcan(body: io.BytesIO) -> Generator[dict, None, None]:
     # file in the event of it not finding the gzip magic header when operating
     # in "transparent compression mode".
     # When we we fix that in the source data, we might be able to avoid this.
-    read_body = read_to_bytesio(body)
-
-    with tarfile.open(fileobj=read_body) as tar:
+    with tarfile.open(fileobj=body, mode="r|*") as tar:
         for m in tar:
             if not m.name.endswith(".post"):
                 log.error(f"invalid filename in tar {m.name}")
@@ -238,6 +240,25 @@ def stream_oldcan(body: io.BytesIO, s3path: str) -> Generator[dict, None, None]:
                     yield from iter_yaml_msmt_normalized(in_file, bucket_tstamp, rfn)
 
 
+def stream_measurements(bucket_name, s3path, ext):
+    body = s3.get_object(Bucket=bucket_name, Key=s3path)["Body"]
+    log.debug(f"streaming file s3://{bucket_name}/{s3path}")
+    if ext == "jsonl.gz":
+        yield from stream_jsonl(body)
+    elif ext == "tar.gz":
+        yield from stream_postcan(body)
+    elif ext == "tar.lz4":
+        yield from stream_oldcan(body, s3path)
+    elif ext == "json.lz4":
+        yield from stream_jsonlz4(body)
+    elif ext == "yaml.lz4":
+        yield from stream_yamllz4(body, s3path)
+    else:
+        log.error(
+            f"found a file with an unknown extension: {ext} s3://{bucket_name}/{s3path}"
+        )
+
+
 @dataclass
 class FileEntry:
     s3path: str
@@ -273,22 +294,9 @@ class FileEntry:
         return True
 
     def stream_measurements(self):
-        body = s3.get_object(Bucket=self.bucket_name, Key=self.s3path)["Body"]
-        log.debug(f"streaming file {self}")
-        if self.ext == "jsonl.gz":
-            yield from stream_jsonl(body)
-        elif self.ext == "tar.gz":
-            yield from stream_postcan(body)
-        elif self.ext == "tar.lz4":
-            yield from stream_oldcan(body, self.s3path)
-        elif self.ext == "json.lz4":
-            yield from stream_jsonlz4(body)
-        elif self.ext == "yaml.lz4":
-            yield from stream_yamllz4(body, self.s3path)
-        else:
-            log.error(
-                f"found a file with an unknown extension: {self.ext} s3://{self.bucket_name}/{self.s3path}"
-            )
+        yield from stream_measurements(
+            bucket_name=self.bucket_name, s3path=self.s3path, ext=self.ext
+        )
 
     @staticmethod
     def from_obj_dict(bucket_name: str, obj_dict: dict) -> "FileEntry":
@@ -512,7 +520,6 @@ def get_file_entries(
     from_cans: bool,
     progress_callback: Optional[Callable[[MeasurementListProgress], None]] = None,
 ) -> List[FileEntry]:
-
     ccs = ccs_set(probe_cc)
     testnames = testnames_set(test_name)
 
@@ -560,6 +567,59 @@ def get_file_entries(
             )
 
     return file_entries
+
+
+def list_file_entries_batches(
+    start_day: Union[date, str],
+    end_day: Union[date, str],
+    probe_cc: CSVList = None,
+    test_name: CSVList = None,
+    from_cans: bool = True,
+) -> Tuple[List[Tuple], int]:
+    if isinstance(start_day, str):
+        start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
+    if isinstance(end_day, str):
+        end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
+
+    t = PerfTimer()
+    file_entries = get_file_entries(
+        start_day=start_day,
+        end_day=end_day,
+        test_name=test_name,
+        probe_cc=probe_cc,
+        from_cans=from_cans,
+    )
+    total_file_entry_size = sum(map(lambda fe: fe.size, file_entries))
+    max_batch_size = max(
+        60_000_000, int(total_file_entry_size / 100)
+    )  # split into approximately 100 batches or 60 MB each batch, whichever is greater
+
+    log.info(
+        f"took {t.pretty} to get {len(file_entries)} entries (batch size: {round(max_batch_size/10**6, 2)}MB)"
+    )
+    batches = []
+    current_batch = []
+    current_batch_size = 0
+    total_size = 0
+    while len(file_entries) > 0:
+        while current_batch_size < max_batch_size:
+            try:
+                fe = file_entries.pop()
+            except IndexError:
+                break
+            current_batch_size += fe.size
+            total_size += fe.size
+            current_batch.append((fe.bucket_name, fe.s3path, fe.ext, fe.size))
+        log.debug(
+            f"batch size for {start_day}-{end_day} ({probe_cc},{test_name}): {len(current_batch)}"
+        )
+        batches.append(current_batch)
+        current_batch = []
+        current_batch_size = 0
+
+    if len(current_batch) > 0:
+        batches.append(current_batch)
+    return batches, total_size
 
 
 def iter_measurements(

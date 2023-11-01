@@ -9,3 +9,4 @@ __pycache__
 /output
 /attic
 /prof
+.ipynb_checkpoints/
