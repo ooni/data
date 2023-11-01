@@ -2,19 +2,33 @@ import gzip
 from pathlib import Path
 import sqlite3
 from unittest.mock import MagicMock
+
 from oonidata.analysis.datasources import load_measurement
 
 from oonidata.dataclient import stream_jsonl
+from oonidata.db.connections import ClickhouseConnection
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
+from oonidata.workers.observations import write_observations_to_db
 from oonidata.workers.response_archiver import ResponseArchiver
 from oonidata.workers.fingerprint_hunter import fingerprint_hunter
 from oonidata.transforms import measurement_to_observations
 from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
 
 
-def test_insert_query_for_observation(measurements, netinfodb):
+def test_write_observations(measurements, netinfodb, db):
+    bad_msmt_uids = [
+        ("20210101190046.780850_US_webconnectivity_3296f126f79ca186", "2021-01-01"),
+        ("20210101181154.037019_CH_webconnectivity_68ce38aa9e3182c2", "2021-01-01"),
+        ("20231031032643.267235_GR_dnscheck_abcbfc460b9424b6", "2023-10-31"),
+    ]
+    for msmt_uid, bucket_date in bad_msmt_uids:
+        msmt = load_measurement(msmt_path=measurements[msmt_uid])
+        write_observations_to_db(msmt, netinfodb, db, bucket_date)
+    db.close()
 
+
+def test_insert_query_for_observation(measurements, netinfodb):
     http_blocked = load_measurement(
         msmt_path=measurements[
             "20220608121828.356206_RU_webconnectivity_80e3fa60eb2cd026"
@@ -87,12 +101,13 @@ def test_archive_http_transaction(measurements, tmpdir):
             status_code = http_transaction.response.code or 0
             response_headers = http_transaction.response.headers_list_bytes or []
             response_body = http_transaction.response.body_bytes
+            assert response_body
             archiver.archive_http_transaction(
                 request_url=request_url,
                 status_code=status_code,
                 response_headers=response_headers,
                 response_body=response_body,
-                matched_fingerprints=[]
+                matched_fingerprints=[],
             )
 
     warc_files = list(dst_dir.glob("*.warc.gz"))
@@ -125,12 +140,13 @@ def test_fingerprint_hunter(fingerprintdb, measurements, tmpdir):
             status_code = http_transaction.response.code or 0
             response_headers = http_transaction.response.headers_list_bytes or []
             response_body = http_transaction.response.body_bytes
+            assert response_body
             response_archiver.archive_http_transaction(
                 request_url=request_url,
                 status_code=status_code,
                 response_headers=response_headers,
                 response_body=response_body,
-                matched_fingerprints=[]
+                matched_fingerprints=[],
             )
 
     archive_path = list(archives_dir.glob("*.warc.gz"))[0]

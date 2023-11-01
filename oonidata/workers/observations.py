@@ -29,7 +29,6 @@ from oonidata.dataclient import (
 )
 from oonidata.db.connections import (
     ClickhouseConnection,
-    CSVConnection,
 )
 from oonidata.transforms import measurement_to_observations
 from oonidata.workers.common import (
@@ -39,6 +38,20 @@ from oonidata.workers.common import (
 )
 
 log = logging.getLogger("oonidata.processing")
+
+
+def write_observations_to_db(msmt, netinfodb, db, bucket_date):
+    for observations in measurement_to_observations(msmt, netinfodb=netinfodb):
+        if len(observations) == 0:
+            continue
+
+        column_names = [f.name for f in dataclasses.fields(observations[0])]
+        table_name, rows = make_db_rows(
+            bucket_date=bucket_date,
+            dc_list=observations,
+            column_names=column_names,
+        )
+        db.write_rows(table_name=table_name, rows=rows, column_names=column_names)
 
 
 def make_observations_for_file_entry_batch(
@@ -77,23 +90,7 @@ def make_observations_for_file_entry_batch(
                             exc_info=True,
                         )
                         continue
-                    for observations in measurement_to_observations(
-                        msmt, netinfodb=netinfodb
-                    ):
-                        if len(observations) == 0:
-                            continue
-
-                        column_names = [
-                            f.name for f in dataclasses.fields(observations[0])
-                        ]
-                        table_name, rows = make_db_rows(
-                            bucket_date=bucket_date,
-                            dc_list=observations,
-                            column_names=column_names,
-                        )
-                        db.write_rows(
-                            table_name=table_name, rows=rows, column_names=column_names
-                        )
+                    write_observations_to_db(msmt, netinfodb, db, bucket_date)
                     # following types ignored due to https://github.com/jsocol/pystatsd/issues/146
                     statsd_client.timing("oonidata.make_observations.timed", t.ms, rate=0.1)  # type: ignore
                     statsd_client.incr("oonidata.make_observations.msmt_count", rate=0.1)  # type: ignore
