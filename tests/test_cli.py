@@ -58,7 +58,7 @@ def test_full_workflow(
             "--data-dir",
             datadir,
             "--clickhouse",
-            "clickhouse://localhost/",
+            "clickhouse://localhost/testing_oonidata",
             # "--archives-dir",
             # tmp_path.absolute(),
         ],
@@ -90,7 +90,7 @@ def test_full_workflow(
             "--data-dir",
             datadir,
             "--clickhouse",
-            "clickhouse://localhost/",
+            "clickhouse://localhost/testing_oonidata",
         ],
     )
     assert result.exit_code == 0
@@ -114,7 +114,7 @@ def test_full_workflow(
             "--data-dir",
             datadir,
             "--clickhouse",
-            "clickhouse://localhost/",
+            "clickhouse://localhost/testing_oonidata",
         ],
     )
     assert result.exit_code == 0
@@ -146,7 +146,7 @@ def test_full_workflow(
             "--data-dir",
             datadir,
             "--clickhouse",
-            "clickhouse://localhost/",
+            "clickhouse://localhost/testing_oonidata",
         ],
     )
     assert result.exit_code == 0
