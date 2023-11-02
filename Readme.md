@@ -44,6 +44,7 @@ The analysis engine is made up of several components:
 Below we explain each step of this process in detail
 
 At a high level the pipeline looks like this:
+
 ```mermaid
 graph
     M{{Measurement}} --> OGEN[[make_observations]]
