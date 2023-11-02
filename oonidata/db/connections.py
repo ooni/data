@@ -79,9 +79,15 @@ class ClickhouseConnection(DatabaseConnection):
             log.error(
                 f"Failed to write {len(rows)} rows. Trying to savage what is savageable. ({exc})"
             )
-            for row in rows:
+            for idx, row in enumerate(rows):
                 try:
-                    self.execute(query_str, [row])
+                    self.execute(
+                        query_str,
+                        [row],
+                        types_check=True,
+                        query_id=f"oonidata-savage-{idx}-{time.time()}",
+                    )
+                    time.sleep(0.1)
                 except Exception as exc:
                     log.error(f"Failed to write {row} ({exc}) {query_str}")
                     with open(f"failing-rows.pickle", "ab") as out_file:
