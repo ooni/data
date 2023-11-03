@@ -80,8 +80,11 @@ def cli_runner():
 def db():
     from oonidata.db.create_tables import create_queries
 
-    with ClickhouseConnection(conn_url="clickhouse://localhost/") as db:
-        db.execute("CREATE DATABASE IF NOT EXISTS testing_oonidata")
+    try:
+        with ClickhouseConnection(conn_url="clickhouse://localhost/") as db:
+            db.execute("CREATE DATABASE IF NOT EXISTS testing_oonidata")
+    except:
+        pytest.skip("no database connection")
 
     db = ClickhouseConnection(conn_url="clickhouse://localhost/testing_oonidata")
     try:

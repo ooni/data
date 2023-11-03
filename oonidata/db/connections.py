@@ -93,10 +93,13 @@ class ClickhouseConnection(DatabaseConnection):
                     with open(f"failing-rows.pickle", "ab") as out_file:
                         pickle.dump({"query_str": query_str, "row": row}, out_file)
 
-    def close(self):
+    def flush_all_rows(self):
         for table_name, rows in self._row_buffer.items():
             self.flush_rows(table_name=table_name, rows=rows)
             self._row_buffer[table_name] = []
+
+    def close(self):
+        self.flush_all_rows()
         self.client.disconnect()
 
 
