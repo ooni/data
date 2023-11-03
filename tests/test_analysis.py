@@ -18,7 +18,6 @@ from oonidata.transforms import measurement_to_observations
 
 
 def test_signal(fingerprintdb, netinfodb, measurements):
-
     signal_old_ca = load_measurement(
         msmt_path=measurements["20221016235944.266268_GB_signal_1265ff650ee17b44"]
     )

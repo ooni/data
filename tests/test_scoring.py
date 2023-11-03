@@ -9,8 +9,12 @@ from oonidata.models.experiment_result import print_nice_er
 from oonidata.transforms import measurement_to_observations
 
 
-def test_tcp_scoring(explorer_urls, netinfodb, fingerprintdb):
-    msmt = load_measurement(msmt_path=explorer_urls["20221101_ru_tcp_blocked_twitter"])
+def test_tcp_scoring(measurements, netinfodb, fingerprintdb):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20221101055235.141387_RU_webconnectivity_046ce024dd76b564"
+        ]
+    )
     web_observations, web_control_observations = measurement_to_observations(
         msmt, netinfodb=netinfodb
     )

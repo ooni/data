@@ -5,7 +5,7 @@ on:
       - main
   pull_request:
     branches:
-      - '*'
+      - "*"
 jobs:
   Tests:
     name: ${{ matrix.os }} / ${{ matrix.python-version }}
@@ -44,11 +44,23 @@ jobs:
           path: "$HOME/.cache/pypoetry/virtualenvs"
           key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/poetry.lock') }}
 
-      - name: Set up test data cache
+      - name: Set up datadir cache
         uses: actions/cache@v3
         with:
-          path: tests/data/
-          key: tests-data-${{ hashFiles('tests/conftest.py') }}
+          path: tests/data/datadir/
+          key: tests-data-datadir
+
+      - name: Set up measurements cache
+        uses: actions/cache@v3
+        with:
+          path: tests/data/measurements/
+          key: tests-data-measurements-${{ hashFiles('tests/_sample_measurements.py') }}
+
+      - name: Set up raw_measurements cache
+        uses: actions/cache@v3
+        with:
+          path: tests/data/measurements/
+          key: tests-data-raw_measurements-${{ hashFiles('tests/conftest.py') }}
 
       - name: Install clickhouse
         run: |

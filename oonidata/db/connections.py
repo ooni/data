@@ -29,6 +29,7 @@ class ClickhouseConnection(DatabaseConnection):
     def __init__(self, conn_url, row_buffer_size=0, max_block_size=1_000_000):
         from clickhouse_driver import Client
 
+        self.clickhouse_url = conn_url
         self.client = Client.from_url(conn_url)
 
         self.row_buffer_size = row_buffer_size
@@ -79,18 +80,27 @@ class ClickhouseConnection(DatabaseConnection):
             log.error(
                 f"Failed to write {len(rows)} rows. Trying to savage what is savageable. ({exc})"
             )
-            for row in rows:
+            for idx, row in enumerate(rows):
                 try:
-                    self.execute(query_str, [row])
+                    self.execute(
+                        query_str,
+                        [row],
+                        types_check=True,
+                        query_id=f"oonidata-savage-{idx}-{time.time()}",
+                    )
+                    time.sleep(0.1)
                 except Exception as exc:
-                    log.error(f"Failed to write {row} ({exc})")
+                    log.error(f"Failed to write {row} ({exc}) {query_str}")
                     with open(f"failing-rows.pickle", "ab") as out_file:
                         pickle.dump({"query_str": query_str, "row": row}, out_file)
 
-    def close(self):
+    def flush_all_rows(self):
         for table_name, rows in self._row_buffer.items():
             self.flush_rows(table_name=table_name, rows=rows)
             self._row_buffer[table_name] = []
+
+    def close(self):
+        self.flush_all_rows()
         self.client.disconnect()
 
 
