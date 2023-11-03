@@ -12,11 +12,29 @@ from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
-from oonidata.workers.observations import write_observations_to_db
+from oonidata.workers.observations import (
+    make_observations_for_file_entry_batch,
+    write_observations_to_db,
+)
 from oonidata.workers.response_archiver import ResponseArchiver
 from oonidata.workers.fingerprint_hunter import fingerprint_hunter
 from oonidata.transforms import measurement_to_observations
 from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+
+
+def test_make_file_entry_batch(datadir, db):
+    file_entry_batch = [
+        (
+            "ooni-data-eu-fra",
+            "raw/20231031/15/VE/whatsapp/2023103115_VE_whatsapp.n1.0.tar.gz",
+            "tar.gz",
+            52964,
+        )
+    ]
+    msmt_count = make_observations_for_file_entry_batch(
+        file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", "VE", False
+    )
+    assert msmt_count == 5
 
 
 def test_write_observations(measurements, netinfodb, db):

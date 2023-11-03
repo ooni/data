@@ -6,6 +6,8 @@ from datetime import date, datetime, timedelta
 from typing import (
     List,
     Optional,
+    Sequence,
+    Tuple,
 )
 
 import statsd
@@ -17,6 +19,7 @@ from dask.distributed import as_completed
 
 from oonidata.analysis.datasources import load_measurement
 from oonidata.datautils import PerfTimer
+from oonidata.models.nettests import SupportedDataformats
 
 from oonidata.netinfo import NetinfoDB
 
@@ -40,7 +43,12 @@ from oonidata.workers.common import (
 log = logging.getLogger("oonidata.processing")
 
 
-def write_observations_to_db(msmt, netinfodb, db, bucket_date):
+def write_observations_to_db(
+    msmt: SupportedDataformats,
+    netinfodb: NetinfoDB,
+    db: ClickhouseConnection,
+    bucket_date: str,
+):
     for observations in measurement_to_observations(msmt, netinfodb=netinfodb):
         if len(observations) == 0:
             continue
@@ -55,13 +63,13 @@ def write_observations_to_db(msmt, netinfodb, db, bucket_date):
 
 
 def make_observations_for_file_entry_batch(
-    file_entry_batch,
-    clickhouse,
-    row_buffer_size,
-    data_dir,
-    bucket_date,
-    probe_cc,
-    fast_fail,
+    file_entry_batch: Sequence[Tuple[str, str, str, int]],
+    clickhouse: str,
+    row_buffer_size: int,
+    data_dir: pathlib.Path,
+    bucket_date: str,
+    probe_cc: str,
+    fast_fail: bool,
 ):
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
     tbatch = PerfTimer()

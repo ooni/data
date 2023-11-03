@@ -29,6 +29,7 @@ class ClickhouseConnection(DatabaseConnection):
     def __init__(self, conn_url, row_buffer_size=0, max_block_size=1_000_000):
         from clickhouse_driver import Client
 
+        self.clickhouse_url = conn_url
         self.client = Client.from_url(conn_url)
 
         self.row_buffer_size = row_buffer_size
