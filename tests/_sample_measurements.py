@@ -25,4 +25,5 @@ SAMPLE_MEASUREMENTS = [
     "20231101164544.534107_BR_httpheaderfieldmanipulation_4caa0b0556f0b141",
     "20231101164649.235575_RU_tor_ccf7519bf683c022",
     "20221101055235.141387_RU_webconnectivity_046ce024dd76b564",  # ru_blocks_twitter
+    "20230907000740.785053_BR_httpinvalidrequestline_bdfe6d70dcbda5e9",  # middlebox detected
 ]

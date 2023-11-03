@@ -1,6 +1,7 @@
 import gzip
 from pathlib import Path
 import sqlite3
+from typing import List
 from unittest.mock import MagicMock
 
 from oonidata.analysis.datasources import load_measurement
@@ -9,6 +10,8 @@ from oonidata.dataclient import stream_jsonl
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
+from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
+from oonidata.models.observations import HTTPMiddleboxObservation
 from oonidata.workers.observations import write_observations_to_db
 from oonidata.workers.response_archiver import ResponseArchiver
 from oonidata.workers.fingerprint_hunter import fingerprint_hunter
@@ -30,11 +33,30 @@ def test_write_observations(measurements, netinfodb, db):
             "2023-10-31",
         ),
         ("20231101164649.235575_RU_tor_ccf7519bf683c022", "2023-10-31"),
+        (
+            "20230907000740.785053_BR_httpinvalidrequestline_bdfe6d70dcbda5e9",
+            "2023-09-07",
+        ),
     ]
     for msmt_uid, bucket_date in msmt_uids:
         msmt = load_measurement(msmt_path=measurements[msmt_uid])
         write_observations_to_db(msmt, netinfodb, db, bucket_date)
     db.close()
+
+
+def test_hirl_observations(measurements, netinfodb):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20230907000740.785053_BR_httpinvalidrequestline_bdfe6d70dcbda5e9"
+        ]
+    )
+    assert isinstance(msmt, HTTPInvalidRequestLine)
+    middlebox_obs: List[HTTPMiddleboxObservation] = measurement_to_observations(
+        msmt, netinfodb=netinfodb
+    )[0]
+    assert isinstance(middlebox_obs[0], HTTPMiddleboxObservation)
+    assert middlebox_obs[0].hirl_success == True
+    assert middlebox_obs[0].hirl_sent_0 != middlebox_obs[0].hirl_received_0
 
 
 def test_insert_query_for_observation(measurements, netinfodb):
