@@ -193,7 +193,10 @@ def start_analysis(
     current_cc_batch = []
     while cnt_by_cc:
         while current_cc_batch_size <= max_obs_per_batch:
-            cc, cnt = cnt_by_cc.popitem()
+            try:
+                cc, cnt = cnt_by_cc.popitem()
+            except KeyError:
+                break
             current_cc_batch.append(cc)
             current_cc_batch_size += cnt
         cc_batches.append(current_cc_batch)
