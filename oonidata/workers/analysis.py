@@ -23,6 +23,7 @@ from oonidata.netinfo import NetinfoDB
 from oonidata.workers.ground_truths import maybe_build_web_ground_truth
 
 from .common import (
+    get_obs_count_by_cc,
     get_prev_range,
     make_db_rows,
     maybe_delete_prev_range,
@@ -31,21 +32,14 @@ from .common import (
 log = logging.getLogger("oonidata.processing")
 
 
-def make_analysis_in_a_day(
-    probe_cc: List[str],
-    test_name: List[str],
+def make_ctrl(
     clickhouse: str,
     data_dir: pathlib.Path,
     rebuild_ground_truths: bool,
-    fast_fail: bool,
     day: date,
 ):
-    statsd_client = statsd.StatsClient("localhost", 8125)
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
-    fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
-    body_db = BodyDB(db=ClickhouseConnection(clickhouse))
     db_lookup = ClickhouseConnection(clickhouse)
-    db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
     maybe_build_web_ground_truth(
         db=db_lookup,
         netinfodb=netinfodb,
@@ -55,8 +49,22 @@ def make_analysis_in_a_day(
     )
     db_lookup.close()
 
-    column_names = [f.name for f in dataclasses.fields(WebAnalysis)]
+
+def make_analysis_in_a_day(
+    probe_cc: List[str],
+    test_name: List[str],
+    clickhouse: str,
+    data_dir: pathlib.Path,
+    fast_fail: bool,
+    day: date,
+):
+    statsd_client = statsd.StatsClient("localhost", 8125)
+    fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
+    body_db = BodyDB(db=ClickhouseConnection(clickhouse))
+    db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
     db_lookup = ClickhouseConnection(clickhouse)
+
+    column_names = [f.name for f in dataclasses.fields(WebAnalysis)]
 
     prev_range = get_prev_range(
         db=db_lookup,
@@ -144,19 +152,74 @@ def start_analysis(
         n_workers=parallelism,
     )
 
-    future_list = []
+    t = PerfTimer()
+    # TODO: maybe use dask for this too
+    log.info("building ground truth databases")
     for day in date_interval(start_day, end_day):
-        t = dask_client.submit(
-            make_analysis_in_a_day,
-            probe_cc,
-            test_name,
-            clickhouse,
-            data_dir,
-            rebuild_ground_truths,
-            fast_fail,
-            day,
+        make_ctrl(
+            clickhouse=clickhouse,
+            data_dir=data_dir,
+            rebuild_ground_truths=rebuild_ground_truths,
+            day=day,
         )
-        future_list.append(t)
+    log.info(f"built ground truth db in {t.pretty}")
+
+    with ClickhouseConnection(clickhouse) as db:
+        cnt_by_cc = get_obs_count_by_cc(
+            db, start_day=start_day, end_day=end_day, test_name=test_name
+        )
+    if len(probe_cc) > 0:
+        selected_ccs_with_cnt = set(probe_cc).intersection(set(cnt_by_cc.keys()))
+        if len(selected_ccs_with_cnt) == 0:
+            log.error(
+                f"No observations for {probe_cc} in the time range {start_day} - {end_day}. Try adjusting the date range or choosing different countries"
+            )
+            return
+        # We remove from the cnt_by_cc all the countries we are not interested in
+        cnt_by_cc = {k: cnt_by_cc[k] for k in selected_ccs_with_cnt}
+
+    total_obs_cnt = sum(cnt_by_cc.values())
+    total_days = (end_day - start_day).days
+
+    # We assume uniform distribution of observations per (country, day)
+    max_obs_per_batch = (total_obs_cnt / total_days) / parallelism
+
+    # We break up the countries into batches where the count of observations in
+    # each batch is roughly equal.
+    # This is done so that we can spread the load based on the countries in
+    # addition to the time range.
+    cc_batches = []
+    current_cc_batch_size = 0
+    current_cc_batch = []
+    while cnt_by_cc:
+        while current_cc_batch_size <= max_obs_per_batch:
+            cc, cnt = cnt_by_cc.popitem()
+            current_cc_batch.append(cc)
+            current_cc_batch_size += cnt
+        cc_batches.append(current_cc_batch)
+        current_cc_batch = []
+        current_cc_batch_size = 0
+    if len(current_cc_batch) > 0:
+        cc_batches.append(current_cc_batch)
+
+    log.info(f"starting processing of {len(cc_batches)} batches over {total_days} days")
+    log.info(f"({cc_batches} from {start_day} to {end_day}")
+
+    future_list = []
+    for probe_cc in cc_batches:
+        for day in date_interval(start_day, end_day):
+            t = dask_client.submit(
+                make_analysis_in_a_day,
+                probe_cc,
+                test_name,
+                clickhouse,
+                data_dir,
+                rebuild_ground_truths,
+                fast_fail,
+                day,
+            )
+            future_list.append(t)
+
     log.debug("starting progress monitoring")
     dask_progress(future_list)
     log.debug("waiting on task_list")

@@ -3,9 +3,10 @@ import logging
 import multiprocessing as mp
 from multiprocessing.synchronize import Event as EventClass
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from typing import (
+    Dict,
     List,
     NamedTuple,
     Optional,
@@ -112,6 +113,21 @@ def get_prev_range(
         where=where,
         bucket_date=bucket_date,
     )
+
+
+def get_obs_count_by_cc(
+    db: ClickhouseConnection,
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    table_name: str = "obs_web",
+) -> Dict[str, int]:
+    q = f"SELECT probe_cc, COUNT() FROM {table_name} WHERE measurement_start_time > %(start_day)s AND measurement_start_time < %(end_day)s GROUP BY probe_cc"
+    cc_list: List[Tuple[str, int]] = db.execute(
+        q, {"start_day": start_day, "end_day": end_day}
+    )  # type: ignore
+    assert isinstance(cc_list, list)
+    return dict(cc_list)
 
 
 def maybe_delete_prev_range(

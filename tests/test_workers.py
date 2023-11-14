@@ -1,3 +1,4 @@
+from datetime import date
 import gzip
 from pathlib import Path
 import sqlite3
@@ -12,6 +13,7 @@ from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
+from oonidata.workers.common import get_obs_count_by_cc
 from oonidata.workers.observations import (
     make_observations_for_file_entry_batch,
     write_observations_to_db,
@@ -60,6 +62,16 @@ def test_write_observations(measurements, netinfodb, db):
         msmt = load_measurement(msmt_path=measurements[msmt_uid])
         write_observations_to_db(msmt, netinfodb, db, bucket_date)
     db.close()
+    cnt_by_cc = get_obs_count_by_cc(
+        db,
+        test_name=[],
+        start_day=date(2020, 1, 1),
+        end_day=date(2023, 12, 1),
+    )
+    assert cnt_by_cc["CH"] == 2
+    assert cnt_by_cc["GR"] == 4
+    assert cnt_by_cc["US"] == 3
+    assert cnt_by_cc["RU"] == 3
 
 
 def test_hirl_observations(measurements, netinfodb):
