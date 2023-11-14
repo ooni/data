@@ -138,6 +138,7 @@ def start_analysis(
     rebuild_ground_truths: bool,
     log_level: int = logging.INFO,
 ):
+    t_total = PerfTimer()
     dask_client = DaskClient(
         threads_per_worker=2,
         n_workers=parallelism,
@@ -160,8 +161,11 @@ def start_analysis(
     dask_progress(future_list)
     log.debug("waiting on task_list")
     dask_wait(future_list)
-    total_count = 0
+    total_obs_count = 0
     for _, result in as_completed(future_list, with_results=True):
-        total_count += result  # type: ignore
+        total_obs_count += result  # type: ignore
 
-    log.info(f"produces a total of {total_count} analysis")
+    log.info(f"produces a total of {total_obs_count} analysis")
+    obs_per_sec = round(total_obs_count / t_total.s)
+    log.info(f"finished processing {start_day} - {end_day} speed: {obs_per_sec}obs/s)")
+    log.info(f"{total_obs_count} msmts in {t_total.pretty}")
