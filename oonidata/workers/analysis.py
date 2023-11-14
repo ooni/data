@@ -110,6 +110,9 @@ def make_analysis_in_a_day(
                     fingerprintdb=fingerprintdb,
                 )
             )
+            if len(website_analysis) == 0:
+                log.info(f"no website analysis for {probe_cc}, {test_name}")
+                continue
             idx += 1
             table_name, rows = make_db_rows(
                 dc_list=website_analysis, column_names=column_names
@@ -205,7 +208,9 @@ def start_analysis(
     if len(current_cc_batch) > 0:
         cc_batches.append(current_cc_batch)
 
-    log.info(f"starting processing of {len(cc_batches)} batches over {total_days} days")
+    log.info(
+        f"starting processing of {len(cc_batches)} batches over {total_days} days (parallelism = {parallelism})"
+    )
     log.info(f"({cc_batches} from {start_day} to {end_day}")
 
     future_list = []

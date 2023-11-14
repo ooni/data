@@ -184,68 +184,6 @@ class StatusMessage(NamedTuple):
     archive_queue_size: Optional[int] = None
 
 
-def run_status_thread(status_queue: mp.Queue, shutdown_event: EventClass):
-    total_prefixes = 0
-    current_prefix_idx = 0
-
-    total_file_entries = 0
-    current_file_entry_idx = 0
-    download_desc = ""
-    last_idx_desc = ""
-    qsize_desc = ""
-
-    pbar_listing = tqdm(position=0)
-    pbar_download = tqdm(unit="B", unit_scale=True, position=1)
-
-    log.info("starting error handling thread")
-    while not shutdown_event.is_set():
-        try:
-            res = status_queue.get(block=True, timeout=0.1)
-        except queue.Empty:
-            continue
-
-        if res.exception:
-            log.error(f"got an error from {res.src}: {res.exception} {res.traceback}")
-
-        if res.progress:
-            p = res.progress
-            if p.progress_status == ProgressStatus.LISTING_BEGIN:
-                total_prefixes += p.total_prefixes
-                pbar_listing.total = total_prefixes
-
-                pbar_listing.set_description("starting listing")
-
-            if p.progress_status == ProgressStatus.LISTING:
-                current_prefix_idx += 1
-                pbar_listing.update(1)
-                pbar_listing.set_description(
-                    f"listed {current_prefix_idx}/{total_prefixes} prefixes"
-                )
-
-            if p.progress_status == ProgressStatus.DOWNLOAD_BEGIN:
-                if not pbar_download.total:
-                    pbar_download.total = 0
-                total_file_entries += p.total_file_entries
-                pbar_download.total += p.total_file_entry_bytes
-
-            if p.progress_status == ProgressStatus.DOWNLOADING:
-                current_file_entry_idx += 1
-                download_desc = (
-                    f"downloading {current_file_entry_idx}/{total_file_entries} files"
-                )
-                pbar_download.update(p.current_file_entry_bytes)
-
-        if res.idx:
-            last_idx_desc = f" idx: {res.idx} ({res.day_str})"
-
-        if res.archive_queue_size:
-            qsize_desc = f" aqsize: {res.archive_queue_size}"
-
-        pbar_download.set_description(download_desc + last_idx_desc + qsize_desc)
-
-        status_queue.task_done()
-
-
 def run_progress_thread(
     status_queue: mp.Queue, shutdown_event: EventClass, desc: str = "analyzing data"
 ):
