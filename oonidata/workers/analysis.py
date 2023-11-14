@@ -10,6 +10,11 @@ from typing import List
 
 import statsd
 
+from dask.distributed import Client as DaskClient
+from dask.distributed import progress as dask_progress
+from dask.distributed import wait as dask_wait
+from dask.distributed import as_completed
+
 from oonidata.analysis.control import BodyDB, WebGroundTruthDB
 from oonidata.analysis.datasources import iter_web_observations
 from oonidata.analysis.web_analysis import make_web_analysis
@@ -31,16 +36,29 @@ from .common import (
 log = logging.getLogger("oonidata.processing")
 
 
-def run_analysis(
-    day: date,
+def make_analysis_in_a_day(
     probe_cc: List[str],
-    fingerprintdb: FingerprintDB,
-    data_dir: pathlib.Path,
-    body_db: BodyDB,
-    db_writer: ClickhouseConnection,
+    test_name: List[str],
     clickhouse: str,
+    data_dir: pathlib.Path,
+    rebuild_ground_truths: bool,
+    fast_fail: bool,
+    day: date,
 ):
     statsd_client = statsd.StatsClient("localhost", 8125)
+    netinfodb = NetinfoDB(datadir=data_dir, download=False)
+    fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
+    body_db = BodyDB(db=ClickhouseConnection(clickhouse))
+    db_lookup = ClickhouseConnection(clickhouse)
+    db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
+    maybe_build_web_ground_truth(
+        db=db_lookup,
+        netinfodb=netinfodb,
+        day=day,
+        data_dir=data_dir,
+        rebuild_ground_truths=rebuild_ground_truths,
+    )
+    db_lookup.close()
 
     column_names = [f.name for f in dataclasses.fields(WebAnalysis)]
     db_lookup = ClickhouseConnection(clickhouse)
@@ -61,7 +79,7 @@ def run_analysis(
     )
     web_ground_truth_db = WebGroundTruthDB()
     web_ground_truth_db.build_from_existing(str(ground_truth_db_path.absolute()))
-    statsd_client.timing("wgt_er_all.timed", t.ms)
+    statsd_client.timing("oonidata.web_analysis.ground_truth.timed", t.ms)
     log.info(f"loaded ground truth DB for {day} in {t.pretty}")
 
     idx = 0
@@ -80,8 +98,7 @@ def run_analysis(
             continue
 
         try:
-            if statsd_client:
-                statsd_client.timing("wgt_an_reduced.timed", t.ms)
+            statsd_client.timing("oonidata.web_analysis.gt_lookup.timed", t.ms)
             website_analysis = list(
                 make_web_analysis(
                     web_observations=web_obs,
@@ -94,12 +111,9 @@ def run_analysis(
             table_name, rows = make_db_rows(
                 dc_list=website_analysis, column_names=column_names
             )
-            if idx % 100 == 0:
-                statsd_client.incr("make_website_an.er_count", count=100)
-                statsd_client.gauge("make_website_an.er_gauge", 100, delta=True)
-                idx = 0
-
-            statsd_client.timing("make_website_an.timing", t_er_gen.ms)
+            statsd_client.incr("oonidata.web_analysis.analysis.count", 1, rate=0.1)  # type: ignore
+            statsd_client.gauge("oonidata.web_analysis.analysis.gauge", idx, rate=0.1)  # type: ignore
+            statsd_client.timing("oonidata.web_analysis.analysis.timing", t_er_gen.ms)
 
             with statsd_client.timer("db_write_rows.timing"):
                 db_writer.write_rows(
@@ -107,7 +121,6 @@ def run_analysis(
                     rows=rows,
                     column_names=column_names,
                 )
-            yield website_analysis
         except:
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate analysis for {web_obs_ids}", exc_info=True)
@@ -115,72 +128,7 @@ def run_analysis(
     maybe_delete_prev_range(
         db=db_lookup, prev_range=prev_range, table_name=WebAnalysis.__table_name__
     )
-
-
-class AnalysisWorker(mp.Process):
-    def __init__(
-        self,
-        day_queue: mp.JoinableQueue,
-        progress_queue: mp.Queue,
-        shutdown_event: EventClass,
-        data_dir: pathlib.Path,
-        probe_cc: List[str],
-        test_name: List[str],
-        clickhouse: str,
-        fast_fail: bool,
-        log_level: int = logging.INFO,
-    ):
-        super().__init__(daemon=True)
-        self.day_queue = day_queue
-        self.progress_queue = progress_queue
-        self.probe_cc = probe_cc
-        self.test_name = test_name
-        self.clickhouse = clickhouse
-        self.fast_fail = fast_fail
-        self.data_dir = data_dir
-
-        self.shutdown_event = shutdown_event
-        log.setLevel(log_level)
-
-    def run(self):
-        db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=10_000)
-        fingerprintdb = FingerprintDB(datadir=self.data_dir, download=False)
-
-        body_db = BodyDB(db=ClickhouseConnection(self.clickhouse))
-
-        while not self.shutdown_event.is_set():
-            try:
-                day = self.day_queue.get(block=True, timeout=0.1)
-            except queue.Empty:
-                continue
-
-            log.info(f"generating experiment results from {day}")
-            try:
-                for idx, _ in enumerate(
-                    run_analysis(
-                        day=day,
-                        probe_cc=self.probe_cc,
-                        fingerprintdb=fingerprintdb,
-                        data_dir=self.data_dir,
-                        body_db=body_db,
-                        db_writer=db_writer,
-                        clickhouse=self.clickhouse,
-                    )
-                ):
-                    if idx % 100 == 0:
-                        self.progress_queue.put(100)
-            except Exception:
-                log.error(f"failed to process {day}", exc_info=True)
-
-            finally:
-                log.info(f"finished processing day {day}")
-                self.day_queue.task_done()
-
-        log.info("process is done")
-        try:
-            db_writer.close()
-        except:
-            log.error("failed to flush database", exc_info=True)
+    return idx
 
 
 def start_analysis(
@@ -195,65 +143,30 @@ def start_analysis(
     rebuild_ground_truths: bool,
     log_level: int = logging.INFO,
 ):
-    netinfodb = NetinfoDB(datadir=data_dir, download=False)
-
-    shutdown_event = mp.Event()
-    worker_shutdown_event = mp.Event()
-
-    progress_queue = mp.JoinableQueue()
-
-    progress_thread = Thread(
-        target=run_progress_thread, args=(progress_queue, shutdown_event)
+    dask_client = DaskClient(
+        threads_per_worker=2,
+        n_workers=parallelism,
     )
-    progress_thread.start()
 
-    workers = []
-    day_queue = mp.JoinableQueue()
-    for _ in range(parallelism):
-        worker = AnalysisWorker(
-            day_queue=day_queue,
-            progress_queue=progress_queue,
-            shutdown_event=worker_shutdown_event,
-            probe_cc=probe_cc,
-            test_name=test_name,
-            data_dir=data_dir,
-            clickhouse=clickhouse,
-            fast_fail=fast_fail,
-            log_level=log_level,
-        )
-        worker.start()
-        log.info(f"started worker {worker.pid}")
-        workers.append(worker)
-
-    db_lookup = ClickhouseConnection(clickhouse)
-
+    future_list = []
     for day in date_interval(start_day, end_day):
-        maybe_build_web_ground_truth(
-            db=db_lookup,
-            netinfodb=netinfodb,
-            day=day,
-            data_dir=data_dir,
-            rebuild_ground_truths=rebuild_ground_truths,
+        t = dask_client.submit(
+            make_analysis_in_a_day,
+            probe_cc,
+            test_name,
+            clickhouse,
+            data_dir,
+            rebuild_ground_truths,
+            fast_fail,
+            day,
         )
-        day_queue.put(day)
+        future_list.append(t)
+    log.debug("starting progress monitoring")
+    dask_progress(future_list)
+    log.debug("waiting on task_list")
+    dask_wait(future_list)
+    total_count = 0
+    for _, result in as_completed(future_list, with_results=True):
+        total_count += result  # type: ignore
 
-    log.info("waiting for the day queue to finish")
-    day_queue.join()
-
-    log.info("sending shutdown signal to workers")
-    worker_shutdown_event.set()
-
-    log.info("waiting for progress queue to finish")
-    progress_queue.join()
-
-    log.info("waiting for experiment workers to finish running")
-    for idx, p in enumerate(workers):
-        log.info(f"waiting worker {idx} to join")
-        p.join()
-        log.info(f"waiting worker {idx} to close")
-        p.close()
-
-    log.info("sending shutdown event progress thread")
-    shutdown_event.set()
-    log.info("waiting on progress queue")
-    progress_thread.join()
+    log.info("produces a total of {total_count} analysis")
