@@ -217,7 +217,6 @@ def start_analysis(
                 test_name,
                 clickhouse,
                 data_dir,
-                rebuild_ground_truths,
                 fast_fail,
                 day,
             )
