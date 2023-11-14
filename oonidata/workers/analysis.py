@@ -12,12 +12,12 @@ import statsd
 
 from oonidata.analysis.control import BodyDB, WebGroundTruthDB
 from oonidata.analysis.datasources import iter_web_observations
-from oonidata.analysis.websites_features import make_website_analysis
+from oonidata.analysis.web_analysis import make_web_analysis
 from oonidata.dataclient import date_interval
 from oonidata.datautils import PerfTimer
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.fingerprintdb import FingerprintDB
-from oonidata.models.analysis import WebsiteAnalysis
+from oonidata.models.analysis import WebAnalysis
 from oonidata.netinfo import NetinfoDB
 from oonidata.workers.ground_truths import maybe_build_web_ground_truth
 
@@ -42,12 +42,12 @@ def run_analysis(
 ):
     statsd_client = statsd.StatsClient("localhost", 8125)
 
-    column_names = [f.name for f in dataclasses.fields(WebsiteAnalysis)]
+    column_names = [f.name for f in dataclasses.fields(WebAnalysis)]
     db_lookup = ClickhouseConnection(clickhouse)
 
     prev_range = get_prev_range(
         db=db_lookup,
-        table_name=WebsiteAnalysis.__table_name__,
+        table_name=WebAnalysis.__table_name__,
         timestamp=datetime.combine(day, datetime.min.time()),
         test_name=[],
         probe_cc=probe_cc,
@@ -83,7 +83,7 @@ def run_analysis(
             if statsd_client:
                 statsd_client.timing("wgt_an_reduced.timed", t.ms)
             website_analysis = list(
-                make_website_analysis(
+                make_web_analysis(
                     web_observations=web_obs,
                     body_db=body_db,
                     web_ground_truths=relevant_gts,
@@ -113,7 +113,7 @@ def run_analysis(
             log.error(f"failed to generate analysis for {web_obs_ids}", exc_info=True)
 
     maybe_delete_prev_range(
-        db=db_lookup, prev_range=prev_range, table_name=WebsiteAnalysis.__table_name__
+        db=db_lookup, prev_range=prev_range, table_name=WebAnalysis.__table_name__
     )
 
 
@@ -143,7 +143,6 @@ class AnalysisWorker(mp.Process):
         log.setLevel(log_level)
 
     def run(self):
-
         db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=10_000)
         fingerprintdb = FingerprintDB(datadir=self.data_dir, download=False)
 

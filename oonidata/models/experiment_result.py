@@ -161,6 +161,10 @@ class ExperimentResultInstant(NamedTuple):
     loni_blocked_keys: List[str]
     loni_blocked_values: List[float]
 
+    # Inside this string we include a representation of the logic that lead us
+    # to produce the above loni values
+    analysis_transcript: Optional[str]
+
     # Number of measurements used to produce this experiment result
     measurement_count: int
     # Number of observations used to produce this experiment result
@@ -245,11 +249,13 @@ def print_nice_er(er_list):
     rows = []
     meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
     meta_fields += ["timestamp", "created_at"]
-    headers = list(filter(lambda k: k not in meta_fields, er_list[0]._fields))
+    headers: List[str] = list(
+        filter(lambda k: k not in meta_fields, er_list[0]._fields)
+    )
     for er in er_list:
         rows.append([maybe_elipse(getattr(er, k)) for k in headers])
     headers = [maybe_elipse(h, 5) for h in headers]
-    print(tabulate(rows, headers=headers))
+    print(tabulate(rows, headers=headers))  # type: ignore # tabulate library doesn't seem to have correct type hints
 
 
 def iter_experiment_results(
