@@ -1,11 +1,7 @@
 import dataclasses
 import logging
-import multiprocessing as mp
 import pathlib
-import queue
 from datetime import date, datetime
-from multiprocessing.synchronize import Event as EventClass
-from threading import Thread
 from typing import List
 
 import statsd
@@ -30,7 +26,6 @@ from .common import (
     get_prev_range,
     make_db_rows,
     maybe_delete_prev_range,
-    run_progress_thread,
 )
 
 log = logging.getLogger("oonidata.processing")
@@ -79,7 +74,7 @@ def make_analysis_in_a_day(
     )
     web_ground_truth_db = WebGroundTruthDB()
     web_ground_truth_db.build_from_existing(str(ground_truth_db_path.absolute()))
-    statsd_client.timing("oonidata.web_analysis.ground_truth.timed", t.ms)
+    statsd_client.timing("oonidata.web_analysis.ground_truth", t.ms)
     log.info(f"loaded ground truth DB for {day} in {t.pretty}")
 
     idx = 0
@@ -98,7 +93,7 @@ def make_analysis_in_a_day(
             continue
 
         try:
-            statsd_client.timing("oonidata.web_analysis.gt_lookup.timed", t.ms)
+            statsd_client.timing("oonidata.web_analysis.gt_lookup", t.ms)
             website_analysis = list(
                 make_web_analysis(
                     web_observations=web_obs,
@@ -111,9 +106,9 @@ def make_analysis_in_a_day(
             table_name, rows = make_db_rows(
                 dc_list=website_analysis, column_names=column_names
             )
-            statsd_client.incr("oonidata.web_analysis.analysis.count", 1, rate=0.1)  # type: ignore
-            statsd_client.gauge("oonidata.web_analysis.analysis.gauge", idx, rate=0.1)  # type: ignore
-            statsd_client.timing("oonidata.web_analysis.analysis.timing", t_er_gen.ms)
+            statsd_client.incr("oonidata.web_analysis.analysis.obs", 1, rate=0.1)  # type: ignore
+            statsd_client.gauge("oonidata.web_analysis.analysis.obs_idx", idx, rate=0.1)  # type: ignore
+            statsd_client.timing("oonidata.web_analysis.analysis.obs", t_er_gen.ms, rate=0.1)  # type: ignore
 
             with statsd_client.timer("db_write_rows.timing"):
                 db_writer.write_rows(
@@ -169,4 +164,4 @@ def start_analysis(
     for _, result in as_completed(future_list, with_results=True):
         total_count += result  # type: ignore
 
-    log.info("produces a total of {total_count} analysis")
+    log.info(f"produces a total of {total_count} analysis")

@@ -613,7 +613,7 @@ def make_web_analysis(
     other_observations = []
     for web_o in web_observations:
         if web_o.dns_query_type:
-            assert web_o.hostname is not None
+            assert web_o.hostname is not None, web_o
             dns_observations_by_hostname[web_o.hostname].append(web_o)
         else:
             other_observations.append(web_o)
