@@ -613,7 +613,13 @@ def make_web_analysis(
     other_observations = []
     for web_o in web_observations:
         if web_o.dns_query_type:
-            assert web_o.hostname is not None, web_o
+            # assert web_o.hostname is not None, web_o
+            # TODO(arturo): this is a workaround for: https://github.com/ooni/probe/issues/2628
+            if web_o.hostname is None:
+                log.error(
+                    f"missing hostname for DNS query {web_o}. Skipping DNS observation."
+                )
+                continue
             dns_observations_by_hostname[web_o.hostname].append(web_o)
         else:
             other_observations.append(web_o)
