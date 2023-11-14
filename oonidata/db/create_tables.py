@@ -7,7 +7,7 @@ from oonidata.db.connections import ClickhouseConnection
 from oonidata.models.experiment_result import (
     ExperimentResult,
 )
-from oonidata.models.analysis import WebsiteAnalysis
+from oonidata.models.analysis import WebAnalysis
 from oonidata.models.observations import (
     ObservationBase,
     WebControlObservation,
@@ -170,7 +170,7 @@ create_queries = [
     create_query_for_observation(WebControlObservation),
     create_query_for_observation(HTTPMiddleboxObservation),
     create_query_for_experiment_result(),
-    create_query_for_analysis(WebsiteAnalysis),
+    create_query_for_analysis(WebAnalysis),
     CREATE_QUERY_FOR_LOGS,
 ]
 
