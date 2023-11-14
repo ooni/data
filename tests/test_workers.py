@@ -1,3 +1,4 @@
+from datetime import date
 import gzip
 from pathlib import Path
 import sqlite3
@@ -12,6 +13,8 @@ from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
+from oonidata.workers.analysis import make_analysis_in_a_day, make_cc_batches, make_ctrl
+from oonidata.workers.common import get_obs_count_by_cc
 from oonidata.workers.observations import (
     make_observations_for_file_entry_batch,
     write_observations_to_db,
@@ -22,19 +25,46 @@ from oonidata.transforms import measurement_to_observations
 from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
 
 
+def test_make_cc_batches():
+    cc_batches = make_cc_batches(
+        cnt_by_cc={"IT": 100, "IR": 300, "US": 1000},
+        probe_cc=["IT", "IR", "US"],
+        parallelism=2,
+    )
+    assert len(cc_batches) == 2
+    # We expect the batches to be broken up into (IT, IR), ("US")
+    assert any([set(x) == set(["US"]) for x in cc_batches]) == True
+
+
 def test_make_file_entry_batch(datadir, db):
     file_entry_batch = [
         (
             "ooni-data-eu-fra",
-            "raw/20231031/15/VE/whatsapp/2023103115_VE_whatsapp.n1.0.tar.gz",
+            "raw/20231031/15/IR/webconnectivity/2023103115_IR_webconnectivity.n1.0.tar.gz",
             "tar.gz",
-            52964,
+            4074306,
         )
     ]
-    msmt_count = make_observations_for_file_entry_batch(
-        file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", "VE", False
+    obs_msmt_count = make_observations_for_file_entry_batch(
+        file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", "IR", False
     )
-    assert msmt_count == 5
+    assert obs_msmt_count == 453
+
+    make_ctrl(
+        clickhouse=db.clickhouse_url,
+        data_dir=datadir,
+        rebuild_ground_truths=True,
+        day=date(2023, 10, 31),
+    )
+    analysis_msmt_count = make_analysis_in_a_day(
+        probe_cc=["IR"],
+        test_name=["webconnectivity"],
+        clickhouse=db.clickhouse_url,
+        data_dir=datadir,
+        day=date(2023, 10, 31),
+        fast_fail=False,
+    )
+    assert analysis_msmt_count == obs_msmt_count
 
 
 def test_write_observations(measurements, netinfodb, db):
@@ -60,6 +90,16 @@ def test_write_observations(measurements, netinfodb, db):
         msmt = load_measurement(msmt_path=measurements[msmt_uid])
         write_observations_to_db(msmt, netinfodb, db, bucket_date)
     db.close()
+    cnt_by_cc = get_obs_count_by_cc(
+        db,
+        test_name=[],
+        start_day=date(2020, 1, 1),
+        end_day=date(2023, 12, 1),
+    )
+    assert cnt_by_cc["CH"] == 2
+    assert cnt_by_cc["GR"] == 4
+    assert cnt_by_cc["US"] == 3
+    assert cnt_by_cc["RU"] == 3
 
 
 def test_hirl_observations(measurements, netinfodb):

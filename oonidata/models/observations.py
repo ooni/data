@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 import dataclasses
 from datetime import datetime
 from typing import (
+    NamedTuple,
     Optional,
     List,
     Tuple,
@@ -77,6 +78,25 @@ def print_nice(obs):
         rows.append([maybe_elipse(getattr(o, k)) for k in headers])
     headers = [maybe_elipse(h, 5) for h in headers]
     print(tabulate(rows, headers=headers))
+
+
+def print_nice_vertical(single_obs):
+    meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
+    columns = []
+    if dataclasses.is_dataclass(single_obs):
+        columns = [f.name for f in dataclasses.fields(single_obs)]
+    elif hasattr(single_obs, "_fields"):
+        columns = [name for name in single_obs._fields]
+
+    rows = []
+    for col in columns:
+        rows.append(
+            [
+                maybe_elipse(col, max_len=32, rest_on_newline=True),
+                maybe_elipse(getattr(single_obs, col), 32),
+            ]
+        )
+    print(tabulate(rows, headers=["column", "value"], tablefmt="rounded_grid"))
 
 
 @add_slots

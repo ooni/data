@@ -15,7 +15,7 @@ from oonidata.analysis.control import (
     WebGroundTruth,
     BodyDB,
 )
-from oonidata.models.analysis import WebsiteAnalysis
+from oonidata.models.analysis import WebAnalysis
 
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.models.observations import WebControlObservation, WebObservation
@@ -600,23 +600,26 @@ def make_http_analysis(
     return http_analysis
 
 
-def make_website_analysis(
+def make_web_analysis(
     web_observations: List[WebObservation],
     web_ground_truths: List[WebGroundTruth],
     body_db: BodyDB,
     fingerprintdb: FingerprintDB,
-) -> Generator[WebsiteAnalysis, None, None]:
+) -> Generator[WebAnalysis, None, None]:
     domain_name = web_observations[0].hostname or ""
-    experiment_group = "websites"
-    # Ghetto hax attempt at consolidating targets
-    target_name = domain_name.replace("www.", "")
 
     dns_observations_by_hostname = defaultdict(list)
     dns_analysis_by_hostname = {}
     other_observations = []
     for web_o in web_observations:
         if web_o.dns_query_type:
-            assert web_o.hostname is not None
+            # assert web_o.hostname is not None, web_o
+            # TODO(arturo): this is a workaround for: https://github.com/ooni/probe/issues/2628
+            if web_o.hostname is None:
+                log.error(
+                    f"missing hostname for DNS query {web_o}. Skipping DNS observation."
+                )
+                continue
             dns_observations_by_hostname[web_o.hostname].append(web_o)
         else:
             other_observations.append(web_o)
@@ -631,7 +634,7 @@ def make_website_analysis(
         dns_analysis_by_hostname[hostname] = dns_analysis
 
     for idx, web_o in enumerate(web_observations):
-        subject = web_o.http_request_url or domain_name
+        target_detail = web_o.http_request_url or domain_name
         if web_o.ip:
             try:
                 ipaddr = ipaddress.ip_address(web_o.ip)
@@ -639,7 +642,7 @@ def make_website_analysis(
                 if isinstance(ipaddr, ipaddress.IPv6Address):
                     continue
                 address = encode_address(web_o.ip, web_o.port)
-                subject = f"{address} {subject}"
+                target_detail = f"{address} {target_detail}"
             except:
                 log.error(f"Invalid IP in {web_o.ip}")
 
@@ -666,12 +669,10 @@ def make_website_analysis(
             )
 
         created_at = datetime.utcnow()
-        website_analysis = WebsiteAnalysis(
+        website_analysis = WebAnalysis(
             measurement_uid=web_o.measurement_uid,
             observation_id=web_o.observation_id,
             created_at=created_at,
-            report_id=web_o.report_id,
-            input=web_o.input,
             measurement_start_time=web_o.measurement_start_time,
             probe_asn=web_o.probe_asn,
             probe_cc=web_o.probe_cc,
@@ -684,10 +685,8 @@ def make_website_analysis(
             resolver_as_cc=web_o.resolver_as_cc,
             resolver_cc=web_o.resolver_cc,
             analysis_id=f"{web_o.measurement_uid}_{idx}",
-            experiment_group=experiment_group,
-            domain_name=domain_name,
-            target_name=target_name,
-            subject=subject,
+            target_domain_name=domain_name,
+            target_detail=target_detail,
         )
 
         if dns_analysis:

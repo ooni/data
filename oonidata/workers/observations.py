@@ -25,7 +25,6 @@ from oonidata.netinfo import NetinfoDB
 
 from oonidata.dataclient import (
     date_interval,
-    iter_measurements,
     list_file_entries_batches,
     stream_measurements,
     ccs_set,

@@ -1,53 +1,74 @@
 import dataclasses
 import logging
-import multiprocessing as mp
 import pathlib
-import queue
 from datetime import date, datetime
-from multiprocessing.synchronize import Event as EventClass
-from threading import Thread
-from typing import List
+from typing import Dict, List
 
 import statsd
 
+from dask.distributed import Client as DaskClient
+from dask.distributed import progress as dask_progress
+from dask.distributed import wait as dask_wait
+from dask.distributed import as_completed
+
 from oonidata.analysis.control import BodyDB, WebGroundTruthDB
 from oonidata.analysis.datasources import iter_web_observations
-from oonidata.analysis.websites_features import make_website_analysis
+from oonidata.analysis.web_analysis import make_web_analysis
 from oonidata.dataclient import date_interval
 from oonidata.datautils import PerfTimer
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.fingerprintdb import FingerprintDB
-from oonidata.models.analysis import WebsiteAnalysis
+from oonidata.models.analysis import WebAnalysis
 from oonidata.netinfo import NetinfoDB
 from oonidata.workers.ground_truths import maybe_build_web_ground_truth
 
 from .common import (
+    get_obs_count_by_cc,
     get_prev_range,
     make_db_rows,
     maybe_delete_prev_range,
-    run_progress_thread,
 )
 
 log = logging.getLogger("oonidata.processing")
 
 
-def run_analysis(
-    day: date,
-    probe_cc: List[str],
-    fingerprintdb: FingerprintDB,
-    data_dir: pathlib.Path,
-    body_db: BodyDB,
-    db_writer: ClickhouseConnection,
+def make_ctrl(
     clickhouse: str,
+    data_dir: pathlib.Path,
+    rebuild_ground_truths: bool,
+    day: date,
+):
+    netinfodb = NetinfoDB(datadir=data_dir, download=False)
+    db_lookup = ClickhouseConnection(clickhouse)
+    maybe_build_web_ground_truth(
+        db=db_lookup,
+        netinfodb=netinfodb,
+        day=day,
+        data_dir=data_dir,
+        rebuild_ground_truths=rebuild_ground_truths,
+    )
+    db_lookup.close()
+
+
+def make_analysis_in_a_day(
+    probe_cc: List[str],
+    test_name: List[str],
+    clickhouse: str,
+    data_dir: pathlib.Path,
+    fast_fail: bool,
+    day: date,
 ):
     statsd_client = statsd.StatsClient("localhost", 8125)
-
-    column_names = [f.name for f in dataclasses.fields(WebsiteAnalysis)]
+    fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
+    body_db = BodyDB(db=ClickhouseConnection(clickhouse))
+    db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
     db_lookup = ClickhouseConnection(clickhouse)
+
+    column_names = [f.name for f in dataclasses.fields(WebAnalysis)]
 
     prev_range = get_prev_range(
         db=db_lookup,
-        table_name=WebsiteAnalysis.__table_name__,
+        table_name=WebAnalysis.__table_name__,
         timestamp=datetime.combine(day, datetime.min.time()),
         test_name=[],
         probe_cc=probe_cc,
@@ -61,7 +82,7 @@ def run_analysis(
     )
     web_ground_truth_db = WebGroundTruthDB()
     web_ground_truth_db.build_from_existing(str(ground_truth_db_path.absolute()))
-    statsd_client.timing("wgt_er_all.timed", t.ms)
+    statsd_client.timing("oonidata.web_analysis.ground_truth", t.ms)
     log.info(f"loaded ground truth DB for {day} in {t.pretty}")
 
     idx = 0
@@ -80,26 +101,25 @@ def run_analysis(
             continue
 
         try:
-            if statsd_client:
-                statsd_client.timing("wgt_an_reduced.timed", t.ms)
+            statsd_client.timing("oonidata.web_analysis.gt_lookup", t.ms)
             website_analysis = list(
-                make_website_analysis(
+                make_web_analysis(
                     web_observations=web_obs,
                     body_db=body_db,
                     web_ground_truths=relevant_gts,
                     fingerprintdb=fingerprintdb,
                 )
             )
+            if len(website_analysis) == 0:
+                log.info(f"no website analysis for {probe_cc}, {test_name}")
+                continue
             idx += 1
             table_name, rows = make_db_rows(
                 dc_list=website_analysis, column_names=column_names
             )
-            if idx % 100 == 0:
-                statsd_client.incr("make_website_an.er_count", count=100)
-                statsd_client.gauge("make_website_an.er_gauge", 100, delta=True)
-                idx = 0
-
-            statsd_client.timing("make_website_an.timing", t_er_gen.ms)
+            statsd_client.incr("oonidata.web_analysis.analysis.obs", 1, rate=0.1)  # type: ignore
+            statsd_client.gauge("oonidata.web_analysis.analysis.obs_idx", idx, rate=0.1)  # type: ignore
+            statsd_client.timing("oonidata.web_analysis.analysis.obs", t_er_gen.ms, rate=0.1)  # type: ignore
 
             with statsd_client.timer("db_write_rows.timing"):
                 db_writer.write_rows(
@@ -107,81 +127,68 @@ def run_analysis(
                     rows=rows,
                     column_names=column_names,
                 )
-            yield website_analysis
         except:
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate analysis for {web_obs_ids}", exc_info=True)
 
     maybe_delete_prev_range(
-        db=db_lookup, prev_range=prev_range, table_name=WebsiteAnalysis.__table_name__
+        db=db_lookup, prev_range=prev_range, table_name=WebAnalysis.__table_name__
     )
+    return idx
 
 
-class AnalysisWorker(mp.Process):
-    def __init__(
-        self,
-        day_queue: mp.JoinableQueue,
-        progress_queue: mp.Queue,
-        shutdown_event: EventClass,
-        data_dir: pathlib.Path,
-        probe_cc: List[str],
-        test_name: List[str],
-        clickhouse: str,
-        fast_fail: bool,
-        log_level: int = logging.INFO,
-    ):
-        super().__init__(daemon=True)
-        self.day_queue = day_queue
-        self.progress_queue = progress_queue
-        self.probe_cc = probe_cc
-        self.test_name = test_name
-        self.clickhouse = clickhouse
-        self.fast_fail = fast_fail
-        self.data_dir = data_dir
+def make_cc_batches(
+    cnt_by_cc: Dict[str, int],
+    probe_cc: List[str],
+    parallelism: int,
+) -> List[List[str]]:
+    """
+    The goal of this function is to spread the load of each batch of
+    measurements by probe_cc. This allows us to parallelize analysis on a
+    per-country basis based on the number of measurements.
+    We assume that the measurements are uniformly distributed over the tested
+    interval and then break them up into a number of batches equivalent to the
+    parallelism count based on the number of measurements in each country.
 
-        self.shutdown_event = shutdown_event
-        log.setLevel(log_level)
+    Here is a concrete example, suppose we have 3 countries IT, IR, US with 300,
+    400, 1000 measurements respectively and a parallelism of 2, we will be
+    creating 2 batches where the first has in it IT, IR and the second has US.
+    """
+    if len(probe_cc) > 0:
+        selected_ccs_with_cnt = set(probe_cc).intersection(set(cnt_by_cc.keys()))
+        if len(selected_ccs_with_cnt) == 0:
+            raise Exception(
+                f"No observations for {probe_cc} in the time range. Try adjusting the date range or choosing different countries"
+            )
+        # We remove from the cnt_by_cc all the countries we are not interested in
+        cnt_by_cc = {k: cnt_by_cc[k] for k in selected_ccs_with_cnt}
 
-    def run(self):
+    total_obs_cnt = sum(cnt_by_cc.values())
 
-        db_writer = ClickhouseConnection(self.clickhouse, row_buffer_size=10_000)
-        fingerprintdb = FingerprintDB(datadir=self.data_dir, download=False)
+    # We assume uniform distribution of observations per (country, day)
+    max_obs_per_batch = total_obs_cnt / parallelism
 
-        body_db = BodyDB(db=ClickhouseConnection(self.clickhouse))
-
-        while not self.shutdown_event.is_set():
+    # We break up the countries into batches where the count of observations in
+    # each batch is roughly equal.
+    # This is done so that we can spread the load based on the countries in
+    # addition to the time range.
+    cc_batches = []
+    current_cc_batch_size = 0
+    current_cc_batch = []
+    while cnt_by_cc:
+        while current_cc_batch_size <= max_obs_per_batch:
             try:
-                day = self.day_queue.get(block=True, timeout=0.1)
-            except queue.Empty:
-                continue
-
-            log.info(f"generating experiment results from {day}")
-            try:
-                for idx, _ in enumerate(
-                    run_analysis(
-                        day=day,
-                        probe_cc=self.probe_cc,
-                        fingerprintdb=fingerprintdb,
-                        data_dir=self.data_dir,
-                        body_db=body_db,
-                        db_writer=db_writer,
-                        clickhouse=self.clickhouse,
-                    )
-                ):
-                    if idx % 100 == 0:
-                        self.progress_queue.put(100)
-            except Exception:
-                log.error(f"failed to process {day}", exc_info=True)
-
-            finally:
-                log.info(f"finished processing day {day}")
-                self.day_queue.task_done()
-
-        log.info("process is done")
-        try:
-            db_writer.close()
-        except:
-            log.error("failed to flush database", exc_info=True)
+                cc, cnt = cnt_by_cc.popitem()
+            except KeyError:
+                break
+            current_cc_batch.append(cc)
+            current_cc_batch_size += cnt
+        cc_batches.append(current_cc_batch)
+        current_cc_batch = []
+        current_cc_batch_size = 0
+    if len(current_cc_batch) > 0:
+        cc_batches.append(current_cc_batch)
+    return cc_batches
 
 
 def start_analysis(
@@ -196,65 +203,61 @@ def start_analysis(
     rebuild_ground_truths: bool,
     log_level: int = logging.INFO,
 ):
-    netinfodb = NetinfoDB(datadir=data_dir, download=False)
-
-    shutdown_event = mp.Event()
-    worker_shutdown_event = mp.Event()
-
-    progress_queue = mp.JoinableQueue()
-
-    progress_thread = Thread(
-        target=run_progress_thread, args=(progress_queue, shutdown_event)
+    t_total = PerfTimer()
+    dask_client = DaskClient(
+        threads_per_worker=2,
+        n_workers=parallelism,
     )
-    progress_thread.start()
 
-    workers = []
-    day_queue = mp.JoinableQueue()
-    for _ in range(parallelism):
-        worker = AnalysisWorker(
-            day_queue=day_queue,
-            progress_queue=progress_queue,
-            shutdown_event=worker_shutdown_event,
-            probe_cc=probe_cc,
-            test_name=test_name,
-            data_dir=data_dir,
-            clickhouse=clickhouse,
-            fast_fail=fast_fail,
-            log_level=log_level,
-        )
-        worker.start()
-        log.info(f"started worker {worker.pid}")
-        workers.append(worker)
-
-    db_lookup = ClickhouseConnection(clickhouse)
-
+    t = PerfTimer()
+    # TODO: maybe use dask for this too
+    log.info("building ground truth databases")
     for day in date_interval(start_day, end_day):
-        maybe_build_web_ground_truth(
-            db=db_lookup,
-            netinfodb=netinfodb,
-            day=day,
+        make_ctrl(
+            clickhouse=clickhouse,
             data_dir=data_dir,
             rebuild_ground_truths=rebuild_ground_truths,
+            day=day,
         )
-        day_queue.put(day)
+    log.info(f"built ground truth db in {t.pretty}")
 
-    log.info("waiting for the day queue to finish")
-    day_queue.join()
+    with ClickhouseConnection(clickhouse) as db:
+        cnt_by_cc = get_obs_count_by_cc(
+            db, start_day=start_day, end_day=end_day, test_name=test_name
+        )
+    cc_batches = make_cc_batches(
+        cnt_by_cc=cnt_by_cc,
+        probe_cc=probe_cc,
+        parallelism=parallelism,
+    )
+    log.info(
+        f"starting processing of {len(cc_batches)} batches over {(end_day - start_day).days} days (parallelism = {parallelism})"
+    )
+    log.info(f"({cc_batches} from {start_day} to {end_day}")
 
-    log.info("sending shutdown signal to workers")
-    worker_shutdown_event.set()
+    future_list = []
+    for probe_cc in cc_batches:
+        for day in date_interval(start_day, end_day):
+            t = dask_client.submit(
+                make_analysis_in_a_day,
+                probe_cc,
+                test_name,
+                clickhouse,
+                data_dir,
+                fast_fail,
+                day,
+            )
+            future_list.append(t)
 
-    log.info("waiting for progress queue to finish")
-    progress_queue.join()
+    log.debug("starting progress monitoring")
+    dask_progress(future_list)
+    log.debug("waiting on task_list")
+    dask_wait(future_list)
+    total_obs_count = 0
+    for _, result in as_completed(future_list, with_results=True):
+        total_obs_count += result  # type: ignore
 
-    log.info("waiting for experiment workers to finish running")
-    for idx, p in enumerate(workers):
-        log.info(f"waiting worker {idx} to join")
-        p.join()
-        log.info(f"waiting worker {idx} to close")
-        p.close()
-
-    log.info("sending shutdown event progress thread")
-    shutdown_event.set()
-    log.info("waiting on progress queue")
-    progress_thread.join()
+    log.info(f"produces a total of {total_obs_count} analysis")
+    obs_per_sec = round(total_obs_count / t_total.s)
+    log.info(f"finished processing {start_day} - {end_day} speed: {obs_per_sec}obs/s)")
+    log.info(f"{total_obs_count} msmts in {t_total.pretty}")
