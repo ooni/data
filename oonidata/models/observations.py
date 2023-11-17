@@ -79,6 +79,20 @@ def print_nice(obs):
     print(tabulate(rows, headers=headers))
 
 
+def print_nice_vertical(single_obs):
+    meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
+    columns = [f.name for f in dataclasses.fields(single_obs)]
+    rows = []
+    for col in columns:
+        rows.append(
+            [
+                maybe_elipse(col, max_len=32, rest_on_newline=True),
+                maybe_elipse(getattr(single_obs, col), 32),
+            ]
+        )
+    print(tabulate(rows, headers=["column", "value"], tablefmt="rounded_grid"))
+
+
 @add_slots
 @dataclass
 class HTTPObservation:

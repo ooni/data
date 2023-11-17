@@ -200,4 +200,4 @@ def run_progress_thread(
             pbar.update(count)
             pbar.set_description(desc)
         finally:
-            status_queue.task_done()
+            status_queue.task_done()  # type: ignore

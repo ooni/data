@@ -446,7 +446,9 @@ def removeprefix(s: str, prefix: str):
     return s[len(prefix) :]
 
 
-def maybe_elipse(s, max_len=16):
+def maybe_elipse(s, max_len=16, rest_on_newline=False):
     if isinstance(s, str) and len(s) > max_len:
+        if rest_on_newline:
+            return s[:max_len] + "\n" + s[max_len:]
         return s[:max_len] + "…"
     return s
