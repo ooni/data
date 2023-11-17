@@ -13,7 +13,7 @@ from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
-from oonidata.workers.analysis import make_analysis_in_a_day, make_ctrl
+from oonidata.workers.analysis import make_analysis_in_a_day, make_cc_batches, make_ctrl
 from oonidata.workers.common import get_obs_count_by_cc
 from oonidata.workers.observations import (
     make_observations_for_file_entry_batch,
@@ -23,6 +23,17 @@ from oonidata.workers.response_archiver import ResponseArchiver
 from oonidata.workers.fingerprint_hunter import fingerprint_hunter
 from oonidata.transforms import measurement_to_observations
 from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+
+
+def test_make_cc_batches():
+    cc_batches = make_cc_batches(
+        cnt_by_cc={"IT": 100, "IR": 300, "US": 1000},
+        probe_cc=["IT", "IR", "US"],
+        parallelism=2,
+    )
+    assert len(cc_batches) == 2
+    # We expect the batches to be broken up into (IT, IR), ("US")
+    assert any([set(x) == set(["US"]) for x in cc_batches]) == True
 
 
 def test_make_file_entry_batch(datadir, db):

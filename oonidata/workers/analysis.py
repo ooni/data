@@ -2,7 +2,7 @@ import dataclasses
 import logging
 import pathlib
 from datetime import date, datetime
-from typing import List
+from typing import Dict, List
 
 import statsd
 
@@ -137,6 +137,60 @@ def make_analysis_in_a_day(
     return idx
 
 
+def make_cc_batches(
+    cnt_by_cc: Dict[str, int],
+    probe_cc: List[str],
+    parallelism: int,
+) -> List[List[str]]:
+    """
+    The goal of this function is to spread the load of each batch of
+    measurements by probe_cc. This allows us to parallelize analysis on a
+    per-country basis based on the number of measurements.
+    We assume that the measurements are uniformly distributed over the tested
+    interval and then break them up into a number of batches equivalent to the
+    parallelism count based on the number of measurements in each country.
+
+    Here is a concrete example, suppose we have 3 countries IT, IR, US with 300,
+    400, 1000 measurements respectively and a parallelism of 2, we will be
+    creating 2 batches where the first has in it IT, IR and the second has US.
+    """
+    if len(probe_cc) > 0:
+        selected_ccs_with_cnt = set(probe_cc).intersection(set(cnt_by_cc.keys()))
+        if len(selected_ccs_with_cnt) == 0:
+            raise Exception(
+                f"No observations for {probe_cc} in the time range. Try adjusting the date range or choosing different countries"
+            )
+        # We remove from the cnt_by_cc all the countries we are not interested in
+        cnt_by_cc = {k: cnt_by_cc[k] for k in selected_ccs_with_cnt}
+
+    total_obs_cnt = sum(cnt_by_cc.values())
+
+    # We assume uniform distribution of observations per (country, day)
+    max_obs_per_batch = total_obs_cnt / parallelism
+
+    # We break up the countries into batches where the count of observations in
+    # each batch is roughly equal.
+    # This is done so that we can spread the load based on the countries in
+    # addition to the time range.
+    cc_batches = []
+    current_cc_batch_size = 0
+    current_cc_batch = []
+    while cnt_by_cc:
+        while current_cc_batch_size <= max_obs_per_batch:
+            try:
+                cc, cnt = cnt_by_cc.popitem()
+            except KeyError:
+                break
+            current_cc_batch.append(cc)
+            current_cc_batch_size += cnt
+        cc_batches.append(current_cc_batch)
+        current_cc_batch = []
+        current_cc_batch_size = 0
+    if len(current_cc_batch) > 0:
+        cc_batches.append(current_cc_batch)
+    return cc_batches
+
+
 def start_analysis(
     probe_cc: List[str],
     test_name: List[str],
@@ -171,45 +225,13 @@ def start_analysis(
         cnt_by_cc = get_obs_count_by_cc(
             db, start_day=start_day, end_day=end_day, test_name=test_name
         )
-    if len(probe_cc) > 0:
-        selected_ccs_with_cnt = set(probe_cc).intersection(set(cnt_by_cc.keys()))
-        if len(selected_ccs_with_cnt) == 0:
-            log.error(
-                f"No observations for {probe_cc} in the time range {start_day} - {end_day}. Try adjusting the date range or choosing different countries"
-            )
-            return
-        # We remove from the cnt_by_cc all the countries we are not interested in
-        cnt_by_cc = {k: cnt_by_cc[k] for k in selected_ccs_with_cnt}
-
-    total_obs_cnt = sum(cnt_by_cc.values())
-    total_days = (end_day - start_day).days
-
-    # We assume uniform distribution of observations per (country, day)
-    max_obs_per_batch = (total_obs_cnt / total_days) / parallelism
-
-    # We break up the countries into batches where the count of observations in
-    # each batch is roughly equal.
-    # This is done so that we can spread the load based on the countries in
-    # addition to the time range.
-    cc_batches = []
-    current_cc_batch_size = 0
-    current_cc_batch = []
-    while cnt_by_cc:
-        while current_cc_batch_size <= max_obs_per_batch:
-            try:
-                cc, cnt = cnt_by_cc.popitem()
-            except KeyError:
-                break
-            current_cc_batch.append(cc)
-            current_cc_batch_size += cnt
-        cc_batches.append(current_cc_batch)
-        current_cc_batch = []
-        current_cc_batch_size = 0
-    if len(current_cc_batch) > 0:
-        cc_batches.append(current_cc_batch)
-
+    cc_batches = make_cc_batches(
+        cnt_by_cc=cnt_by_cc,
+        probe_cc=probe_cc,
+        parallelism=parallelism,
+    )
     log.info(
-        f"starting processing of {len(cc_batches)} batches over {total_days} days (parallelism = {parallelism})"
+        f"starting processing of {len(cc_batches)} batches over {(end_day - start_day).days} days (parallelism = {parallelism})"
     )
     log.info(f"({cc_batches} from {start_day} to {end_day}")
 
