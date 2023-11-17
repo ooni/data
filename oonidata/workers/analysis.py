@@ -3,6 +3,7 @@ import logging
 import pathlib
 from datetime import date, datetime
 from typing import Dict, List
+import orjson
 
 import statsd
 
@@ -14,11 +15,13 @@ from dask.distributed import as_completed
 from oonidata.analysis.control import BodyDB, WebGroundTruthDB
 from oonidata.analysis.datasources import iter_web_observations
 from oonidata.analysis.web_analysis import make_web_analysis
+from oonidata.analysis.website_experiment_results import make_website_experiment_results
 from oonidata.dataclient import date_interval
 from oonidata.datautils import PerfTimer
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.models.analysis import WebAnalysis
+from oonidata.models.experiment_result import MeasurementExperimentResult
 from oonidata.netinfo import NetinfoDB
 from oonidata.workers.ground_truths import maybe_build_web_ground_truth
 
@@ -27,6 +30,7 @@ from .common import (
     get_prev_range,
     make_db_rows,
     maybe_delete_prev_range,
+    optimize_all_tables,
 )
 
 log = logging.getLogger("oonidata.processing")
@@ -58,13 +62,17 @@ def make_analysis_in_a_day(
     fast_fail: bool,
     day: date,
 ):
+    log.info("Optimizing all tables")
+    optimize_all_tables(clickhouse)
+
     statsd_client = statsd.StatsClient("localhost", 8125)
     fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
     body_db = BodyDB(db=ClickhouseConnection(clickhouse))
     db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
     db_lookup = ClickhouseConnection(clickhouse)
 
-    column_names = [f.name for f in dataclasses.fields(WebAnalysis)]
+    column_names_wa = [f.name for f in dataclasses.fields(WebAnalysis)]
+    column_names_er = [f.name for f in dataclasses.fields(MeasurementExperimentResult)]
 
     prev_range = get_prev_range(
         db=db_lookup,
@@ -115,7 +123,7 @@ def make_analysis_in_a_day(
                 continue
             idx += 1
             table_name, rows = make_db_rows(
-                dc_list=website_analysis, column_names=column_names
+                dc_list=website_analysis, column_names=column_names_wa
             )
             statsd_client.incr("oonidata.web_analysis.analysis.obs", 1, rate=0.1)  # type: ignore
             statsd_client.gauge("oonidata.web_analysis.analysis.obs_idx", idx, rate=0.1)  # type: ignore
@@ -125,8 +133,23 @@ def make_analysis_in_a_day(
                 db_writer.write_rows(
                     table_name=table_name,
                     rows=rows,
-                    column_names=column_names,
+                    column_names=column_names_wa,
                 )
+
+            with statsd_client.timer("oonidata.web_analysis.experiment_results.timing"):
+                website_er = list(make_website_experiment_results(website_analysis))
+                table_name, rows = make_db_rows(
+                    dc_list=website_er,
+                    column_names=column_names_er,
+                    custom_remap={"loni_list": orjson.dumps},
+                )
+
+            db_writer.write_rows(
+                table_name=table_name,
+                rows=rows,
+                column_names=column_names_er,
+            )
+
         except:
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate analysis for {web_obs_ids}", exc_info=True)
@@ -175,11 +198,12 @@ def make_cc_batches(
     cc_batches = []
     current_cc_batch_size = 0
     current_cc_batch = []
-    while cnt_by_cc:
+    cnt_by_cc_sorted = sorted(cnt_by_cc.items(), key=lambda x: x[0])
+    while cnt_by_cc_sorted:
         while current_cc_batch_size <= max_obs_per_batch:
             try:
-                cc, cnt = cnt_by_cc.popitem()
-            except KeyError:
+                cc, cnt = cnt_by_cc_sorted.pop()
+            except IndexError:
                 break
             current_cc_batch.append(cc)
             current_cc_batch_size += cnt

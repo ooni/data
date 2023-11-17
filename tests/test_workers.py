@@ -1,20 +1,19 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import gzip
 from pathlib import Path
 import sqlite3
-from typing import List
+from typing import List, Tuple
 from unittest.mock import MagicMock
 
 from oonidata.analysis.datasources import load_measurement
 
 from oonidata.dataclient import stream_jsonl
-from oonidata.db.connections import ClickhouseConnection
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
 from oonidata.workers.analysis import make_analysis_in_a_day, make_cc_batches, make_ctrl
-from oonidata.workers.common import get_obs_count_by_cc
+from oonidata.workers.common import get_obs_count_by_cc, get_prev_range
 from oonidata.workers.observations import (
     make_observations_for_file_entry_batch,
     write_observations_to_db,
@@ -23,6 +22,72 @@ from oonidata.workers.response_archiver import ResponseArchiver
 from oonidata.workers.fingerprint_hunter import fingerprint_hunter
 from oonidata.transforms import measurement_to_observations
 from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+
+
+def test_get_prev_range(db):
+    db.execute("DROP TABLE IF EXISTS test_range")
+    db.execute(
+        """CREATE TABLE test_range (
+        created_at DateTime64(3, 'UTC'),
+        bucket_date String,
+        test_name String,
+        probe_cc String
+    )
+    ENGINE = MergeTree
+    ORDER BY (bucket_date, created_at)
+    """
+    )
+    bucket_date = "2000-01-01"
+    test_name = "web_connectivity"
+    probe_cc = "IT"
+    min_time = datetime(2000, 1, 1, 23, 42, 00, tzinfo=timezone.utc)
+    rows = [(min_time, bucket_date, test_name, probe_cc)]
+    for i in range(200):
+        rows.append((min_time + timedelta(seconds=i), bucket_date, test_name, probe_cc))
+    db.execute(
+        "INSERT INTO test_range (created_at, bucket_date, test_name, probe_cc) VALUES",
+        rows,
+    )
+    prev_range = get_prev_range(
+        db,
+        "test_range",
+        test_name=[test_name],
+        bucket_date=bucket_date,
+        probe_cc=[probe_cc],
+    )
+    assert prev_range.min_created_at and prev_range.max_created_at
+    assert prev_range.min_created_at == (min_time - timedelta(seconds=1))
+    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1))
+    db.execute("TRUNCATE TABLE test_range")
+
+    bucket_date = "2000-03-01"
+    test_name = "web_connectivity"
+    probe_cc = "IT"
+    min_time = datetime(2000, 1, 1, 23, 42, 00, tzinfo=timezone.utc)
+    rows: List[Tuple[datetime, str, str, str]] = []
+    for i in range(10):
+        rows.append(
+            (min_time + timedelta(seconds=i), "2000-02-01", test_name, probe_cc)
+        )
+    min_time = rows[-1][0]
+    for i in range(10):
+        rows.append((min_time + timedelta(seconds=i), bucket_date, test_name, probe_cc))
+
+    db.execute(
+        "INSERT INTO test_range (created_at, bucket_date, test_name, probe_cc) VALUES",
+        rows,
+    )
+    prev_range = get_prev_range(
+        db,
+        "test_range",
+        test_name=[test_name],
+        bucket_date=bucket_date,
+        probe_cc=[probe_cc],
+    )
+    assert prev_range.min_created_at and prev_range.max_created_at
+    assert prev_range.min_created_at == (min_time - timedelta(seconds=1))
+    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1))
+    db.execute("DROP TABLE test_range")
 
 
 def test_make_cc_batches():

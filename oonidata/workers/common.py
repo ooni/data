@@ -6,6 +6,8 @@ from multiprocessing.synchronize import Event as EventClass
 from datetime import date, datetime, timedelta
 
 from typing import (
+    Any,
+    Callable,
     Dict,
     List,
     NamedTuple,
@@ -21,6 +23,7 @@ from oonidata.dataclient import (
 from oonidata.db.connections import (
     ClickhouseConnection,
 )
+from oonidata.db.create_tables import create_queries
 
 log = logging.getLogger("oonidata.processing")
 
@@ -73,12 +76,13 @@ def get_prev_range(
     end_timestamp = None
     where = None
     where = "WHERE bucket_date = %(bucket_date)s"
-    q_args = {"bucket_date": bucket_date}
+    q_args: Dict[str, Any] = {"bucket_date": bucket_date}
     if timestamp:
         start_timestamp = timestamp
         end_timestamp = timestamp + timedelta(days=1)
-        q_args = {"start_timestamp": start_timestamp, "end_timestamp": end_timestamp}
-        where = f"WHERE {timestamp_column} >= %(start_timestamp)s AND {timestamp_column} < %(end_timestamp)s"
+        q_args["start_timestamp"] = start_timestamp
+        q_args["end_timestamp"] = end_timestamp
+        where += f" AND {timestamp_column} >= %(start_timestamp)s AND {timestamp_column} < %(end_timestamp)s"
 
     if len(test_name) > 0:
         test_name_list = []
@@ -95,7 +99,10 @@ def get_prev_range(
             probe_cc_list.append(f"'{cc}'")
         where += " AND probe_cc IN ({})".format(",".join(probe_cc_list))
 
-    prev_obs_range = db.execute(q + where, q_args)
+    final_query = q + where
+    print(final_query)
+    print(q_args)
+    prev_obs_range = db.execute(final_query, q_args)
     assert isinstance(prev_obs_range, list) and len(prev_obs_range) == 1
     max_created_at, min_created_at = prev_obs_range[0]
 
@@ -113,6 +120,12 @@ def get_prev_range(
         where=where,
         bucket_date=bucket_date,
     )
+
+
+def optimize_all_tables(clickhouse):
+    with ClickhouseConnection(clickhouse) as db:
+        for _, table_name in create_queries:
+            db.execute(f"OPTIMIZE TABLE {table_name}")
 
 
 def get_obs_count_by_cc(
@@ -159,9 +172,17 @@ def maybe_delete_prev_range(
 
 
 def make_db_rows(
-    dc_list: List, column_names: List[str], bucket_date: Optional[str] = None
+    dc_list: List,
+    column_names: List[str],
+    bucket_date: Optional[str] = None,
+    custom_remap: Optional[Dict[str, Callable]] = None,
 ) -> Tuple[str, List[str]]:
     assert len(dc_list) > 0
+
+    def maybe_remap(k, value):
+        if custom_remap and k in custom_remap:
+            return custom_remap[k](value)
+        return value
 
     table_name = dc_list[0].__table_name__
     rows = []
@@ -169,7 +190,7 @@ def make_db_rows(
         if bucket_date:
             d.bucket_date = bucket_date
         assert table_name == d.__table_name__, "inconsistent group of observations"
-        rows.append(tuple(getattr(d, k) for k in column_names))
+        rows.append(tuple(maybe_remap(k, getattr(d, k)) for k in column_names))
 
     return table_name, rows
 

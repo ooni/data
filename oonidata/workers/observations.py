@@ -37,6 +37,7 @@ from oonidata.workers.common import (
     get_prev_range,
     make_db_rows,
     maybe_delete_prev_range,
+    optimize_all_tables,
 )
 
 log = logging.getLogger("oonidata.processing")
@@ -210,6 +211,9 @@ def start_observation_maker(
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
+    log.info("Optimizing all tables")
+    optimize_all_tables(clickhouse)
+
     dask_client = DaskClient(
         threads_per_worker=2,
         n_workers=parallelism,
@@ -219,6 +223,8 @@ def start_observation_maker(
     total_size, total_msmt_count = 0, 0
     day_list = list(date_interval(start_day, end_day))
     # See: https://stackoverflow.com/questions/51099685/best-practices-in-setting-number-of-dask-workers
+
+    log.info(f"Starting observation making on {probe_cc} ({start_day} - {end_day})")
     for day in day_list:
         t = PerfTimer()
         size, msmt_count = make_observation_in_day(

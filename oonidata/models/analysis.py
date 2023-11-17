@@ -67,6 +67,7 @@ class WebAnalysis:
     dns_consistency_system_is_answer_probe_cc_match: Optional[bool] = None
     dns_consistency_system_is_answer_bogon: Optional[bool] = None
     dns_consistency_system_answer_fp_name: Optional[str] = None
+    dns_consistency_system_answer_fp_scope: Optional[str] = None
     dns_consistency_system_is_answer_fp_match: Optional[bool] = None
     dns_consistency_system_is_answer_fp_country_consistent: Optional[bool] = None
     dns_consistency_system_is_answer_fp_false_positive: Optional[bool] = None
@@ -88,6 +89,7 @@ class WebAnalysis:
     dns_consistency_other_is_answer_probe_cc_match: Optional[bool] = None
     dns_consistency_other_is_answer_bogon: Optional[bool] = None
     dns_consistency_other_answer_fp_name: Optional[str] = None
+    dns_consistency_other_answer_fp_scope: Optional[str] = None
     dns_consistency_other_is_answer_fp_match: Optional[bool] = None
     dns_consistency_other_is_answer_fp_country_consistent: Optional[bool] = None
     dns_consistency_other_is_answer_fp_false_positive: Optional[bool] = None
@@ -112,6 +114,7 @@ class WebAnalysis:
     tls_ground_truth_trusted_ok_count: Optional[int] = None
     tcp_address: Optional[str] = None
     tcp_success: Optional[bool] = None
+    tcp_failure: Optional[str] = None
     tcp_ground_truth_failure_count: Optional[int] = None
     tcp_ground_truth_failure_asn_cc_count: Optional[int] = None
     tcp_ground_truth_ok_count: Optional[int] = None
@@ -132,6 +135,7 @@ class WebAnalysis:
     http_ground_truth_trusted_failure_count: Optional[int] = None
     http_ground_truth_body_length: Optional[int] = None
     http_fp_name: Optional[str] = None
+    http_fp_scope: Optional[str] = None
     http_is_http_fp_match: Optional[bool] = None
     http_is_http_fp_country_consistent: Optional[bool] = None
     http_is_http_fp_false_positive: Optional[bool] = None

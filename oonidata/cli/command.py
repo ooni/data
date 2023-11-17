@@ -437,6 +437,7 @@ def checkdb(
     Check if the database tables require migrations. If the create-tables flag
     is not specified, it will not perform any operations.
     """
+
     if create_tables:
         if not clickhouse:
             click.echo("--clickhouse needs to be specified when creating tables")

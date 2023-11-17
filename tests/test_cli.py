@@ -58,7 +58,7 @@ def test_full_workflow(
             "--data-dir",
             datadir,
             "--clickhouse",
-            "clickhouse://localhost/testing_oonidata",
+            db.clickhouse_url,
             # "--archives-dir",
             # tmp_path.absolute(),
         ],
@@ -90,7 +90,7 @@ def test_full_workflow(
             "--data-dir",
             datadir,
             "--clickhouse",
-            "clickhouse://localhost/testing_oonidata",
+            db.clickhouse_url,
         ],
     )
     assert result.exit_code == 0
@@ -134,7 +134,7 @@ def test_full_workflow(
     result = cli_runner.invoke(
         cli,
         [
-            "mker",
+            "mkanalysis",
             "--probe-cc",
             "BA",
             "--start-day",
@@ -146,11 +146,11 @@ def test_full_workflow(
             "--data-dir",
             datadir,
             "--clickhouse",
-            "clickhouse://localhost/testing_oonidata",
+            db.clickhouse_url,
         ],
     )
     assert result.exit_code == 0
     res = db.execute(
-        "SELECT COUNT(DISTINCT(measurement_uid)) FROM experiment_result WHERE measurement_uid LIKE '20221020%' AND probe_cc = 'BA'"
+        "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
     )
     assert res[0][0] == 200  # type: ignore
