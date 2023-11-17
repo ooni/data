@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 import dataclasses
 from datetime import datetime
 from typing import (
+    NamedTuple,
     Optional,
     List,
     Tuple,
@@ -81,7 +82,12 @@ def print_nice(obs):
 
 def print_nice_vertical(single_obs):
     meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
-    columns = [f.name for f in dataclasses.fields(single_obs)]
+    columns = []
+    if dataclasses.is_dataclass(single_obs):
+        columns = [f.name for f in dataclasses.fields(single_obs)]
+    elif hasattr(single_obs, "_fields"):
+        columns = [name for name in single_obs._fields]
+
     rows = []
     for col in columns:
         rows.append(
