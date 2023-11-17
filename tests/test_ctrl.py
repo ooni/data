@@ -148,7 +148,7 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
     relevant_gts = web_ground_truth_db.lookup_by_web_obs(web_obs=web_obs)
     assert len(relevant_gts) == 2
     for gt in relevant_gts:
-        if gt.ip is not None:
+        if gt.ip:
             assert gt.ip_asn == 47172
             assert gt.ip_as_org_name
             assert "greenhost" in gt.ip_as_org_name.lower()
