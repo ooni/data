@@ -13,6 +13,7 @@ from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
+from oonidata.workers.analysis import make_analysis_in_a_day, make_ctrl
 from oonidata.workers.common import get_obs_count_by_cc
 from oonidata.workers.observations import (
     make_observations_for_file_entry_batch,
@@ -28,15 +29,31 @@ def test_make_file_entry_batch(datadir, db):
     file_entry_batch = [
         (
             "ooni-data-eu-fra",
-            "raw/20231031/15/VE/whatsapp/2023103115_VE_whatsapp.n1.0.tar.gz",
+            "raw/20231031/15/IR/webconnectivity/2023103115_IR_webconnectivity.n1.0.tar.gz",
             "tar.gz",
-            52964,
+            4074306,
         )
     ]
-    msmt_count = make_observations_for_file_entry_batch(
-        file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", "VE", False
+    obs_msmt_count = make_observations_for_file_entry_batch(
+        file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", "IR", False
     )
-    assert msmt_count == 5
+    assert obs_msmt_count == 453
+
+    make_ctrl(
+        clickhouse=db.clickhouse_url,
+        data_dir=datadir,
+        rebuild_ground_truths=True,
+        day=date(2023, 10, 31),
+    )
+    analysis_msmt_count = make_analysis_in_a_day(
+        probe_cc=["IR"],
+        test_name=["webconnectivity"],
+        clickhouse=db.clickhouse_url,
+        data_dir=datadir,
+        day=date(2023, 10, 31),
+        fast_fail=False,
+    )
+    assert analysis_msmt_count == obs_msmt_count
 
 
 def test_write_observations(measurements, netinfodb, db):
