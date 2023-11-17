@@ -1,4 +1,5 @@
 import dataclasses
+from dataclasses import dataclass
 import logging
 from typing import Any, Dict, Generator, List, Optional, NamedTuple, Mapping, Tuple
 from enum import Enum
@@ -68,16 +69,19 @@ class Outcome(NamedTuple):
     blocked_score: float
 
 
-class ExperimentResultInstant(NamedTuple):
-    __table_name__ = "experiment_result_instant"
-
-    experiment_result_id: str
+@dataclass
+class MeasurementExperimentResult:
+    __table_name__ = "measurement_experiment_result"
+    __table_index__ = (
+        "measurement_uid",
+        "timeofday",
+    )
 
     # The measurement used to generate this experiment result
     measurement_uid: str
 
     # The list of observations used to generate this experiment result
-    observation_id: List[str]
+    observation_id_list: List[str]
 
     # The timeofday for which this experiment result is relevant. We use the
     # timeofday convention to differentiate it from the timestamp which is an
@@ -161,9 +165,15 @@ class ExperimentResultInstant(NamedTuple):
     loni_blocked_keys: List[str]
     loni_blocked_values: List[float]
 
+    loni_ok_keys: List[str]
+    loni_ok_values: List[float]
+
+    # Encoded as JSON
+    loni_list: List[Dict]
+
     # Inside this string we include a representation of the logic that lead us
     # to produce the above loni values
-    analysis_transcript: Optional[str]
+    analysis_transcript_list: List[List[str]]
 
     # Number of measurements used to produce this experiment result
     measurement_count: int
@@ -173,8 +183,8 @@ class ExperimentResultInstant(NamedTuple):
     vp_count: int
 
     # Backward compatible anomaly/confirmed flags
-    anomaly: bool
-    confirmed: bool
+    anomaly: Optional[bool]
+    confirmed: Optional[bool]
 
 
 class ExperimentResult(NamedTuple):

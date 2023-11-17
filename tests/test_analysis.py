@@ -310,6 +310,6 @@ def test_website_web_analysis_blocked(fingerprintdb, netinfodb, measurements, da
         )
     )
     assert len(web_analysis) == len(web_obs)
-    for wa in web_analysis:
-        print(wa.measurement_uid)
-        print_nice_vertical(wa)
+    # for wa in web_analysis:
+    #    print(wa.measurement_uid)
+    #    print_nice_vertical(wa)

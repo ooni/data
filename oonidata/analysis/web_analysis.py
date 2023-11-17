@@ -83,6 +83,7 @@ def encode_address(ip: str, port: Optional[int]) -> str:
 class TCPAnalysis:
     address: str
     success: bool
+    failure: Optional[str]
 
     ground_truth_failure_count: Optional[int]
     ground_truth_failure_asn_cc_count: Optional[int]
@@ -105,6 +106,7 @@ def make_tcp_analysis(
         return TCPAnalysis(
             address=blocking_subject,
             success=True,
+            failure=None,
             ground_truth_failure_asn_cc_count=None,
             ground_truth_failure_count=None,
             ground_truth_ok_asn_cc_count=None,
@@ -154,6 +156,7 @@ def make_tcp_analysis(
     return TCPAnalysis(
         address=blocking_subject,
         success=False,
+        failure=web_o.tcp_failure,
         ground_truth_failure_asn_cc_count=tcp_ground_truth_failure_asn_cc_count,
         ground_truth_failure_count=tcp_ground_truth_failure_count,
         ground_truth_ok_asn_cc_count=tcp_ground_truth_ok_asn_cc_count,
@@ -261,6 +264,7 @@ class DNSConsistencyResults:
     is_answer_bogon: bool = False
 
     answer_fp_name: str = ""
+    answer_fp_scope: str = ""
     is_answer_fp_match: bool = False
     is_answer_fp_country_consistent: bool = False
     is_answer_fp_false_positive: bool = False
@@ -318,6 +322,7 @@ def check_dns_consistency(
             # XXX in the event of multiple matches, we are overriding it with
             # the last value. It's probably OK for now.
             consistency_results.answer_fp_name = fp.name
+            consistency_results.answer_fp_scope = fp.scope or ""
 
         if not web_o.dns_engine or web_o.dns_engine in SYSTEM_RESOLVERS:
             # TODO: do the same thing for the non-system resolver
@@ -460,18 +465,17 @@ def make_tls_analysis(
         handshake_time=web_o.tls_handshake_time,
     )
     ground_truths = filter(
-        lambda gt: gt.http_request_url and gt.hostname == web_o.hostname,
-        web_ground_truths,
+        lambda gt: gt.ip == web_o.ip and gt.port == web_o.port, web_ground_truths
     )
     failure_cc_asn = set()
     ok_cc_asn = set()
     for gt in ground_truths:
         # We don't check for strict == True, since depending on the DB engine
         # True could also be represented as 1
-        if gt.http_success is None:
+        if gt.tls_success is None:
             continue
 
-        if gt.http_success:
+        if gt.tls_success:
             if gt.is_trusted_vp:
                 tls_analysis.ground_truth_trusted_ok_count += gt.count
             else:
@@ -510,6 +514,7 @@ class HTTPAnalysis:
     ground_truth_body_length: int = 0
 
     fp_name: str = ""
+    fp_scope: str = ""
     is_http_fp_match: bool = False
     is_http_fp_country_consistent: bool = False
     is_http_fp_false_positive: bool = False
@@ -589,6 +594,7 @@ def make_http_analysis(
                         http_analysis.is_http_fp_country_consistent = True
                     if fp.name:
                         http_analysis.fp_name = fp.name
+                        http_analysis.fp_scope = fp.scope
 
     if web_o.http_response_body_length:
         http_analysis.response_body_length = web_o.http_response_body_length
@@ -638,7 +644,7 @@ def make_web_analysis(
         if web_o.ip:
             try:
                 ipaddr = ipaddress.ip_address(web_o.ip)
-                # FIXME: for the moment we just ignore all IPv6 results, because they are too noisy
+                # TODO(arturo): for the moment we just ignore all IPv6 results, because they are too noisy
                 if isinstance(ipaddr, ipaddress.IPv6Address):
                     continue
                 address = encode_address(web_o.ip, web_o.port)
@@ -744,6 +750,9 @@ def make_web_analysis(
             website_analysis.dns_consistency_system_answer_fp_name = (
                 dns_analysis.consistency_system.answer_fp_name
             )
+            website_analysis.dns_consistency_system_answer_fp_scope = (
+                dns_analysis.consistency_system.answer_fp_scope
+            )
             website_analysis.dns_consistency_system_is_answer_fp_match = (
                 dns_analysis.consistency_system.is_answer_fp_match
             )
@@ -835,6 +844,9 @@ def make_web_analysis(
             website_analysis.dns_consistency_other_answer_fp_name = (
                 dns_analysis.consistency_other.answer_fp_name
             )
+            website_analysis.dns_consistency_other_answer_fp_scope = (
+                dns_analysis.consistency_other.answer_fp_scope
+            )
             website_analysis.dns_consistency_other_is_answer_fp_match = (
                 dns_analysis.consistency_other.is_answer_fp_match
             )
@@ -899,6 +911,7 @@ def make_web_analysis(
         if tcp_analysis:
             website_analysis.tcp_address = tcp_analysis.address
             website_analysis.tcp_success = tcp_analysis.success
+            website_analysis.tcp_failure = tcp_analysis.failure
             website_analysis.tcp_ground_truth_failure_count = (
                 tcp_analysis.ground_truth_failure_count
             )
@@ -954,6 +967,7 @@ def make_web_analysis(
                 http_analysis.ground_truth_body_length
             )
             website_analysis.http_fp_name = http_analysis.fp_name
+            website_analysis.http_fp_scope = http_analysis.fp_scope
             website_analysis.http_is_http_fp_match = http_analysis.is_http_fp_match
             website_analysis.http_is_http_fp_country_consistent = (
                 http_analysis.is_http_fp_country_consistent
