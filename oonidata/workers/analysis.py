@@ -74,14 +74,25 @@ def make_analysis_in_a_day(
     column_names_wa = [f.name for f in dataclasses.fields(WebAnalysis)]
     column_names_er = [f.name for f in dataclasses.fields(MeasurementExperimentResult)]
 
-    prev_range = get_prev_range(
-        db=db_lookup,
-        table_name=WebAnalysis.__table_name__,
-        timestamp=datetime.combine(day, datetime.min.time()),
-        test_name=[],
-        probe_cc=probe_cc,
-        timestamp_column="measurement_start_time",
-    )
+    prev_range_list = [
+        get_prev_range(
+            db=db_lookup,
+            table_name=WebAnalysis.__table_name__,
+            timestamp=datetime.combine(day, datetime.min.time()),
+            test_name=[],
+            probe_cc=probe_cc,
+            timestamp_column="measurement_start_time",
+        ),
+        get_prev_range(
+            db=db_lookup,
+            table_name=MeasurementExperimentResult.__table_name__,
+            timestamp=datetime.combine(day, datetime.min.time()),
+            test_name=[],
+            probe_cc=probe_cc,
+            timestamp_column="timeofday",
+            probe_cc_column="location_network_cc",
+        ),
+    ]
 
     log.info(f"loading ground truth DB for {day}")
     t = PerfTimer()
@@ -118,6 +129,7 @@ def make_analysis_in_a_day(
                     fingerprintdb=fingerprintdb,
                 )
             )
+            log.info(f"generated {len(website_analysis)} website_analysis")
             if len(website_analysis) == 0:
                 log.info(f"no website analysis for {probe_cc}, {test_name}")
                 continue
@@ -138,6 +150,7 @@ def make_analysis_in_a_day(
 
             with statsd_client.timer("oonidata.web_analysis.experiment_results.timing"):
                 website_er = list(make_website_experiment_results(website_analysis))
+                log.info(f"generated {len(website_er)} website_er")
                 table_name, rows = make_db_rows(
                     dc_list=website_er,
                     column_names=column_names_er,
@@ -154,9 +167,9 @@ def make_analysis_in_a_day(
             web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
             log.error(f"failed to generate analysis for {web_obs_ids}", exc_info=True)
 
-    maybe_delete_prev_range(
-        db=db_lookup, prev_range=prev_range, table_name=WebAnalysis.__table_name__
-    )
+    for prev_range in prev_range_list:
+        maybe_delete_prev_range(db=db_lookup, prev_range=prev_range)
+    db_writer.close()
     return idx
 
 
@@ -285,3 +298,4 @@ def start_analysis(
     obs_per_sec = round(total_obs_count / t_total.s)
     log.info(f"finished processing {start_day} - {end_day} speed: {obs_per_sec}obs/s)")
     log.info(f"{total_obs_count} msmts in {t_total.pretty}")
+    dask_client.shutdown()

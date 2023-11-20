@@ -7,6 +7,7 @@ from datetime import date, timedelta, datetime
 from typing import List, Optional
 
 import click
+from click_loglevel import LogLevel
 
 from oonidata import __version__
 from oonidata.dataclient import (
@@ -70,10 +71,18 @@ end_day_option = click.option(
 
 @click.group()
 @click.option("--error-log-file", type=Path)
+@click.option(
+    "-l",
+    "--log-level",
+    type=LogLevel(),
+    default="INFO",
+    help="Set logging level",
+    show_default=True,
+)
 @click.version_option(__version__)
-def cli(error_log_file: Path):
+def cli(error_log_file: Path, log_level: int):
     log.addHandler(logging.StreamHandler(sys.stderr))
-    log.setLevel(logging.INFO)
+    log.setLevel(log_level)
     if error_log_file:
         logging.basicConfig(
             filename=error_log_file, encoding="utf-8", level=logging.ERROR

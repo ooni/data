@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from typing import Dict, Generator, List, NamedTuple, Optional, Tuple
 
@@ -796,7 +796,6 @@ def make_website_experiment_results(
     Takes as input a list of web_analysis and outputs a list of
     ExperimentResults for the website.
     """
-    experiment_result_id = "XXXX"
     observation_id_list = []
     first_analysis = web_analysis[0]
 
@@ -974,7 +973,7 @@ def make_website_experiment_results(
         measurement_uid=measurement_uid,
         observation_id_list=observation_id_list,
         timeofday=timeofday,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
         location_network_type=first_analysis.network_type,
         location_network_asn=first_analysis.probe_asn,
         location_network_cc=first_analysis.probe_cc,

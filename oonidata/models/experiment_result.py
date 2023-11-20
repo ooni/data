@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import logging
 from typing import Any, Dict, Generator, List, Optional, NamedTuple, Mapping, Tuple
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from tabulate import tabulate
 from oonidata.datautils import maybe_elipse
@@ -277,7 +277,7 @@ def iter_experiment_results(
     target_name: str,
     outcomes: List[Outcome],
 ) -> Generator[ExperimentResult, None, None]:
-    created_at = datetime.utcnow()
+    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
     for idx, outcome in enumerate(outcomes):
         yield ExperimentResult(
             measurement_uid=obs.measurement_uid,
