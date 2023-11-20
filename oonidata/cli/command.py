@@ -16,7 +16,6 @@ from oonidata.db.connections import ClickhouseConnection
 from oonidata.db.create_tables import create_queries, list_all_table_diffs
 from oonidata.netinfo import NetinfoDB
 from oonidata.workers import (
-    start_experiment_result_maker,
     start_fingerprint_hunter,
     start_observation_maker,
     start_ground_truth_builder,
@@ -244,18 +243,7 @@ def mker(
             for query, table_name in create_queries:
                 click.echo(f"Running create query for {table_name}")
                 db.execute(query)
-
-    start_experiment_result_maker(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        start_day=start_day,
-        end_day=end_day,
-        clickhouse=clickhouse,
-        data_dir=data_dir,
-        parallelism=parallelism,
-        fast_fail=fast_fail,
-        rebuild_ground_truths=rebuild_ground_truths,
-    )
+    raise Exception("Run this via the analysis command")
 
 
 @cli.command()

@@ -1,15 +1,17 @@
 from unittest.mock import MagicMock
+
+import pytest
 from oonidata.analysis.control import (
     WebGroundTruthDB,
     iter_ground_truths_from_web_control,
 )
 from oonidata.analysis.datasources import load_measurement
-from oonidata.analysis.websites import make_website_experiment_result
 from oonidata.models.experiment_result import print_nice_er
 from oonidata.transforms import measurement_to_observations
 
 
 def test_tcp_scoring(measurements, netinfodb, fingerprintdb):
+    pytest.skip("TODO(arturo): implement this with the new analysis")
     msmt = load_measurement(
         msmt_path=measurements[
             "20221101055235.141387_RU_webconnectivity_046ce024dd76b564"
