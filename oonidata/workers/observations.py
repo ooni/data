@@ -1,7 +1,7 @@
 import pathlib
 import logging
 import dataclasses
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from typing import (
     List,
@@ -195,7 +195,7 @@ def make_observation_in_day(
     if len(prev_ranges) > 0:
         with ClickhouseConnection(clickhouse, row_buffer_size=10_000) as db:
             for table_name, pr in prev_ranges:
-                maybe_delete_prev_range(db=db, prev_range=pr, table_name=table_name)
+                maybe_delete_prev_range(db=db, prev_range=pr)
 
     return total_size, total_msmt_count
 
@@ -249,7 +249,7 @@ def start_observation_maker(
                 [
                     [
                         "oonidata.bucket_processed",
-                        datetime.utcnow(),
+                        datetime.now(timezone.utc).replace(tzinfo=None),
                         int(t.ms),
                         size,
                         msmt_count,
@@ -266,3 +266,5 @@ def start_observation_maker(
     log.info(
         f"{round(total_size/10**9, 2)}GB {total_msmt_count} msmts in {t_total.pretty}"
     )
+
+    dask_client.shutdown()

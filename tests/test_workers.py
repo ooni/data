@@ -13,7 +13,11 @@ from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
 from oonidata.workers.analysis import make_analysis_in_a_day, make_cc_batches, make_ctrl
-from oonidata.workers.common import get_obs_count_by_cc, get_prev_range
+from oonidata.workers.common import (
+    get_obs_count_by_cc,
+    get_prev_range,
+    maybe_delete_prev_range,
+)
 from oonidata.workers.observations import (
     make_observations_for_file_entry_batch,
     write_observations_to_db,
@@ -22,6 +26,7 @@ from oonidata.workers.response_archiver import ResponseArchiver
 from oonidata.workers.fingerprint_hunter import fingerprint_hunter
 from oonidata.transforms import measurement_to_observations
 from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+from tests.test_cli import wait_for_mutations
 
 
 def test_get_prev_range(db):
@@ -40,7 +45,7 @@ def test_get_prev_range(db):
     bucket_date = "2000-01-01"
     test_name = "web_connectivity"
     probe_cc = "IT"
-    min_time = datetime(2000, 1, 1, 23, 42, 00, tzinfo=timezone.utc)
+    min_time = datetime(2000, 1, 1, 23, 42, 00)
     rows = [(min_time, bucket_date, test_name, probe_cc)]
     for i in range(200):
         rows.append((min_time + timedelta(seconds=i), bucket_date, test_name, probe_cc))
@@ -63,7 +68,7 @@ def test_get_prev_range(db):
     bucket_date = "2000-03-01"
     test_name = "web_connectivity"
     probe_cc = "IT"
-    min_time = datetime(2000, 1, 1, 23, 42, 00, tzinfo=timezone.utc)
+    min_time = datetime(2000, 1, 1, 23, 42, 00)
     rows: List[Tuple[datetime, str, str, str]] = []
     for i in range(10):
         rows.append(
@@ -87,6 +92,14 @@ def test_get_prev_range(db):
     assert prev_range.min_created_at and prev_range.max_created_at
     assert prev_range.min_created_at == (min_time - timedelta(seconds=1))
     assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1))
+
+    maybe_delete_prev_range(
+        db=db,
+        prev_range=prev_range,
+    )
+    wait_for_mutations(db, "test_range")
+    res = db.execute("SELECT COUNT() FROM test_range")
+    assert res[0][0] == 10
     db.execute("DROP TABLE test_range")
 
 

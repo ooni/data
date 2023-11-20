@@ -1,5 +1,5 @@
 import dataclasses
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Tuple
 from oonidata.models.dataformats import maybe_binary_data_to_bytes
 from oonidata.models.nettests import HTTPInvalidRequestLine
@@ -54,7 +54,7 @@ class HTTPInvalidRequestLineTransformer(MeasurementTransformer):
         mb_obs = HTTPMiddleboxObservation(
             hirl_success=True,
             observation_id=f"{msmt.measurement_uid}_0",
-            created_at=datetime.utcnow().replace(microsecond=0),
+            created_at=datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
             **dataclasses.asdict(self.measurement_meta),
         )
         if not msmt.test_keys.sent:

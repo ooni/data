@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 import dataclasses
-from datetime import datetime
+from datetime import datetime, timezone
 import ipaddress
 from typing import (
     Generator,
@@ -674,7 +674,7 @@ def make_web_analysis(
                 fingerprintdb=fingerprintdb,
             )
 
-        created_at = datetime.utcnow()
+        created_at = datetime.now(timezone.utc).replace(tzinfo=None)
         website_analysis = WebAnalysis(
             measurement_uid=web_o.measurement_uid,
             observation_id=web_o.observation_id,

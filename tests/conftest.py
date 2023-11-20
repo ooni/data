@@ -76,10 +76,10 @@ def cli_runner():
     return CliRunner()
 
 
-@pytest.fixture
-def db():
-    from oonidata.db.create_tables import create_queries
+from oonidata.db.create_tables import create_queries
 
+
+def create_db_for_fixture():
     try:
         with ClickhouseConnection(conn_url="clickhouse://localhost/") as db:
             db.execute("CREATE DATABASE IF NOT EXISTS testing_oonidata")
@@ -91,8 +91,19 @@ def db():
         db.execute("SELECT 1")
     except:
         pytest.skip("no database connection")
-    for query, table_name in create_queries:
-        db.execute(f"DROP TABLE IF EXISTS {table_name};")
+    for query, _ in create_queries:
         db.execute(query)
+    return db
 
+
+@pytest.fixture
+def db_notruncate():
+    return create_db_for_fixture()
+
+
+@pytest.fixture
+def db():
+    db = create_db_for_fixture()
+    for _, table_name in create_queries:
+        db.execute(f"TRUNCATE TABLE {table_name};")
     return db
