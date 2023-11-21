@@ -176,12 +176,15 @@
 {% endfor %}
 
 
-<h2 class="font-bold text-2xl">Analysis output</h2>
+<h2 class="font-bold text-2xl py-6">Analysis output</h2>
 
 {% for wa in web_analysis %}
-<h2 class="font-bold text-xl py-4">Analysis #{{loop.index}}</h2>
+   <div class="card bg-base-100 shadow-xl my-3">
+        <div class="card-body">
+            <h2 class="card-title">Analysis #{{loop.index}}</h2>
+
 <div class="overflow-x-auto">
-    <table class="table">
+    <table class="table table-xs">
         <thead>
             <tr>
             <th>key</th>
@@ -190,7 +193,7 @@
         </thead>
         <tbody>
             {% for key, value in wa.items() %}
-            <tr>
+            <tr class="hover">
             <td>{{key}}</td>
             <td>{{value}}</td>
             </tr>
@@ -198,13 +201,17 @@
         </tbody>
     </table>
 </div>
+</div>
+</div>
 {% endfor %}
 
-<h2 class="font-bold text-2xl">Web Observations</h2>
+<h2 class="font-bold text-2xl py-6">Web Observations</h2>
 {% for wo in web_observations %}
-<h2 class="font-bold text-xl py-4">Observation #{{loop.index}}</h2>
+   <div class="card bg-base-100 shadow-xl my-3">
+        <div class="card-body">
+            <h2 class="card-title">Observation #{{loop.index}}</h2>
 <div class="overflow-x-auto">
-    <table class="table">
+    <table class="table table-xs">
         <thead>
             <tr>
             <th>key</th>
@@ -213,7 +220,7 @@
         </thead>
         <tbody>
             {% for key, value in wo.items() %}
-            <tr>
+            <tr class="hover">
             <td>{{key}}</td>
             <td>{{value}}</td>
             </tr>
@@ -221,10 +228,13 @@
         </tbody>
     </table>
 </div>
+</div>
+</div>
 {% endfor %}
 
+<h2 class="py-6 text-l font-bold">Experiment results raw</h2>
 <div class="overflow-x-auto">
-    <table class="table">
+    <table class="table table-xs">
         <thead>
             <tr>
             <th>key</th>
@@ -233,7 +243,7 @@
         </thead>
         <tbody>
             {% for key, value in website_experiment_result.items() %}
-            <tr>
+            <tr class="hover">
             <td>{{key}}</td>
             <td>{{value}}</td>
             </tr>
