@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
-from oonidata.fastapi.routers import aggregation, measurements
+from .routers import aggregation, measurements
+
 
 app = FastAPI()
 app.include_router(aggregation.router, prefix="/api/v1")
