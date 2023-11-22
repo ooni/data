@@ -198,14 +198,24 @@ async def get_aggregation(
     ]
 
     q = f"""
-    SELECT 
-    loni_down_weight_avg_map as loni_down_map,
-    arraySum(mapValues(loni_down_map)) as loni_down_value,
-
+    WITH
     loni_blocked_weight_avg_map as loni_blocked_map,
-    arraySum(mapValues(loni_blocked_map)) as loni_blocked_value,
+    loni_down_weight_avg_map as loni_down_map,
+    arraySum(mapValues(loni_blocked_map)) as loni_blocked_value_avg,
+    arraySum(mapValues(loni_down_map)) as loni_down_value_avg,
+    loni_ok_weight_avg_value as loni_ok_value_avg,
 
-    loni_ok_weight_avg_value as loni_ok_value,
+    loni_ok_value_avg +  loni_down_value_avg + loni_blocked_value_avg as loni_total
+
+    SELECT
+
+    loni_down_map,
+    loni_blocked_map,
+
+    -- TODO(arturo): this is a bit ghetto
+    loni_ok_value_avg / loni_total as loni_ok_value,
+    loni_down_value_avg / loni_total as loni_down_value,
+    loni_blocked_value_avg / loni_total as loni_blocked_value,
 
     measurement_count_agg as measurement_count,
     observation_count_agg as observation_count,
