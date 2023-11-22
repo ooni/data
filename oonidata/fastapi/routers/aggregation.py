@@ -227,16 +227,15 @@ async def get_aggregation(
         countMap(loni_down_map) as loni_down_cnt,
         arraySum(mapValues(loni_down_cnt)) as loni_down_cnt_total,
         arraySum(mapValues(loni_down_sum)) as loni_down_value_total,
-        mapApply(    
+        mapApply(
             (k, v) -> (
                 k,
                 if(
                     loni_down_cnt_total == 0 or loni_down_cnt[k] == 0, 0,
-                    v / loni_down_cnt[k] * loni_down_value_total/loni_down_cnt_total
+                    toFloat64(v) / toFloat64(loni_down_value_total)  * toFloat64(loni_down_cnt[k])/toFloat64(loni_down_cnt_total)
                 )
             ),
             loni_down_sum
-
         ) as loni_down_weight_avg_map,
         
         sumMap(loni_blocked_map) as loni_blocked_sum,
@@ -248,7 +247,7 @@ async def get_aggregation(
                 k,
                 if(
                     loni_blocked_cnt_total == 0 or loni_blocked_cnt[k] == 0, 0,
-                    v / loni_blocked_cnt[k] * loni_blocked_value_total/loni_blocked_cnt_total
+                    toFloat64(v) / toFloat64(loni_blocked_value_total) * toFloat64(loni_blocked_cnt[k]) / toFloat64(loni_blocked_cnt_total)
                 )
             ),
             loni_blocked_sum
