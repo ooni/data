@@ -184,12 +184,13 @@ async def get_aggregation(
         where += " WHERE "
         where += " AND ".join(and_clauses)
 
+    # TODO(arturo): the sort of this matters. We should be smarter.
     base_cols = [
         "loni_down_map",
-        "loni_down_value",
         "loni_blocked_map",
-        "loni_blocked_value",
         "loni_ok_value",
+        "loni_down_value",
+        "loni_blocked_value",
         "measurement_count",
         "observation_count",
         "vantage_point_count",
