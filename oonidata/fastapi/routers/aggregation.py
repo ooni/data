@@ -99,6 +99,18 @@ async def get_aggregation(
     q_args = {}
     and_clauses = []
     extra_cols = {}
+    dimension_count = 1
+    if axis_x == "measurement_start_day":
+        # TODO(arturo): wouldn't it be nicer if we dropped the time_grain
+        # argument and instead used axis_x IN (measurement_start_day,
+        # measurement_start_hour, ..)?
+        extra_cols[
+            "measurement_start_day"
+        ] = f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
+    elif axis_x:
+        col = OONI_DATA_COLS_REMAP.get(axis_x)
+        extra_cols[axis_x] = f"{col} as {axis_x}"
+
     if probe_asn is not None:
         if isinstance(probe_asn, str) and probe_asn.startswith("AS"):
             probe_asn = int(probe_asn[2:])
@@ -124,18 +136,6 @@ async def get_aggregation(
     if input is not None:
         # XXX
         pass
-
-    dimension_count = 1
-    if axis_x == "measurement_start_day":
-        # TODO(arturo): wouldn't it be nicer if we dropped the time_grain
-        # argument and instead used axis_x IN (measurement_start_day,
-        # measurement_start_hour, ..)?
-        extra_cols[
-            "measurement_start_day"
-        ] = f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
-    elif axis_x:
-        col = OONI_DATA_COLS_REMAP.get(axis_x)
-        extra_cols[axis_x] = f"{col} as {axis_x}"
 
     if axis_y:
         dimension_count += 1
@@ -270,6 +270,7 @@ async def get_aggregation(
         FROM measurement_experiment_result
         {where}
         GROUP BY {", ".join(extra_cols.keys())}
+        ORDER BY {", ".join(extra_cols.keys())}
     )
     """
 
