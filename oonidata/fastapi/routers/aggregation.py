@@ -111,8 +111,8 @@ async def get_aggregation(
         extra_cols["probe_cc"] = "location_network_cc as probe_cc"
     if test_name is not None:
         q_args["test_name"] = test_name_to_group(test_name)
-        and_clauses.append("nettest_group = %(test_name)s")
-        extra_cols["test_name"] = "nettest_group as test_name"
+        and_clauses.append("target_nettest_group = %(test_name)s")
+        extra_cols["test_name"] = "target_nettest_group as test_name"
     if category_code is not None:
         q_args["category_code"] = category_code
         and_clauses.append("target_category_code = %(category_code)s")
