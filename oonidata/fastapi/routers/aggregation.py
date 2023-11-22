@@ -11,6 +11,7 @@ from .measurements import (
     OONI_DATA_COLS_REMAP,
     OONI_DATA_COLS_REMAP_INV,
     SinceUntil,
+    test_name_to_group,
     utc_30_days_ago,
     utc_today,
 )
