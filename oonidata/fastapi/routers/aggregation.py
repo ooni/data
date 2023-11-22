@@ -53,6 +53,7 @@ class AggregationEntry(BaseModel):
     loni_down_map: Dict[str, float]
     loni_down_value: float
     loni_blocked_map: Dict[str, float]
+    loni_blocked_value: float
     # loni_ok_map: Dict[str, float]
     loni_ok_value: float
 
@@ -246,7 +247,7 @@ async def get_aggregation(
             (k, v) -> (
                 k,
                 if(
-                    loni_blocked_cnt_total == 0 or loni_blocked_cnt[k], 0,
+                    loni_blocked_cnt_total == 0 or loni_blocked_cnt[k] == 0, 0,
                     v / loni_blocked_cnt[k] * loni_blocked_value_total/loni_blocked_cnt_total
                 )
             ),
