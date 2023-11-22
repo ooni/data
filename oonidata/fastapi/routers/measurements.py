@@ -1,14 +1,18 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+import logging
 import math
 from typing import List, Literal, Optional, Union
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from pydantic.functional_validators import AfterValidator
 from typing_extensions import Annotated
 
 from oonidata.datautils import PerfTimer
 
 from ..config import settings
 from ..dependencies import ClickhouseClient, get_clickhouse_client
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -64,7 +68,7 @@ class ResponseMetadata(BaseModel):
 
 class MeasurementEntry(BaseModel):
     measurement_uid: str
-    measurement_start_time: str
+    measurement_start_time: datetime
     network_type: str
     probe_asn: int
     probe_cc: str
@@ -100,6 +104,29 @@ class ListMeasurementsResponse(BaseModel):
     results: List[MeasurementEntry]
 
 
+def parse_date(d: Union[datetime, str]) -> datetime:
+    from dateutil.parser import parse as parse_date
+
+    if isinstance(d, str):
+        return parse_date(d)
+    return d
+
+
+SinceUntil = Annotated[Union[str, datetime, None], AfterValidator(parse_date), Query()]
+
+
+def utc_30_days_ago():
+    return datetime.combine(
+        datetime.now(timezone.utc) - timedelta(days=30), datetime.min.time()
+    ).replace(tzinfo=None)
+
+
+def utc_today():
+    return datetime.combine(datetime.now(timezone.utc), datetime.min.time()).replace(
+        tzinfo=None
+    )
+
+
 @router.get("/measurements", tags=["measurements"])
 async def list_measurements(
     db: Annotated[ClickhouseClient, Depends(get_clickhouse_client)],
@@ -107,8 +134,8 @@ async def list_measurements(
     probe_asn: Annotated[Union[int, str, None], Query()] = None,
     probe_cc: Annotated[Optional[str], Query(max_length=2, min_length=2)] = None,
     test_name: Annotated[Optional[str], Query()] = None,
-    since: Annotated[Optional[date], Query()] = None,
-    until: Annotated[Optional[date], Query()] = None,
+    since: SinceUntil = utc_30_days_ago(),
+    until: SinceUntil = utc_today(),
     order_by: Annotated[
         Literal[
             "test_start_time",
@@ -171,7 +198,7 @@ async def list_measurements(
         q_args["since"] = since
         and_clauses.append("timeofday >= %(since)s")
     if until is not None:
-        and_clauses.append("timeofday >= %(until)s")
+        and_clauses.append("timeofday <= %(until)s")
         q_args["until"] = until
 
     if anomaly is True:
@@ -191,9 +218,9 @@ async def list_measurements(
         q += " WHERE "
         q += " AND ".join(and_clauses)
     q += f" ORDER BY {OONI_DATA_COLS_REMAP_INV.get(order_by)} {order} LIMIT {limit} OFFSET {offset}"
-    print(q)
 
     t = PerfTimer()
+    log.info(f"running query {q} with {q_args}")
     rows = db.execute(q, q_args)
 
     results: List[MeasurementEntry] = []
