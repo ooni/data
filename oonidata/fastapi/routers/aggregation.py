@@ -241,7 +241,7 @@ async def get_aggregation(
             (k, v) -> (
                 k,
                 if(
-                    loni_down_cnt_total == 0 or loni_down_cnt[k] == 0, 0,
+                    loni_down_cnt_total == 0 or loni_down_value_total == 0, 0,
                     toFloat64(v) / toFloat64(loni_down_value_total)  * toFloat64(loni_down_cnt[k])/toFloat64(loni_down_cnt_total)
                 )
             ),
@@ -256,7 +256,7 @@ async def get_aggregation(
             (k, v) -> (
                 k,
                 if(
-                    loni_blocked_cnt_total == 0 or loni_blocked_cnt[k] == 0, 0,
+                    loni_blocked_cnt_total == 0 or loni_blocked_value_total == 0, 0,
                     toFloat64(v) / toFloat64(loni_blocked_value_total) * toFloat64(loni_blocked_cnt[k]) / toFloat64(loni_blocked_cnt_total)
                 )
             ),
