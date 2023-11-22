@@ -56,6 +56,11 @@ class AggregationEntry(BaseModel):
     # loni_ok_map: Dict[str, float]
     loni_ok_value: float
 
+    domain: Optional[str] = None
+    probe_cc: Optional[str] = None
+    probe_asn: Optional[int] = None
+    test_name: Optional[str] = None
+
 
 class AggregationResponse(BaseModel):
     # TODO(arturo): these keys are inconsistent with the other APIs
