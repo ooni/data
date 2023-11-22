@@ -182,7 +182,7 @@ async def list_measurements(
         and_clauses.append("location_network_cc = %(probe_cc)s")
     if test_name is not None:
         q_args["test_name"] = test_name_to_group(test_name)
-        and_clauses.append("nettest_group = %(test_name)s")
+        and_clauses.append("target_nettest_group = %(test_name)s")
     if category_code is not None:
         q_args["category_code"] = category_code
         and_clauses.append("target_category_code = %(category_code)s")
