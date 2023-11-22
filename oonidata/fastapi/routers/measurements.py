@@ -127,6 +127,13 @@ def utc_today():
     )
 
 
+def test_name_to_group(tn):
+    if tn in ("web_connectivity", "http_requests"):
+        return "websites"
+    # TODO(arturo): currently we only support websites
+    return ""
+
+
 @router.get("/measurements", tags=["measurements"])
 async def list_measurements(
     db: Annotated[ClickhouseClient, Depends(get_clickhouse_client)],
@@ -174,7 +181,7 @@ async def list_measurements(
         q_args["probe_cc"] = probe_cc
         and_clauses.append("location_network_cc = %(probe_cc)s")
     if test_name is not None:
-        q_args["test_name"] = test_name
+        q_args["test_name"] = test_name_to_group(test_name)
         and_clauses.append("nettest_group = %(test_name)s")
     if category_code is not None:
         q_args["category_code"] = category_code
