@@ -1,7 +1,11 @@
 from fastapi import FastAPI
 
 from .routers import aggregation, measurements
+from .config import settings
 
+import logging
+
+logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
 
 app = FastAPI()
 app.include_router(aggregation.router, prefix="/api/v1")
