@@ -54,6 +54,9 @@ dataviz = ["altair", "numpy", "pandas", "flask"]
 fastapi = ["fastapi", "uvicorn", "pydantic-settings"]
 research = ["jupyterlab"]
 
+[tool.poetry.group.dev.dependencies]
+httpx = "^0.25.1"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
