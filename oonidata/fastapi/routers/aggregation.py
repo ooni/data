@@ -101,7 +101,7 @@ async def get_aggregation(
     anomaly_sensitivity: Annotated[float, Query()] = 0.7,
     format: Annotated[Literal["JSON", "CSV"], Query()] = "JSON",
     download: Annotated[bool, Query()] = False,
-):
+) -> AggregationResponse:
     q_args = {}
     and_clauses = []
     extra_cols = {}
@@ -298,19 +298,19 @@ async def get_aggregation(
     results: List[AggregationEntry] = []
     if rows and isinstance(rows, list):
         for row in rows:
+            print(row)
             d = dict(zip(cols, row))
             d["failure_count"] = 0
             d["ok_count"] = d["measurement_count"] - d["anomaly_count"]
-            log.info(f"adding {d}")
+            log.debug(f"adding {d}")
             results.append(AggregationEntry(**d))
-    return {
-        "db_stats": {
-            "bytes": -1,
-            "elapsed_seconds": t.s,
-            "row_count": len(results),
-            "total_row_count": len(results),
-        },
-        "dimension_count": dimension_count,
-        # TODO(arturo): it's annoying that this is result instead of results
-        "result": results,
-    }
+    return AggregationResponse(
+        db_stats=DBStats(
+            bytes=-1,
+            elapsed_seconds=t.s,
+            row_count=len(results),
+            total_row_count=len(results)
+        ),
+        dimension_count=dimension_count,
+        result=results
+    )
