@@ -1,7 +1,7 @@
 import dataclasses
 import logging
 import pathlib
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Dict, List
 import orjson
 
@@ -62,6 +62,7 @@ def make_analysis_in_a_day(
     fast_fail: bool,
     day: date,
 ):
+    t_total = PerfTimer()
     log.info("Optimizing all tables")
     optimize_all_tables(clickhouse)
 
@@ -170,6 +171,21 @@ def make_analysis_in_a_day(
     for prev_range in prev_range_list:
         maybe_delete_prev_range(db=db_lookup, prev_range=prev_range)
     db_writer.close()
+
+    with ClickhouseConnection(clickhouse) as db:
+        db.execute(
+            "INSERT INTO oonidata_processing_logs (key, timestamp, runtime_ms, bytes, msmt_count, comment) VALUES",
+            [
+                [
+                    "oonidata.analysis.made_day_analysis",
+                    datetime.now(timezone.utc).replace(tzinfo=None),
+                    int(t_total.ms),
+                    0,
+                    idx,
+                    day.strftime("%Y-%m-%d"),
+                ]
+            ],
+        )
     return idx
 
 
