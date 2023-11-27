@@ -1,4 +1,4 @@
-from dataclass import dataclass
+from dataclasses import dataclass
 from typing import List, Optional
 from oonidata.compat import add_slots
 from oonidata.models.base_model import BaseModel
@@ -24,7 +24,7 @@ class PsiphonTestKeys(BaseModel):
     network_events: Optional[List[NetworkEvent]] = None
     tls_handshakes: Optional[List[TLSHandshake]] = None
     queries: Optional[List[DNSQuery]] = None
-    requests = Optional[List[HTTPTransaction]] = None
+    requests: Optional[List[HTTPTransaction]] = None
 
 
 @add_slots

@@ -1,4 +1,4 @@
-from dataclass import dataclass
+from dataclasses import dataclass
 from typing import List, Optional
 from oonidata.compat import add_slots
 from oonidata.models.base_model import BaseModel
