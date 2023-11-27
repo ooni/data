@@ -2,9 +2,11 @@ from typing import Union
 
 from .base_measurement import BaseMeasurement
 from .dnscheck import DNSCheck
+from .facebook_messenger import FacebookMessenger
 from .signal import Signal
 from .telegram import Telegram
 from .tor import Tor
+from .psiphon import Psiphon
 from .web_connectivity import WebConnectivity
 from .whatsapp import Whatsapp
 from .http_invalid_request_line import HTTPInvalidRequestLine
@@ -16,7 +18,9 @@ SUPPORTED_CLASSES = [
     WebConnectivity,
     Telegram,
     Tor,
+    Psiphon,
     DNSCheck,
+    FacebookMessenger,
     Signal,
     Whatsapp,
     BaseMeasurement,
@@ -27,7 +31,9 @@ SupportedDataformats = Union[
     WebConnectivity,
     Telegram,
     Tor,
+    Psiphon,
     DNSCheck,
+    FacebookMessenger,
     Signal,
     Whatsapp,
     BaseMeasurement,

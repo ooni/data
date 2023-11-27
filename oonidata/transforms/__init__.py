@@ -1,9 +1,11 @@
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.transforms.nettests.dnscheck import DNSCheckTransformer
+from oonidata.transforms.nettests.facebook_messenger import FacebookMessengerTransformer
 from oonidata.transforms.nettests.signal import SignalTransformer
 from oonidata.transforms.nettests.telegram import TelegramTransformer
 from oonidata.transforms.nettests.tor import TorTransformer
+from oonidata.transforms.nettests.psiphon import PsiphonTransformer
 from oonidata.transforms.nettests.web_connectivity import WebConnectivityTransformer
 from oonidata.transforms.nettests.http_invalid_request_line import (
     HTTPInvalidRequestLineTransformer,
@@ -11,9 +13,11 @@ from oonidata.transforms.nettests.http_invalid_request_line import (
 
 NETTEST_TRANSFORMERS = {
     "dnscheck": DNSCheckTransformer,
+    "facebook_messenger": FacebookMessengerTransformer,
     "signal": SignalTransformer,
     "telegram": TelegramTransformer,
     "tor": TorTransformer,
+    "psiphon": PsiphonTransformer, 
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
 }
