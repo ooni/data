@@ -7,6 +7,7 @@ from .signal import Signal
 from .telegram import Telegram
 from .tor import Tor
 from .psiphon import Psiphon
+from .vanilla_tor import VanillaTor
 from .web_connectivity import WebConnectivity
 from .whatsapp import Whatsapp
 from .http_invalid_request_line import HTTPInvalidRequestLine
@@ -19,6 +20,7 @@ SUPPORTED_CLASSES = [
     Telegram,
     Tor,
     Psiphon,
+    VanillaTor,
     DNSCheck,
     FacebookMessenger,
     Signal,
@@ -32,6 +34,7 @@ SupportedDataformats = Union[
     Telegram,
     Tor,
     Psiphon,
+    VanillaTor,
     DNSCheck,
     FacebookMessenger,
     Signal,

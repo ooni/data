@@ -6,6 +6,7 @@ from oonidata.transforms.nettests.signal import SignalTransformer
 from oonidata.transforms.nettests.telegram import TelegramTransformer
 from oonidata.transforms.nettests.tor import TorTransformer
 from oonidata.transforms.nettests.psiphon import PsiphonTransformer
+from oonidata.transforms.nettests.vanilla_tor import VanillaTorTransformer
 from oonidata.transforms.nettests.web_connectivity import WebConnectivityTransformer
 from oonidata.transforms.nettests.http_invalid_request_line import (
     HTTPInvalidRequestLineTransformer,
@@ -17,7 +18,8 @@ NETTEST_TRANSFORMERS = {
     "signal": SignalTransformer,
     "telegram": TelegramTransformer,
     "tor": TorTransformer,
-    "psiphon": PsiphonTransformer, 
+    "psiphon": PsiphonTransformer,
+    "vanilla_tor": VanillaTorTransformer, 
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
 }
