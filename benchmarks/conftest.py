@@ -5,12 +5,10 @@ from click.testing import CliRunner
 
 import pytest
 
-import orjson
 
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 from oonidata.dataclient import sync_measurements
-from oonidata.apiclient import get_measurement_dict, get_raw_measurement
 
 FIXTURE_PATH = (
     Path(os.path.dirname(os.path.realpath(__file__))) / ".." / "tests" / "data"

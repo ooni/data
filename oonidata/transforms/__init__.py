@@ -2,6 +2,9 @@ from oonidata.netinfo import NetinfoDB
 
 from oonidata.transforms.nettests.dnscheck import DNSCheckTransformer
 from oonidata.transforms.nettests.facebook_messenger import FacebookMessengerTransformer
+from oonidata.transforms.nettests.http_header_field_manipulation import (
+    HTTPHeaderFieldManipulationTransformer,
+)
 from oonidata.transforms.nettests.signal import SignalTransformer
 from oonidata.transforms.nettests.telegram import TelegramTransformer
 from oonidata.transforms.nettests.tor import TorTransformer
@@ -20,6 +23,7 @@ NETTEST_TRANSFORMERS = {
     "tor": TorTransformer,
     "psiphon": PsiphonTransformer,
     "vanilla_tor": VanillaTorTransformer, 
+    "http_header_field_manipulation": HTTPHeaderFieldManipulationTransformer,
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
 }
