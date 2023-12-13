@@ -303,20 +303,36 @@ def find_tls_handshake_network_events(
     matched_event_windows = []
 
     current_event_window = []
+    all_event_windows_dict = {}
     for idx, ne in enumerate(network_events):
-        if ne.operation == "connect":
-            current_event_window = []
-        current_event_window.append(ne)
-        if ne.operation == "tls_handshake_done":
-            # We identify the network_event for the given TLS handshake based on the
-            # fact that the timestamp on tls_handshake_done event is the same as the
-            # tls_handshake time.
-            # In case of duplicates we also look for the index of the tls
-            # handshake inside of the list of event windows.
-            if ne.t == tls_handshake.t:
-                matched_event_windows.append(len(all_event_windows))
-            current_event_window += network_events_until_connect(network_events[idx:])
-            all_event_windows.append(current_event_window)
+        if ne.transaction_id == None:
+            if ne.operation == "connect":
+                current_event_window = []
+            current_event_window.append(ne)
+            if ne.operation == "tls_handshake_done":
+                # We identify the network_event for the given TLS handshake based on the
+                # fact that the timestamp on tls_handshake_done event is the same as the
+                # tls_handshake time.
+                # In case of duplicates we also look for the index of the tls
+                # handshake inside of the list of event windows.
+                if ne.t == tls_handshake.t:
+                    matched_event_windows.append(len(all_event_windows))
+                current_event_window += network_events_until_connect(network_events[idx:])
+                all_event_windows.append(current_event_window)
+        else:
+            transaction_id = ne.transaction_id
+            if transaction_id not in event_windows:
+                all_event_windows_dict[transaction_id] = []
+            all_event_windows_dict[transaction_id].append(ne)
+            if ne.operation == "tls_handshake_done":
+                # We identify the network_event for the given TLS handshake based on the
+                # fact that the timestamp on tls_handshake_done event is the same as the
+                # tls_handshake time.
+                # In case of duplicates we also look for the index of the tls
+                # handshake inside of the list of event windows.
+                if ne.t == tls_handshake.t:
+                    matched_event_windows.append(len(all_event_windows))
+                all_event_windows.append(transaction_id)
 
     # We do this because there are cases such as
     # https://explorer.ooni.org/measurement/20221114T002124Z_webconnectivity_BR_27699_n1_knqvcofoEIxHMpzj?input=https://cdt.org/
@@ -324,6 +340,8 @@ def find_tls_handshake_network_events(
     # to handle that we assume that the relative ordering of the network_events
     # is correct.
     # If that doesn't work, then we just bail.
+    if len(all_event_windows_dict) > 0 and src_idx in matched_event_windows:
+        return all_event_windows_dict[all_event_windows[src_idx]]
     if len(matched_event_windows) == 1:
         return all_event_windows[matched_event_windows[0]]
     elif len(matched_event_windows) > 1 and src_idx in matched_event_windows:
