@@ -6,6 +6,7 @@ from oonidata.transforms.nettests.http_header_field_manipulation import (
 )
 from oonidata.transforms.nettests.signal import SignalTransformer
 from oonidata.transforms.nettests.telegram import TelegramTransformer
+from oonidata.transforms.nettests.stunreachability import StunReachabilityTransformer
 from oonidata.transforms.nettests.tor import TorTransformer
 from oonidata.transforms.nettests.web_connectivity import WebConnectivityTransformer
 from oonidata.transforms.nettests.http_invalid_request_line import (
@@ -16,6 +17,7 @@ NETTEST_TRANSFORMERS = {
     "dnscheck": DNSCheckTransformer,
     "signal": SignalTransformer,
     "telegram": TelegramTransformer,
+    "stun_reachability": StunReachabilityTransformer,
     "tor": TorTransformer,
     "http_header_field_manipulation": HTTPHeaderFieldManipulationTransformer,
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
