@@ -5,6 +5,7 @@ from .dnscheck import DNSCheck
 from .signal import Signal
 from .telegram import Telegram
 from .tor import Tor
+from .urlgetter import UrlGetter
 from .web_connectivity import WebConnectivity
 from .stun_reachability import StunReachability
 from .whatsapp import Whatsapp
@@ -18,6 +19,7 @@ SUPPORTED_CLASSES = [
     StunReachability,
     Telegram,
     Tor,
+    UrlGetter,
     DNSCheck,
     Signal,
     Whatsapp,
@@ -30,6 +32,7 @@ SupportedDataformats = Union[
     StunReachability,
     Telegram,
     Tor,
+    UrlGetter,
     DNSCheck,
     Signal,
     Whatsapp,
