@@ -6,7 +6,6 @@ from oonidata.transforms.nettests.measurement_transformer import MeasurementTran
 
 class FacebookMessengerTransformer(MeasurementTransformer):
     def make_observations(self, msmt: FacebookMessenger) -> Tuple[List[WebObservation]]:
-
         dns_observations = self.make_dns_observations(msmt.test_keys.queries)
         tcp_observations = self.make_tcp_observations(msmt.test_keys.tcp_connect)
 
