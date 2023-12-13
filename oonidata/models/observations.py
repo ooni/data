@@ -378,3 +378,34 @@ class HTTPMiddleboxObservation(MeasurementMeta):
     hfm_diff: Optional[str] = None
     hfm_failure: Optional[str] = None
     hfm_success: Optional[bool] = None
+
+
+@add_slots
+@dataclass
+class CircumventionToolObservation(MeasurementMeta):
+    __table_name__ = "obs_circumvention_tool"
+    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
+
+    observation_id: str = ""
+    bucket_date: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    bootstrap_time: Optional[int] = None
+
+    # psiphon observation
+    psiphon_failure: Failure = None
+    psiphon_max_runtime: Optional[int] = None
+    psiphon_socksproxy: Optional[str] = None
+
+    # vanilla_tor observation
+    tor_failure: Failure = None
+    tor_error: Optional[str] = None
+    tor_success: Optional[bool] = None
+    tor_timeout: Optional[int] = None
+    
+    tor_logs: Optional[List[str]] = None
+    tor_progress: Optional[int] = None
+    tor_progress_tag: Optional[str] = None
+    tor_progress_summary: Optional[str] = None
+    tor_version: Optional[str] = None
+    tor_transport_name: Optional[str] = None

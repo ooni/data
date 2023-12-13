@@ -5,6 +5,8 @@ from .dnscheck import DNSCheck
 from .signal import Signal
 from .telegram import Telegram
 from .tor import Tor
+from .psiphon import Psiphon
+from .vanilla_tor import VanillaTor
 from .web_connectivity import WebConnectivity
 from .whatsapp import Whatsapp
 from .http_invalid_request_line import HTTPInvalidRequestLine
@@ -16,6 +18,8 @@ SUPPORTED_CLASSES = [
     WebConnectivity,
     Telegram,
     Tor,
+    Psiphon,
+    VanillaTor,
     DNSCheck,
     Signal,
     Whatsapp,
@@ -27,6 +31,8 @@ SupportedDataformats = Union[
     WebConnectivity,
     Telegram,
     Tor,
+    Psiphon,
+    VanillaTor,
     DNSCheck,
     Signal,
     Whatsapp,
