@@ -2,7 +2,6 @@ from typing import Union
 
 from .base_measurement import BaseMeasurement
 from .dnscheck import DNSCheck
-from .facebook_messenger import FacebookMessenger
 from .signal import Signal
 from .telegram import Telegram
 from .tor import Tor
@@ -22,7 +21,6 @@ SUPPORTED_CLASSES = [
     Psiphon,
     VanillaTor,
     DNSCheck,
-    FacebookMessenger,
     Signal,
     Whatsapp,
     BaseMeasurement,
@@ -36,7 +34,6 @@ SupportedDataformats = Union[
     Psiphon,
     VanillaTor,
     DNSCheck,
-    FacebookMessenger,
     Signal,
     Whatsapp,
     BaseMeasurement,

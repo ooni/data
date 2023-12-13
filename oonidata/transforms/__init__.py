@@ -1,7 +1,6 @@
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.transforms.nettests.dnscheck import DNSCheckTransformer
-from oonidata.transforms.nettests.facebook_messenger import FacebookMessengerTransformer
 from oonidata.transforms.nettests.http_header_field_manipulation import (
     HTTPHeaderFieldManipulationTransformer,
 )
@@ -17,7 +16,6 @@ from oonidata.transforms.nettests.http_invalid_request_line import (
 
 NETTEST_TRANSFORMERS = {
     "dnscheck": DNSCheckTransformer,
-    "facebook_messenger": FacebookMessengerTransformer,
     "signal": SignalTransformer,
     "telegram": TelegramTransformer,
     "tor": TorTransformer,
