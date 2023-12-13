@@ -5,6 +5,8 @@ from oonidata.transforms.nettests.http_header_field_manipulation import (
     HTTPHeaderFieldManipulationTransformer,
 )
 from oonidata.transforms.nettests.signal import SignalTransformer
+from oonidata.transforms.nettests.facebook_messenger import FacebookMessengerTransformer
+from oonidata.transforms.nettests.whatsapp import WhatsappTransformer
 from oonidata.transforms.nettests.telegram import TelegramTransformer
 from oonidata.transforms.nettests.tor import TorTransformer
 from oonidata.transforms.nettests.web_connectivity import WebConnectivityTransformer
@@ -15,6 +17,8 @@ from oonidata.transforms.nettests.http_invalid_request_line import (
 NETTEST_TRANSFORMERS = {
     "dnscheck": DNSCheckTransformer,
     "signal": SignalTransformer,
+    "facebook_messenger": FacebookMessengerTransformer,
+    "whatsapp": WhatsappTransformer,
     "telegram": TelegramTransformer,
     "tor": TorTransformer,
     "http_header_field_manipulation": HTTPHeaderFieldManipulationTransformer,
