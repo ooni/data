@@ -17,7 +17,7 @@ from oonidata.models.nettests.base_measurement import BaseMeasurement
 @dataclass
 class UrlGetterTestKeys(BaseTestKeys):
     failure: Failure = None
-    failed_operation = Optional[str] = None
+    failed_operation: Optional[str] = None
     agent: Optional[str] = None
 
     socksproxy: Optional[str] = None

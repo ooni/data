@@ -6,7 +6,7 @@ from oonidata.transforms.nettests.http_header_field_manipulation import (
 )
 from oonidata.transforms.nettests.signal import SignalTransformer
 from oonidata.transforms.nettests.telegram import TelegramTransformer
-from oonidata.transforms.nettests.stunreachability import StunReachabilityTransformer
+from oonidata.transforms.nettests.stun_reachability import StunReachabilityTransformer
 from oonidata.transforms.nettests.tor import TorTransformer
 from oonidata.transforms.nettests.urlgetter import UrlGetterTransformer
 from oonidata.transforms.nettests.web_connectivity import WebConnectivityTransformer
