@@ -321,7 +321,7 @@ def find_tls_handshake_network_events(
                 all_event_windows.append(current_event_window)
         else:
             transaction_id = ne.transaction_id
-            if transaction_id not in event_windows:
+            if transaction_id not in all_event_windows_dict:
                 all_event_windows_dict[transaction_id] = []
             all_event_windows_dict[transaction_id].append(ne)
             if ne.operation == "tls_handshake_done":
