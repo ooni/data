@@ -144,6 +144,18 @@ def test_wc_observations_chained(netinfodb, measurements):
 
     assert len(list(filter(lambda o: o.ip == "172.67.16.69", web_obs))) == 1
     assert len(web_obs) == 4
+    
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20221003005943.713064_IR_webconnectivity_ddfdfa11c9cf323d"
+        ]
+    )
+    assert isinstance(msmt, WebConnectivity)
+    web_obs = measurement_to_observations(msmt, netinfodb=netinfodb)[0]
+
+    # we get 2 instances of the same ip, one from each dns_engine: getaddrinfo and udp
+    assert len(list(filter(lambda o: o.ip == "185.199.108.133", web_obs))) == 2
+    assert len(web_obs) == 17
 
 
 def test_dnscheck_obs(netinfodb, measurements):
