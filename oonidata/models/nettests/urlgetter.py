@@ -7,7 +7,7 @@ from oonidata.models.dataformats import (
     NetworkEvent,
     TCPConnect,
     TLSHandshake,
-    HTTPRequest,
+    HTTPTransaction,
     Failure,
 )
 from oonidata.models.nettests.base_measurement import BaseMeasurement
@@ -23,7 +23,7 @@ class UrlGetterTestKeys(BaseTestKeys):
     socksproxy: Optional[str] = None
     network_events: Optional[List[NetworkEvent]] = None
     queries: Optional[List[DNSQuery]] = None
-    requests: Optional[List[HTTPRequest]] = None
+    requests: Optional[List[HTTPTransaction]] = None
     tcp_connect: Optional[List[TCPConnect]] = None
     tls_handshakes: Optional[List[TLSHandshake]] = None
 

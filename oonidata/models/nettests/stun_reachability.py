@@ -23,6 +23,6 @@ class StunReachabilityTestKeys(BaseTestKeys):
 @add_slots
 @dataclass
 class StunReachability(BaseMeasurement):
-    __test_name__ = "stun_reachability"
+    __test_name__ = "stunreachability"
 
     test_keys: StunReachabilityTestKeys

@@ -19,7 +19,7 @@ NETTEST_TRANSFORMERS = {
     "dnscheck": DNSCheckTransformer,
     "signal": SignalTransformer,
     "telegram": TelegramTransformer,
-    "stun_reachability": StunReachabilityTransformer,
+    "stunreachability": StunReachabilityTransformer,
     "tor": TorTransformer,
     "browser_web": BrowserWebTransformer,
     "urlgetter": UrlGetterTransformer,
