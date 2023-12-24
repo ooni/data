@@ -20,5 +20,5 @@ class WhatsappTransformer(MeasurementTransformer):
                 tcp_observations=tcp_observations,
                 tls_observations=tls_observations,
                 http_observations=http_observations,
-            )
+            ),
         )

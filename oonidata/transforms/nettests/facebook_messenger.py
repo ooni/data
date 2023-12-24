@@ -13,5 +13,5 @@ class FacebookMessengerTransformer(MeasurementTransformer):
             self.consume_web_observations(
                 dns_observations=dns_observations,
                 tcp_observations=tcp_observations,
-            )
+            ),
         )
