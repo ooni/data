@@ -2,6 +2,9 @@ from typing import List
 from oonidata.analysis.datasources import load_measurement
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.telegram import Telegram
+from oonidata.models.nettests.signal import Signal
+from oonidata.models.nettests.facebook_messenger import FacebookMessenger
+from oonidata.models.nettests.whatsapp import Whatsapp
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.stun_reachability import StunReachability
 from oonidata.models.nettests.urlgetter import UrlGetter
@@ -177,7 +180,6 @@ def test_telegram_obs(netinfodb, measurements):
             assert wo.tls_t
     assert len(web_obs) == 33
 
-
 def test_stunreachability_obs(netinfodb, measurements):
     msmt = load_measurement(
         msmt_path=measurements["20221224235924.922622_BR_stunreachability_905c61a34356a9b2"]
@@ -192,11 +194,12 @@ def test_stunreachability_obs(netinfodb, measurements):
     assert web_obs[0].dns_answer == "206.53.159.130"
 
 
-def test_urlgetter_obs(netinfodb, measurements):
+
+def test_signal_obs(netinfodb, measurements):
     msmt = load_measurement(
-        msmt_path=measurements["20211224011542.635260_IR_urlgetter_38d73cdfee442409"]
+        msmt_path=measurements["20221016235944.266268_GB_signal_1265ff650ee17b44"]
     )
-    assert isinstance(msmt, UrlGetter)
+    assert isinstance(msmt, Signal)
     web_obs: List[WebObservation] = measurement_to_observations(
         msmt=msmt, netinfodb=netinfodb
     )[0]
@@ -211,10 +214,23 @@ def test_urlgetter_obs(netinfodb, measurements):
             assert wo.tls_t
     assert len(web_obs) == 6
 
+def test_urlgetter_obs(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements["20211224011542.635260_IR_urlgetter_38d73cdfee442409"]
+    )
+    assert isinstance(msmt, UrlGetter)
+
     msmt = load_measurement(
         msmt_path=measurements["20221224180301.892770_VE_urlgetter_0a02e27d0c651b8f"]
     )
     assert isinstance(msmt, UrlGetter)
+    assert len(web_obs) == 19
+
+def test_whatsapp_obs(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements["20211018232506.972850_IN_whatsapp_44970a56806dbfb3"]
+    )
+    assert isinstance(msmt, Whatsapp)
     web_obs: List[WebObservation] = measurement_to_observations(
         msmt=msmt, netinfodb=netinfodb
     )[0]
@@ -229,7 +245,6 @@ def test_urlgetter_obs(netinfodb, measurements):
             assert wo.tls_t
     assert len(web_obs) == 2
 
-
 def test_browserweb_obs(netinfodb, measurements):
     msmt = load_measurement(
         msmt_path=measurements["20231222154141.824397_US_browserweb_615428b4802b5297"]
@@ -241,3 +256,39 @@ def test_browserweb_obs(netinfodb, measurements):
     assert len(web_obs) == 1
     assert isinstance(web_obs[0], WebObservation)
     assert web_obs[0].http_failure == "error"
+    assert len(web_obs) == 137
+
+
+def test_facebook_messenger_obs(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20220124235953.650143_ES_facebookmessenger_0e048a26b89a9d70"
+        ]
+    )
+    assert isinstance(msmt, FacebookMessenger)
+    web_obs: List[WebObservation] = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb
+    )[0]
+
+    # Based on https://github.com/ooni/spec/blob/master/nettests/ts-019-facebook-messenger.md
+    spec_hostname_set = set(
+        [
+            "stun.fbsbx.com",
+            "b-api.facebook.com",
+            "b-graph.facebook.com",
+            "edge-mqtt.facebook.com",
+            "external.xx.fbcdn.net",
+            "scontent.xx.fbcdn.net",
+            "star.c10r.facebook.com",
+        ]
+    )
+
+    hostname_set = set()
+    for wo in web_obs:
+        if wo.dns_engine:
+            assert wo.dns_t
+        if wo.tcp_success is not None:
+            assert wo.tcp_t
+        hostname_set.add(wo.hostname)
+    assert hostname_set == spec_hostname_set
+    assert len(web_obs) == 14

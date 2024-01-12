@@ -3,6 +3,7 @@ from typing import Union
 from .base_measurement import BaseMeasurement
 from .dnscheck import DNSCheck
 from .signal import Signal
+from .facebook_messenger import FacebookMessenger
 from .telegram import Telegram
 from .tor import Tor
 from .urlgetter import UrlGetter
@@ -24,6 +25,7 @@ SUPPORTED_CLASSES = [
     UrlGetter,
     DNSCheck,
     Signal,
+    FacebookMessenger,
     Whatsapp,
     BaseMeasurement,
 ]
@@ -38,6 +40,7 @@ SupportedDataformats = Union[
     UrlGetter,
     DNSCheck,
     Signal,
+    FacebookMessenger,
     Whatsapp,
     BaseMeasurement,
 ]
