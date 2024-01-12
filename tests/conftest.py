@@ -34,10 +34,7 @@ def fingerprintdb(datadir):
 
 @pytest.fixture
 def netinfodb():
-    return NetinfoDB(
-        datadir=DATA_DIR,
-        download=True,
-    )
+    return NetinfoDB(datadir=DATA_DIR, download=True, max_age_seconds=60 * 60 * 24)
 
 
 @pytest.fixture
