@@ -221,15 +221,34 @@ def test_whatsapp_obs(netinfodb, measurements):
 
 def test_facebook_messenger_obs(netinfodb, measurements):
     msmt = load_measurement(
-        msmt_path=measurements["20220124235953.650143_ES_facebookmessenger_0e048a26b89a9d70"]
+        msmt_path=measurements[
+            "20220124235953.650143_ES_facebookmessenger_0e048a26b89a9d70"
+        ]
     )
     assert isinstance(msmt, FacebookMessenger)
     web_obs: List[WebObservation] = measurement_to_observations(
         msmt=msmt, netinfodb=netinfodb
     )[0]
+
+    # Based on https://github.com/ooni/spec/blob/master/nettests/ts-019-facebook-messenger.md
+    spec_hostname_set = set(
+        [
+            "stun.fbsbx.com",
+            "b-api.facebook.com",
+            "b-graph.facebook.com",
+            "edge-mqtt.facebook.com",
+            "external.xx.fbcdn.net",
+            "scontent.xx.fbcdn.net",
+            "star.c10r.facebook.com",
+        ]
+    )
+
+    hostname_set = set()
     for wo in web_obs:
         if wo.dns_engine:
             assert wo.dns_t
         if wo.tcp_success is not None:
             assert wo.tcp_t
+        hostname_set.add(wo.hostname)
+    assert hostname_set == spec_hostname_set
     assert len(web_obs) == 14
