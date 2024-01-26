@@ -23,6 +23,10 @@ SAMPLE_MEASUREMENTS = [
     "20210101181154.037019_CH_webconnectivity_68ce38aa9e3182c2",
     "20210101190046.780850_US_webconnectivity_3296f126f79ca186",
     "20231031032643.267235_GR_dnscheck_abcbfc460b9424b6",
+    "20221224235924.922622_BR_stunreachability_905c61a34356a9b2",
+    "20211224011542.635260_IR_urlgetter_38d73cdfee442409",  # "dnslookup://example.org"
+    "20221224180301.892770_VE_urlgetter_0a02e27d0c651b8f",  # "https://dolartoday.com/"  
+    "20231222154141.824397_US_browserweb_615428b4802b5297", 
     "20231101164541.763506_NP_httpinvalidrequestline_0cf676868fa36cc4",
     "20231101164544.534107_BR_httpheaderfieldmanipulation_4caa0b0556f0b141",
     "20231101164649.235575_RU_tor_ccf7519bf683c022",

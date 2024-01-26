@@ -6,6 +6,9 @@ from oonidata.models.nettests.signal import Signal
 from oonidata.models.nettests.facebook_messenger import FacebookMessenger
 from oonidata.models.nettests.whatsapp import Whatsapp
 from oonidata.models.nettests.web_connectivity import WebConnectivity
+from oonidata.models.nettests.stun_reachability import StunReachability
+from oonidata.models.nettests.urlgetter import UrlGetter
+from oonidata.models.nettests.browser_web import BrowserWeb
 from oonidata.models.observations import WebObservation
 from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
 from oonidata.transforms import measurement_to_observations
@@ -178,6 +181,20 @@ def test_telegram_obs(netinfodb, measurements):
     assert len(web_obs) == 33
 
 
+def test_stunreachability_obs(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements["20221224235924.922622_BR_stunreachability_905c61a34356a9b2"]
+    )
+    assert isinstance(msmt, StunReachability)
+    web_obs: List[WebObservation] = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb
+    )[0]
+    assert isinstance(web_obs[0], WebObservation)
+    assert len(web_obs) == 1
+    assert web_obs[0].dns_engine == "system"
+    assert web_obs[0].dns_answer == "206.53.159.130"
+
+
 def test_signal_obs(netinfodb, measurements):
     msmt = load_measurement(
         msmt_path=measurements["20221016235944.266268_GB_signal_1265ff650ee17b44"]
@@ -188,7 +205,6 @@ def test_signal_obs(netinfodb, measurements):
     )[0]
     for wo in web_obs:
         if wo.dns_engine:
-            print(wo.dns_engine)
             assert wo.dns_t
         if wo.tcp_success is not None:
             assert wo.tcp_t
@@ -197,6 +213,44 @@ def test_signal_obs(netinfodb, measurements):
         if wo.tls_cipher_suite:
             assert wo.tls_t
     assert len(web_obs) == 19
+
+
+def test_urlgetter_obs(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements["20211224011542.635260_IR_urlgetter_38d73cdfee442409"]
+    )
+    assert isinstance(msmt, UrlGetter)
+    web_obs: List[WebObservation] = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb
+    )[0]
+    for wo in web_obs:
+        if wo.dns_engine:
+            assert wo.dns_t
+        if wo.tcp_success is not None:
+            assert wo.tcp_t
+        if wo.http_request_url:
+            assert wo.http_t
+        if wo.tls_cipher_suite:
+            assert wo.tls_t
+    assert len(web_obs) == 6
+
+    msmt = load_measurement(
+        msmt_path=measurements["20221224180301.892770_VE_urlgetter_0a02e27d0c651b8f"]
+    )
+    assert isinstance(msmt, UrlGetter)
+    web_obs: List[WebObservation] = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb
+    )[0]
+    for wo in web_obs:
+        if wo.dns_engine:
+            assert wo.dns_t
+        if wo.tcp_success is not None:
+            assert wo.tcp_t
+        if wo.http_request_url:
+            assert wo.http_t
+        if wo.tls_cipher_suite:
+            assert wo.tls_t
+    assert len(web_obs) == 2
 
 
 def test_whatsapp_obs(netinfodb, measurements):
@@ -217,6 +271,19 @@ def test_whatsapp_obs(netinfodb, measurements):
         if wo.tls_cipher_suite:
             assert wo.tls_t
     assert len(web_obs) == 137
+
+
+def test_browserweb_obs(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements["20231222154141.824397_US_browserweb_615428b4802b5297"]
+    )
+    assert isinstance(msmt, BrowserWeb)
+    web_obs: List[WebObservation] = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb
+    )[0]
+    assert len(web_obs) == 1
+    assert isinstance(web_obs[0], WebObservation)
+    assert web_obs[0].http_failure == "error"
 
 
 def test_facebook_messenger_obs(netinfodb, measurements):
