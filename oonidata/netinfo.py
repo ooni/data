@@ -4,7 +4,7 @@ import gzip
 import logging
 import hashlib
 
-from typing import List
+from typing import List, Optional
 from pathlib import Path
 from datetime import datetime, date
 from collections import OrderedDict, namedtuple
@@ -100,10 +100,13 @@ class NetinfoDB:
         self,
         datadir: Path = Path("datadir"),
         download: bool = False,
+        max_age_seconds: Optional[int] = None,
     ):
         self.datadir = datadir
         self.ip2country_as_dir = self.datadir / "ip2country-as"
-        if download:
+        self.last_updated_file = self.ip2country_as_dir / "LAST_UPDATED.txt"
+        self.max_age_seconds = max_age_seconds
+        if download and self.should_update():
             self.refresh_netinfodb()
 
         try:
@@ -115,6 +118,17 @@ class NetinfoDB:
 
         self.load_ip2country_as()
         self.readers = {}
+
+    def should_update(self):
+        if self.max_age_seconds is None or self.last_updated_file.exists() is False:
+            return True
+
+        last_updated = datetime.fromisoformat(self.last_updated_file.read_text())
+        age = datetime.now() - last_updated
+        return age.seconds >= self.max_age_seconds
+
+    def update_last_updated(self):
+        self.last_updated_file.write_text(datetime.now().isoformat())
 
     def refresh_netinfodb(self):
         self.ip2country_as_dir.mkdir(parents=True, exist_ok=True)
@@ -141,6 +155,7 @@ class NetinfoDB:
                 ).open("wb") as out_file:
                     shutil.copyfileobj(in_file, out_file)
                 dst_path.with_suffix(".tmp").rename(dst_path)
+        self.update_last_updated()
 
     def get_reader(self, db_path: Path):
         if db_path in self.readers:
