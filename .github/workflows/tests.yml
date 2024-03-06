@@ -75,7 +75,7 @@ jobs:
         run: sudo service clickhouse-server start
 
       - name: Install dependencies
-        run: poetry install
+        run: poetry install --all-extras
 
       - name: Run all tests
         env:

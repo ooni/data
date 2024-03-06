@@ -29,8 +29,11 @@ altair = {version = "^4.2.0", optional = true}
 numpy = {version = "^1.23.5", optional = true, python = ">=3.8"}
 pandas = {version = "^2.0.0", optional = true, python = ">=3.8"}
 flask = {version = "^2.2.2", optional = true}
+fastapi = {version = "^0.104.1", optional = true}
 jupyterlab = {version = "^4.0.7", optional = true}
 click-loglevel = "^0.5.0"
+uvicorn = {version = "^0.24.0.post1", optional = true}
+pydantic-settings = {version = "^2.1.0", optional = true}
 
 [tool.poetry.dev-dependencies]
 pytest = ">=7.2"
@@ -48,7 +51,11 @@ oonidata = 'oonidata.cli:cli'
 
 [tool.poetry.extras]
 dataviz = ["altair", "numpy", "pandas", "flask"]
+fastapi = ["fastapi", "uvicorn", "pydantic-settings"]
 research = ["jupyterlab"]
+
+[tool.poetry.group.dev.dependencies]
+httpx = "^0.25.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
