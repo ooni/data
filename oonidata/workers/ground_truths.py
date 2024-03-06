@@ -10,10 +10,7 @@ from datetime import date
 from oonidata.dataclient import date_interval
 
 from oonidata.datautils import PerfTimer
-from oonidata.analysis.control import (
-    WebGroundTruthDB,
-    iter_web_ground_truths,
-)
+from oonidata.analysis.control import WebGroundTruthDB, iter_web_ground_truths
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.db.connections import (

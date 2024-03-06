@@ -5,8 +5,8 @@ from typing import List, Optional
 
 
 @dataclass
-class WebsiteAnalysis:
-    __table_name__ = "website_analysis"
+class WebAnalysis:
+    __table_name__ = "obs_web_analysis"
     __table_index__ = (
         "analysis_id",
         "measurement_uid",
@@ -17,8 +17,7 @@ class WebsiteAnalysis:
     analysis_id: str
     measurement_uid: str
     observation_id: str
-    report_id: str
-    input: Optional[str]
+
     measurement_start_time: datetime
     created_at: datetime
 
@@ -36,20 +35,11 @@ class WebsiteAnalysis:
     resolver_as_cc: Optional[str]
     resolver_cc: Optional[str]
 
-    ## These fields will be shared by multiple experiment results in a given
-    ## measurement
-    # Indicates the experiment group for this particular result, ex. im,
-    # websites, circumvention
-    experiment_group: str
-    # The domain name for the specified target
-    domain_name: str
-    # A string indicating the name of the target, ex. Signal, Facebook website
-    target_name: str
-
-    ## These fields are unique to a particular experiment result
-    # A string indicating the subject of this experiment result, for example an
-    # IP:port combination.
-    subject: str
+    # This is the domain name associated with the target, for example for
+    # facebook it will be www.facebook.com, but also edge-mqtt.facebook.com
+    target_domain_name: str
+    # This is the more granular level associated with a target, for example the IP, port tuple
+    target_detail: str
 
     # dns_ground_truth_nxdomain_cc_asn: Optional[set] = None
     # dns_ground_truth_failure_cc_asn: Optional[set] = None
@@ -57,7 +47,6 @@ class WebsiteAnalysis:
     # dns_ground_truth_other_ips: Optional[Dict[str, set]] = None
     # dns_ground_truth_other_asns: Optional[Dict[str, set]] = None
     # dns_ground_truth_trusted_answers: Optional[Dict] = None
-
     dns_ground_truth_nxdomain_count: Optional[int] = None
     dns_ground_truth_failure_count: Optional[int] = None
     dns_ground_truth_ok_count: Optional[int] = None
@@ -78,6 +67,7 @@ class WebsiteAnalysis:
     dns_consistency_system_is_answer_probe_cc_match: Optional[bool] = None
     dns_consistency_system_is_answer_bogon: Optional[bool] = None
     dns_consistency_system_answer_fp_name: Optional[str] = None
+    dns_consistency_system_answer_fp_scope: Optional[str] = None
     dns_consistency_system_is_answer_fp_match: Optional[bool] = None
     dns_consistency_system_is_answer_fp_country_consistent: Optional[bool] = None
     dns_consistency_system_is_answer_fp_false_positive: Optional[bool] = None
@@ -99,6 +89,7 @@ class WebsiteAnalysis:
     dns_consistency_other_is_answer_probe_cc_match: Optional[bool] = None
     dns_consistency_other_is_answer_bogon: Optional[bool] = None
     dns_consistency_other_answer_fp_name: Optional[str] = None
+    dns_consistency_other_answer_fp_scope: Optional[str] = None
     dns_consistency_other_is_answer_fp_match: Optional[bool] = None
     dns_consistency_other_is_answer_fp_country_consistent: Optional[bool] = None
     dns_consistency_other_is_answer_fp_false_positive: Optional[bool] = None
@@ -123,6 +114,7 @@ class WebsiteAnalysis:
     tls_ground_truth_trusted_ok_count: Optional[int] = None
     tcp_address: Optional[str] = None
     tcp_success: Optional[bool] = None
+    tcp_failure: Optional[str] = None
     tcp_ground_truth_failure_count: Optional[int] = None
     tcp_ground_truth_failure_asn_cc_count: Optional[int] = None
     tcp_ground_truth_ok_count: Optional[int] = None
@@ -143,6 +135,7 @@ class WebsiteAnalysis:
     http_ground_truth_trusted_failure_count: Optional[int] = None
     http_ground_truth_body_length: Optional[int] = None
     http_fp_name: Optional[str] = None
+    http_fp_scope: Optional[str] = None
     http_is_http_fp_match: Optional[bool] = None
     http_is_http_fp_country_consistent: Optional[bool] = None
     http_is_http_fp_false_positive: Optional[bool] = None

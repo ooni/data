@@ -1,7 +1,7 @@
 import pathlib
 import logging
 import dataclasses
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from typing import (
     List,
@@ -25,7 +25,6 @@ from oonidata.netinfo import NetinfoDB
 
 from oonidata.dataclient import (
     date_interval,
-    iter_measurements,
     list_file_entries_batches,
     stream_measurements,
     ccs_set,
@@ -38,6 +37,7 @@ from oonidata.workers.common import (
     get_prev_range,
     make_db_rows,
     maybe_delete_prev_range,
+    optimize_all_tables,
 )
 
 log = logging.getLogger("oonidata.processing")
@@ -195,7 +195,7 @@ def make_observation_in_day(
     if len(prev_ranges) > 0:
         with ClickhouseConnection(clickhouse, row_buffer_size=10_000) as db:
             for table_name, pr in prev_ranges:
-                maybe_delete_prev_range(db=db, prev_range=pr, table_name=table_name)
+                maybe_delete_prev_range(db=db, prev_range=pr)
 
     return total_size, total_msmt_count
 
@@ -211,6 +211,9 @@ def start_observation_maker(
     fast_fail: bool,
     log_level: int = logging.INFO,
 ):
+    log.info("Optimizing all tables")
+    optimize_all_tables(clickhouse)
+
     dask_client = DaskClient(
         threads_per_worker=2,
         n_workers=parallelism,
@@ -220,6 +223,8 @@ def start_observation_maker(
     total_size, total_msmt_count = 0, 0
     day_list = list(date_interval(start_day, end_day))
     # See: https://stackoverflow.com/questions/51099685/best-practices-in-setting-number-of-dask-workers
+
+    log.info(f"Starting observation making on {probe_cc} ({start_day} - {end_day})")
     for day in day_list:
         t = PerfTimer()
         size, msmt_count = make_observation_in_day(
@@ -244,7 +249,7 @@ def start_observation_maker(
                 [
                     [
                         "oonidata.bucket_processed",
-                        datetime.utcnow(),
+                        datetime.now(timezone.utc).replace(tzinfo=None),
                         int(t.ms),
                         size,
                         msmt_count,
@@ -261,3 +266,5 @@ def start_observation_maker(
     log.info(
         f"{round(total_size/10**9, 2)}GB {total_msmt_count} msmts in {t_total.pretty}"
     )
+
+    dask_client.shutdown()

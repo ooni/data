@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 import dataclasses
-from datetime import datetime
+from datetime import datetime, timezone
 import ipaddress
 from typing import (
     Generator,
@@ -15,7 +15,7 @@ from oonidata.analysis.control import (
     WebGroundTruth,
     BodyDB,
 )
-from oonidata.models.analysis import WebsiteAnalysis
+from oonidata.models.analysis import WebAnalysis
 
 from oonidata.fingerprintdb import FingerprintDB
 from oonidata.models.observations import WebControlObservation, WebObservation
@@ -83,6 +83,7 @@ def encode_address(ip: str, port: Optional[int]) -> str:
 class TCPAnalysis:
     address: str
     success: bool
+    failure: Optional[str]
 
     ground_truth_failure_count: Optional[int]
     ground_truth_failure_asn_cc_count: Optional[int]
@@ -105,6 +106,7 @@ def make_tcp_analysis(
         return TCPAnalysis(
             address=blocking_subject,
             success=True,
+            failure=None,
             ground_truth_failure_asn_cc_count=None,
             ground_truth_failure_count=None,
             ground_truth_ok_asn_cc_count=None,
@@ -154,6 +156,7 @@ def make_tcp_analysis(
     return TCPAnalysis(
         address=blocking_subject,
         success=False,
+        failure=web_o.tcp_failure,
         ground_truth_failure_asn_cc_count=tcp_ground_truth_failure_asn_cc_count,
         ground_truth_failure_count=tcp_ground_truth_failure_count,
         ground_truth_ok_asn_cc_count=tcp_ground_truth_ok_asn_cc_count,
@@ -261,6 +264,7 @@ class DNSConsistencyResults:
     is_answer_bogon: bool = False
 
     answer_fp_name: str = ""
+    answer_fp_scope: str = ""
     is_answer_fp_match: bool = False
     is_answer_fp_country_consistent: bool = False
     is_answer_fp_false_positive: bool = False
@@ -318,6 +322,7 @@ def check_dns_consistency(
             # XXX in the event of multiple matches, we are overriding it with
             # the last value. It's probably OK for now.
             consistency_results.answer_fp_name = fp.name
+            consistency_results.answer_fp_scope = fp.scope or ""
 
         if not web_o.dns_engine or web_o.dns_engine in SYSTEM_RESOLVERS:
             # TODO: do the same thing for the non-system resolver
@@ -460,18 +465,17 @@ def make_tls_analysis(
         handshake_time=web_o.tls_handshake_time,
     )
     ground_truths = filter(
-        lambda gt: gt.http_request_url and gt.hostname == web_o.hostname,
-        web_ground_truths,
+        lambda gt: gt.ip == web_o.ip and gt.port == web_o.port, web_ground_truths
     )
     failure_cc_asn = set()
     ok_cc_asn = set()
     for gt in ground_truths:
         # We don't check for strict == True, since depending on the DB engine
         # True could also be represented as 1
-        if gt.http_success is None:
+        if gt.tls_success is None:
             continue
 
-        if gt.http_success:
+        if gt.tls_success:
             if gt.is_trusted_vp:
                 tls_analysis.ground_truth_trusted_ok_count += gt.count
             else:
@@ -510,6 +514,7 @@ class HTTPAnalysis:
     ground_truth_body_length: int = 0
 
     fp_name: str = ""
+    fp_scope: str = ""
     is_http_fp_match: bool = False
     is_http_fp_country_consistent: bool = False
     is_http_fp_false_positive: bool = False
@@ -589,6 +594,7 @@ def make_http_analysis(
                         http_analysis.is_http_fp_country_consistent = True
                     if fp.name:
                         http_analysis.fp_name = fp.name
+                        http_analysis.fp_scope = fp.scope
 
     if web_o.http_response_body_length:
         http_analysis.response_body_length = web_o.http_response_body_length
@@ -600,23 +606,26 @@ def make_http_analysis(
     return http_analysis
 
 
-def make_website_analysis(
+def make_web_analysis(
     web_observations: List[WebObservation],
     web_ground_truths: List[WebGroundTruth],
     body_db: BodyDB,
     fingerprintdb: FingerprintDB,
-) -> Generator[WebsiteAnalysis, None, None]:
+) -> Generator[WebAnalysis, None, None]:
     domain_name = web_observations[0].hostname or ""
-    experiment_group = "websites"
-    # Ghetto hax attempt at consolidating targets
-    target_name = domain_name.replace("www.", "")
 
     dns_observations_by_hostname = defaultdict(list)
     dns_analysis_by_hostname = {}
     other_observations = []
     for web_o in web_observations:
         if web_o.dns_query_type:
-            assert web_o.hostname is not None
+            # assert web_o.hostname is not None, web_o
+            # TODO(arturo): this is a workaround for: https://github.com/ooni/probe/issues/2628
+            if web_o.hostname is None:
+                log.error(
+                    f"missing hostname for DNS query {web_o}. Skipping DNS observation."
+                )
+                continue
             dns_observations_by_hostname[web_o.hostname].append(web_o)
         else:
             other_observations.append(web_o)
@@ -631,15 +640,15 @@ def make_website_analysis(
         dns_analysis_by_hostname[hostname] = dns_analysis
 
     for idx, web_o in enumerate(web_observations):
-        subject = web_o.http_request_url or domain_name
+        target_detail = web_o.http_request_url or domain_name
         if web_o.ip:
             try:
                 ipaddr = ipaddress.ip_address(web_o.ip)
-                # FIXME: for the moment we just ignore all IPv6 results, because they are too noisy
+                # TODO(arturo): for the moment we just ignore all IPv6 results, because they are too noisy
                 if isinstance(ipaddr, ipaddress.IPv6Address):
                     continue
                 address = encode_address(web_o.ip, web_o.port)
-                subject = f"{address} {subject}"
+                target_detail = f"{address} {target_detail}"
             except:
                 log.error(f"Invalid IP in {web_o.ip}")
 
@@ -665,13 +674,11 @@ def make_website_analysis(
                 fingerprintdb=fingerprintdb,
             )
 
-        created_at = datetime.utcnow()
-        website_analysis = WebsiteAnalysis(
+        created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        website_analysis = WebAnalysis(
             measurement_uid=web_o.measurement_uid,
             observation_id=web_o.observation_id,
             created_at=created_at,
-            report_id=web_o.report_id,
-            input=web_o.input,
             measurement_start_time=web_o.measurement_start_time,
             probe_asn=web_o.probe_asn,
             probe_cc=web_o.probe_cc,
@@ -684,10 +691,8 @@ def make_website_analysis(
             resolver_as_cc=web_o.resolver_as_cc,
             resolver_cc=web_o.resolver_cc,
             analysis_id=f"{web_o.measurement_uid}_{idx}",
-            experiment_group=experiment_group,
-            domain_name=domain_name,
-            target_name=target_name,
-            subject=subject,
+            target_domain_name=domain_name,
+            target_detail=target_detail,
         )
 
         if dns_analysis:
@@ -744,6 +749,9 @@ def make_website_analysis(
             )
             website_analysis.dns_consistency_system_answer_fp_name = (
                 dns_analysis.consistency_system.answer_fp_name
+            )
+            website_analysis.dns_consistency_system_answer_fp_scope = (
+                dns_analysis.consistency_system.answer_fp_scope
             )
             website_analysis.dns_consistency_system_is_answer_fp_match = (
                 dns_analysis.consistency_system.is_answer_fp_match
@@ -836,6 +844,9 @@ def make_website_analysis(
             website_analysis.dns_consistency_other_answer_fp_name = (
                 dns_analysis.consistency_other.answer_fp_name
             )
+            website_analysis.dns_consistency_other_answer_fp_scope = (
+                dns_analysis.consistency_other.answer_fp_scope
+            )
             website_analysis.dns_consistency_other_is_answer_fp_match = (
                 dns_analysis.consistency_other.is_answer_fp_match
             )
@@ -900,6 +911,7 @@ def make_website_analysis(
         if tcp_analysis:
             website_analysis.tcp_address = tcp_analysis.address
             website_analysis.tcp_success = tcp_analysis.success
+            website_analysis.tcp_failure = tcp_analysis.failure
             website_analysis.tcp_ground_truth_failure_count = (
                 tcp_analysis.ground_truth_failure_count
             )
@@ -955,6 +967,7 @@ def make_website_analysis(
                 http_analysis.ground_truth_body_length
             )
             website_analysis.http_fp_name = http_analysis.fp_name
+            website_analysis.http_fp_scope = http_analysis.fp_scope
             website_analysis.http_is_http_fp_match = http_analysis.is_http_fp_match
             website_analysis.http_is_http_fp_country_consistent = (
                 http_analysis.is_http_fp_country_consistent

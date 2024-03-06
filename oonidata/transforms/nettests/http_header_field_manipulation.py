@@ -1,5 +1,5 @@
 import dataclasses
-from datetime import datetime
+from datetime import datetime, timezone
 import orjson
 from typing import List, Tuple
 from oonidata.models.nettests import HTTPHeaderFieldManipulation
@@ -14,7 +14,7 @@ class HTTPHeaderFieldManipulationTransformer(MeasurementTransformer):
         mb_obs = HTTPMiddleboxObservation(
             hfm_success=True,
             observation_id=f"{msmt.measurement_uid}_0",
-            created_at=datetime.utcnow().replace(microsecond=0),
+            created_at=datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
             **dataclasses.asdict(self.measurement_meta),
         )
 

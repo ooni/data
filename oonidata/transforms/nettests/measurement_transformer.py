@@ -5,7 +5,7 @@ import ipaddress
 import dataclasses
 import logging
 from urllib.parse import urlparse, urlsplit
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import (
     Callable,
     Optional,
@@ -134,10 +134,13 @@ unknown_failure_map = (
 )
 
 
-def normalize_failure(failure: Failure):
+def normalize_failure(failure: Union[Failure, bool]) -> Failure:
     if not failure:
         # This will set it to None even when it's false
         return None
+
+    if failure is True:
+        return "true"
 
     if failure.startswith("unknown_failure"):
         for substring, new_failure in unknown_failure_map:
@@ -445,7 +448,7 @@ def maybe_set_web_fields(
     ],
     web_obs: WebObservation,
     prefix: str,
-    field_names: Tuple[str],
+    field_names: Tuple[str, ...],
 ):
     # TODO: the fact we have to do this is an artifact of the original
     # one-observation per type model. Once we decide we don't want to go for
@@ -899,7 +902,7 @@ class MeasurementTransformer:
 
         for idx, obs in enumerate(web_obs_list):
             obs.observation_id = f"{obs.measurement_uid}_{idx}"
-            obs.created_at = datetime.utcnow().replace(microsecond=0)
+            obs.created_at = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
 
         return web_obs_list
 

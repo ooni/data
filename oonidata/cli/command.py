@@ -7,6 +7,7 @@ from datetime import date, timedelta, datetime
 from typing import List, Optional
 
 import click
+from click_loglevel import LogLevel
 
 from oonidata import __version__
 from oonidata.dataclient import (
@@ -16,7 +17,6 @@ from oonidata.db.connections import ClickhouseConnection
 from oonidata.db.create_tables import create_queries, list_all_table_diffs
 from oonidata.netinfo import NetinfoDB
 from oonidata.workers import (
-    start_experiment_result_maker,
     start_fingerprint_hunter,
     start_observation_maker,
     start_ground_truth_builder,
@@ -71,10 +71,18 @@ end_day_option = click.option(
 
 @click.group()
 @click.option("--error-log-file", type=Path)
+@click.option(
+    "-l",
+    "--log-level",
+    type=LogLevel(),
+    default="INFO",
+    help="Set logging level",
+    show_default=True,
+)
 @click.version_option(__version__)
-def cli(error_log_file: Path):
+def cli(error_log_file: Path, log_level: int):
     log.addHandler(logging.StreamHandler(sys.stderr))
-    log.setLevel(logging.INFO)
+    log.setLevel(log_level)
     if error_log_file:
         logging.basicConfig(
             filename=error_log_file, encoding="utf-8", level=logging.ERROR
@@ -244,18 +252,7 @@ def mker(
             for query, table_name in create_queries:
                 click.echo(f"Running create query for {table_name}")
                 db.execute(query)
-
-    start_experiment_result_maker(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        start_day=start_day,
-        end_day=end_day,
-        clickhouse=clickhouse,
-        data_dir=data_dir,
-        parallelism=parallelism,
-        fast_fail=fast_fail,
-        rebuild_ground_truths=rebuild_ground_truths,
-    )
+    raise Exception("Run this via the analysis command")
 
 
 @cli.command()
@@ -437,6 +434,7 @@ def checkdb(
     Check if the database tables require migrations. If the create-tables flag
     is not specified, it will not perform any operations.
     """
+
     if create_tables:
         if not clickhouse:
             click.echo("--clickhouse needs to be specified when creating tables")

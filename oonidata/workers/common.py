@@ -1,11 +1,15 @@
+from dataclasses import dataclass
 import queue
 import logging
 import multiprocessing as mp
 from multiprocessing.synchronize import Event as EventClass
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from typing import (
+    Any,
+    Callable,
+    Dict,
     List,
     NamedTuple,
     Optional,
@@ -15,22 +19,83 @@ from typing import (
 from tqdm import tqdm
 from oonidata.dataclient import (
     MeasurementListProgress,
-    ProgressStatus,
 )
 from oonidata.db.connections import (
     ClickhouseConnection,
 )
+from oonidata.db.create_tables import create_queries
 
 log = logging.getLogger("oonidata.processing")
 
 
-class PrevRange(NamedTuple):
+@dataclass
+class BatchParameters:
+    test_name: List[str]
+    probe_cc: List[str]
     bucket_date: Optional[str]
-    start_timestamp: Optional[datetime]
-    end_timestamp: Optional[datetime]
-    max_created_at: Optional[datetime]
-    min_created_at: Optional[datetime]
-    where: str
+    timestamp: Optional[datetime]
+
+
+@dataclass
+class PrevRange:
+    table_name: str
+    batch_parameters: BatchParameters
+    timestamp_column: Optional[str]
+    probe_cc_column: Optional[str]
+    max_created_at: Optional[datetime] = None
+    min_created_at: Optional[datetime] = None
+
+    def format_query(self):
+        start_timestamp = None
+        end_timestamp = None
+        where = None
+        where = "WHERE "
+        q_args: Dict[str, Any] = {}
+
+        if self.batch_parameters.bucket_date:
+            where = "WHERE bucket_date = %(bucket_date)s"
+            q_args["bucket_date"] = self.batch_parameters.bucket_date
+
+        elif self.batch_parameters.timestamp:
+            start_timestamp = self.batch_parameters.timestamp
+            end_timestamp = start_timestamp + timedelta(days=1)
+            q_args["start_timestamp"] = start_timestamp
+            q_args["end_timestamp"] = end_timestamp
+            where += f"{self.timestamp_column} >= %(start_timestamp)s AND {self.timestamp_column} < %(end_timestamp)s"
+        else:
+            raise Exception("Must specify either bucket_date or timestamp")
+
+        if len(self.batch_parameters.test_name) > 0:
+            where += " AND test_name IN %(test_names)s"
+            q_args["test_names"] = self.batch_parameters.test_name
+        if len(self.batch_parameters.probe_cc) > 0:
+            where += f" AND {self.probe_cc_column} IN %(probe_ccs)s"
+            q_args["probe_ccs"] = self.batch_parameters.probe_cc
+
+        return where, q_args
+
+
+def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange):
+    """
+    We perform a lightweight delete of all the rows which have been
+    regenerated, so we don't have any duplicates in the table
+    """
+    if not prev_range.max_created_at or not prev_range.min_created_at:
+        return
+
+    # Disabled due to: https://github.com/ClickHouse/ClickHouse/issues/40651
+    # db.execute("SET allow_experimental_lightweight_delete = true;")
+
+    where, q_args = prev_range.format_query()
+
+    q_args["max_created_at"] = prev_range.max_created_at
+    q_args["min_created_at"] = prev_range.min_created_at
+    where = f"{where} AND created_at <= %(max_created_at)s AND created_at >= %(min_created_at)s"
+    log.info(f"runing {where} with {q_args}")
+
+    q = f"ALTER TABLE {prev_range.table_name} DELETE "
+    final_query = q + where
+    return db.execute(final_query, q_args)
 
 
 def get_prev_range(
@@ -41,6 +106,7 @@ def get_prev_range(
     bucket_date: Optional[str] = None,
     timestamp: Optional[datetime] = None,
     timestamp_column: str = "timestamp",
+    probe_cc_column: str = "probe_cc",
 ) -> PrevRange:
     """
     We lookup the range of previously generated rows so we can drop
@@ -64,88 +130,76 @@ def get_prev_range(
     bucket as reprocessing in progress and guard against running queries for
     it.
     """
-    q = f"SELECT MAX(created_at), MIN(created_at) FROM {table_name} "
+    # A batch specified by test_name, probe_cc and one of either bucket_date or
+    # timestamp depending on it being observations or experiment results.
     assert (
         timestamp or bucket_date
     ), "either timestamp or bucket_date should be provided"
-    start_timestamp = None
-    end_timestamp = None
-    where = None
-    where = "WHERE bucket_date = %(bucket_date)s"
-    q_args = {"bucket_date": bucket_date}
-    if timestamp:
-        start_timestamp = timestamp
-        end_timestamp = timestamp + timedelta(days=1)
-        q_args = {"start_timestamp": start_timestamp, "end_timestamp": end_timestamp}
-        where = f"WHERE {timestamp_column} >= %(start_timestamp)s AND {timestamp_column} < %(end_timestamp)s"
+    prev_range = PrevRange(
+        table_name=table_name,
+        batch_parameters=BatchParameters(
+            test_name=test_name,
+            probe_cc=probe_cc,
+            timestamp=timestamp,
+            bucket_date=bucket_date,
+        ),
+        timestamp_column=timestamp_column,
+        probe_cc_column=probe_cc_column,
+    )
 
-    if len(test_name) > 0:
-        test_name_list = []
-        for tn in test_name:
-            # sanitize the test_names. It should not be a security issue since
-            # it's not user provided, but better safe than sorry
-            assert tn.replace("_", "").isalnum(), f"not alphabetic testname {tn}"
-            test_name_list.append(f"'{tn}'")
-        where += " AND test_name IN ({})".format(",".join(test_name_list))
-    if len(probe_cc) > 0:
-        probe_cc_list = []
-        for cc in probe_cc:
-            assert cc.replace("_", "").isalnum(), f"not alphabetic probe_cc"
-            probe_cc_list.append(f"'{cc}'")
-        where += " AND probe_cc IN ({})".format(",".join(probe_cc_list))
-
-    prev_obs_range = db.execute(q + where, q_args)
+    q = f"SELECT MAX(created_at), MIN(created_at) FROM {prev_range.table_name} "
+    where, q_args = prev_range.format_query()
+    final_query = q + where
+    prev_obs_range = db.execute(final_query, q_args)
     assert isinstance(prev_obs_range, list) and len(prev_obs_range) == 1
     max_created_at, min_created_at = prev_obs_range[0]
 
     # We pad it by 1 second to take into account the time resolution downgrade
     # happening when going from clickhouse to python data types
     if max_created_at and min_created_at:
-        max_created_at += timedelta(seconds=1)
-        min_created_at -= timedelta(seconds=1)
+        prev_range.max_created_at = (max_created_at + timedelta(seconds=1)).replace(
+            tzinfo=None
+        )
+        prev_range.min_created_at = (min_created_at - timedelta(seconds=1)).replace(
+            tzinfo=None
+        )
 
-    return PrevRange(
-        max_created_at=max_created_at,
-        min_created_at=min_created_at,
-        start_timestamp=start_timestamp,
-        end_timestamp=end_timestamp,
-        where=where,
-        bucket_date=bucket_date,
-    )
+    return prev_range
 
 
-def maybe_delete_prev_range(
-    db: ClickhouseConnection, table_name: str, prev_range: PrevRange
-):
-    """
-    We perform a lightweight delete of all the rows which have been
-    regenerated, so we don't have any duplicates in the table
-    """
-    if not prev_range.max_created_at:
-        return
+def optimize_all_tables(clickhouse):
+    with ClickhouseConnection(clickhouse) as db:
+        for _, table_name in create_queries:
+            db.execute(f"OPTIMIZE TABLE {table_name}")
 
-    # Disabled due to: https://github.com/ClickHouse/ClickHouse/issues/40651
-    # db.execute("SET allow_experimental_lightweight_delete = true;")
-    q_args = {
-        "max_created_at": prev_range.max_created_at,
-        "min_created_at": prev_range.min_created_at,
-    }
-    if prev_range.bucket_date:
-        q_args["bucket_date"] = prev_range.bucket_date
-    elif prev_range.start_timestamp:
-        q_args["start_timestamp"] = prev_range.start_timestamp
-        q_args["end_timestamp"] = prev_range.end_timestamp
-    else:
-        raise Exception("either bucket_date or timestamps should be set")
 
-    where = f"{prev_range.where} AND created_at <= %(max_created_at)s AND created_at >= %(min_created_at)s"
-    return db.execute(f"ALTER TABLE {table_name} DELETE " + where, q_args)
+def get_obs_count_by_cc(
+    db: ClickhouseConnection,
+    test_name: List[str],
+    start_day: date,
+    end_day: date,
+    table_name: str = "obs_web",
+) -> Dict[str, int]:
+    q = f"SELECT probe_cc, COUNT() FROM {table_name} WHERE measurement_start_time > %(start_day)s AND measurement_start_time < %(end_day)s GROUP BY probe_cc"
+    cc_list: List[Tuple[str, int]] = db.execute(
+        q, {"start_day": start_day, "end_day": end_day}
+    )  # type: ignore
+    assert isinstance(cc_list, list)
+    return dict(cc_list)
 
 
 def make_db_rows(
-    dc_list: List, column_names: List[str], bucket_date: Optional[str] = None
+    dc_list: List,
+    column_names: List[str],
+    bucket_date: Optional[str] = None,
+    custom_remap: Optional[Dict[str, Callable]] = None,
 ) -> Tuple[str, List[str]]:
     assert len(dc_list) > 0
+
+    def maybe_remap(k, value):
+        if custom_remap and k in custom_remap:
+            return custom_remap[k](value)
+        return value
 
     table_name = dc_list[0].__table_name__
     rows = []
@@ -153,7 +207,7 @@ def make_db_rows(
         if bucket_date:
             d.bucket_date = bucket_date
         assert table_name == d.__table_name__, "inconsistent group of observations"
-        rows.append(tuple(getattr(d, k) for k in column_names))
+        rows.append(tuple(maybe_remap(k, getattr(d, k)) for k in column_names))
 
     return table_name, rows
 
@@ -166,68 +220,6 @@ class StatusMessage(NamedTuple):
     idx: Optional[int] = None
     day_str: Optional[str] = None
     archive_queue_size: Optional[int] = None
-
-
-def run_status_thread(status_queue: mp.Queue, shutdown_event: EventClass):
-    total_prefixes = 0
-    current_prefix_idx = 0
-
-    total_file_entries = 0
-    current_file_entry_idx = 0
-    download_desc = ""
-    last_idx_desc = ""
-    qsize_desc = ""
-
-    pbar_listing = tqdm(position=0)
-    pbar_download = tqdm(unit="B", unit_scale=True, position=1)
-
-    log.info("starting error handling thread")
-    while not shutdown_event.is_set():
-        try:
-            res = status_queue.get(block=True, timeout=0.1)
-        except queue.Empty:
-            continue
-
-        if res.exception:
-            log.error(f"got an error from {res.src}: {res.exception} {res.traceback}")
-
-        if res.progress:
-            p = res.progress
-            if p.progress_status == ProgressStatus.LISTING_BEGIN:
-                total_prefixes += p.total_prefixes
-                pbar_listing.total = total_prefixes
-
-                pbar_listing.set_description("starting listing")
-
-            if p.progress_status == ProgressStatus.LISTING:
-                current_prefix_idx += 1
-                pbar_listing.update(1)
-                pbar_listing.set_description(
-                    f"listed {current_prefix_idx}/{total_prefixes} prefixes"
-                )
-
-            if p.progress_status == ProgressStatus.DOWNLOAD_BEGIN:
-                if not pbar_download.total:
-                    pbar_download.total = 0
-                total_file_entries += p.total_file_entries
-                pbar_download.total += p.total_file_entry_bytes
-
-            if p.progress_status == ProgressStatus.DOWNLOADING:
-                current_file_entry_idx += 1
-                download_desc = (
-                    f"downloading {current_file_entry_idx}/{total_file_entries} files"
-                )
-                pbar_download.update(p.current_file_entry_bytes)
-
-        if res.idx:
-            last_idx_desc = f" idx: {res.idx} ({res.day_str})"
-
-        if res.archive_queue_size:
-            qsize_desc = f" aqsize: {res.archive_queue_size}"
-
-        pbar_download.set_description(download_desc + last_idx_desc + qsize_desc)
-
-        status_queue.task_done()
 
 
 def run_progress_thread(
@@ -246,4 +238,4 @@ def run_progress_thread(
             pbar.update(count)
             pbar.set_description(desc)
         finally:
-            status_queue.task_done()
+            status_queue.task_done()  # type: ignore

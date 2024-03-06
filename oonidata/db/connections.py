@@ -3,7 +3,7 @@ import pickle
 import time
 
 from collections import defaultdict, namedtuple
-from datetime import datetime
+from datetime import datetime, timezone
 from pprint import pformat
 import logging
 
@@ -114,7 +114,7 @@ class CSVConnection(DatabaseConnection):
 
     def write_rows(self, table_name, rows, column_names):
         if table_name not in self.open_writers:
-            ts = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
             fh = (self.output_dir / f"{table_name}-{ts}.csv").open("w")
             csv_writer = csv.writer(fh)
             csv_writer.writerow(column_names)

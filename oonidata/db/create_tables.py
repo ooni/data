@@ -6,8 +6,9 @@ from dataclasses import fields
 from oonidata.db.connections import ClickhouseConnection
 from oonidata.models.experiment_result import (
     ExperimentResult,
+    MeasurementExperimentResult,
 )
-from oonidata.models.analysis import WebsiteAnalysis
+from oonidata.models.analysis import WebAnalysis
 from oonidata.models.observations import (
     ObservationBase,
     WebControlObservation,
@@ -61,8 +62,18 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == dict:
         return "String"
 
+    # Casting it to JSON
+    if t == List[Dict]:
+        return "String"
+
     if t == Optional[float]:
         return "Nullable(Float64)"
+
+    if t == List[float]:
+        return "Array(Float64)"
+
+    if t == List[List[str]]:
+        return "Array(Array(String))"
 
     if t in (List[str], List[bytes]):
         return "Array(String)"
@@ -101,29 +112,6 @@ def create_query_for_observation(obs_class: Type[ObservationBase]) -> Tuple[str,
     SETTINGS index_granularity = 8192;
     """,
         obs_class.__table_name__,
-    )
-
-
-def create_query_for_experiment_result() -> Tuple[str, str]:
-    columns = []
-    for f in ExperimentResult._fields:
-        t = ExperimentResult.__annotations__.get(f)
-        type_str = typing_to_clickhouse(t)
-        columns.append(f"     {f} {type_str}")
-
-    columns_str = ",\n".join(columns)
-    table_name = ExperimentResult.__table_name__
-
-    return (
-        f"""
-    CREATE TABLE IF NOT EXISTS {table_name} (
-{columns_str}
-    )
-    ENGINE = ReplacingMergeTree
-    ORDER BY (measurement_uid, experiment_result_id)
-    SETTINGS index_granularity = 8192;
-    """,
-        "experiment_result",
     )
 
 
@@ -169,8 +157,8 @@ create_queries = [
     create_query_for_observation(WebObservation),
     create_query_for_observation(WebControlObservation),
     create_query_for_observation(HTTPMiddleboxObservation),
-    create_query_for_experiment_result(),
-    create_query_for_analysis(WebsiteAnalysis),
+    create_query_for_analysis(WebAnalysis),
+    create_query_for_analysis(MeasurementExperimentResult),
     CREATE_QUERY_FOR_LOGS,
 ]
 

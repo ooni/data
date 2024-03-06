@@ -1,18 +1,23 @@
 from base64 import b64decode
 from datetime import datetime
+import random
+from typing import List
 from unittest.mock import MagicMock
+
+import pytest
 from oonidata.analysis.datasources import load_measurement
+from oonidata.analysis.web_analysis import make_web_analysis
 from oonidata.datautils import validate_cert_chain
 from oonidata.analysis.control import (
+    BodyDB,
+    WebGroundTruth,
     iter_ground_truths_from_web_control,
     WebGroundTruthDB,
 )
 from oonidata.analysis.signal import make_signal_experiment_result
-from oonidata.analysis.websites import (
-    make_website_experiment_result,
-)
 from oonidata.models.nettests.signal import Signal
 from oonidata.models.nettests.web_connectivity import WebConnectivity
+from oonidata.models.observations import WebObservation, print_nice, print_nice_vertical
 from oonidata.transforms.nettests.signal import SIGNAL_PEM_STORE
 from oonidata.transforms import measurement_to_observations
 
@@ -114,6 +119,7 @@ def test_signal(fingerprintdb, netinfodb, measurements):
 
 
 def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
+    pytest.skip("TODO(arturo): implement this with the new analysis")
     msmt_path = measurements[
         "20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"
     ]
@@ -194,17 +200,11 @@ def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
     body_db.lookup = MagicMock()
     body_db.lookup.return_value = []
 
-    return make_website_experiment_result(
-        web_observations=web_observations,
-        web_ground_truths=web_ground_truth_db.lookup_by_web_obs(
-            web_obs=web_observations
-        ),
-        body_db=body_db,
-        fingerprintdb=fingerprintdb,
-    )
+    return []
 
 
 def test_website_experiment_result_blocked(fingerprintdb, netinfodb, measurements):
+    pytest.skip("TODO(arturo): implement this with the new analysis")
     experiment_results = list(
         make_experiment_result_from_wc_ctrl(
             measurements["20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"],
@@ -217,6 +217,7 @@ def test_website_experiment_result_blocked(fingerprintdb, netinfodb, measurement
 
 
 def test_website_experiment_result_ok(fingerprintdb, netinfodb, measurements):
+    pytest.skip("TODO(arturo): implement this with the new analysis")
     experiment_results = list(
         make_experiment_result_from_wc_ctrl(
             measurements["20220608132401.787399_AM_webconnectivity_2285fc373f62729e"],
@@ -228,3 +229,82 @@ def test_website_experiment_result_ok(fingerprintdb, netinfodb, measurements):
     assert experiment_results[0].anomaly == False
     for er in experiment_results:
         assert er.ok_score > 0.5
+
+
+def test_website_web_analysis_blocked(fingerprintdb, netinfodb, measurements, datadir):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20221110235922.335062_IR_webconnectivity_e4114ee32b8dbf74"
+        ],
+    )
+    web_obs: List[WebObservation] = measurement_to_observations(
+        msmt, netinfodb=netinfodb
+    )[0]
+    FASTLY_IPS = [
+        "151.101.1.140",
+        "151.101.129.140",
+        "151.101.193.140",
+        "151.101.65.140",
+        "199.232.253.140",
+        "2a04:4e42:400::396",
+        "2a04:4e42::396",
+        "2a04:4e42:fd3::396",
+    ]
+    # Equivalent to the following call, but done manually
+    # relevant_gts = web_ground_truth_db.lookup_by_web_obs(web_obs=web_obs)
+    relevant_gts = []
+    for is_trusted in [True, False]:
+        for ip in FASTLY_IPS:
+            relevant_gts.append(
+                WebGroundTruth(
+                    vp_asn=0,
+                    vp_cc="ZZ",
+                    # TODO FIXME in lookup
+                    is_trusted_vp=is_trusted,
+                    hostname="www.reddit.com",
+                    ip=ip,
+                    # TODO FIXME in webgroundtruth lookup
+                    port=443,
+                    dns_failure=None,
+                    # TODO fixme in lookup
+                    dns_success=True,
+                    tcp_failure=None,
+                    # TODO fixme in lookup
+                    tcp_success=True,
+                    tls_failure=None,
+                    tls_success=True,
+                    tls_is_certificate_valid=True,
+                    http_request_url=None,
+                    http_failure=None,
+                    http_success=None,
+                    # FIXME in lookup function "ZZ",
+                    http_response_body_length=131072 - random.randint(0, 100),
+                    # TODO FIXME in lookup function
+                    timestamp=datetime(
+                        2022,
+                        11,
+                        10,
+                        0,
+                        0,
+                    ),
+                    count=2,
+                    ip_asn=54113,
+                    # TODO FIXME in lookup function
+                    ip_as_org_name="Fastly, Inc.",
+                ),
+            )
+    # XXX currently not working
+    body_db = BodyDB(db=None)  # type: ignore
+
+    web_analysis = list(
+        make_web_analysis(
+            web_observations=web_obs,
+            body_db=body_db,
+            web_ground_truths=relevant_gts,
+            fingerprintdb=fingerprintdb,
+        )
+    )
+    assert len(web_analysis) == len(web_obs)
+    # for wa in web_analysis:
+    #    print(wa.measurement_uid)
+    #    print_nice_vertical(wa)

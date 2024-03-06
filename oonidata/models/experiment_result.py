@@ -1,8 +1,9 @@
 import dataclasses
+from dataclasses import dataclass
 import logging
 from typing import Any, Dict, Generator, List, Optional, NamedTuple, Mapping, Tuple
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from tabulate import tabulate
 from oonidata.datautils import maybe_elipse
@@ -66,6 +67,124 @@ class Outcome(NamedTuple):
     ok_score: float
     down_score: float
     blocked_score: float
+
+
+@dataclass
+class MeasurementExperimentResult:
+    __table_name__ = "measurement_experiment_result"
+    __table_index__ = (
+        "measurement_uid",
+        "timeofday",
+    )
+
+    # The measurement used to generate this experiment result
+    measurement_uid: str
+
+    # The list of observations used to generate this experiment result
+    observation_id_list: List[str]
+
+    # The timeofday for which this experiment result is relevant. We use the
+    # timeofday convention to differentiate it from the timestamp which is an
+    # instant, while experiment results might indicate a range
+    timeofday: datetime
+
+    # When this experiment result was created
+    created_at: datetime
+
+    # Location attributes are relevant to qualify the location for which an
+    # experiment result is relevant
+    # The primary key for the location is the tuple:
+    # (location_network_type, location_network_asn, location_network_cc, location_resolver_asn)
+
+    # Maybe in the future we have this when we get geoip through other menas
+    # location_region_cc: str
+    # location_region_name: str
+    location_network_type: str
+
+    location_network_asn: int
+    location_network_cc: str
+
+    location_network_as_org_name: str
+    location_network_as_cc: str
+
+    # Maybe this should be dropped, as it would make the dimension potentially explode.
+    # location_resolver_ip: Optional[str]
+    location_resolver_asn: Optional[int]
+    location_resolver_as_org_name: Optional[str]
+    location_resolver_as_cc: Optional[str]
+    location_resolver_cc: Optional[str]
+
+    # The blocking scope signifies at which level we believe the blocking to be
+    # implemented.
+    # We put it in the location keys, since effectively the location definition
+    # is relevant to map where in the network and space the blocking is
+    # happening and is not necessarily a descriptor of the location of the
+    # vantage points used to determine this.
+    #
+    # The scope can be: nat, isp, inst, fp to indicate national level blocking,
+    # isp level blocking, local blocking (eg. university or comporate network)
+    # or server-side blocking.
+    location_blocking_scope: Optional[str]
+
+    # Should we include this or not? Benefit of dropping it is that it collapses
+    # the dimension when we do non-instant experiment results.
+    # platform_name: Optional[str]
+
+    # Target nettest group is the high level experiment group taxonomy, but may
+    # in the future include also other more high level groupings.
+    target_nettest_group: str
+    # Target Category can be a citizenlab category code. Ex. GRP for social
+    # networking
+    target_category: str
+    # This is a more granular, yet high level definition of the target. Ex.
+    # facebook for all endpoints related to facebook
+    target_name: str
+    # This is the domain name associated with the target, for example for
+    # facebook it will be www.facebook.com, but also edge-mqtt.facebook.com
+    target_domain_name: str
+    # This is the more granular level associated with a target, for example the IP, port tuple
+    target_detail: str
+
+    # Likelyhood of network interference values which define a probability space
+    loni_ok_value: float
+
+    # These are key value mappings that define how likely a certain class of
+    # outcome is. Effectively it's an encoding of a dictionary, but in a way
+    # where it's more efficient to peform operations on them.
+    # Example: {"ok": 0.1, "down": 0.2, "blocked.dns": 0.3, "blocked.tls": 0.4}
+    # would be encoded as:
+    #
+    # loni_ok_value: 0.1
+    # loni_down_keys: ["down"]
+    # loni_down_values: [0.2]
+    # loni_blocked_keys: ["blocked.dns", "blocked.tls"]
+    # loni_blocked_values: [0.3, 0.4]
+    loni_down_keys: List[str]
+    loni_down_values: List[float]
+
+    loni_blocked_keys: List[str]
+    loni_blocked_values: List[float]
+
+    loni_ok_keys: List[str]
+    loni_ok_values: List[float]
+
+    # Encoded as JSON
+    loni_list: List[Dict]
+
+    # Inside this string we include a representation of the logic that lead us
+    # to produce the above loni values
+    analysis_transcript_list: List[List[str]]
+
+    # Number of measurements used to produce this experiment result
+    measurement_count: int
+    # Number of observations used to produce this experiment result
+    observation_count: int
+    # Number of vantage points used to produce this experiment result
+    vp_count: int
+
+    # Backward compatible anomaly/confirmed flags
+    anomaly: Optional[bool]
+    confirmed: Optional[bool]
 
 
 class ExperimentResult(NamedTuple):
@@ -140,11 +259,13 @@ def print_nice_er(er_list):
     rows = []
     meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
     meta_fields += ["timestamp", "created_at"]
-    headers = list(filter(lambda k: k not in meta_fields, er_list[0]._fields))
+    headers: List[str] = list(
+        filter(lambda k: k not in meta_fields, er_list[0]._fields)
+    )
     for er in er_list:
         rows.append([maybe_elipse(getattr(er, k)) for k in headers])
     headers = [maybe_elipse(h, 5) for h in headers]
-    print(tabulate(rows, headers=headers))
+    print(tabulate(rows, headers=headers))  # type: ignore # tabulate library doesn't seem to have correct type hints
 
 
 def iter_experiment_results(
@@ -156,7 +277,7 @@ def iter_experiment_results(
     target_name: str,
     outcomes: List[Outcome],
 ) -> Generator[ExperimentResult, None, None]:
-    created_at = datetime.utcnow()
+    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
     for idx, outcome in enumerate(outcomes):
         yield ExperimentResult(
             measurement_uid=obs.measurement_uid,

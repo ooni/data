@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 from urllib.parse import urlparse
 from oonidata.datautils import is_ip_bogon
@@ -41,7 +41,7 @@ def make_web_control_observations(
         test_name=msmt.test_name,
         test_version=msmt.test_version,
         hostname=hostname,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     # Reference for new-style web_connectivity:
     # https://explorer.ooni.org/measurement/20220924T215758Z_webconnectivity_IR_206065_n1_2CRoWBNJkWc7VyAs?input=https%3A%2F%2Fdoh.dns.apple.com%2Fdns-query%3Fdns%3Dq80BAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB
