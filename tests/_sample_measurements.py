@@ -11,6 +11,7 @@ SAMPLE_MEASUREMENTS = [
     "20220627125833.737451_FR_webconnectivity_bca9ad9d3371919a",  # "https://thepiratebay.org/",
     "20220625234824.235023_HU_webconnectivity_3435a5df0e743d39",  # "https://thepiratebay.org/",
     "20220924222854.036406_IR_webconnectivity_7aedefe4aaac824c",  # "https://doh.dns.apple.com/dns-query?dns=q80BAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB",
+    "20221003005943.713064_IR_webconnectivity_ddfdfa11c9cf323d",  # "https://raw.githubusercontent.com/ooni/spec/master/README.md"
     "20221020235950.432819_NL_signal_27b05458f186a906",
     "20221016235944.266268_GB_signal_1265ff650ee17b44",
     "20210926222047.205897_UZ_signal_95fab4a2e669573f",
