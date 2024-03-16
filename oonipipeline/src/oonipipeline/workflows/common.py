@@ -20,10 +20,8 @@ from tqdm import tqdm
 from oonidata.dataclient import (
     MeasurementListProgress,
 )
-from oonidata.db.connections import (
-    ClickhouseConnection,
-)
-from oonidata.db.create_tables import create_queries
+from ..db.connections import ClickhouseConnection
+from ..db.create_tables import create_queries
 
 log = logging.getLogger("oonidata.processing")
 

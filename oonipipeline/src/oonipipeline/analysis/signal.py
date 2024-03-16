@@ -1,14 +1,14 @@
 from typing import List, Generator
 
-from oonidata.models.experiment_result import (
+from ..models.experiment_result import (
     BlockingScope,
     ExperimentResult,
     Outcome,
     fp_to_scope,
     iter_experiment_results,
 )
-from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB
-from oonidata.models.observations import WebObservation
+from ..fingerprintdb import FingerprintDB
+from ..models.observations import WebObservation
 
 
 def make_signal_experiment_result(

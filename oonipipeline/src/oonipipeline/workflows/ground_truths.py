@@ -10,13 +10,13 @@ from datetime import date
 from oonidata.dataclient import date_interval
 
 from oonidata.datautils import PerfTimer
-from oonidata.analysis.control import WebGroundTruthDB, iter_web_ground_truths
-from oonidata.netinfo import NetinfoDB
+from ..analysis.control import WebGroundTruthDB, iter_web_ground_truths
+from ..netinfo import NetinfoDB
 
-from oonidata.db.connections import (
+from ..db.connections import (
     ClickhouseConnection,
 )
-from oonidata.workers.common import run_progress_thread
+from .common import run_progress_thread
 
 log = logging.getLogger("oonidata.processing")
 

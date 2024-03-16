@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
-from typing import Dict, Generator, List, NamedTuple, Optional, Tuple
+from typing import Dict, Generator, List, Optional, Tuple
 
-from oonidata.models.analysis import WebAnalysis
-from oonidata.models.experiment_result import MeasurementExperimentResult
+from ..models.analysis import WebAnalysis
+from ..models.experiment_result import MeasurementExperimentResult
 
 log = logging.getLogger("oonidata.analysis")
 

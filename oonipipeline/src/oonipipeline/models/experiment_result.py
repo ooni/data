@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from tabulate import tabulate
 from oonidata.datautils import maybe_elipse
 
-from oonidata.models.observations import MeasurementMeta
+from ..models.observations import MeasurementMeta
 
 log = logging.getLogger("oonidata.events")
 

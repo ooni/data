@@ -17,23 +17,21 @@ with workflow.unsafe.imports_passed_through():
 
 with workflow.unsafe.imports_passed_through():
     import statsd
-    from oonidata.analysis.datasources import load_measurement
     from oonidata.datautils import PerfTimer
-    from oonidata.models.nettests import SupportedDataformats
-
-    from oonidata.netinfo import NetinfoDB
-
     from oonidata.dataclient import (
         date_interval,
         list_file_entries_batches,
         stream_measurements,
         ccs_set,
+        load_measurement,
     )
-    from oonidata.db.connections import (
-        ClickhouseConnection,
-    )
-    from oonidata.transforms import measurement_to_observations
-    from oonidata.workers.common import (
+    from oonidata.models.nettests import SupportedDataformats
+
+    from ..netinfo import NetinfoDB
+    from ..db.connections import ClickhouseConnection
+    from ..transforms.observations import measurement_to_observations
+
+    from .common import (
         get_prev_range,
         make_db_rows,
         maybe_delete_prev_range,

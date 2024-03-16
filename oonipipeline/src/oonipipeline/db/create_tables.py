@@ -1,15 +1,16 @@
 from datetime import datetime
-from enum import Enum
 
 from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict
 from dataclasses import fields
-from oonidata.db.connections import ClickhouseConnection
-from oonidata.models.experiment_result import (
+
+from .connections import ClickhouseConnection
+
+from ..models.experiment_result import (
     ExperimentResult,
     MeasurementExperimentResult,
 )
-from oonidata.models.analysis import WebAnalysis
-from oonidata.models.observations import (
+from ..models.analysis import WebAnalysis
+from ..models.observations import (
     ObservationBase,
     WebControlObservation,
     WebObservation,

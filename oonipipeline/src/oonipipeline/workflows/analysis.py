@@ -12,18 +12,19 @@ from dask.distributed import progress as dask_progress
 from dask.distributed import wait as dask_wait
 from dask.distributed import as_completed
 
-from oonidata.analysis.control import BodyDB, WebGroundTruthDB
-from oonidata.analysis.datasources import iter_web_observations
-from oonidata.analysis.web_analysis import make_web_analysis
-from oonidata.analysis.website_experiment_results import make_website_experiment_results
 from oonidata.dataclient import date_interval
 from oonidata.datautils import PerfTimer
-from oonidata.db.connections import ClickhouseConnection
-from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB
-from oonidata.models.analysis import WebAnalysis
-from oonidata.models.experiment_result import MeasurementExperimentResult
-from oonidata.netinfo import NetinfoDB
-from oonidata.workers.ground_truths import maybe_build_web_ground_truth
+
+from ..analysis.control import BodyDB, WebGroundTruthDB
+from ..analysis.datasources import iter_web_observations
+from ..analysis.web_analysis import make_web_analysis
+from ..analysis.website_experiment_results import make_website_experiment_results
+from ..db.connections import ClickhouseConnection
+from ..fingerprintdb import FingerprintDB
+from ..models.analysis import WebAnalysis
+from ..models.experiment_result import MeasurementExperimentResult
+from ..netinfo import NetinfoDB
+from .ground_truths import maybe_build_web_ground_truth
 
 from .common import (
     get_obs_count_by_cc,

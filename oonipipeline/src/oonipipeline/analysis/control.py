@@ -4,12 +4,13 @@ import sqlite3
 from collections.abc import Iterable
 
 from typing import Any, Generator, Optional, Tuple, List, NamedTuple
-from oonidata.models.observations import WebControlObservation, WebObservation
-from oonidata.netinfo import NetinfoDB
 
-from oonidata.db.connections import ClickhouseConnection
+from ..models.observations import WebControlObservation, WebObservation
+from ..netinfo import NetinfoDB
 
-log = logging.getLogger("oonidata.processing")
+from ..db.connections import ClickhouseConnection
+
+log = logging.getLogger(__name__)
 
 
 class WebGroundTruth(NamedTuple):

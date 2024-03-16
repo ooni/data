@@ -1,8 +1,10 @@
+import logging
+import ipaddress
+import dataclasses
+
 from collections import defaultdict
 from dataclasses import dataclass
-import dataclasses
 from datetime import datetime, timezone
-import ipaddress
 from typing import (
     Generator,
     Iterable,
@@ -10,19 +12,19 @@ from typing import (
     List,
     Dict,
 )
-from oonidata.db.connections import ClickhouseConnection
-from oonidata.analysis.control import (
+
+from ..db.connections import ClickhouseConnection
+from ..analysis.control import (
     WebGroundTruth,
     BodyDB,
 )
-from oonidata.models.analysis import WebAnalysis
+from ..fingerprintdb import FingerprintDB
 
-from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB
-from oonidata.models.observations import WebControlObservation, WebObservation
+from ..models.analysis import WebAnalysis
+from ..models.observations import WebControlObservation, WebObservation
 
-import logging
 
-log = logging.getLogger("oonidata.processing")
+log = logging.getLogger(__name__)
 
 SYSTEM_RESOLVERS = ["system", "getaddrinfo", "golang_net_resolver", "go", "unknown"]
 CLOUD_PROVIDERS_ASNS = [

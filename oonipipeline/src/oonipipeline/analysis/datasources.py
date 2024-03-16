@@ -2,8 +2,8 @@ import dataclasses
 from datetime import date, timedelta
 from typing import Generator, List, Optional
 
-from oonidata.db.connections import ClickhouseConnection
-from oonidata.models.observations import WebObservation
+from ..db.connections import ClickhouseConnection
+from ..models.observations import WebObservation
 
 
 def iter_web_observations(
