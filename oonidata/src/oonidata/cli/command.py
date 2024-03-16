@@ -12,8 +12,6 @@ from oonidata.__about__ import VERSION
 from oonidata.dataclient import (
     sync_measurements,
 )
-from oonidata.netinfo import NetinfoDB
-
 
 log = logging.getLogger("oonidata")
 
