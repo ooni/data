@@ -1,32 +1,36 @@
 from dataclasses import asdict
 import json
 from pathlib import Path
-from oonidata.analysis.control import (
+
+from flask import Flask, request, render_template
+
+from oonidata.dataclient import load_measurement
+from oonidata.apiclient import get_measurement_dict_by_uid
+
+from ..analysis.control import (
     BodyDB,
     WebGroundTruthDB,
     iter_ground_truths_from_web_control,
 )
-from oonidata.analysis.datasources import load_measurement
-from oonidata.analysis.web_analysis import make_web_analysis
-from oonidata.analysis.website_experiment_results import make_website_experiment_results
-from oonidata.apiclient import get_measurement_dict_by_uid
-from oonidata.dataviz.viz import (
+from ..analysis.web_analysis import make_web_analysis
+from ..analysis.website_experiment_results import make_website_experiment_results
+
+from .viz import (
     plot_blocking_world_map,
     plot_blocking_of_domain_in_asn,
     plot_blocking_of_domain_by_asn,
 )
-from oonidata.dataviz.viz import (
+from .viz import (
     get_df_blocking_world_map,
     get_df_blocking_of_domain_in_asn,
     get_df_blocking_of_domain_by_asn,
     get_df_dns_analysis,
     get_df_dns_analysis_raw,
 )
-from flask import Flask, request, render_template
-from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB
-from oonidata.netinfo import NetinfoDB
+from ..fingerprintdb import FingerprintDB
+from ..netinfo import NetinfoDB
 
-from oonidata.transforms import measurement_to_observations
+from ..transforms.observations import measurement_to_observations
 
 app = Flask(__name__)
 
