@@ -14,7 +14,7 @@ async def async_main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=100) as activity_executor:
         worker = Worker(
             client,
-            task_queue="oonidatapipeline-task-queue",
+            task_queue="oonipipeline-task-queue",
             workflows=[ObservationsWorkflow],
             activities=[make_observation_in_day],
             activity_executor=activity_executor,
