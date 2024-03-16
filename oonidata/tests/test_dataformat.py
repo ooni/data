@@ -1,7 +1,7 @@
 from base64 import b64encode
 from copy import deepcopy
-from oonidata.analysis.datasources import load_measurement
 
+from oonidata.dataclient import load_measurement
 from oonidata.models.dataformats import HTTPTransaction
 from oonidata.models.nettests.telegram import Telegram
 from oonidata.models.nettests.web_connectivity import WebConnectivity

@@ -1,12 +1,8 @@
 import dataclasses
 from datetime import date, timedelta
 from typing import Generator, List, Optional
-from pathlib import Path
 
-import orjson
 from oonidata.db.connections import ClickhouseConnection
-from oonidata.models.nettests import NETTEST_MODELS, SupportedDataformats
-from oonidata.models.nettests.base_measurement import BaseMeasurement
 from oonidata.models.observations import WebObservation
 
 
@@ -58,15 +54,3 @@ def iter_web_observations(
 
     if len(obs_group) > 0:
         yield obs_group
-
-
-def load_measurement(
-    msmt: Optional[dict] = None, msmt_path: Optional[Path] = None
-) -> SupportedDataformats:
-    if msmt_path:
-        with msmt_path.open() as in_file:
-            msmt = orjson.loads(in_file.read())
-
-    assert msmt, "either msmt or msmt_path should be set"
-    dc = NETTEST_MODELS.get(msmt["test_name"], BaseMeasurement)
-    return dc.from_dict(msmt)

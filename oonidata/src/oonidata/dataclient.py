@@ -24,11 +24,13 @@ from botocore.config import Config as botoConfig
 
 from tqdm.contrib.logging import tqdm_logging_redirect
 
+from .models.nettests import NETTEST_MODELS
+from .models.nettests.base_measurement import BaseMeasurement
+from .models.nettests import SupportedDataformats
 
-from oonidata.datautils import PerfTimer
-
-from oonidata.datautils import trim_measurement, trivial_id
-from oonidata.normalize import iter_yaml_msmt_normalized
+from .datautils import PerfTimer
+from .datautils import trim_measurement, trivial_id
+from .legacy.normalize_yamlooni import iter_yaml_msmt_normalized
 
 LEGACY_BUCKET_NAME = "ooni-data"
 MC_BUCKET_NAME = "ooni-data-eu-fra"
@@ -820,3 +822,15 @@ def sync_measurements(
                 pbar.set_description(
                     f"downloaded {download_count}/{len(to_download_fe)}"
                 )
+
+
+def load_measurement(
+    msmt: Optional[dict] = None, msmt_path: Optional[Path] = None
+) -> SupportedDataformats:
+    if msmt_path:
+        with msmt_path.open() as in_file:
+            msmt = orjson.loads(in_file.read())
+
+    assert msmt, "either msmt or msmt_path should be set"
+    dc = NETTEST_MODELS.get(msmt["test_name"], BaseMeasurement)
+    return dc.from_dict(msmt)

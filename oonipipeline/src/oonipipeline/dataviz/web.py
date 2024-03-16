@@ -23,7 +23,7 @@ from oonidata.dataviz.viz import (
     get_df_dns_analysis_raw,
 )
 from flask import Flask, request, render_template
-from oonidata.fingerprintdb import FingerprintDB
+from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB
 from oonidata.netinfo import NetinfoDB
 
 from oonidata.transforms import measurement_to_observations

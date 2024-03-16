@@ -19,7 +19,7 @@ from oonidata.analysis.website_experiment_results import make_website_experiment
 from oonidata.dataclient import date_interval
 from oonidata.datautils import PerfTimer
 from oonidata.db.connections import ClickhouseConnection
-from oonidata.fingerprintdb import FingerprintDB
+from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB
 from oonidata.models.analysis import WebAnalysis
 from oonidata.models.experiment_result import MeasurementExperimentResult
 from oonidata.netinfo import NetinfoDB

@@ -7,7 +7,7 @@ from oonidata.models.experiment_result import (
     fp_to_scope,
     iter_experiment_results,
 )
-from oonidata.fingerprintdb import FingerprintDB
+from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB
 from oonidata.models.observations import WebObservation
 
 

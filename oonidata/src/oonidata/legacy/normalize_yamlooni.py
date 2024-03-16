@@ -1,5 +1,5 @@
 #
-# Normalize YAML reports
+# Normalize YAMLooni reports
 #
 
 from datetime import datetime

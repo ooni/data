@@ -4,149 +4,64 @@ build-backend = "hatchling.build"
 
 [project]
 name = "oonidata"
-version = "0.2.3"
+dynamic = ["version"]
 description = ""
-authors = [{ name = "OONI", email = "contact@ooni.org"}]
+authors = [{ name = "OONI", email = "contact@ooni.org" }]
 
 dependencies = [
-"boto3 ~= 1.24",
-"PyYAML ~= 6.0",
-"tqdm ~= 4.64",
-"lz4 ~= 4.0",
-"requests ~= 2.27",
-"cryptography ~= 38.0.3",
-"clickhouse-driver ~= 0.2",
-"click ~= 8.0.0",
-"lxml ~= 4.9",
-"maxminddb ~= 2.2",
-"orjson ~= 3.8",
-"mashumaro ~= 3.0",
-"pyOpenSSL ~= 22.1",
+  "boto3 ~= 1.24",
+  "PyYAML ~= 6.0",
+  "tqdm ~= 4.64",
+  "lz4 ~= 4.0",
+  "requests ~= 2.27",
+  "cryptography ~= 38.0.3",
+  "clickhouse-driver ~= 0.2",
+  "click ~= 8.0.0",
+  "lxml ~= 4.9",
+  "maxminddb ~= 2.2",
+  "orjson ~= 3.8",
+  "mashumaro ~= 3.0",
+  "pyOpenSSL ~= 22.1",
   "fastapi ~= 0.108.0",
-"tabulate ~= 0.9.0",
-"warcio ~= 1.7.4",
-"msgpack ~= 1.0.4",
-"statsd ~= 4.0.1",
-"click-loglevel ~= 0.5.0",
-"dask ~= 2023.3.2",
-"altair ~= 4.2.0",
-"numpy ~= 1.23.5",
-"pandas ~= 2.0.0",
-"flask ~= 2.2.0",
-"jupyterlab ~= 4.0.7",
-"temporalio ~= 1.5.1",
+  "tabulate ~= 0.9.0",
+  "warcio ~= 1.7.4",
+  "msgpack ~= 1.0.4",
+  "statsd ~= 4.0.1",
+  "click-loglevel ~= 0.5.0",
+  "dask ~= 2023.3.2",
+  "altair ~= 4.2.0",
+  "numpy ~= 1.23.5",
+  "pandas ~= 2.0.0",
+  "flask ~= 2.2.0",
+  "jupyterlab ~= 4.0.7",
+  "temporalio ~= 1.5.1",
 ]
 
 [tool.hatch.build.targets.sdist]
 
 [tool.hatch.build.targets.wheel]
-packages = ["oonidata"]
+packages = ["src/oonidata"]
 
 
 [tool.hatch.envs.default]
 dependencies = [
-"pytest",
-"pytest-cov",
-"black",
-"snakeviz",
-"mypy",
-"pytest-benchmark",
-"pytest-profiling",
-"memray",
-"viztracer"
+  "pytest",
+  "pytest-cov",
+  "black",
+  "snakeviz",
+  "mypy",
+  "pytest-benchmark",
+  "pytest-profiling",
+  "memray",
+  "viztracer",
 ]
 path = ".venv/"
+
+[tool.hatch.version]
+path = "src/oonidata/__about__.py"
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
 test-cov = "pytest -s --full-trace --log-level=INFO  --log-cli-level=INFO -v --setup-show --cov=./ --cov-report=xml --cov-report=html --cov-report=term {args:tests}"
 cov-report = ["coverage report"]
 cov = ["test-cov", "cov-report"]
-
-[tool.poetry]
-name = "oonidata"
-version = "0.2.3"
-description = ""
-authors = ["Arturo Filastò <arturo@filasto.net>"]
-
-python = ">=3.8,<4"
-boto3 = ">=1.24"
-PyYAML = ">=6.0"
-tqdm = ">=4.64"
-lz4 = ">=4.0"
-requests = ">=2.27"
-cryptography = ">=38.0.3"
-clickhouse-driver = ">=0.2"
-click = ">=8.0.0"
-lxml = ">=4.9"
-maxminddb = ">=2.2"
-orjson = ">=3.8"
-mashumaro = ">=3.0"
-pyOpenSSL = ">=22.1"
-importlib-metadata = {version = ">=1.0", python = "<3.8"}
-tabulate = "^0.9.0"
-warcio = "^1.7.4"
-msgpack = "^1.0.4"
-statsd = "^4.0.1"
-click-loglevel = "^0.5.0"
-
-dask = {extras = ["complete"], version = "^2023.3.2"}
-altair = {version = "^4.2.0", optional = true}
-numpy = {version = "^1.23.5", optional = true, python = ">=3.8"}
-pandas = {version = "^2.0.0", optional = true, python = ">=3.8"}
-flask = {version = "^2.2.2", optional = true}
-jupyterlab = {version = "^4.0.7", optional = true}
-temporalio = {version = "^1.5.1", optional = true}
-
-
-[tool.poetry.dependencies]
-python = ">=3.8,<4"
-boto3 = ">=1.24"
-PyYAML = ">=6.0"
-tqdm = ">=4.64"
-lz4 = ">=4.0"
-requests = ">=2.27"
-cryptography = ">=38.0.3"
-clickhouse-driver = ">=0.2"
-click = ">=8.0.0"
-lxml = ">=4.9"
-maxminddb = ">=2.2"
-orjson = ">=3.8"
-mashumaro = ">=3.0"
-pyOpenSSL = ">=22.1"
-importlib-metadata = {version = ">=1.0", python = "<3.8"}
-tabulate = "^0.9.0"
-warcio = "^1.7.4"
-msgpack = "^1.0.4"
-statsd = "^4.0.1"
-click-loglevel = "^0.5.0"
-
-dask = {extras = ["complete"], version = "^2023.3.2"}
-altair = {version = "^4.2.0", optional = true}
-numpy = {version = "^1.23.5", optional = true, python = ">=3.8"}
-pandas = {version = "^2.0.0", optional = true, python = ">=3.8"}
-flask = {version = "^2.2.2", optional = true}
-jupyterlab = {version = "^4.0.7", optional = true}
-temporalio = {version = "^1.5.1", optional = true}
-
-[tool.poetry.dev-dependencies]
-pytest = ">=7.2"
-pytest-cov = ">=3.0.0"
-black = ">=22.3.0"
-snakeviz = ">=2.1.1"
-mypy = ">=0.961"
-pytest-benchmark = "^4.0.0"
-pytest-profiling = "^1.7.0"
-memray = "^1.4.1"
-viztracer = "^0.15.6"
-
-[tool.poetry.scripts]
-oonidata = 'oonidata.cli:cli'
-datapipeline = 'oonidata.datapipeline.run_worker:main'
-
-[tool.poetry.extras]
-dataviz = ["altair", "numpy", "pandas", "flask"]
-research = ["jupyterlab"]
-datapipeline = ["temporalio"]
-
-

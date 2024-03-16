@@ -6,6 +6,10 @@ from click.testing import CliRunner
 import pytest
 
 import orjson
+from oonipipeline.db.connections import ClickhouseConnection
+
+from oonipipeline.fingerprintdb import FingerprintDB
+from oonipipeline.netinfo import NetinfoDB
 
 from oonidata.dataclient import sync_measurements
 from oonidata.apiclient import get_measurement_dict_by_uid
@@ -19,6 +23,19 @@ DATA_DIR = FIXTURE_PATH / "datadir"
 @pytest.fixture
 def datadir():
     return DATA_DIR
+
+
+@pytest.fixture
+def fingerprintdb(datadir):
+    return FingerprintDB(
+        datadir=datadir,
+        download=True,
+    )
+
+
+@pytest.fixture
+def netinfodb():
+    return NetinfoDB(datadir=DATA_DIR, download=True, max_age_seconds=60 * 60 * 24)
 
 
 @pytest.fixture
@@ -37,14 +54,14 @@ def raw_measurements():
 
 
 @pytest.fixture
-def measurements(should_download=False):
+def measurements():
     measurement_dir = FIXTURE_PATH / "measurements"
     measurement_dir.mkdir(parents=True, exist_ok=True)
 
     sampled_measurements = {}
     for msmt_uid in SAMPLE_MEASUREMENTS:
         sampled_measurements[msmt_uid] = measurement_dir / f"{msmt_uid}.json"
-        if sampled_measurements[msmt_uid].exists() or not should_download:
+        if sampled_measurements[msmt_uid].exists():
             continue
         msmt = get_measurement_dict_by_uid(msmt_uid)
         with sampled_measurements[msmt_uid].open("wb") as out_file:
@@ -55,3 +72,36 @@ def measurements(should_download=False):
 @pytest.fixture
 def cli_runner():
     return CliRunner()
+
+
+from oonidata.db.create_tables import create_queries
+
+
+def create_db_for_fixture():
+    try:
+        with ClickhouseConnection(conn_url="clickhouse://localhost/") as db:
+            db.execute("CREATE DATABASE IF NOT EXISTS testing_oonidata")
+    except:
+        pytest.skip("no database connection")
+
+    db = ClickhouseConnection(conn_url="clickhouse://localhost/testing_oonidata")
+    try:
+        db.execute("SELECT 1")
+    except:
+        pytest.skip("no database connection")
+    for query, _ in create_queries:
+        db.execute(query)
+    return db
+
+
+@pytest.fixture
+def db_notruncate():
+    return create_db_for_fixture()
+
+
+@pytest.fixture
+def db():
+    db = create_db_for_fixture()
+    for _, table_name in create_queries:
+        db.execute(f"TRUNCATE TABLE {table_name};")
+    return db

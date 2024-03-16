@@ -23,7 +23,7 @@ from warcio.warcwriter import WARCWriter
 from warcio.statusandheaders import StatusAndHeaders
 from oonidata.analysis.datasources import load_measurement
 from oonidata.dataclient import date_interval, iter_measurements
-from oonidata.fingerprintdb import FingerprintDB, Fingerprint
+from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB, Fingerprint
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 
 log = logging.getLogger("oonidata.processing")

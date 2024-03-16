@@ -17,7 +17,7 @@ from oonidata.analysis.control import (
 )
 from oonidata.models.analysis import WebAnalysis
 
-from oonidata.fingerprintdb import FingerprintDB
+from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB
 from oonidata.models.observations import WebControlObservation, WebObservation
 
 import logging
