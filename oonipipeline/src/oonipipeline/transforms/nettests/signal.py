@@ -3,7 +3,8 @@ from oonidata.datautils import TLSCertStore
 
 from oonidata.models.nettests import Signal
 from oonidata.models.observations import WebObservation
-from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+
+from ..measurement_transformer import MeasurementTransformer
 
 
 SIGNAL_ROOT_CA_OLD = """-----BEGIN CERTIFICATE-----

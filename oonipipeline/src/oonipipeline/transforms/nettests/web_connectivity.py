@@ -5,8 +5,10 @@ from urllib.parse import urlparse
 from oonidata.datautils import is_ip_bogon
 from oonidata.models.nettests import WebConnectivity
 from oonidata.models.observations import WebControlObservation, WebObservation
-from oonidata.netinfo import NetinfoDB
-from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+
+from ..measurement_transformer import MeasurementTransformer
+
+from ...netinfo import NetinfoDB
 
 
 def make_web_control_observations(

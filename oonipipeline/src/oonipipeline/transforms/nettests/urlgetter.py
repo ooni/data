@@ -2,7 +2,8 @@ from typing import List, Tuple
 
 from oonidata.models.nettests import UrlGetter
 from oonidata.models.observations import WebObservation
-from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+
+from ..measurement_transformer import MeasurementTransformer
 
 
 class UrlGetterTransformer(MeasurementTransformer):
@@ -10,8 +11,7 @@ class UrlGetterTransformer(MeasurementTransformer):
         dns_observations = self.make_dns_observations(msmt.test_keys.queries)
         tcp_observations = self.make_tcp_observations(msmt.test_keys.tcp_connect)
         tls_observations = self.make_tls_observations(
-            msmt.test_keys.tls_handshakes, 
-            msmt.test_keys.network_events
+            msmt.test_keys.tls_handshakes, msmt.test_keys.network_events
         )
         http_observations = self.make_http_observations(msmt.test_keys.requests)
 

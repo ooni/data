@@ -1,7 +1,8 @@
 from typing import List, Tuple
 from oonidata.models.nettests import Tor
 from oonidata.models.observations import WebObservation
-from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+
+from ..measurement_transformer import MeasurementTransformer
 
 
 class TorTransformer(MeasurementTransformer):

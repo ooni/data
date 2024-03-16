@@ -4,7 +4,8 @@ from typing import List, Tuple
 from oonidata.models.dataformats import maybe_binary_data_to_bytes
 from oonidata.models.nettests import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
-from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+
+from ..measurement_transformer import MeasurementTransformer
 
 
 def detect_target_index(sent_data):

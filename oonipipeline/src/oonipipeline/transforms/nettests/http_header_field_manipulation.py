@@ -4,7 +4,8 @@ import orjson
 from typing import List, Tuple
 from oonidata.models.nettests import HTTPHeaderFieldManipulation
 from oonidata.models.observations import HTTPMiddleboxObservation
-from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
+
+from ..measurement_transformer import MeasurementTransformer
 
 
 class HTTPHeaderFieldManipulationTransformer(MeasurementTransformer):
