@@ -2,21 +2,20 @@ import asyncio
 import pathlib
 import logging
 import dataclasses
-from datetime import date, datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from typing import (
     List,
     Sequence,
     Tuple,
 )
-from temporalio import workflow, activity
-from dataclasses import dataclass
 
-with workflow.unsafe.imports_passed_through():
-    import clickhouse_driver
+from temporalio import workflow, activity
 
 with workflow.unsafe.imports_passed_through():
     import statsd
+    import clickhouse_driver
     from oonidata.datautils import PerfTimer
     from oonidata.dataclient import (
         date_interval,
@@ -39,29 +38,6 @@ with workflow.unsafe.imports_passed_through():
     )
 
 log = logging.getLogger("oonidata.processing")
-
-
-@dataclass
-class ObservationsWorkflowParams:
-    probe_cc: List[str]
-    test_name: List[str]
-    start_day: str
-    end_day: str
-    clickhouse: str
-    data_dir: str
-    parallelism: int
-    fast_fail: bool
-    log_level: int = logging.INFO
-
-
-@dataclass
-class MakeObservationsParams:
-    probe_cc: List[str]
-    test_name: List[str]
-    clickhouse: str
-    data_dir: str
-    fast_fail: bool
-    bucket_date: str
 
 
 def write_observations_to_db(
@@ -143,6 +119,29 @@ def make_observations_for_file_entry_batch(
             statsd_client.gauge("oonidata.dataclient.file_entry.kb_per_sec.gauge", fe_size / 1024 / t.s, rate=0.1)  # type: ignore
         statsd_client.timing("oonidata.dataclient.batch.timed", tbatch.ms)  # type: ignore
     return idx
+
+
+@dataclass
+class ObservationsWorkflowParams:
+    probe_cc: List[str]
+    test_name: List[str]
+    start_day: str
+    end_day: str
+    clickhouse: str
+    data_dir: str
+    parallelism: int
+    fast_fail: bool
+    log_level: int = logging.INFO
+
+
+@dataclass
+class MakeObservationsParams:
+    probe_cc: List[str]
+    test_name: List[str]
+    clickhouse: str
+    data_dir: str
+    fast_fail: bool
+    bucket_date: str
 
 
 @activity.defn

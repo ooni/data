@@ -15,7 +15,7 @@ from typing import (
 
 import orjson
 from warcio.archiveiterator import ArchiveIterator
-from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB, Fingerprint
+from ..fingerprintdb import FingerprintDB, Fingerprint
 
 log = logging.getLogger("oonidata.processing")
 

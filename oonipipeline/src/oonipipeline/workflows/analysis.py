@@ -1,16 +1,15 @@
+import asyncio
 import dataclasses
 import logging
 import pathlib
-from datetime import date, datetime, timezone
+
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List
+
+from temporalio import workflow, activity
+
 import orjson
-
 import statsd
-
-from dask.distributed import Client as DaskClient
-from dask.distributed import progress as dask_progress
-from dask.distributed import wait as dask_wait
-from dask.distributed import as_completed
 
 from oonidata.dataclient import date_interval
 from oonidata.datautils import PerfTimer
@@ -35,6 +34,8 @@ from .common import (
     optimize_all_tables,
 )
 
+from .observations import ObservationsWorkflowParams, MakeObservationsParams
+
 log = logging.getLogger("oonidata.processing")
 
 
@@ -56,17 +57,26 @@ def make_ctrl(
     db_lookup.close()
 
 
-def make_analysis_in_a_day(
-    probe_cc: List[str],
-    test_name: List[str],
-    clickhouse: str,
-    data_dir: pathlib.Path,
-    fast_fail: bool,
-    day: date,
-):
+@dataclasses.dataclass
+class MakeAnalysisParams:
+    probe_cc: List[str]
+    test_name: List[str]
+    clickhouse: str
+    data_dir: str
+    fast_fail: bool
+    day: date
+
+
+@activity.defn
+def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
     t_total = PerfTimer()
     log.info("Optimizing all tables")
-    optimize_all_tables(clickhouse)
+    optimize_all_tables(params.clickhouse)
+    data_dir = pathlib.Path(params.data_dir)
+    clickhouse = params.clickhouse
+    day = params.day
+    probe_cc = params.probe_cc
+    test_name = params.test_name
 
     statsd_client = statsd.StatsClient("localhost", 8125)
     fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
@@ -188,7 +198,7 @@ def make_analysis_in_a_day(
                 ]
             ],
         )
-    return idx
+    return {"count": idx}
 
 
 def make_cc_batches(
@@ -246,74 +256,74 @@ def make_cc_batches(
     return cc_batches
 
 
-def start_analysis(
-    probe_cc: List[str],
-    test_name: List[str],
-    start_day: date,
-    end_day: date,
-    data_dir: pathlib.Path,
-    clickhouse: str,
-    parallelism: int,
-    fast_fail: bool,
-    rebuild_ground_truths: bool,
-    log_level: int = logging.INFO,
-):
-    t_total = PerfTimer()
-    dask_client = DaskClient(
-        threads_per_worker=2,
-        n_workers=parallelism,
-    )
+@workflow.defn
+class AnalysisWorkflow:
+    @workflow.run
+    async def run(self, params: ObservationsWorkflowParams) -> dict:
+        # TODO(art): should this be a parameter or is it better to remove it?
+        rebuild_ground_truths = True
+        t_total = PerfTimer()
 
-    t = PerfTimer()
-    # TODO: maybe use dask for this too
-    log.info("building ground truth databases")
-    for day in date_interval(start_day, end_day):
-        make_ctrl(
-            clickhouse=clickhouse,
-            data_dir=data_dir,
-            rebuild_ground_truths=rebuild_ground_truths,
-            day=day,
-        )
-    log.info(f"built ground truth db in {t.pretty}")
+        t = PerfTimer()
+        start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
+        end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
 
-    with ClickhouseConnection(clickhouse) as db:
-        cnt_by_cc = get_obs_count_by_cc(
-            db, start_day=start_day, end_day=end_day, test_name=test_name
-        )
-    cc_batches = make_cc_batches(
-        cnt_by_cc=cnt_by_cc,
-        probe_cc=probe_cc,
-        parallelism=parallelism,
-    )
-    log.info(
-        f"starting processing of {len(cc_batches)} batches over {(end_day - start_day).days} days (parallelism = {parallelism})"
-    )
-    log.info(f"({cc_batches} from {start_day} to {end_day}")
-
-    future_list = []
-    for probe_cc in cc_batches:
+        log.info("building ground truth databases")
         for day in date_interval(start_day, end_day):
-            t = dask_client.submit(
-                make_analysis_in_a_day,
-                probe_cc,
-                test_name,
-                clickhouse,
-                data_dir,
-                fast_fail,
-                day,
+            make_ctrl(
+                clickhouse=params.clickhouse,
+                data_dir=pathlib.Path(params.data_dir),
+                rebuild_ground_truths=rebuild_ground_truths,
+                day=day,
             )
-            future_list.append(t)
+        log.info(f"built ground truth db in {t.pretty}")
 
-    log.debug("starting progress monitoring")
-    dask_progress(future_list)
-    log.debug("waiting on task_list")
-    dask_wait(future_list)
-    total_obs_count = 0
-    for _, result in as_completed(future_list, with_results=True):
-        total_obs_count += result  # type: ignore
+        with ClickhouseConnection(params.clickhouse) as db:
+            cnt_by_cc = get_obs_count_by_cc(
+                db, start_day=start_day, end_day=end_day, test_name=params.test_name
+            )
+        cc_batches = make_cc_batches(
+            cnt_by_cc=cnt_by_cc,
+            probe_cc=params.probe_cc,
+            parallelism=params.parallelism,
+        )
+        log.info(
+            f"starting processing of {len(cc_batches)} batches over {(end_day - start_day).days} days (parallelism = {params.parallelism})"
+        )
+        log.info(f"({cc_batches} from {start_day} to {end_day}")
 
-    log.info(f"produces a total of {total_obs_count} analysis")
-    obs_per_sec = round(total_obs_count / t_total.s)
-    log.info(f"finished processing {start_day} - {end_day} speed: {obs_per_sec}obs/s)")
-    log.info(f"{total_obs_count} msmts in {t_total.pretty}")
-    dask_client.shutdown()
+        task_list = []
+        async with asyncio.TaskGroup() as tg:
+            for probe_cc in cc_batches:
+                for day in date_interval(start_day, end_day):
+                    task = tg.create_task(
+                        workflow.execute_activity(
+                            make_analysis_in_a_day,
+                            MakeAnalysisParams(
+                                probe_cc=params.probe_cc,
+                                test_name=params.test_name,
+                                clickhouse=params.clickhouse,
+                                data_dir=params.data_dir,
+                                fast_fail=params.fast_fail,
+                                day=day,
+                            ),
+                            start_to_close_timeout=timedelta(minutes=30),
+                        )
+                    )
+                    task_list.append(task)
+
+        t = PerfTimer()
+        # size, msmt_count =
+        total_obs_count = 0
+        for task in task_list:
+            res = task.result()
+
+            total_obs_count += res["count"]
+
+        log.info(f"produces a total of {total_obs_count} analysis")
+        obs_per_sec = round(total_obs_count / t_total.s)
+        log.info(
+            f"finished processing {start_day} - {end_day} speed: {obs_per_sec}obs/s)"
+        )
+        log.info(f"{total_obs_count} msmts in {t_total.pretty}")
+        return {"total_obs_count": total_obs_count}

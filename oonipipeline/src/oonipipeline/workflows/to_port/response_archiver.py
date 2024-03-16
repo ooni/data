@@ -21,10 +21,11 @@ import orjson
 
 from warcio.warcwriter import WARCWriter
 from warcio.statusandheaders import StatusAndHeaders
-from oonidata.analysis.datasources import load_measurement
-from oonidata.dataclient import date_interval, iter_measurements
-from oonipipeline.src.oonipipeline.fingerprintdb import FingerprintDB, Fingerprint
+
+from oonidata.dataclient import date_interval, iter_measurements, load_measurement
 from oonidata.models.nettests.web_connectivity import WebConnectivity
+
+from ..fingerprintdb import FingerprintDB, Fingerprint
 
 log = logging.getLogger("oonidata.processing")
 
