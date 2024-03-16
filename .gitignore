@@ -1,9 +1,11 @@
 __pycache__
-/.coverage
-/coverage.xml
+.coverage
+coverage.xml
+
+.ipynb_checkpoints/
+
 /dist
 /datadir
 /output
 /attic
 /prof
-.ipynb_checkpoints/

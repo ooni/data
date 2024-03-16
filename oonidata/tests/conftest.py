@@ -10,7 +10,7 @@ import orjson
 from oonidata.dataclient import sync_measurements
 from oonidata.apiclient import get_measurement_dict_by_uid
 
-from ._sample_measurements import SAMPLE_MEASUREMENTS
+from ._fixtures import SAMPLE_MEASUREMENTS, SAMPLE_POSTCANS, SAMPLE_JSONLGZS
 
 FIXTURE_PATH = Path(os.path.dirname(os.path.realpath(__file__))) / "data"
 DATA_DIR = FIXTURE_PATH / "datadir"
@@ -36,20 +36,50 @@ def raw_measurements():
     return output_dir
 
 
+def download_from_s3(name, dst_path):
+    print(name, dst_path)
+    assert False
+
+
+def make_samples(sample_name, sample_list):
+    dir = FIXTURE_PATH / sample_name
+    dir.mkdir(parents=True, exist_ok=True)
+
+    samples = {}
+    for name in sample_list:
+        sample_path = dir / name
+        if not sample_path.exists():
+            download_from_s3(name, dir / name)
+
+        samples[name] = dir / name
+
+    return samples
+
+
 @pytest.fixture
-def measurements(should_download=False):
+def postcans():
+    return make_samples("postcans", SAMPLE_POSTCANS)
+
+
+@pytest.fixture
+def jsonlgzs():
+    return make_samples("jsonlgzs", SAMPLE_JSONLGZS)
+
+
+@pytest.fixture
+def measurements():
     measurement_dir = FIXTURE_PATH / "measurements"
     measurement_dir.mkdir(parents=True, exist_ok=True)
 
-    sampled_measurements = {}
+    sample_measurements = {}
     for msmt_uid in SAMPLE_MEASUREMENTS:
-        sampled_measurements[msmt_uid] = measurement_dir / f"{msmt_uid}.json"
-        if sampled_measurements[msmt_uid].exists() or not should_download:
+        sample_measurements[msmt_uid] = measurement_dir / f"{msmt_uid}.json"
+        if sample_measurements[msmt_uid].exists():
             continue
         msmt = get_measurement_dict_by_uid(msmt_uid)
-        with sampled_measurements[msmt_uid].open("wb") as out_file:
+        with sample_measurements[msmt_uid].open("wb") as out_file:
             out_file.write(orjson.dumps(msmt))
-    return sampled_measurements
+    return sample_measurements
 
 
 @pytest.fixture
