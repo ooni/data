@@ -34,7 +34,7 @@ jobs:
       - name: Set up raw_measurements cache
         uses: actions/cache@v3
         with:
-          path: oonidata/tests/data/measurements/
+          path: oonidata/tests/data/raw_measurements/
           key: oonidata-tests-data-raw_measurements-${{ hashFiles('tests/conftest.py') }}
 
       - name: Run all tests

@@ -29,7 +29,7 @@ jobs:
       - name: Set up raw_measurements cache
         uses: actions/cache@v3
         with:
-          path: oonipipeline/tests/data/measurements/
+          path: oonipipeline/tests/data/raw_measurements/
           key: oonipipeline-tests-data-raw_measurements-${{ hashFiles('tests/conftest.py') }}
 
       - name: Install clickhouse
