@@ -6,6 +6,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # Contrary to oonidata, which is a tool for end users, oonipipeline
+      # targets a single python version to minimize the likelyhood of breakage
+      # in production.
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
