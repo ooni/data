@@ -40,7 +40,7 @@ from oonidata.datautils import (
     get_certificate_meta,
     removeprefix,
 )
-from oonidata.netinfo import NetinfoDB
+from ..netinfo import NetinfoDB
 
 
 log = logging.getLogger("oonidata.transforms")
@@ -180,9 +180,11 @@ def measurement_to_http_observation(
         request_body_is_truncated=http_transaction.request.body_is_truncated,
         request_headers_list=http_transaction.request.headers_list_bytes,
         request_method=http_transaction.request.method or "",
-        request_body_length=len(http_transaction.request.body_bytes)
-        if http_transaction.request.body_bytes
-        else 0,
+        request_body_length=(
+            len(http_transaction.request.body_bytes)
+            if http_transaction.request.body_bytes
+            else 0
+        ),
         network=network,
         alpn=http_transaction.alpn,
         failure=normalize_failure(http_transaction.failure),
@@ -902,7 +904,9 @@ class MeasurementTransformer:
 
         for idx, obs in enumerate(web_obs_list):
             obs.observation_id = f"{obs.measurement_uid}_{idx}"
-            obs.created_at = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+            obs.created_at = datetime.now(timezone.utc).replace(
+                microsecond=0, tzinfo=None
+            )
 
         return web_obs_list
 

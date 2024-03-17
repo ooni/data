@@ -1,14 +1,14 @@
 from datetime import date, datetime
 
-import pytest
-from oonidata.analysis.datasources import iter_web_observations
-from oonidata.db.connections import ClickhouseConnection
-from oonidata.analysis.control import (
+from oonidata.models.observations import WebObservation, print_nice_vertical
+
+from oonipipeline.analysis.datasources import iter_web_observations
+from oonipipeline.db.connections import ClickhouseConnection
+from oonipipeline.analysis.control import (
     WebGroundTruthDB,
     iter_web_ground_truths,
 )
-from oonidata.models.observations import WebObservation, print_nice_vertical
-from oonidata.workers.observations import make_observations_for_file_entry_batch
+from oonipipeline.workflows.observations import make_observations_for_file_entry_batch
 
 
 def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):

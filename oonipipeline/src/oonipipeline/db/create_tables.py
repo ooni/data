@@ -5,12 +5,12 @@ from dataclasses import fields
 
 from .connections import ClickhouseConnection
 
-from ..models.experiment_result import (
+from oonidata.models.experiment_result import (
     ExperimentResult,
     MeasurementExperimentResult,
 )
-from ..models.analysis import WebAnalysis
-from ..models.observations import (
+from oonidata.models.analysis import WebAnalysis
+from oonidata.models.observations import (
     ObservationBase,
     WebControlObservation,
     WebObservation,

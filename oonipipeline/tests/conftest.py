@@ -6,15 +6,16 @@ from click.testing import CliRunner
 import pytest
 
 import orjson
-from oonipipeline.db.connections import ClickhouseConnection
-
-from oonipipeline.fingerprintdb import FingerprintDB
-from oonipipeline.netinfo import NetinfoDB
 
 from oonidata.dataclient import sync_measurements
 from oonidata.apiclient import get_measurement_dict_by_uid
 
-from ._sample_measurements import SAMPLE_MEASUREMENTS
+from oonipipeline.db.connections import ClickhouseConnection
+from oonipipeline.db.create_tables import create_queries
+from oonipipeline.fingerprintdb import FingerprintDB
+from oonipipeline.netinfo import NetinfoDB
+
+from ._fixtures import SAMPLE_MEASUREMENTS
 
 FIXTURE_PATH = Path(os.path.dirname(os.path.realpath(__file__))) / "data"
 DATA_DIR = FIXTURE_PATH / "datadir"
@@ -72,9 +73,6 @@ def measurements():
 @pytest.fixture
 def cli_runner():
     return CliRunner()
-
-
-from oonidata.db.create_tables import create_queries
 
 
 def create_db_for_fixture():

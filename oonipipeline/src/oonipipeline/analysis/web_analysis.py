@@ -12,6 +12,8 @@ from typing import (
     List,
     Dict,
 )
+from oonidata.models.analysis import WebAnalysis
+from oonidata.models.observations import WebControlObservation, WebObservation
 
 from ..db.connections import ClickhouseConnection
 from ..analysis.control import (
@@ -19,9 +21,6 @@ from ..analysis.control import (
     BodyDB,
 )
 from ..fingerprintdb import FingerprintDB
-
-from ..models.analysis import WebAnalysis
-from ..models.observations import WebControlObservation, WebObservation
 
 
 log = logging.getLogger(__name__)

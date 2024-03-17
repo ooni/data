@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, call
 
 from clickhouse_driver import Client
 
-from oonidata.db.connections import ClickhouseConnection
+from oonipipeline.db.connections import ClickhouseConnection
 
 
 def test_flush_rows(db):

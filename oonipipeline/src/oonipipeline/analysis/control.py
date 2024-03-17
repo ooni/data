@@ -5,7 +5,8 @@ from collections.abc import Iterable
 
 from typing import Any, Generator, Optional, Tuple, List, NamedTuple
 
-from ..models.observations import WebControlObservation, WebObservation
+from oonidata.models.observations import WebControlObservation, WebObservation
+
 from ..netinfo import NetinfoDB
 
 from ..db.connections import ClickhouseConnection

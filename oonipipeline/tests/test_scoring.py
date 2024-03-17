@@ -1,13 +1,15 @@
 from unittest.mock import MagicMock
 
 import pytest
-from oonidata.analysis.control import (
+
+from oonidata.models.experiment_result import print_nice_er
+from oonidata.dataclient import load_measurement
+
+from oonipipeline.analysis.control import (
     WebGroundTruthDB,
     iter_ground_truths_from_web_control,
 )
-from oonidata.analysis.datasources import load_measurement
-from oonidata.models.experiment_result import print_nice_er
-from oonidata.transforms import measurement_to_observations
+from oonipipeline.transforms.observations import measurement_to_observations
 
 
 def test_tcp_scoring(measurements, netinfodb, fingerprintdb):

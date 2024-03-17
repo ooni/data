@@ -1,0 +1,48 @@
+name: test oonidata
+on: push
+jobs:
+  run_tests:
+    name: ${{ matrix.os }} / ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      matrix:
+        os: [Ubuntu]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Set up datadir cache
+        uses: actions/cache@v3
+        with:
+          path: oonidata/tests/data/datadir/
+          key: oonidata-tests-data-datadir
+
+      - name: Set up measurements cache
+        uses: actions/cache@v3
+        with:
+          path: oonidata/tests/data/measurements/
+          key: oonidata-tests-data-measurements
+
+      - name: Set up raw_measurements cache
+        uses: actions/cache@v3
+        with:
+          path: oonidata/tests/data/measurements/
+          key: oonidata-tests-data-raw_measurements-${{ hashFiles('tests/conftest.py') }}
+
+      - name: Run all tests
+        run: make test-cov
+        working-directory: ./oonidata/
+
+      - name: Upload coverage to codecov
+        uses: codecov/codecov-action@v3
+        with:
+          flags: oonidata
+          working-directory: ./oonidata/

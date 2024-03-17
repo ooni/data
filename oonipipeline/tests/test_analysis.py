@@ -5,21 +5,23 @@ from typing import List
 from unittest.mock import MagicMock
 
 import pytest
-from oonidata.analysis.datasources import load_measurement
-from oonidata.analysis.web_analysis import make_web_analysis
+
+from oonidata.dataclient import load_measurement
+from oonidata.models.nettests.signal import Signal
+from oonidata.models.nettests.web_connectivity import WebConnectivity
+from oonidata.models.observations import WebObservation, print_nice, print_nice_vertical
 from oonidata.datautils import validate_cert_chain
-from oonidata.analysis.control import (
+
+from oonipipeline.analysis.web_analysis import make_web_analysis
+from oonipipeline.analysis.control import (
     BodyDB,
     WebGroundTruth,
     iter_ground_truths_from_web_control,
     WebGroundTruthDB,
 )
-from oonidata.analysis.signal import make_signal_experiment_result
-from oonidata.models.nettests.signal import Signal
-from oonidata.models.nettests.web_connectivity import WebConnectivity
-from oonidata.models.observations import WebObservation, print_nice, print_nice_vertical
-from oonidata.transforms.nettests.signal import SIGNAL_PEM_STORE
-from oonidata.transforms import measurement_to_observations
+from oonipipeline.analysis.signal import make_signal_experiment_result
+from oonipipeline.transforms.nettests.signal import SIGNAL_PEM_STORE
+from oonipipeline.transforms.observations import measurement_to_observations
 
 
 def test_signal(fingerprintdb, netinfodb, measurements):

@@ -1,5 +1,7 @@
 from typing import List
-from oonidata.analysis.datasources import load_measurement
+
+
+from oonidata.dataclient import load_measurement
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.telegram import Telegram
 from oonidata.models.nettests.signal import Signal
@@ -10,8 +12,11 @@ from oonidata.models.nettests.stun_reachability import StunReachability
 from oonidata.models.nettests.urlgetter import UrlGetter
 from oonidata.models.nettests.browser_web import BrowserWeb
 from oonidata.models.observations import WebObservation
-from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
-from oonidata.transforms import measurement_to_observations
+
+from oonipipeline.transforms.measurement_transformer import (
+    MeasurementTransformer,
+)
+from oonipipeline.transforms.observations import measurement_to_observations
 
 
 def test_wc_v5_observations(netinfodb, measurements):
@@ -183,7 +188,9 @@ def test_telegram_obs(netinfodb, measurements):
 
 def test_stunreachability_obs(netinfodb, measurements):
     msmt = load_measurement(
-        msmt_path=measurements["20221224235924.922622_BR_stunreachability_905c61a34356a9b2"]
+        msmt_path=measurements[
+            "20221224235924.922622_BR_stunreachability_905c61a34356a9b2"
+        ]
     )
     assert isinstance(msmt, StunReachability)
     web_obs: List[WebObservation] = measurement_to_observations(

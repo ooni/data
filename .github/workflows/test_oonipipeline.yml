@@ -1,0 +1,43 @@
+name: test oonipipeline
+on: push
+jobs:
+  run_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Set up datadir cache
+        uses: actions/cache@v3
+        with:
+          path: oonipipeline/tests/data/datadir/
+          key: oonipipeline-tests-data-datadir
+
+      - name: Set up measurements cache
+        uses: actions/cache@v3
+        with:
+          path: oonipipeline/tests/data/measurements/
+          key: oonipipeline-tests-data-measurements
+
+      - name: Set up raw_measurements cache
+        uses: actions/cache@v3
+        with:
+          path: oonipipeline/tests/data/measurements/
+          key: oonipipeline-tests-data-raw_measurements-${{ hashFiles('tests/conftest.py') }}
+
+      - name: Run all tests
+        run: make test-cov
+        working-directory: ./oonipipeline/
+
+      - name: Upload coverage to codecov
+        uses: codecov/codecov-action@v3
+        with:
+          flags: oonipipeline
+          working-directory: ./oonipipeline/

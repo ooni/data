@@ -4,29 +4,44 @@ from pathlib import Path
 import sqlite3
 from typing import List, Tuple
 from unittest.mock import MagicMock
+import time
 
-from oonidata.analysis.datasources import load_measurement
-
-from oonidata.dataclient import stream_jsonl
+from oonidata.dataclient import stream_jsonl, load_measurement
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
-from oonidata.workers.analysis import make_analysis_in_a_day, make_cc_batches, make_ctrl
-from oonidata.workers.common import (
+
+from oonipipeline.workflows.analysis import (
+    make_analysis_in_a_day,
+    make_cc_batches,
+    make_ctrl,
+)
+from oonipipeline.workflows.common import (
     get_obs_count_by_cc,
     get_prev_range,
     maybe_delete_prev_range,
 )
-from oonidata.workers.observations import (
+from oonipipeline.workflows.observations import (
     make_observations_for_file_entry_batch,
     write_observations_to_db,
 )
-from oonidata.workers.response_archiver import ResponseArchiver
-from oonidata.workers.fingerprint_hunter import fingerprint_hunter
-from oonidata.transforms import measurement_to_observations
-from oonidata.transforms.nettests.measurement_transformer import MeasurementTransformer
-from tests.test_cli import wait_for_mutations
+from oonipipeline.workflows.response_archiver import ResponseArchiver
+from oonipipeline.workflows.fingerprint_hunter import fingerprint_hunter
+from oonipipeline.transforms import measurement_to_observations
+from oonipipeline.transforms.nettests.measurement_transformer import (
+    MeasurementTransformer,
+)
+
+
+def wait_for_mutations(db, table_name):
+    while True:
+        res = db.execute(
+            f"SELECT * FROM system.mutations WHERE is_done=0 AND table='{table_name}';"
+        )
+        if len(res) == 0:  # type: ignore
+            break
+        time.sleep(1)
 
 
 def test_get_prev_range(db):
