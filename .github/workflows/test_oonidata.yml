@@ -38,7 +38,7 @@ jobs:
           key: oonidata-tests-data-raw_measurements-${{ hashFiles('tests/conftest.py') }}
 
       - name: Run all tests
-        run: make test-cov
+        run: hatch run cov
         working-directory: ./oonidata/
 
       - name: Upload coverage to codecov
