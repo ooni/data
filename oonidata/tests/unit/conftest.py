@@ -37,7 +37,6 @@ def raw_measurements():
 
 
 def download_from_s3(name, dst_path):
-    print(name, dst_path)
     assert False
 
 
@@ -80,8 +79,3 @@ def measurements():
         with sample_measurements[msmt_uid].open("wb") as out_file:
             out_file.write(orjson.dumps(msmt))
     return sample_measurements
-
-
-@pytest.fixture
-def cli_runner():
-    return CliRunner()
