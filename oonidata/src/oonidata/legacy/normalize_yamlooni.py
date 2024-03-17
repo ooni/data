@@ -3,6 +3,7 @@
 #
 
 from datetime import datetime
+import io
 from itertools import groupby
 import functools
 import hashlib
@@ -389,7 +390,7 @@ def normalize_process(entry):
     return entry
 
 
-def normalize_entry(entry, bucket_date, perma_fname, esha):
+def normalize_entry(entry: dict, esha: bytes):
     """Autoclaving"""
     hashuuid = esha[:16]  # sha1 is 20 bytes
 
@@ -400,11 +401,8 @@ def normalize_entry(entry, bucket_date, perma_fname, esha):
     test_name = test_name_mappings.get(test_name, test_name.lower())
     entry["test_name"] = test_name
 
-    entry["bucket_date"] = bucket_date
-
     if not entry.get("id"):
         entry["id"] = str(uuid.UUID(bytes=hashuuid))
-    entry["report_filename"] = perma_fname
 
     # Ensure all the keys in the schema are present
     for key in schema:
@@ -429,7 +427,7 @@ def normalize_entry(entry, bucket_date, perma_fname, esha):
         else:
             test_start_time = datetime.strptime(tst, "%Y-%m-%d %H:%M:%S")
             measurement_start_time = datetime.strptime(
-                entry.get("measurement_start_time"), "%Y-%m-%d %H:%M:%S"
+                entry["measurement_start_time"], "%Y-%m-%d %H:%M:%S"
             )
     except KeyError:
         # Failback to using the start_time
@@ -492,7 +490,7 @@ class TruncatedReportError(BlobSlicerError):
     pass
 
 
-def stream_yaml_blobs(fd):
+def stream_yaml_blobs(fd: io.BytesIO):
     """Detects YAML objects from a stream.
     Returns an iterator of (offset, blob)
     """
@@ -561,11 +559,9 @@ def generate_report_id(header):
 ## Entry points
 
 
-def iter_yaml_msmt_normalized(data, bucket_tstamp: str, report_fn: str):
+def iter_yaml_msmt_normalized(data):
     """Yields normalized measurements from a YAML bytestream"""
-    assert bucket_tstamp.startswith("20")
-    assert len(bucket_tstamp) == 10
-    assert len(report_fn.split("/")) == 2, report_fn
+
     # Taken from autoclaving.py stream_yaml_reports
     blobgen = stream_yaml_blobs(data)
 
@@ -601,7 +597,7 @@ def iter_yaml_msmt_normalized(data, bucket_tstamp: str, report_fn: str):
             header.pop("test_start_time")
         entry.update(header)
         try:
-            d = normalize_entry(entry, bucket_tstamp, report_fn, esha_d)
+            d = normalize_entry(entry=entry, esha=esha_d)
             msmt_uid = trivial_id(raw_entry, d)
             d["measurement_uid"] = msmt_uid
             yield d

@@ -207,7 +207,7 @@ def stream_yamllz4(body: io.BytesIO, s3path: str):
         bucket_tstamp = s3path.split("/")[-2]
         rfn = f"{bucket_tstamp}/" + s3path.split("/")[-1]
         # The normalize function already add the measurement_uid
-        yield from iter_yaml_msmt_normalized(in_file, bucket_tstamp, rfn)
+        yield from iter_yaml_msmt_normalized(in_file)
 
 
 def stream_oldcan(body: io.BytesIO, s3path: str) -> Generator[dict, None, None]:
@@ -239,7 +239,7 @@ def stream_oldcan(body: io.BytesIO, s3path: str) -> Generator[dict, None, None]:
                     bucket_tstamp = s3path.split("/")[-2]
                     rfn = f"{bucket_tstamp}/" + s3path.split("/")[-1]
                     # The normalize function already add the measurement_uid
-                    yield from iter_yaml_msmt_normalized(in_file, bucket_tstamp, rfn)
+                    yield from iter_yaml_msmt_normalized(in_file)
 
 
 def stream_measurements(bucket_name, s3path, ext):
