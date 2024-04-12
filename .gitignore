@@ -6,7 +6,6 @@ coverage.xml
 .ipynb_checkpoints/
 
 /dist
-/datadir
 /output
 /attic
 /prof
