@@ -184,9 +184,7 @@ def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
 def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
     msmt = load_measurement(msmt_path=msmt_path)
     assert isinstance(msmt, WebConnectivity)
-    web_observations, web_control_observations = measurement_to_observations(
-        msmt, netinfodb=netinfodb
-    )
+    _, web_control_observations = measurement_to_observations(msmt, netinfodb=netinfodb)
 
     assert msmt.test_keys.control
     assert isinstance(msmt.input, str)

@@ -7,6 +7,8 @@ import pytest
 
 import orjson
 
+from clickhouse_driver import Client as ClickhouseClient
+
 from oonidata.dataclient import sync_measurements
 from oonidata.apiclient import get_measurement_dict_by_uid
 
@@ -19,6 +21,26 @@ from ._fixtures import SAMPLE_MEASUREMENTS
 
 FIXTURE_PATH = Path(os.path.dirname(os.path.realpath(__file__))) / "data"
 DATA_DIR = FIXTURE_PATH / "datadir"
+
+
+def is_clickhouse_running(url):
+    try:
+        with ClickhouseClient.from_url(url) as client:
+            client.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
+
+
+@pytest.fixture(scope="session")
+def clickhouse_server(docker_ip, docker_services):
+    """Ensure that HTTP service is up and responsive."""
+    port = docker_services.port_for("clickhouse", 9000)
+    url = "clickhouse://{}:{}/default".format(docker_ip, port)
+    docker_services.wait_until_responsive(
+        timeout=30.0, pause=0.1, check=lambda: is_clickhouse_running(url)
+    )
+    yield url
 
 
 @pytest.fixture
@@ -75,14 +97,14 @@ def cli_runner():
     return CliRunner()
 
 
-def create_db_for_fixture():
+def create_db_for_fixture(conn_url):
     try:
-        with ClickhouseConnection(conn_url="clickhouse://localhost/") as db:
+        with ClickhouseConnection(conn_url=conn_url) as db:
             db.execute("CREATE DATABASE IF NOT EXISTS testing_oonidata")
     except:
         pytest.skip("no database connection")
 
-    db = ClickhouseConnection(conn_url="clickhouse://localhost/testing_oonidata")
+    db = ClickhouseConnection(conn_url=conn_url.replace("default", "testing_oonidata"))
     try:
         db.execute("SELECT 1")
     except:
@@ -93,13 +115,13 @@ def create_db_for_fixture():
 
 
 @pytest.fixture
-def db_notruncate():
-    return create_db_for_fixture()
+def db_notruncate(clickhouse_server):
+    yield create_db_for_fixture(clickhouse_server)
 
 
 @pytest.fixture
-def db():
-    db = create_db_for_fixture()
+def db(clickhouse_server):
+    db = create_db_for_fixture(clickhouse_server)
     for _, table_name in create_queries:
         db.execute(f"TRUNCATE TABLE {table_name};")
-    return db
+    yield db

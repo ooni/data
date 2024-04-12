@@ -54,6 +54,7 @@ dependencies = [
   "pytest-profiling",
   "memray",
   "viztracer",
+  "pytest-docker",
 ]
 python = "3.11"
 path = ".venv/"

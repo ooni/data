@@ -1,3 +1,6 @@
+from pathlib import Path
+
+
 def _test_full_workflow(
     db, cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path
 ):
