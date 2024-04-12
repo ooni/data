@@ -55,7 +55,6 @@ dependencies = [
   "memray",
   "viztracer",
 ]
-python = "3.11"
 path = ".venv/"
 
 [tool.hatch.version]
