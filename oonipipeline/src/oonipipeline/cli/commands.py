@@ -20,8 +20,8 @@ import asyncio
 
 import concurrent.futures
 
-from temporalio.client import Client
-from temporalio.worker import Worker
+from temporalio.client import Client as TemporalClient
+from temporalio.worker import Worker, SharedStateManager
 
 from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
 
@@ -48,16 +48,36 @@ TASK_QUEUE_NAME = "oonipipeline-task-queue"
 
 
 async def run_workflow(
-    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType], arg: ParamType
+    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
+    arg: ParamType,
+    process_count: int = 5,
+    temporal_address: str = "localhost:7233",
 ):
-    client = await Client.connect("localhost:7233")
-
-    await client.execute_workflow(
-        workflow,
-        arg,
-        id=TASK_QUEUE_NAME,
+    client = await TemporalClient.connect(temporal_address)
+    async with Worker(
+        client,
         task_queue=TASK_QUEUE_NAME,
-    )
+        workflows=[
+            ObservationsWorkflow,
+            GroundTruthsWorkflow,
+            AnalysisWorkflow,
+        ],
+        activities=[
+            make_observation_in_day,
+            make_ground_truths_in_day,
+            make_analysis_in_a_day,
+        ],
+        activity_executor=concurrent.futures.ProcessPoolExecutor(process_count),
+        shared_state_manager=SharedStateManager.create_from_multiprocessing(
+            multiprocessing.Manager()
+        ),
+    ):
+        await client.execute_workflow(
+            workflow,
+            arg,
+            id=TASK_QUEUE_NAME,
+            task_queue=TASK_QUEUE_NAME,
+        )
 
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
@@ -193,7 +213,6 @@ def mkobs(
         end_day=end_day,
         clickhouse=clickhouse,
         data_dir=str(data_dir),
-        parallelism=parallelism,
         fast_fail=fast_fail,
     )
     click.echo(f"starting to make observations with arg={arg}")
@@ -201,6 +220,7 @@ def mkobs(
         run_workflow(
             ObservationsWorkflow.run,
             arg,
+            process_count=parallelism,
         )
     )
 
@@ -271,6 +291,7 @@ def mkanalysis(
         run_workflow(
             AnalysisWorkflow.run,
             arg,
+            process_count=parallelism,
         )
     )
 
@@ -403,29 +424,3 @@ def checkdb(
 
     with ClickhouseConnection(clickhouse) as db:
         list_all_table_diffs(db)
-
-
-async def run_workers():
-    client = await Client.connect("localhost:7233")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as activity_executor:
-        worker = Worker(
-            client,
-            task_queue=TASK_QUEUE_NAME,
-            workflows=[
-                ObservationsWorkflow,
-                GroundTruthsWorkflow,
-                AnalysisWorkflow,
-            ],
-            activities=[
-                make_observation_in_day,
-                make_ground_truths_in_day,
-                make_analysis_in_a_day,
-            ],
-            activity_executor=activity_executor,
-        )
-        await worker.run()
-
-
-@cli.command()
-def start_workers():
-    asyncio.run(run_workers())

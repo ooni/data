@@ -31,11 +31,6 @@ mkdir -p clickhouse-data
 clickhouse server
 ```
 
-You should then start the workers by running:
-```
-hatch run oonipipeline start-workers
-```
-
 You can then start the desired workflow, for example to create signal observations for the US:
 ```
 hatch run oonipipeline mkobs --probe-cc US --test-name signal --start-day 2024-01-01 --end-day 2024-01-02

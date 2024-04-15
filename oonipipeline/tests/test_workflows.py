@@ -3,7 +3,7 @@ from multiprocessing import Process
 from pathlib import Path
 import time
 
-from oonipipeline.cli.commands import cli, run_workers
+from oonipipeline.cli.commands import cli
 
 
 def wait_for_mutations(db, table_name):
@@ -16,10 +16,6 @@ def wait_for_mutations(db, table_name):
         time.sleep(1)
 
 
-def start_workers():
-    asyncio.run(run_workers())
-
-
 def test_full_workflow(
     db,
     cli_runner,
@@ -29,9 +25,6 @@ def test_full_workflow(
     tmp_path: Path,
     temporal_dev_server,
 ):
-    # simulate the starting of workers
-    Process(target=start_workers, args=(), daemon=True).start()
-
     result = cli_runner.invoke(
         cli,
         [
