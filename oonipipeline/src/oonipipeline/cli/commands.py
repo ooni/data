@@ -68,6 +68,7 @@ async def run_workflow(
             make_analysis_in_a_day,
         ],
         activity_executor=concurrent.futures.ProcessPoolExecutor(process_count),
+        max_concurrent_activities=process_count,
         shared_state_manager=SharedStateManager.create_from_multiprocessing(
             multiprocessing.Manager()
         ),
