@@ -50,7 +50,7 @@ TASK_QUEUE_NAME = "oonipipeline-task-queue"
 async def run_workflow(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
-    process_count: int = 5,
+    parallelism: int = 5,
     temporal_address: str = "localhost:7233",
 ):
     client = await TemporalClient.connect(temporal_address)
@@ -67,8 +67,8 @@ async def run_workflow(
             make_ground_truths_in_day,
             make_analysis_in_a_day,
         ],
-        activity_executor=concurrent.futures.ProcessPoolExecutor(process_count),
-        max_concurrent_activities=process_count,
+        activity_executor=concurrent.futures.ProcessPoolExecutor(parallelism + 2),
+        max_concurrent_activities=parallelism,
         shared_state_manager=SharedStateManager.create_from_multiprocessing(
             multiprocessing.Manager()
         ),
@@ -221,7 +221,7 @@ def mkobs(
         run_workflow(
             ObservationsWorkflow.run,
             arg,
-            process_count=parallelism,
+            parallelism=parallelism,
         )
     )
 
@@ -292,7 +292,7 @@ def mkanalysis(
         run_workflow(
             AnalysisWorkflow.run,
             arg,
-            process_count=parallelism,
+            parallelism=parallelism,
         )
     )
 
