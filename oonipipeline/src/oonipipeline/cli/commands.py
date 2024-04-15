@@ -405,28 +405,27 @@ def checkdb(
         list_all_table_diffs(db)
 
 
+async def run_workers():
+    client = await Client.connect("localhost:7233")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as activity_executor:
+        worker = Worker(
+            client,
+            task_queue=TASK_QUEUE_NAME,
+            workflows=[
+                ObservationsWorkflow,
+                GroundTruthsWorkflow,
+                AnalysisWorkflow,
+            ],
+            activities=[
+                make_observation_in_day,
+                make_ground_truths_in_day,
+                make_analysis_in_a_day,
+            ],
+            activity_executor=activity_executor,
+        )
+        await worker.run()
+
+
 @cli.command()
 def start_workers():
-    async def run():
-        client = await Client.connect("localhost:7233")
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=100
-        ) as activity_executor:
-            worker = Worker(
-                client,
-                task_queue=TASK_QUEUE_NAME,
-                workflows=[
-                    ObservationsWorkflow,
-                    GroundTruthsWorkflow,
-                    AnalysisWorkflow,
-                ],
-                activities=[
-                    make_observation_in_day,
-                    make_ground_truths_in_day,
-                    make_analysis_in_a_day,
-                ],
-                activity_executor=activity_executor,
-            )
-            await worker.run()
-
-    asyncio.run(run())
+    asyncio.run(run_workers())

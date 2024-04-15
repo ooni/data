@@ -1,12 +1,15 @@
 import os
+import subprocess
 from pathlib import Path
 from datetime import date
-from click.testing import CliRunner
+import time
+
 
 import pytest
 
 import orjson
 
+from click.testing import CliRunner
 from clickhouse_driver import Client as ClickhouseClient
 
 from oonidata.dataclient import sync_measurements
@@ -41,6 +44,15 @@ def clickhouse_server(docker_ip, docker_services):
         timeout=30.0, pause=0.1, check=lambda: is_clickhouse_running(url)
     )
     yield url
+
+
+@pytest.fixture(scope="session")
+def temporal_dev_server(request):
+    proc = subprocess.Popen(["temporal", "server", "start-dev"])
+    time.sleep(2)
+    assert not proc.poll()
+    yield proc
+    request.addfinalizer(proc.kill)
 
 
 @pytest.fixture

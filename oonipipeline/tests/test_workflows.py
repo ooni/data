@@ -1,9 +1,37 @@
+import asyncio
+from multiprocessing import Process
 from pathlib import Path
+import time
+
+from oonipipeline.cli.commands import cli, run_workers
 
 
-def _test_full_workflow(
-    db, cli_runner, fingerprintdb, netinfodb, datadir, tmp_path: Path
+def wait_for_mutations(db, table_name):
+    while True:
+        res = db.execute(
+            f"SELECT * FROM system.mutations WHERE is_done=0 AND table='{table_name}';"
+        )
+        if len(res) == 0:  # type: ignore
+            break
+        time.sleep(1)
+
+
+def start_workers():
+    asyncio.run(run_workers())
+
+
+def test_full_workflow(
+    db,
+    cli_runner,
+    fingerprintdb,
+    netinfodb,
+    datadir,
+    tmp_path: Path,
+    temporal_dev_server,
 ):
+    # simulate the starting of workers
+    Process(target=start_workers, args=(), daemon=True).start()
+
     result = cli_runner.invoke(
         cli,
         [
