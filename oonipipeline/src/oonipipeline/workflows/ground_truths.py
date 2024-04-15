@@ -1,20 +1,15 @@
 import asyncio
 from dataclasses import dataclass
-import queue
 import pathlib
 import logging
 
-import multiprocessing as mp
-from multiprocessing.synchronize import Event as EventClass
-
-from threading import Thread
-from datetime import date, datetime, timedelta
-from typing import List
+from datetime import datetime, timedelta
 
 from temporalio import workflow, activity
 
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
+
     from oonidata.dataclient import date_interval
     from oonidata.datautils import PerfTimer
     from ..analysis.control import WebGroundTruthDB, iter_web_ground_truths

@@ -22,13 +22,26 @@ import concurrent.futures
 
 from temporalio.client import Client
 from temporalio.worker import Worker
+
 from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
 
-from ..workflows.observations import ObservationsWorkflow, ObservationsWorkflowParams
-from ..workflows.observations import make_observation_in_day
+from ..workflows.observations import (
+    ObservationsWorkflow,
+    ObservationsWorkflowParams,
+    make_observation_in_day,
+)
 
-from ..workflows.ground_truths import GroundTruthsWorkflow, GroundTruthsWorkflowParams
-from ..workflows.ground_truths import make_ground_truths_in_day
+from ..workflows.ground_truths import (
+    GroundTruthsWorkflow,
+    GroundTruthsWorkflowParams,
+    make_ground_truths_in_day,
+)
+
+from ..workflows.analysis import (
+    AnalysisWorkflow,
+    AnalysisWorkflowParams,
+    make_analysis_in_a_day,
+)
 
 
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
@@ -223,8 +236,8 @@ def mkobs(
 def mkanalysis(
     probe_cc: List[str],
     test_name: List[str],
-    start_day: date,
-    end_day: date,
+    start_day: str,
+    end_day: str,
     clickhouse: str,
     data_dir: Path,
     parallelism: int,
@@ -238,18 +251,28 @@ def mkanalysis(
                 click.echo(f"Running create query for {table_name}")
                 db.execute(query)
 
-    # start_analysis(
-    #     probe_cc=probe_cc,
-    #     test_name=test_name,
-    #     start_day=start_day,
-    #     end_day=end_day,
-    #     clickhouse=clickhouse,
-    #     data_dir=data_dir,
-    #     parallelism=parallelism,
-    #     fast_fail=fast_fail,
-    #     rebuild_ground_truths=rebuild_ground_truths,
-    # )
-    raise NotImplemented("TODO(art)")
+    click.echo("Starting to perform analysis")
+    NetinfoDB(datadir=Path(data_dir), download=True)
+    click.echo("downloaded netinfodb")
+
+    arg = AnalysisWorkflowParams(
+        probe_cc=probe_cc,
+        test_name=test_name,
+        start_day=start_day,
+        end_day=end_day,
+        clickhouse=clickhouse,
+        data_dir=str(data_dir),
+        parallelism=parallelism,
+        fast_fail=fast_fail,
+        rebuild_ground_truths=rebuild_ground_truths,
+    )
+    click.echo(f"starting to make analysis with arg={arg}")
+    asyncio.run(
+        run_workflow(
+            AnalysisWorkflow.run,
+            arg,
+        )
+    )
 
 
 @cli.command()
@@ -392,8 +415,16 @@ def start_workers():
             worker = Worker(
                 client,
                 task_queue=TASK_QUEUE_NAME,
-                workflows=[ObservationsWorkflow, GroundTruthsWorkflow],
-                activities=[make_observation_in_day, make_ground_truths_in_day],
+                workflows=[
+                    ObservationsWorkflow,
+                    GroundTruthsWorkflow,
+                    AnalysisWorkflow,
+                ],
+                activities=[
+                    make_observation_in_day,
+                    make_ground_truths_in_day,
+                    make_analysis_in_a_day,
+                ],
                 activity_executor=activity_executor,
             )
             await worker.run()
