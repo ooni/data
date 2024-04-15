@@ -23,8 +23,13 @@ import concurrent.futures
 from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
+
 from ..workflows.observations import ObservationsWorkflow, ObservationsWorkflowParams
 from ..workflows.observations import make_observation_in_day
+
+from ..workflows.ground_truths import GroundTruthsWorkflow, GroundTruthsWorkflowParams
+from ..workflows.ground_truths import make_ground_truths_in_day
+
 
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
 
@@ -252,27 +257,29 @@ def mkanalysis(
 @end_day_option
 @clickhouse_option
 @datadir_option
-@click.option(
-    "--parallelism",
-    type=int,
-    default=multiprocessing.cpu_count() + 2,
-    help="number of processes to use. Only works when writing to a database",
-)
 def mkgt(
-    start_day: date,
-    end_day: date,
+    start_day: str,
+    end_day: str,
     clickhouse: str,
     data_dir: Path,
-    parallelism: int,
 ):
-    # start_ground_truth_builder(
-    #     start_day=start_day,
-    #     end_day=end_day,
-    #     clickhouse=clickhouse,
-    #     data_dir=data_dir,
-    #     parallelism=parallelism,
-    # )
-    raise NotImplemented("TODO(art)")
+    click.echo("Starting to build ground truths")
+    NetinfoDB(datadir=Path(data_dir), download=True)
+    click.echo("downloaded netinfodb")
+
+    arg = GroundTruthsWorkflowParams(
+        start_day=start_day,
+        end_day=end_day,
+        clickhouse=clickhouse,
+        data_dir=str(data_dir),
+    )
+    click.echo(f"starting to make ground truths with arg={arg}")
+    asyncio.run(
+        run_workflow(
+            GroundTruthsWorkflow.run,
+            arg,
+        )
+    )
 
 
 @cli.command()
@@ -385,8 +392,8 @@ def start_workers():
             worker = Worker(
                 client,
                 task_queue=TASK_QUEUE_NAME,
-                workflows=[ObservationsWorkflow],
-                activities=[make_observation_in_day],
+                workflows=[ObservationsWorkflow, GroundTruthsWorkflow],
+                activities=[make_observation_in_day, make_ground_truths_in_day],
                 activity_executor=activity_executor,
             )
             await worker.run()
