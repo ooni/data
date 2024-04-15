@@ -8,7 +8,7 @@ import multiprocessing as mp
 from multiprocessing.synchronize import Event as EventClass
 
 from threading import Thread
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import List
 
 from temporalio import workflow, activity
@@ -22,7 +22,6 @@ with workflow.unsafe.imports_passed_through():
     from ..db.connections import (
         ClickhouseConnection,
     )
-    from .common import run_progress_thread
 
 log = logging.getLogger("oonidata.processing")
 
@@ -90,6 +89,7 @@ class GroundTruthsWorkflow:
                             day=day.strftime("%Y-%m-%d"),
                             rebuild_ground_truths=True,
                         ),
+                        start_to_close_timeout=timedelta(minutes=30),
                     )
                 )
                 task_list.append(task)
