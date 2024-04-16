@@ -54,7 +54,9 @@ jobs:
         working-directory: ./oonipipeline/
 
       - name: Upload coverage to codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v3
         with:
           flags: oonipipeline
           working-directory: ./oonipipeline/
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
