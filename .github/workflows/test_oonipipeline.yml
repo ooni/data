@@ -47,8 +47,7 @@ jobs:
       - name: Install temporal
         run: |
           curl -sSf https://temporal.download/cli.sh | sh
-          echo export PATH="\$PATH:$HOME.temporalio/bin" >> ~/.bashrc
-          source ~/.bashrc
+          echo "$HOME/.temporalio/bin" >> $GITHUB_PATH
 
       - name: Run all tests
         run: hatch run cov
