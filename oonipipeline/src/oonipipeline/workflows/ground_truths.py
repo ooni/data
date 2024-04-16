@@ -1,34 +1,51 @@
-import queue
+import asyncio
+from dataclasses import dataclass
 import pathlib
 import logging
 
-import multiprocessing as mp
-from multiprocessing.synchronize import Event as EventClass
+from datetime import datetime, timedelta
 
-from threading import Thread
-from datetime import date
-from oonidata.dataclient import date_interval
+from temporalio import workflow, activity
 
-from oonidata.datautils import PerfTimer
+with workflow.unsafe.imports_passed_through():
+    import clickhouse_driver
 
-from ..analysis.control import WebGroundTruthDB, iter_web_ground_truths
-from ..netinfo import NetinfoDB
-
-from ..db.connections import (
-    ClickhouseConnection,
-)
-from .common import run_progress_thread
+    from oonidata.dataclient import date_interval
+    from oonidata.datautils import PerfTimer
+    from ..analysis.control import WebGroundTruthDB, iter_web_ground_truths
+    from ..netinfo import NetinfoDB
+    from ..db.connections import (
+        ClickhouseConnection,
+    )
 
 log = logging.getLogger("oonidata.processing")
 
 
-def maybe_build_web_ground_truth(
-    db: ClickhouseConnection,
-    netinfodb: NetinfoDB,
-    day: date,
-    data_dir: pathlib.Path,
-    rebuild_ground_truths: bool = False,
-):
+@dataclass
+class GroundTruthsWorkflowParams:
+    start_day: str
+    end_day: str
+    clickhouse: str
+    data_dir: str
+
+
+@dataclass
+class MakeGroundTruthsParams:
+    clickhouse: str
+    data_dir: str
+    day: str
+    rebuild_ground_truths: bool
+
+
+@activity.defn
+def make_ground_truths_in_day(params: MakeGroundTruthsParams):
+    clickhouse = params.clickhouse
+    day = datetime.strptime(params.day, "%Y-%m-%d").date()
+    data_dir = pathlib.Path(params.data_dir)
+    rebuild_ground_truths = params.rebuild_ground_truths
+
+    db = ClickhouseConnection(clickhouse)
+    netinfodb = NetinfoDB(datadir=data_dir, download=False)
     ground_truth_dir = data_dir / "ground_truths"
     ground_truth_dir.mkdir(exist_ok=True)
     dst_path = ground_truth_dir / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
@@ -45,105 +62,29 @@ def maybe_build_web_ground_truth(
         log.info(f"built ground truth DB {day} in {t.pretty}")
 
 
-class GroundTrutherWorker(mp.Process):
-    def __init__(
+@workflow.defn
+class GroundTruthsWorkflow:
+    @workflow.run
+    async def run(
         self,
-        day_queue: mp.JoinableQueue,
-        progress_queue: mp.Queue,
-        clickhouse: str,
-        shutdown_event: EventClass,
-        data_dir: pathlib.Path,
-        log_level: int = logging.INFO,
+        params: GroundTruthsWorkflowParams,
     ):
-        super().__init__(daemon=True)
-        self.day_queue = day_queue
-        self.progress_queue = progress_queue
-        self.data_dir = data_dir
-        self.clickhouse = clickhouse
+        task_list = []
+        start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
+        end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
 
-        self.shutdown_event = shutdown_event
-        log.setLevel(log_level)
-
-    def run(self):
-        db = ClickhouseConnection(self.clickhouse)
-        netinfodb = NetinfoDB(datadir=self.data_dir, download=False)
-
-        while not self.shutdown_event.is_set():
-            try:
-                day = self.day_queue.get(block=True, timeout=0.1)
-            except queue.Empty:
-                continue
-
-            try:
-                maybe_build_web_ground_truth(
-                    db=db,
-                    netinfodb=netinfodb,
-                    day=day,
-                    data_dir=self.data_dir,
-                    rebuild_ground_truths=True,
+        async with asyncio.TaskGroup() as tg:
+            for day in date_interval(start_day, end_day):
+                task = tg.create_task(
+                    workflow.execute_activity(
+                        make_ground_truths_in_day,
+                        MakeGroundTruthsParams(
+                            clickhouse=params.clickhouse,
+                            data_dir=params.data_dir,
+                            day=day.strftime("%Y-%m-%d"),
+                            rebuild_ground_truths=True,
+                        ),
+                        start_to_close_timeout=timedelta(minutes=30),
+                    )
                 )
-            except:
-                log.error(f"failed to build ground truth for {day}", exc_info=True)
-
-            finally:
-                self.day_queue.task_done()
-                self.progress_queue.put(1)
-
-
-def start_ground_truth_builder(
-    start_day: date,
-    end_day: date,
-    clickhouse: str,
-    data_dir: pathlib.Path,
-    parallelism: int,
-    log_level: int = logging.INFO,
-):
-    shutdown_event = mp.Event()
-    worker_shutdown_event = mp.Event()
-
-    progress_queue = mp.JoinableQueue()
-
-    progress_thread = Thread(
-        target=run_progress_thread,
-        args=(progress_queue, shutdown_event, "generating ground truths"),
-    )
-    progress_thread.start()
-
-    workers = []
-    day_queue = mp.JoinableQueue()
-    for _ in range(parallelism):
-        worker = GroundTrutherWorker(
-            day_queue=day_queue,
-            progress_queue=progress_queue,
-            shutdown_event=worker_shutdown_event,
-            clickhouse=clickhouse,
-            data_dir=data_dir,
-            log_level=log_level,
-        )
-        worker.start()
-        log.info(f"started worker {worker.pid}")
-        workers.append(worker)
-
-    for day in date_interval(start_day, end_day):
-        day_queue.put(day)
-
-    log.info("waiting for the day queue to finish")
-    day_queue.join()
-
-    log.info(f"sending shutdown signal to workers")
-    worker_shutdown_event.set()
-
-    log.info("waiting for progress queue to finish")
-    progress_queue.join()
-
-    log.info(f"waiting for ground truth workers to finish running")
-    for idx, p in enumerate(workers):
-        log.info(f"waiting worker {idx} to join")
-        p.join()
-        log.info(f"waiting worker {idx} to close")
-        p.close()
-
-    log.info("sending shutdown event progress thread")
-    shutdown_event.set()
-    log.info("waiting on progress queue")
-    progress_thread.join()
+                task_list.append(task)

@@ -44,6 +44,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clickhouse-server clickhouse-client
 
+      - name: Install temporal
+        run: |
+          curl -sSf https://temporal.download/cli.sh | sh
+          echo "$HOME/.temporalio/bin" >> $GITHUB_PATH
+
       - name: Run all tests
         run: hatch run cov
         working-directory: ./oonipipeline/

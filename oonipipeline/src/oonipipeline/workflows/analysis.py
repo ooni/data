@@ -1,5 +1,6 @@
 import asyncio
 import dataclasses
+from dataclasses import dataclass
 import logging
 import pathlib
 
@@ -8,63 +9,59 @@ from typing import Dict, List
 
 from temporalio import workflow, activity
 
-import orjson
-import statsd
+with workflow.unsafe.imports_passed_through():
+    import clickhouse_driver
 
-from oonidata.dataclient import date_interval
-from oonidata.datautils import PerfTimer
-from oonidata.models.analysis import WebAnalysis
-from oonidata.models.experiment_result import MeasurementExperimentResult
+    import orjson
+    import statsd
 
-from ..analysis.control import BodyDB, WebGroundTruthDB
-from ..analysis.datasources import iter_web_observations
-from ..analysis.web_analysis import make_web_analysis
-from ..analysis.website_experiment_results import make_website_experiment_results
-from ..db.connections import ClickhouseConnection
-from ..fingerprintdb import FingerprintDB
+    from oonidata.dataclient import date_interval
+    from oonidata.datautils import PerfTimer
+    from oonidata.models.analysis import WebAnalysis
+    from oonidata.models.experiment_result import MeasurementExperimentResult
 
-from ..netinfo import NetinfoDB
-from .ground_truths import maybe_build_web_ground_truth
+    from ..analysis.control import BodyDB, WebGroundTruthDB
+    from ..analysis.datasources import iter_web_observations
+    from ..analysis.web_analysis import make_web_analysis
+    from ..analysis.website_experiment_results import make_website_experiment_results
+    from ..db.connections import ClickhouseConnection
+    from ..fingerprintdb import FingerprintDB
 
-from .common import (
-    get_obs_count_by_cc,
-    get_prev_range,
-    make_db_rows,
-    maybe_delete_prev_range,
-    optimize_all_tables,
-)
+    from .ground_truths import make_ground_truths_in_day, MakeGroundTruthsParams
 
-from .observations import ObservationsWorkflowParams, MakeObservationsParams
+    from .common import (
+        get_obs_count_by_cc,
+        get_prev_range,
+        make_db_rows,
+        maybe_delete_prev_range,
+        optimize_all_tables,
+    )
 
 log = logging.getLogger("oonidata.processing")
 
 
-def make_ctrl(
-    clickhouse: str,
-    data_dir: pathlib.Path,
-    rebuild_ground_truths: bool,
-    day: date,
-):
-    netinfodb = NetinfoDB(datadir=data_dir, download=False)
-    db_lookup = ClickhouseConnection(clickhouse)
-    maybe_build_web_ground_truth(
-        db=db_lookup,
-        netinfodb=netinfodb,
-        day=day,
-        data_dir=data_dir,
-        rebuild_ground_truths=rebuild_ground_truths,
-    )
-    db_lookup.close()
+@dataclass
+class AnalysisWorkflowParams:
+    probe_cc: List[str]
+    test_name: List[str]
+    start_day: str
+    end_day: str
+    clickhouse: str
+    data_dir: str
+    parallelism: int
+    fast_fail: bool
+    rebuild_ground_truths: bool
+    log_level: int = logging.INFO
 
 
-@dataclasses.dataclass
+@dataclass
 class MakeAnalysisParams:
     probe_cc: List[str]
     test_name: List[str]
     clickhouse: str
     data_dir: str
     fast_fail: bool
-    day: date
+    day: str
 
 
 @activity.defn
@@ -74,7 +71,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
     optimize_all_tables(params.clickhouse)
     data_dir = pathlib.Path(params.data_dir)
     clickhouse = params.clickhouse
-    day = params.day
+    day = datetime.strptime(params.day, "%Y-%m-%d").date()
     probe_cc = params.probe_cc
     test_name = params.test_name
 
@@ -256,12 +253,17 @@ def make_cc_batches(
     return cc_batches
 
 
-@workflow.defn
+# TODO(art)
+# We disable the sanbox for all this workflow, since otherwise pytz fails to
+# work which is a requirement for clickhouse.
+# This is most likely due to it doing an open() in order to read the timezone
+# definitions.
+# I spent some time debugging this, but eventually gave up. We should eventually
+# look into making this run OK inside of the sandbox.
+@workflow.defn(sandboxed=False)
 class AnalysisWorkflow:
     @workflow.run
-    async def run(self, params: ObservationsWorkflowParams) -> dict:
-        # TODO(art): should this be a parameter or is it better to remove it?
-        rebuild_ground_truths = True
+    async def run(self, params: AnalysisWorkflowParams) -> dict:
         t_total = PerfTimer()
 
         t = PerfTimer()
@@ -269,14 +271,22 @@ class AnalysisWorkflow:
         end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
 
         log.info("building ground truth databases")
-        for day in date_interval(start_day, end_day):
-            make_ctrl(
-                clickhouse=params.clickhouse,
-                data_dir=pathlib.Path(params.data_dir),
-                rebuild_ground_truths=rebuild_ground_truths,
-                day=day,
-            )
-        log.info(f"built ground truth db in {t.pretty}")
+
+        async with asyncio.TaskGroup() as tg:
+            for day in date_interval(start_day, end_day):
+                tg.create_task(
+                    workflow.execute_activity(
+                        make_ground_truths_in_day,
+                        MakeGroundTruthsParams(
+                            day=day.strftime("%Y-%m-%d"),
+                            clickhouse=params.clickhouse,
+                            data_dir=params.data_dir,
+                            rebuild_ground_truths=params.rebuild_ground_truths,
+                        ),
+                        start_to_close_timeout=timedelta(minutes=2),
+                    )
+                )
+            log.info(f"built ground truth db in {t.pretty}")
 
         with ClickhouseConnection(params.clickhouse) as db:
             cnt_by_cc = get_obs_count_by_cc(
@@ -300,12 +310,12 @@ class AnalysisWorkflow:
                         workflow.execute_activity(
                             make_analysis_in_a_day,
                             MakeAnalysisParams(
-                                probe_cc=params.probe_cc,
+                                probe_cc=probe_cc,
                                 test_name=params.test_name,
                                 clickhouse=params.clickhouse,
                                 data_dir=params.data_dir,
                                 fast_fail=params.fast_fail,
-                                day=day,
+                                day=day.strftime("%Y-%m-%d"),
                             ),
                             start_to_close_timeout=timedelta(minutes=30),
                         )

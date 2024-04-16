@@ -129,7 +129,6 @@ class ObservationsWorkflowParams:
     end_day: str
     clickhouse: str
     data_dir: str
-    parallelism: int
     fast_fail: bool
     log_level: int = logging.INFO
 
@@ -178,7 +177,6 @@ def make_observation_in_day(params: MakeObservationsParams) -> dict:
 
     total_msmt_count = 0
     for batch in file_entry_batches:
-        # TODO(art): add extra parallelism here
         msmt_cnt = make_observations_for_file_entry_batch(
             batch,
             params.clickhouse,
