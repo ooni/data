@@ -58,3 +58,5 @@ jobs:
         with:
           flags: oonipipeline
           working-directory: ./oonipipeline/
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

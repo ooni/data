@@ -46,3 +46,5 @@ jobs:
         with:
           flags: oonidata
           working-directory: ./oonidata/
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
