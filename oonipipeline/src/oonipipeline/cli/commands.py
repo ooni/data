@@ -189,7 +189,7 @@ def backfill(
 @click.option(
     "--analysis/--no-analysis",
     default=True,
-    help="should we drop tables before creating them",
+    help="schedule analysis too",
 )
 def schedule(probe_cc: List[str], test_name: List[str], analysis: bool):
     """
