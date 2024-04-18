@@ -368,3 +368,67 @@ class HTTPMiddleboxObservation:
     hfm_diff: Optional[str] = None
     hfm_failure: Optional[str] = None
     hfm_success: Optional[bool] = None
+
+
+@add_slots
+@dataclass
+class OpenVPNHandshakeObservation:
+    timestamp: datetime
+
+    ip: str
+    port: int
+    transport: str
+
+    success: bool
+    failure: Failure
+
+    protocol: str
+    variant: Optional[str] = None
+
+    # TCP related observation
+    tcp_failure: Optional[Failure] = None
+    tcp_success: Optional[bool] = None
+    tcp_t: Optional[float] = None
+
+    # OpenVPN handshake observation
+    openvpn_handshake_failure: Optional[Failure] = None
+    openvpn_handshake_success: Optional[bool] = None
+    openvpn_handshake_t: Optional[float] = None
+
+    # timing info about the handshake packets
+    openvpn_handshake_hr_client_t: Optional[float] = None
+    openvpn_handshake_hr_server_t: Optional[float] = None
+    openvpn_handshake_clt_hello_t: Optional[float] = None
+    openvpn_handshake_srv_hello_t: Optional[float] = None
+    openvpn_handshake_key_exchg_n: Optional[int] = None
+    openvpn_handshake_got_keys__t: Optional[float] = None
+    openvpn_handshake_gen_keys__t: Optional[float] = None
+
+
+
+
+@add_slots
+@dataclass
+class TunnelEndpointObservation(MeasurementMeta):
+    __table_name__ = "obs_tunnel"
+    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
+
+    measurement_start_time: datetime
+
+    ip: str
+    port: int
+    transport: str
+
+    # definition of success will need to change when/if we're able to gather metrics
+    # through the tunnel.
+    success: bool
+    failure: Failure
+
+    protocol: str
+    family: str
+
+    # indicates obfuscation or modifications from the main protocol family.
+    variant: Optional[str] = None
+
+    # any metadata about the providers behind the endpoints.
+    provider: Optional[str] = None
