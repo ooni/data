@@ -381,7 +381,7 @@ class OpenVPNHandshake(BaseModel):
     port: int
     transport: str
     provider: str
-    openvpn_options: Optional[dict] = None
+    openvpn_options: Optional[Dict[str, str]] = None
     status: OpenVPNConnectStatus
     t0: float
     t: float
