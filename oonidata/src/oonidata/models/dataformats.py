@@ -283,6 +283,7 @@ class DNSQuery(BaseModel):
     dial_id: Optional[int] = None
 
 
+
 @add_slots
 @dataclass
 class TCPConnectStatus(BaseModel):
@@ -364,3 +365,48 @@ class NetworkEvent(BaseModel):
     # Deprecated fields
     dial_id: Optional[int] = None
     conn_id: Optional[int] = None
+
+@add_slots
+@dataclass
+class OpenVPNConnectStatus(BaseModel):
+    success: bool
+    failure: Union[Failure, bool] = None
+
+@add_slots
+@dataclass
+class OpenVPNHandshake(BaseModel):
+    bootstrap_time: float
+    endpoint: str
+    ip: str # we might want to make this optional, and scrub in favor of ASN/prefix
+    port: int
+    transport: str
+    provider: str
+    openvpn_options: Optional[Dict[str, str]] = None
+    status: OpenVPNConnectStatus
+    t0: float
+    t: float
+    tags: Optional[List[str]] = None
+    transaction_id: Optional[str] = None
+
+@add_slots
+@dataclass
+class OpenVPNPacket(BaseModel):
+    operation: str
+    stage: str
+    opcode: str
+    id: int
+    acks: List[int]
+    payload_size: int
+    send_attempts: Optional[int] = None
+
+
+@add_slots
+@dataclass
+class OpenVPNNetworkEvent(BaseModel):
+    operation: str
+    stage: str
+    t: float
+    tags: Optional[List[str]] = None
+    transaction_id: Optional[str] = None
+    packet: Optional[OpenVPNPacket] = None
+

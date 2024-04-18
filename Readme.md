@@ -107,8 +107,8 @@ poetry run python -m oonidata mkobs --clickhouse clickhouse://localhost/ --data-
 Here is the list of supported observations so far:
 * [x] WebObservation, which has information about DNS, TCP, TLS and HTTP(s)
 * [x] WebControlObservation, has the control measurements run by web connectivity (is used to generate ground truths)
-* [ ] CircumventionToolObservation, still needs to be designed and implemented
-  (ideally we would use the same for OpenVPN, Psiphon, VanillaTor)
+* [ ] TunnelObservation, still needs to be designed and implemented
+  (ideally we would use the same for OpenVPN, WireGuard, Psiphon, VanillaTor)
 
 ### Response body archiving
 
