@@ -324,5 +324,57 @@ def test_website_experiment_results(measurements, netinfodb, fingerprintdb):
     assert ok_dict["tcp"] == 0
 
     blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
-    print(blocked_dict)
     assert blocked_dict["tcp.timeout"] > 0.4
+
+
+def test_website_web_analysis_down(measurements, netinfodb, fingerprintdb):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20240420235427.477327_US_webconnectivity_9b3cac038dc2ba22"
+        ]
+    )
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 3
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value < 0.2
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["tcp"] == 0
+
+    down_dict = dict(zip(er[0].loni_down_keys, er[0].loni_down_values))
+
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+
+    assert sum(down_dict.values()) > sum(blocked_dict.values())
+    assert down_dict["tcp.timeout"] > 0.5
+
+
+def test_website_web_analysis_blocked_connect_reset(
+    measurements, netinfodb, fingerprintdb
+):
+    msmt_path = measurements[
+        "20240302000048.790188_RU_webconnectivity_e7ffd3bc0f525eb7"
+    ]
+    msmt = load_measurement(msmt_path=msmt_path)
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    # assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 4
+
+    assert len(er) == 1
+    # TODO(art): this should be changed
+    # assert er[0].loni_ok_value == 0
+    assert er[0].loni_ok_value < 0.2
+
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["tls"] == 0
+
+    down_dict = dict(zip(er[0].loni_down_keys, er[0].loni_down_values))
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+
+    assert sum(down_dict.values()) < sum(blocked_dict.values())
+    assert blocked_dict["tls.connection_reset"] > 0.5
