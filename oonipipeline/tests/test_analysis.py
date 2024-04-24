@@ -411,3 +411,27 @@ def test_website_web_analysis_nxdomain_down(measurements, netinfodb, fingerprint
 
     assert sum(down_dict.values()) > sum(blocked_dict.values())
     assert down_dict["dns.nxdomain"] > 0.7
+
+
+def test_website_web_analysis_nxdomain_blocked(measurements, netinfodb, fingerprintdb):
+    msmt_path = measurements[
+        "20240302000305.316064_EG_webconnectivity_397bca9091b07444"
+    ]
+    msmt = load_measurement(msmt_path=msmt_path)
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 7
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value < 0.2
+
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["dns"] == 0
+
+    down_dict = dict(zip(er[0].loni_down_keys, er[0].loni_down_values))
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+
+    assert sum(down_dict.values()) < sum(blocked_dict.values())
+    assert blocked_dict["dns.nxdomain"] > 0.7
