@@ -378,3 +378,36 @@ def test_website_web_analysis_blocked_connect_reset(
 
     assert sum(down_dict.values()) < sum(blocked_dict.values())
     assert blocked_dict["tls.connection_reset"] > 0.5
+
+
+def print_debug_er(er):
+    for idx, e in enumerate(er):
+        print(f"\n# ER#{idx}")
+        for idx, transcript in enumerate(e.analysis_transcript_list):
+            print(f"## Analysis #{idx}")
+            print("\n".join(transcript))
+        pprint(er)
+
+
+def test_website_web_analysis_nxdomain_down(measurements, netinfodb, fingerprintdb):
+    msmt_path = measurements[
+        "20240302000050.000654_SN_webconnectivity_fe4221088fbdcb0a"
+    ]
+    msmt = load_measurement(msmt_path=msmt_path)
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 2
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value < 0.2
+
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["dns"] == 0
+
+    down_dict = dict(zip(er[0].loni_down_keys, er[0].loni_down_values))
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+
+    assert sum(down_dict.values()) > sum(blocked_dict.values())
+    assert down_dict["dns.nxdomain"] > 0.7
