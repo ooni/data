@@ -37,6 +37,7 @@ SAMPLE_MEASUREMENTS = [
     "20240302000048.790188_RU_webconnectivity_e7ffd3bc0f525eb7",  # connection reset RU
     "20240302000050.000654_SN_webconnectivity_fe4221088fbdcb0a",  # nxdomain down
     "20240302000305.316064_EG_webconnectivity_397bca9091b07444",  # nxdomain blocked, unknown_failure and from the future
+    "20240309112858.009725_SE_webconnectivity_dce757ef4ec9b6c8",  # blockpage for Iran in Sweden
 ]
 
 SAMPLE_POSTCANS = ["2024030100_AM_webconnectivity.n1.0.tar.gz"]

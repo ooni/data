@@ -214,21 +214,23 @@ def calculate_web_loni(
             blocked_key = "dns.confirmed"
             blocking_scope = web_analysis.dns_consistency_system_answer_fp_scope
             blocked_value = 0.9
+            down_value = 0.0
             if (
                 web_analysis.dns_consistency_system_is_answer_fp_country_consistent
                 == True
             ):
                 blocked_key = "dns.confirmed.country_consistent"
                 blocked_value = 1.0
+                down_value = 0.0
             elif (
                 web_analysis.dns_consistency_system_is_answer_fp_country_consistent
                 == False
             ):
-                # We let the blocked value be slightly less for cases where the fingerprint is not country consistent
+                # If the fingerprint is not country consistent, we consider it down to avoid false positives
                 blocked_key = "dns.confirmed.not_country_consistent"
-                blocked_value = 0.8
-            ok_value = 0
-            down_value = 0
+                down_value = 0.8
+                blocked_value = 0.2
+            ok_value = 0.0
         elif web_analysis.dns_consistency_system_is_answer_bogon == True:
             # Bogons are always fishy, yet we don't know if we see it because
             # the site is misconfigured.
