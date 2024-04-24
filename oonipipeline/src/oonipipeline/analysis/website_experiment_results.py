@@ -48,10 +48,10 @@ class OutcomeSpace:
         return d
 
     def sum(self) -> float:
-        s = 0
-        for _, val in self.to_dict().items():
-            s += val
-        return s
+        return sum([v for v in self.to_dict().values()])
+
+    def max(self) -> float:
+        return max([v for v in self.to_dict().values()])
 
 
 @dataclass
@@ -960,7 +960,7 @@ def make_website_experiment_results(
     )
     log.debug(f"final_loni: {final_loni}")
 
-    loni_ok_value = final_loni.ok_final
+    loni_ok_value = 1 - (final_loni.blocked.max() + final_loni.down.max())
 
     loni_down = final_loni.down.to_dict()
     loni_down_keys, loni_down_values = list(loni_down.keys()), list(loni_down.values())
