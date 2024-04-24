@@ -383,6 +383,7 @@ def calculate_web_loni(
         down_value, blocked_value = 0.0, 0.0
         blocked.tcp = OutcomeStatus(key=blocked_key, value=blocked_value)
         down.tcp = OutcomeStatus(key=down_key, value=down_value)
+        ok.tcp = OutcomeStatus(key="tcp", value=1 - (blocked.sum() + down.sum()))
 
     elif web_analysis.tcp_success == False:
         analysis_transcript.append("web_analysis.tcp_success == False")
@@ -649,7 +650,10 @@ def calculate_web_loni(
                         blocked_value = 0.8
                 elif web_analysis.http_is_http_fp_false_positive == True:
                     blocked_value = 0.0
-            else:
+            elif (
+                web_analysis.http_response_body_length is not None
+                and web_analysis.http_ground_truth_body_length is not None
+            ):
                 # We need to apply some fuzzy logic to fingerprint it
                 # TODO(arturo): in the future can use more features, such as the following
                 """
@@ -815,6 +819,9 @@ def make_website_experiment_results(
     loni_ok_list: List[OutcomeSpace] = []
     for wa in web_analysis:
         loni, analysis_transcript = calculate_web_loni(wa)
+        log.debug("wa: %s", wa)
+        log.debug("analysis_transcript: %s", analysis_transcript)
+        log.debug("loni: %s", loni)
         analysis_transcript_list.append(analysis_transcript)
         loni_list.append(loni)
         loni_blocked_list.append(loni.blocked)
