@@ -97,7 +97,7 @@ def test_full_workflow(
             "--data-dir",
             datadir,
             "--clickhouse",
-            "clickhouse://localhost/testing_oonidata",
+            db.clickhouse_url,
         ],
     )
     assert result.exit_code == 0
