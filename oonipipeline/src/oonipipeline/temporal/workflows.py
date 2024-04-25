@@ -90,7 +90,8 @@ class ObservationsWorkflowParams:
 class ObservationsWorkflow:
     @workflow.run
     async def run(self, params: ObservationsWorkflowParams) -> dict:
-        # optimize_all_tables(params.clickhouse)
+        # TODO(art): wrap this a coroutine call
+        optimize_all_tables(params.clickhouse)
 
         workflow_id = workflow.info().workflow_id
 
