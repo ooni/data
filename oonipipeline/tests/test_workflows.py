@@ -16,21 +16,21 @@ from oonidata.models.observations import HTTPMiddleboxObservation
 
 from oonipipeline.transforms.measurement_transformer import MeasurementTransformer
 from oonipipeline.transforms.observations import measurement_to_observations
-from oonipipeline.workflows.analysis import (
+from oonipipeline.temporal.analysis import (
     MakeAnalysisParams,
     make_analysis_in_a_day,
     make_cc_batches,
 )
-from oonipipeline.workflows.common import (
+from oonipipeline.temporal.common import (
     get_obs_count_by_cc,
     get_prev_range,
     maybe_delete_prev_range,
 )
-from oonipipeline.workflows.ground_truths import (
+from oonipipeline.temporal.ground_truths import (
     MakeGroundTruthsParams,
     make_ground_truths_in_day,
 )
-from oonipipeline.workflows.observations import (
+from oonipipeline.temporal.observations import (
     make_observations_for_file_entry_batch,
     write_observations_to_db,
 )

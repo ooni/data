@@ -25,19 +25,19 @@ from temporalio.worker import Worker, SharedStateManager
 
 from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
 
-from ..workflows.observations import (
+from ..temporal.observations import (
     ObservationsWorkflow,
     ObservationsWorkflowParams,
     make_observation_in_day,
 )
 
-from ..workflows.ground_truths import (
+from ..temporal.ground_truths import (
     GroundTruthsWorkflow,
     GroundTruthsWorkflowParams,
     make_ground_truths_in_day,
 )
 
-from ..workflows.analysis import (
+from ..temporal.analysis import (
     AnalysisWorkflow,
     AnalysisWorkflowParams,
     make_analysis_in_a_day,
