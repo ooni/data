@@ -49,8 +49,6 @@ class MakeAnalysisParams:
 @activity.defn
 def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
     t_total = PerfTimer()
-    log.info("Optimizing all tables")
-    optimize_all_tables(params.clickhouse)
     data_dir = pathlib.Path(params.data_dir)
     clickhouse = params.clickhouse
     day = datetime.strptime(params.day, "%Y-%m-%d").date()

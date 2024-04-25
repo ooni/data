@@ -45,7 +45,7 @@ def write_observations_to_db(
     db: ClickhouseConnection,
     bucket_date: str,
 ):
-    for observations in measurement_to_observations(msmt, netinfodb=netinfodb):
+    for observations in measurement_to_observations(msmt=msmt, netinfodb=netinfodb):
         if len(observations) == 0:
             continue
 

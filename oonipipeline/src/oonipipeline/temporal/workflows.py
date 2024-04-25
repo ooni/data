@@ -33,6 +33,7 @@ logging.logMultiprocessing = False
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
 
+    from tqdm import tqdm
     from oonidata.dataclient import date_interval
     from oonidata.datautils import PerfTimer
     from oonipipeline.db.connections import ClickhouseConnection
@@ -42,7 +43,10 @@ with workflow.unsafe.imports_passed_through():
         make_analysis_in_a_day,
         make_cc_batches,
     )
-    from oonipipeline.temporal.common import get_obs_count_by_cc
+    from oonipipeline.temporal.activities.common import (
+        get_obs_count_by_cc,
+        ObsCountParams,
+    )
     from oonipipeline.temporal.activities.observations import (
         MakeObservationsParams,
         make_observation_in_day,
@@ -68,6 +72,8 @@ def make_worker(client: TemporalClient, parallelism: int) -> Worker:
             ObservationsWorkflow,
             GroundTruthsWorkflow,
             AnalysisWorkflow,
+            ObservationsBackfillWorkflow,
+            AnalysisBackfillWorkflow,
         ],
         activities=[
             make_observation_in_day,
@@ -117,7 +123,6 @@ class ObservationsWorkflow:
             start_to_close_timeout=timedelta(minutes=5),
         )
 
-        t = PerfTimer()
         log.info(
             f"Starting observation making with probe_cc={params.probe_cc},test_name={params.test_name} bucket_date={params.bucket_date}"
         )
@@ -134,29 +139,67 @@ class ObservationsWorkflow:
             ),
             start_to_close_timeout=timedelta(minutes=30),
         )
+        res["bucket_date"] = params.bucket_date
+        return res
 
-        total_size = res["size"]
-        total_measurement_count = res["measurement_count"]
+
+@dataclass
+class BackfillWorkflowParams:
+    probe_cc: List[str]
+    test_name: List[str]
+    start_day: str
+    end_day: str
+    clickhouse: str
+    data_dir: str
+    fast_fail: bool
+    log_level: int = logging.INFO
+
+
+@workflow.defn
+class ObservationsBackfillWorkflow:
+    @workflow.run
+    async def run(self, params: BackfillWorkflowParams) -> dict:
+        start_day = datetime.strptime(params.start_day, "%Y-%m-%d")
+        end_day = datetime.strptime(params.end_day, "%Y-%m-%d")
+
+        t = PerfTimer(unstoppable=True)
+        task_list = []
+        for day in date_interval(start_day, end_day):
+            task_list.append(
+                workflow.execute_child_workflow(
+                    ObservationsWorkflow.run,
+                    ObservationsWorkflowParams(
+                        bucket_date=day.strftime("%Y-%m-%d"),
+                        probe_cc=params.probe_cc,
+                        test_name=params.test_name,
+                        clickhouse=params.clickhouse,
+                        data_dir=params.data_dir,
+                        fast_fail=params.fast_fail,
+                        log_level=params.log_level,
+                    ),
+                )
+            )
+
+        total_size = 0
+        total_measurement_count = 0
+
+        for task in asyncio.as_completed(task_list):
+            res = await task
+            bucket_date = res["bucket_date"]
+            total_size += res["size"]
+            total_measurement_count += res["measurement_count"]
+
+            mb_per_sec = round(total_size / t.s / 10**6, 1)
+            msmt_per_sec = round(total_measurement_count / t.s)
+            log.info(
+                f"finished processing {bucket_date} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
+            )
+
         mb_per_sec = round(total_size / t.s / 10**6, 1)
         msmt_per_sec = round(total_measurement_count / t.s)
         log.info(
-            f"finished processing {params.bucket_date} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
+            f"finished processing {params.start_day} - {params.end_day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
         )
-
-        # with ClickhouseConnection(params.clickhouse) as db:
-        #     db.execute(
-        #         "INSERT INTO oonidata_processing_logs (key, timestamp, runtime_ms, bytes, msmt_count, comment) VALUES",
-        #         [
-        #             [
-        #                 "oonidata.bucket_processed",
-        #                 datetime.now(timezone.utc).replace(tzinfo=None),
-        #                 int(t.ms),
-        #                 total_size,
-        #                 total_measurement_count,
-        #                 bucket_date,
-        #             ]
-        #         ],
-        #     )
 
         return {
             "size": total_size,
@@ -164,6 +207,8 @@ class ObservationsWorkflow:
             "runtime_ms": t.ms,
             "mb_per_sec": mb_per_sec,
             "msmt_per_sec": msmt_per_sec,
+            "start_day": params.start_day,
+            "end_day": params.start_day,
         }
 
 
@@ -227,33 +272,29 @@ class GroundTruthsWorkflow:
         self,
         params: GroundTruthsWorkflowParams,
     ):
-        task_list = []
         start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
         end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
 
         async with asyncio.TaskGroup() as tg:
             for day in date_interval(start_day, end_day):
-                task = tg.create_task(
+                tg.create_task(
                     workflow.execute_activity(
                         make_ground_truths_in_day,
                         MakeGroundTruthsParams(
                             clickhouse=params.clickhouse,
                             data_dir=params.data_dir,
                             day=day.strftime("%Y-%m-%d"),
-                            rebuild_ground_truths=True,
                         ),
                         start_to_close_timeout=timedelta(minutes=30),
                     )
                 )
-                task_list.append(task)
 
 
 @dataclass
 class AnalysisWorkflowParams:
     probe_cc: List[str]
     test_name: List[str]
-    start_day: str
-    end_day: str
+    day: str
     clickhouse: str
     data_dir: str
     parallelism: int
@@ -266,76 +307,119 @@ class AnalysisWorkflowParams:
 class AnalysisWorkflow:
     @workflow.run
     async def run(self, params: AnalysisWorkflowParams) -> dict:
-        t_total = PerfTimer()
-
-        t = PerfTimer()
-        start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
-        end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
+        await workflow.execute_activity(
+            optimize_all_tables,
+            ClickhouseParams(clickhouse_url=params.clickhouse),
+            start_to_close_timeout=timedelta(minutes=5),
+        )
 
         log.info("building ground truth databases")
-
-        async with asyncio.TaskGroup() as tg:
-            for day in date_interval(start_day, end_day):
-                tg.create_task(
-                    workflow.execute_activity(
-                        make_ground_truths_in_day,
-                        MakeGroundTruthsParams(
-                            day=day.strftime("%Y-%m-%d"),
-                            clickhouse=params.clickhouse,
-                            data_dir=params.data_dir,
-                            rebuild_ground_truths=params.rebuild_ground_truths,
-                        ),
-                        start_to_close_timeout=timedelta(minutes=2),
-                    )
-                )
+        t = PerfTimer()
+        if params.rebuild_ground_truths:
+            await workflow.execute_activity(
+                make_ground_truths_in_day,
+                MakeGroundTruthsParams(
+                    clickhouse=params.clickhouse,
+                    data_dir=params.data_dir,
+                    day=params.day,
+                ),
+                start_to_close_timeout=timedelta(minutes=30),
+            )
             log.info(f"built ground truth db in {t.pretty}")
 
-        with ClickhouseConnection(params.clickhouse) as db:
-            cnt_by_cc = get_obs_count_by_cc(
-                db, start_day=start_day, end_day=end_day, test_name=params.test_name
-            )
+        start_day = datetime.strptime(params.day, "%Y-%m-%d").date()
+        cnt_by_cc = await workflow.execute_activity(
+            get_obs_count_by_cc,
+            ObsCountParams(
+                clickhouse_url=params.clickhouse,
+                start_day=start_day.strftime("%Y-%m-%d"),
+                end_day=(start_day + timedelta(days=1)).strftime("%Y-%m-%d"),
+            ),
+            start_to_close_timeout=timedelta(minutes=30),
+        )
+
         cc_batches = make_cc_batches(
             cnt_by_cc=cnt_by_cc,
             probe_cc=params.probe_cc,
             parallelism=params.parallelism,
         )
+
         log.info(
-            f"starting processing of {len(cc_batches)} batches over {(end_day - start_day).days} days (parallelism = {params.parallelism})"
+            f"starting processing of {len(cc_batches)} batches for {params.day} days (parallelism = {params.parallelism})"
         )
-        log.info(f"({cc_batches} from {start_day} to {end_day}")
+        log.info(f"({cc_batches})")
 
         task_list = []
         async with asyncio.TaskGroup() as tg:
             for probe_cc in cc_batches:
-                for day in date_interval(start_day, end_day):
-                    task = tg.create_task(
-                        workflow.execute_activity(
-                            make_analysis_in_a_day,
-                            MakeAnalysisParams(
-                                probe_cc=probe_cc,
-                                test_name=params.test_name,
-                                clickhouse=params.clickhouse,
-                                data_dir=params.data_dir,
-                                fast_fail=params.fast_fail,
-                                day=day.strftime("%Y-%m-%d"),
-                            ),
-                            start_to_close_timeout=timedelta(minutes=30),
-                        )
+                task = tg.create_task(
+                    workflow.execute_activity(
+                        make_analysis_in_a_day,
+                        MakeAnalysisParams(
+                            probe_cc=probe_cc,
+                            test_name=params.test_name,
+                            clickhouse=params.clickhouse,
+                            data_dir=params.data_dir,
+                            fast_fail=params.fast_fail,
+                            day=params.day,
+                        ),
+                        start_to_close_timeout=timedelta(minutes=30),
                     )
-                    task_list.append(task)
+                )
+                task_list.append(task)
 
-        t = PerfTimer()
-        # size, msmt_count =
+        total_obs_count = sum(map(lambda x: x.result()["count"], task_list))
+        return {"obs_count": total_obs_count, "day": params.day}
+
+
+@workflow.defn
+class AnalysisBackfillWorkflow:
+    @workflow.run
+    async def run(self, params: BackfillWorkflowParams) -> dict:
+        start_day = datetime.strptime(params.start_day, "%Y-%m-%d")
+        end_day = datetime.strptime(params.end_day, "%Y-%m-%d")
+
+        t = PerfTimer(unstoppable=True)
+        task_list = []
+        for day in date_interval(start_day, end_day):
+            task_list.append(
+                workflow.execute_child_workflow(
+                    AnalysisWorkflow.run,
+                    AnalysisWorkflowParams(
+                        day=day.strftime("%Y-%m-%d"),
+                        probe_cc=params.probe_cc,
+                        test_name=params.test_name,
+                        clickhouse=params.clickhouse,
+                        data_dir=params.data_dir,
+                        fast_fail=params.fast_fail,
+                        log_level=params.log_level,
+                        parallelism=10,
+                        rebuild_ground_truths=True,
+                    ),
+                )
+            )
+
         total_obs_count = 0
-        for task in task_list:
-            res = task.result()
 
-            total_obs_count += res["count"]
+        for task in asyncio.as_completed(task_list):
+            res = await task
+            day = res["day"]
+            total_obs_count += res["obs_count"]
 
-        log.info(f"produces a total of {total_obs_count} analysis")
-        obs_per_sec = round(total_obs_count / t_total.s)
+            obs_per_sec = round(total_obs_count / t.s / 10**6, 1)
+            log.info(
+                f"finished processing {day} speed: {total_obs_count} obs ({obs_per_sec}obs/s)"
+            )
+
+        obs_per_sec = round(total_obs_count / t.s / 10**6, 1)
         log.info(
-            f"finished processing {start_day} - {end_day} speed: {obs_per_sec}obs/s)"
+            f"finished processing {day} speed: {total_obs_count} obs ({obs_per_sec}obs/s)"
         )
-        log.info(f"{total_obs_count} msmts in {t_total.pretty}")
-        return {"total_obs_count": total_obs_count}
+
+        return {
+            "observation_count": total_obs_count,
+            "runtime_ms": t.ms,
+            "obs_per_sec": obs_per_sec,
+            "start_day": params.start_day,
+            "end_day": params.start_day,
+        }

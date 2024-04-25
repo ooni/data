@@ -14,6 +14,7 @@ from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
 
+from oonipipeline.temporal.activities.common import get_obs_count_by_cc, ObsCountParams
 from oonipipeline.temporal.activities.observations import (
     make_observations_for_file_entry_batch,
 )
@@ -25,7 +26,6 @@ from oonipipeline.temporal.activities.analysis import (
     make_cc_batches,
 )
 from oonipipeline.temporal.common import (
-    get_obs_count_by_cc,
     get_prev_range,
     maybe_delete_prev_range,
 )
@@ -154,7 +154,6 @@ def test_make_file_entry_batch(datadir, db):
             day=date(2023, 10, 31).strftime("%Y-%m-%d"),
             clickhouse=db.clickhouse_url,
             data_dir=datadir,
-            rebuild_ground_truths=True,
         ),
     )
     analysis_res = make_analysis_in_a_day(
@@ -194,10 +193,11 @@ def test_write_observations(measurements, netinfodb, db):
         write_observations_to_db(msmt, netinfodb, db, bucket_date)
     db.close()
     cnt_by_cc = get_obs_count_by_cc(
-        db,
-        test_name=[],
-        start_day=date(2020, 1, 1),
-        end_day=date(2023, 12, 1),
+        ObsCountParams(
+            clickhouse_url=db.clickhouse_url,
+            start_day="2020-01-01",
+            end_day="2023-12-01",
+        )
     )
     assert cnt_by_cc["CH"] == 2
     assert cnt_by_cc["GR"] == 4

@@ -2,20 +2,21 @@ import logging
 import multiprocessing
 from pathlib import Path
 import sys
-import time
 from typing import Any, Callable, Coroutine, List, Optional
 from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
 
 import click
 from click_loglevel import LogLevel
-import dateutil.parser
 
 from ..temporal.workflows import (
+    AnalysisBackfillWorkflow,
     AnalysisWorkflow,
     AnalysisWorkflowParams,
+    BackfillWorkflowParams,
     GroundTruthsWorkflow,
     GroundTruthsWorkflowParams,
+    ObservationsBackfillWorkflow,
     ObservationsWorkflow,
     ObservationsWorkflowParams,
     make_worker,
@@ -57,58 +58,6 @@ async def run_workflow(
             id=TASK_QUEUE_NAME,
             task_queue=TASK_QUEUE_NAME,
         )
-
-
-async def run_backfill(
-    start_at: datetime,
-    end_at: datetime,
-    # TODO(art): improve the typing of params
-    params: Any,
-    id_generator: Callable[[Any], str],
-    schedule: Callable[[TemporalClient, Any], Coroutine],
-    parallelism: int,
-    temporal_address: str = "localhost:7233",
-):
-    log.info(f"connecting to temporal: {temporal_address}")
-    client = await TemporalClient.connect(temporal_address)
-
-    schedule_id = id_generator(params)
-
-    try:
-        handle = client.get_schedule_handle(
-            schedule_id,
-        )
-        desc = await handle.describe()
-    except:
-        await schedule(client, params)
-        handle = client.get_schedule_handle(
-            schedule_id,
-        )
-
-    log.info(
-        f"scheduling backfill of {schedule_id} with start_at={start_at} end_at={end_at}"
-    )
-    await handle.backfill(
-        ScheduleBackfill(
-            start_at=start_at,
-            end_at=end_at,
-            overlap=ScheduleOverlapPolicy.ALLOW_ALL,
-        ),
-    )
-
-    async with make_worker(client, parallelism=parallelism):
-        while True:
-            try:
-                desc = await handle.describe()
-            except:
-                break
-
-            if len(desc.info.running_actions) == 0:
-                break
-            for action in desc.info.running_actions:
-                print(f"* {action.workflow_id} is still running")
-
-            await asyncio.sleep(2)
 
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
@@ -200,8 +149,8 @@ def cli(error_log_file: Path, log_level: int):
 @cli.command()
 @probe_cc_option
 @test_name_option
-@start_at_option
-@end_at_option
+@start_day_option
+@end_day_option
 @clickhouse_option
 @datadir_option
 @click.option(
@@ -228,8 +177,8 @@ def cli(error_log_file: Path, log_level: int):
 def mkobs(
     probe_cc: List[str],
     test_name: List[str],
-    start_at: datetime,
-    end_at: datetime,
+    start_day: str,
+    end_day: str,
     clickhouse: str,
     data_dir: str,
     parallelism: int,
@@ -256,22 +205,20 @@ def mkobs(
     NetinfoDB(datadir=Path(data_dir), download=True)
     click.echo("downloaded netinfodb")
 
-    params = ObservationsWorkflowParams(
+    params = BackfillWorkflowParams(
         probe_cc=probe_cc,
         test_name=test_name,
         clickhouse=clickhouse,
         data_dir=str(data_dir),
         fast_fail=fast_fail,
+        start_day=start_day,
+        end_day=end_day,
     )
     click.echo(f"starting to make observations with params={params}")
     asyncio.run(
-        run_backfill(
-            start_at=start_at,
-            end_at=end_at,
-            params=params,
-            id_generator=gen_observation_schedule_id,
-            schedule=schedule_observations,
-            parallelism=parallelism,
+        run_workflow(
+            ObservationsBackfillWorkflow.run,
+            params,
         )
     )
 
@@ -326,21 +273,19 @@ def mkanalysis(
     NetinfoDB(datadir=Path(data_dir), download=True)
     click.echo("downloaded netinfodb")
 
-    arg = AnalysisWorkflowParams(
+    arg = BackfillWorkflowParams(
         probe_cc=probe_cc,
         test_name=test_name,
         start_day=start_day,
         end_day=end_day,
         clickhouse=clickhouse,
         data_dir=str(data_dir),
-        parallelism=parallelism,
         fast_fail=fast_fail,
-        rebuild_ground_truths=rebuild_ground_truths,
     )
     click.echo(f"starting to make analysis with arg={arg}")
     asyncio.run(
         run_workflow(
-            AnalysisWorkflow.run,
+            AnalysisBackfillWorkflow.run,
             arg,
             parallelism=parallelism,
         )
