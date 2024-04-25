@@ -47,7 +47,7 @@ from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, Return
 async def run_workflow(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
-    parallelism: int = 5,
+    parallelism,
     temporal_address: str = "localhost:7233",
 ):
     client = await TemporalClient.connect(temporal_address)
@@ -124,6 +124,12 @@ datadir_option = click.option(
     default="tests/data/datadir",
     help="data directory to store fingerprint and geoip databases",
 )
+parallelism_option = click.option(
+    "--parallelism",
+    type=int,
+    default=multiprocessing.cpu_count() + 2,
+    help="number of processes to use. Only works when writing to a database",
+)
 
 
 @click.group()
@@ -153,12 +159,7 @@ def cli(error_log_file: Path, log_level: int):
 @end_day_option
 @clickhouse_option
 @datadir_option
-@click.option(
-    "--parallelism",
-    type=int,
-    default=multiprocessing.cpu_count() + 2,
-    help="number of processes to use. Only works when writing to a database",
-)
+@parallelism_option
 @click.option(
     "--fast-fail",
     is_flag=True,
@@ -216,10 +217,7 @@ def mkobs(
     )
     click.echo(f"starting to make observations with params={params}")
     asyncio.run(
-        run_workflow(
-            ObservationsBackfillWorkflow.run,
-            params,
-        )
+        run_workflow(ObservationsBackfillWorkflow.run, params, parallelism=parallelism)
     )
 
 
@@ -230,12 +228,7 @@ def mkobs(
 @end_day_option
 @clickhouse_option
 @datadir_option
-@click.option(
-    "--parallelism",
-    type=int,
-    default=multiprocessing.cpu_count() + 2,
-    help="number of processes to use. Only works when writing to a database",
-)
+@parallelism_option
 @click.option(
     "--fast-fail",
     is_flag=True,
@@ -297,11 +290,9 @@ def mkanalysis(
 @end_day_option
 @clickhouse_option
 @datadir_option
+@parallelism_option
 def mkgt(
-    start_day: str,
-    end_day: str,
-    clickhouse: str,
-    data_dir: Path,
+    start_day: str, end_day: str, clickhouse: str, data_dir: Path, parallelism: int
 ):
     click.echo("Starting to build ground truths")
     NetinfoDB(datadir=Path(data_dir), download=True)
@@ -314,12 +305,7 @@ def mkgt(
         data_dir=str(data_dir),
     )
     click.echo(f"starting to make ground truths with arg={arg}")
-    asyncio.run(
-        run_workflow(
-            GroundTruthsWorkflow.run,
-            arg,
-        )
-    )
+    asyncio.run(run_workflow(GroundTruthsWorkflow.run, arg, parallelism=parallelism))
 
 
 @cli.command()
