@@ -9,7 +9,11 @@ from typing import List, Optional
 import click
 from click_loglevel import LogLevel
 
-from ..temporal.workflows import ObservationsWorkflow, ObservationsWorkflowParams
+from ..temporal.workflows import (
+    GroundTruthsWorkflow,
+    ObservationsWorkflow,
+    ObservationsWorkflowParams,
+)
 
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
@@ -31,8 +35,7 @@ from ..temporal.activities.observations import (
     make_observation_in_day,
 )
 
-from ..temporal.ground_truths import (
-    GroundTruthsWorkflow,
+from ..temporal.activities.ground_truths import (
     GroundTruthsWorkflowParams,
     make_ground_truths_in_day,
 )

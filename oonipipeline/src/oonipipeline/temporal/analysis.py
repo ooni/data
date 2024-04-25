@@ -27,7 +27,10 @@ with workflow.unsafe.imports_passed_through():
     from ..db.connections import ClickhouseConnection
     from ..fingerprintdb import FingerprintDB
 
-    from .ground_truths import make_ground_truths_in_day, MakeGroundTruthsParams
+    from .activities.ground_truths import (
+        make_ground_truths_in_day,
+        MakeGroundTruthsParams,
+    )
 
     from .common import (
         get_obs_count_by_cc,

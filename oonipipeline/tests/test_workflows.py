@@ -29,7 +29,7 @@ from oonipipeline.temporal.common import (
     get_prev_range,
     maybe_delete_prev_range,
 )
-from oonipipeline.temporal.ground_truths import (
+from oonipipeline.temporal.activities.ground_truths import (
     MakeGroundTruthsParams,
     make_ground_truths_in_day,
 )

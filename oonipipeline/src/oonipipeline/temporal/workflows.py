@@ -16,6 +16,12 @@ from temporalio import workflow
 import asyncio
 from datetime import datetime, timedelta
 
+from oonipipeline.temporal.activities.ground_truths import (
+    GroundTruthsWorkflowParams,
+    MakeGroundTruthsParams,
+    make_ground_truths_in_day,
+)
+
 log = logging.getLogger("oonidata.processing")
 
 with workflow.unsafe.imports_passed_through():
@@ -107,3 +113,31 @@ class ObservationsWorkflow:
             f"{round(total_size/10**9, 2)}GB {total_msmt_count} msmts in {t_total.pretty}"
         )
         return {"size": total_size, "measurement_count": total_msmt_count}
+
+
+@workflow.defn
+class GroundTruthsWorkflow:
+    @workflow.run
+    async def run(
+        self,
+        params: GroundTruthsWorkflowParams,
+    ):
+        task_list = []
+        start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
+        end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
+
+        async with asyncio.TaskGroup() as tg:
+            for day in date_interval(start_day, end_day):
+                task = tg.create_task(
+                    workflow.execute_activity(
+                        make_ground_truths_in_day,
+                        MakeGroundTruthsParams(
+                            clickhouse=params.clickhouse,
+                            data_dir=params.data_dir,
+                            day=day.strftime("%Y-%m-%d"),
+                            rebuild_ground_truths=True,
+                        ),
+                        start_to_close_timeout=timedelta(minutes=30),
+                    )
+                )
+                task_list.append(task)
