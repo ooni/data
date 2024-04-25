@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import logging
 import multiprocessing
@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from temporalio import workflow
+from temporalio.common import SearchAttributeKey
 from temporalio.worker import Worker, SharedStateManager
 from temporalio.client import (
     Client as TemporalClient,
@@ -16,6 +17,11 @@ from temporalio.client import (
     ScheduleIntervalSpec,
     ScheduleSpec,
     ScheduleState,
+)
+
+from oonipipeline.temporal.activities.common import (
+    optimize_all_tables,
+    ClickhouseParams,
 )
 
 
@@ -36,7 +42,7 @@ with workflow.unsafe.imports_passed_through():
         make_analysis_in_a_day,
         make_cc_batches,
     )
-    from oonipipeline.temporal.common import get_obs_count_by_cc, optimize_all_tables
+    from oonipipeline.temporal.common import get_obs_count_by_cc
     from oonipipeline.temporal.activities.observations import (
         MakeObservationsParams,
         make_observation_in_day,
@@ -67,6 +73,7 @@ def make_worker(client: TemporalClient, parallelism: int) -> Worker:
             make_observation_in_day,
             make_ground_truths_in_day,
             make_analysis_in_a_day,
+            optimize_all_tables,
         ],
         activity_executor=concurrent.futures.ProcessPoolExecutor(parallelism + 2),
         max_concurrent_activities=parallelism,
@@ -74,6 +81,14 @@ def make_worker(client: TemporalClient, parallelism: int) -> Worker:
             multiprocessing.Manager()
         ),
     )
+
+
+def get_workflow_start_time() -> datetime:
+    workflow_start_time = workflow.info().typed_search_attributes.get(
+        SearchAttributeKey.for_datetime("TemporalScheduledStartTime")
+    )
+    assert workflow_start_time is not None, "TemporalScheduledStartTime not set"
+    return workflow_start_time
 
 
 @dataclass
@@ -84,37 +99,27 @@ class ObservationsWorkflowParams:
     data_dir: str
     fast_fail: bool
     log_level: int = logging.INFO
+    bucket_date: Optional[str] = None
 
 
 @workflow.defn
 class ObservationsWorkflow:
     @workflow.run
     async def run(self, params: ObservationsWorkflowParams) -> dict:
-        # TODO(art): wrap this a coroutine call
-        optimize_all_tables(params.clickhouse)
+        if params.bucket_date is None:
+            params.bucket_date = (
+                get_workflow_start_time() - timedelta(days=1)
+            ).strftime("%Y-%m-%d")
 
-        workflow_id = workflow.info().workflow_id
-
-        # TODO(art): this is quite sketchy. Waiting on temporal slack question:
-        # https://temporalio.slack.com/archives/CTT84RS0P/p1714040382186429
-        run_ts = datetime.strptime(
-            "-".join(workflow_id.split("-")[-3:]),
-            "%Y-%m-%dT%H:%M:%SZ",
+        await workflow.execute_activity(
+            optimize_all_tables,
+            ClickhouseParams(clickhouse_url=params.clickhouse),
+            start_to_close_timeout=timedelta(minutes=5),
         )
-        bucket_date = (run_ts - timedelta(days=1)).strftime("%Y-%m-%d")
-
-        # read_time = workflow_info.start_time - timedelta(days=1)
-        # log.info(f"workflow.info().start_time={workflow.info().start_time} ")
-        # log.info(f"workflow.info().cron_schedule={workflow.info().cron_schedule} ")
-        # log.info(f"workflow_info.workflow_id={workflow_info.workflow_id} ")
-        # log.info(f"workflow_info.run_id={workflow_info.run_id} ")
-        # log.info(f"workflow.now()={workflow.now()}")
-        # print(workflow)
-        # bucket_date = f"{read_time.year}-{read_time.month:02}-{read_time.day:02}"
 
         t = PerfTimer()
         log.info(
-            f"Starting observation making with probe_cc={params.probe_cc},test_name={params.test_name} bucket_date={bucket_date}"
+            f"Starting observation making with probe_cc={params.probe_cc},test_name={params.test_name} bucket_date={params.bucket_date}"
         )
 
         res = await workflow.execute_activity(
@@ -125,19 +130,17 @@ class ObservationsWorkflow:
                 clickhouse=params.clickhouse,
                 data_dir=params.data_dir,
                 fast_fail=params.fast_fail,
-                bucket_date=bucket_date,
+                bucket_date=params.bucket_date,
             ),
             start_to_close_timeout=timedelta(minutes=30),
         )
 
         total_size = res["size"]
         total_measurement_count = res["measurement_count"]
-
-        # This needs to be adjusted once we get the the per entry concurrency working
         mb_per_sec = round(total_size / t.s / 10**6, 1)
         msmt_per_sec = round(total_measurement_count / t.s)
         log.info(
-            f"finished processing {bucket_date} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
+            f"finished processing {params.bucket_date} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
         )
 
         # with ClickhouseConnection(params.clickhouse) as db:

@@ -8,6 +8,8 @@ from typing import Dict, List
 
 from temporalio import workflow, activity
 
+from .common import optimize_all_tables
+
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
 
@@ -29,7 +31,6 @@ with workflow.unsafe.imports_passed_through():
         get_prev_range,
         make_db_rows,
         maybe_delete_prev_range,
-        optimize_all_tables,
     )
 
 log = logging.getLogger("oonidata.processing")

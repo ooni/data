@@ -54,11 +54,7 @@ def test_full_workflow(
     bucket_dict = dict(res)
     assert "2022-10-20" in bucket_dict, bucket_dict
     assert bucket_dict["2022-10-20"] == 200, bucket_dict
-
-    res = db.execute(
-        "SELECT COUNT() FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
-    )
-    obs_count = res[0][0]  # type: ignore
+    obs_count = bucket_dict["2022-10-20"]
 
     result = cli_runner.invoke(
         cli,

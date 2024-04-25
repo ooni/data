@@ -141,6 +141,7 @@ def make_observation_in_day(params: MakeObservationsParams) -> dict:
                     ),
                 )
             )
+    log.info(f"prev_ranges: {prev_ranges}")
 
     t = PerfTimer()
     total_t = PerfTimer()
@@ -175,6 +176,7 @@ def make_observation_in_day(params: MakeObservationsParams) -> dict:
     if len(prev_ranges) > 0:
         with ClickhouseConnection(params.clickhouse, row_buffer_size=10_000) as db:
             for table_name, pr in prev_ranges:
+                log.info("deleting previous range of {pr}")
                 maybe_delete_prev_range(db=db, prev_range=pr)
 
     return {"size": total_size, "measurement_count": total_msmt_count}

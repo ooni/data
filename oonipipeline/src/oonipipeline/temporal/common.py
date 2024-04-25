@@ -21,7 +21,6 @@ from oonidata.dataclient import (
     MeasurementListProgress,
 )
 from ..db.connections import ClickhouseConnection
-from ..db.create_tables import create_queries
 
 log = logging.getLogger("oonidata.processing")
 
@@ -163,12 +162,6 @@ def get_prev_range(
         )
 
     return prev_range
-
-
-def optimize_all_tables(clickhouse):
-    with ClickhouseConnection(clickhouse) as db:
-        for _, table_name in create_queries:
-            db.execute(f"OPTIMIZE TABLE {table_name}")
 
 
 def get_obs_count_by_cc(
