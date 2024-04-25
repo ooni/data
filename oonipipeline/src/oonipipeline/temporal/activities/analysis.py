@@ -1,10 +1,9 @@
-import asyncio
 import dataclasses
 from dataclasses import dataclass
 import logging
 import pathlib
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Dict, List
 
 from temporalio import workflow, activity
@@ -15,25 +14,18 @@ with workflow.unsafe.imports_passed_through():
     import orjson
     import statsd
 
-    from oonidata.dataclient import date_interval
     from oonidata.datautils import PerfTimer
     from oonidata.models.analysis import WebAnalysis
     from oonidata.models.experiment_result import MeasurementExperimentResult
 
-    from ..analysis.control import BodyDB, WebGroundTruthDB
-    from ..analysis.datasources import iter_web_observations
-    from ..analysis.web_analysis import make_web_analysis
-    from ..analysis.website_experiment_results import make_website_experiment_results
-    from ..db.connections import ClickhouseConnection
-    from ..fingerprintdb import FingerprintDB
+    from ...analysis.control import BodyDB, WebGroundTruthDB
+    from ...analysis.datasources import iter_web_observations
+    from ...analysis.web_analysis import make_web_analysis
+    from ...analysis.website_experiment_results import make_website_experiment_results
+    from ...db.connections import ClickhouseConnection
+    from ...fingerprintdb import FingerprintDB
 
-    from .activities.ground_truths import (
-        make_ground_truths_in_day,
-        MakeGroundTruthsParams,
-    )
-
-    from .common import (
-        get_obs_count_by_cc,
+    from ..common import (
         get_prev_range,
         make_db_rows,
         maybe_delete_prev_range,
@@ -263,80 +255,3 @@ def make_cc_batches(
 # definitions.
 # I spent some time debugging this, but eventually gave up. We should eventually
 # look into making this run OK inside of the sandbox.
-@workflow.defn(sandboxed=False)
-class AnalysisWorkflow:
-    @workflow.run
-    async def run(self, params: AnalysisWorkflowParams) -> dict:
-        t_total = PerfTimer()
-
-        t = PerfTimer()
-        start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
-        end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
-
-        log.info("building ground truth databases")
-
-        async with asyncio.TaskGroup() as tg:
-            for day in date_interval(start_day, end_day):
-                tg.create_task(
-                    workflow.execute_activity(
-                        make_ground_truths_in_day,
-                        MakeGroundTruthsParams(
-                            day=day.strftime("%Y-%m-%d"),
-                            clickhouse=params.clickhouse,
-                            data_dir=params.data_dir,
-                            rebuild_ground_truths=params.rebuild_ground_truths,
-                        ),
-                        start_to_close_timeout=timedelta(minutes=2),
-                    )
-                )
-            log.info(f"built ground truth db in {t.pretty}")
-
-        with ClickhouseConnection(params.clickhouse) as db:
-            cnt_by_cc = get_obs_count_by_cc(
-                db, start_day=start_day, end_day=end_day, test_name=params.test_name
-            )
-        cc_batches = make_cc_batches(
-            cnt_by_cc=cnt_by_cc,
-            probe_cc=params.probe_cc,
-            parallelism=params.parallelism,
-        )
-        log.info(
-            f"starting processing of {len(cc_batches)} batches over {(end_day - start_day).days} days (parallelism = {params.parallelism})"
-        )
-        log.info(f"({cc_batches} from {start_day} to {end_day}")
-
-        task_list = []
-        async with asyncio.TaskGroup() as tg:
-            for probe_cc in cc_batches:
-                for day in date_interval(start_day, end_day):
-                    task = tg.create_task(
-                        workflow.execute_activity(
-                            make_analysis_in_a_day,
-                            MakeAnalysisParams(
-                                probe_cc=probe_cc,
-                                test_name=params.test_name,
-                                clickhouse=params.clickhouse,
-                                data_dir=params.data_dir,
-                                fast_fail=params.fast_fail,
-                                day=day.strftime("%Y-%m-%d"),
-                            ),
-                            start_to_close_timeout=timedelta(minutes=30),
-                        )
-                    )
-                    task_list.append(task)
-
-        t = PerfTimer()
-        # size, msmt_count =
-        total_obs_count = 0
-        for task in task_list:
-            res = task.result()
-
-            total_obs_count += res["count"]
-
-        log.info(f"produces a total of {total_obs_count} analysis")
-        obs_per_sec = round(total_obs_count / t_total.s)
-        log.info(
-            f"finished processing {start_day} - {end_day} speed: {obs_per_sec}obs/s)"
-        )
-        log.info(f"{total_obs_count} msmts in {t_total.pretty}")
-        return {"total_obs_count": total_obs_count}

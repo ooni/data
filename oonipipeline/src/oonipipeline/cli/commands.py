@@ -10,6 +10,7 @@ import click
 from click_loglevel import LogLevel
 
 from ..temporal.workflows import (
+    AnalysisWorkflow,
     GroundTruthsWorkflow,
     ObservationsWorkflow,
     ObservationsWorkflowParams,
@@ -40,8 +41,7 @@ from ..temporal.activities.ground_truths import (
     make_ground_truths_in_day,
 )
 
-from ..temporal.analysis import (
-    AnalysisWorkflow,
+from ..temporal.activities.analysis import (
     AnalysisWorkflowParams,
     make_analysis_in_a_day,
 )

@@ -19,7 +19,7 @@ from oonipipeline.temporal.activities.observations import (
 )
 from oonipipeline.transforms.measurement_transformer import MeasurementTransformer
 from oonipipeline.transforms.observations import measurement_to_observations
-from oonipipeline.temporal.analysis import (
+from oonipipeline.temporal.activities.analysis import (
     MakeAnalysisParams,
     make_analysis_in_a_day,
     make_cc_batches,
