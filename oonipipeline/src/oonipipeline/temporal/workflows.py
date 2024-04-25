@@ -96,7 +96,11 @@ class ObservationsWorkflow:
 
         # TODO(art): this is quite sketchy. Waiting on temporal slack question:
         # https://temporalio.slack.com/archives/CTT84RS0P/p1714040382186429
-        bucket_date = "-".join(workflow_id.split("-")[-3:]).split("T")[0]
+        run_ts = datetime.strptime(
+            "-".join(workflow_id.split("-")[-3:]),
+            "%Y-%m-%dT%H:%M:%SZ",
+        )
+        bucket_date = (run_ts - timedelta(days=1)).strftime("%Y-%m-%d")
 
         # read_time = workflow_info.start_time - timedelta(days=1)
         # log.info(f"workflow.info().start_time={workflow.info().start_time} ")
@@ -195,7 +199,7 @@ async def schedule_observations(
                     ScheduleIntervalSpec(
                         every=timedelta(days=1), offset=timedelta(hours=2)
                     )
-                ]
+                ],
             ),
             state=ScheduleState(
                 note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"

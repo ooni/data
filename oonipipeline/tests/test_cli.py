@@ -48,14 +48,12 @@ def test_full_workflow(
     )
     assert result.exit_code == 0
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
-    import ipdb
-
-    ipdb.set_trace()
     res = db.execute(
         "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
     )
-    bucket_dict = dict(res[0])
-    assert bucket_dict["2022-10-20"] == 200
+    bucket_dict = dict(res)
+    assert "2022-10-20" in bucket_dict, bucket_dict
+    assert bucket_dict["2022-10-20"] == 200, bucket_dict
 
     res = db.execute(
         "SELECT COUNT() FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
@@ -86,19 +84,21 @@ def test_full_workflow(
     # Wait for the mutation to finish running
     wait_for_mutations(db, "obs_web")
     res = db.execute(
-        "SELECT COUNT() FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
+        "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
     )
+    bucket_dict = dict(res)
+    assert "2022-10-20" in bucket_dict, bucket_dict
     # By re-running it against the same date, we should still get the same observation count
-    assert res[0][0] == obs_count  # type: ignore
+    assert bucket_dict["2022-10-20"] == obs_count, bucket_dict
 
     result = cli_runner.invoke(
         cli,
         [
             "mkgt",
             "--start-day",
-            "2022-10-21",
+            "2022-10-20",
             "--end-day",
-            "2022-10-22",
+            "2022-10-21",
             "--data-dir",
             datadir,
             "--clickhouse",
@@ -126,9 +126,9 @@ def test_full_workflow(
             "--probe-cc",
             "BA",
             "--start-day",
-            "2022-10-21",
+            "2022-10-20",
             "--end-day",
-            "2022-10-22",
+            "2022-10-21",
             "--test-name",
             "web_connectivity",
             "--data-dir",

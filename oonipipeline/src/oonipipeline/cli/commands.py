@@ -92,7 +92,7 @@ async def run_backfill(
         ScheduleBackfill(
             start_at=start_at,
             end_at=end_at,
-            overlap=ScheduleOverlapPolicy.CANCEL_OTHER,
+            overlap=ScheduleOverlapPolicy.ALLOW_ALL,
         ),
     )
 
