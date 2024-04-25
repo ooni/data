@@ -80,6 +80,7 @@ def make_worker(client: TemporalClient, parallelism: int) -> Worker:
             make_ground_truths_in_day,
             make_analysis_in_a_day,
             optimize_all_tables,
+            get_obs_count_by_cc,
         ],
         activity_executor=concurrent.futures.ProcessPoolExecutor(parallelism + 2),
         max_concurrent_activities=parallelism,
