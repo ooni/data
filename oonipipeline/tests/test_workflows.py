@@ -14,6 +14,9 @@ from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
 
+from oonipipeline.temporal.activities.observations import (
+    make_observations_for_file_entry_batch,
+)
 from oonipipeline.transforms.measurement_transformer import MeasurementTransformer
 from oonipipeline.transforms.observations import measurement_to_observations
 from oonipipeline.temporal.analysis import (
@@ -30,8 +33,7 @@ from oonipipeline.temporal.ground_truths import (
     MakeGroundTruthsParams,
     make_ground_truths_in_day,
 )
-from oonipipeline.temporal.observations import (
-    make_observations_for_file_entry_batch,
+from oonipipeline.temporal.activities.observations import (
     write_observations_to_db,
 )
 

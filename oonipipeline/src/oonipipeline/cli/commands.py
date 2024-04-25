@@ -9,6 +9,8 @@ from typing import List, Optional
 import click
 from click_loglevel import LogLevel
 
+from ..temporal.workflows import ObservationsWorkflow, ObservationsWorkflowParams
+
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
 from ..db.create_tables import create_queries, list_all_table_diffs
@@ -25,9 +27,7 @@ from temporalio.worker import Worker, SharedStateManager
 
 from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
 
-from ..temporal.observations import (
-    ObservationsWorkflow,
-    ObservationsWorkflowParams,
+from ..temporal.activities.observations import (
     make_observation_in_day,
 )
 

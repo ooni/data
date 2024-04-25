@@ -1,43 +1,42 @@
-import asyncio
-import pathlib
-import logging
-import dataclasses
 from dataclasses import dataclass
+import dataclasses
+import logging
+from typing import List, Sequence, Tuple
+from oonidata.dataclient import (
+    ccs_set,
+    list_file_entries_batches,
+    load_measurement,
+    stream_measurements,
+)
+from oonidata.datautils import PerfTimer
+from oonidata.models.nettests import SupportedDataformats
+from oonipipeline.db.connections import ClickhouseConnection
+from oonipipeline.netinfo import NetinfoDB
+from oonipipeline.temporal.common import (
+    get_prev_range,
+    make_db_rows,
+    maybe_delete_prev_range,
+)
+import statsd
+from temporalio import activity
+
+
+import pathlib
 from datetime import datetime, timedelta
 
-from typing import (
-    List,
-    Sequence,
-    Tuple,
-)
-
-from temporalio import workflow, activity
-
-with workflow.unsafe.imports_passed_through():
-    import statsd
-    import clickhouse_driver
-    from oonidata.datautils import PerfTimer
-    from oonidata.dataclient import (
-        date_interval,
-        list_file_entries_batches,
-        stream_measurements,
-        ccs_set,
-        load_measurement,
-    )
-    from oonidata.models.nettests import SupportedDataformats
-
-    from ..netinfo import NetinfoDB
-    from ..db.connections import ClickhouseConnection
-    from ..transforms.observations import measurement_to_observations
-
-    from .common import (
-        get_prev_range,
-        make_db_rows,
-        maybe_delete_prev_range,
-        optimize_all_tables,
-    )
+from oonipipeline.transforms.observations import measurement_to_observations
 
 log = logging.getLogger("oonidata.processing")
+
+
+@dataclass
+class MakeObservationsParams:
+    probe_cc: List[str]
+    test_name: List[str]
+    clickhouse: str
+    data_dir: str
+    fast_fail: bool
+    bucket_date: str
 
 
 def write_observations_to_db(
@@ -121,28 +120,6 @@ def make_observations_for_file_entry_batch(
     return idx
 
 
-@dataclass
-class ObservationsWorkflowParams:
-    probe_cc: List[str]
-    test_name: List[str]
-    start_day: str
-    end_day: str
-    clickhouse: str
-    data_dir: str
-    fast_fail: bool
-    log_level: int = logging.INFO
-
-
-@dataclass
-class MakeObservationsParams:
-    probe_cc: List[str]
-    test_name: List[str]
-    clickhouse: str
-    data_dir: str
-    fast_fail: bool
-    bucket_date: str
-
-
 @activity.defn
 def make_observation_in_day(params: MakeObservationsParams) -> dict:
     statsd_client = statsd.StatsClient("localhost", 8125)
@@ -201,78 +178,3 @@ def make_observation_in_day(params: MakeObservationsParams) -> dict:
                 maybe_delete_prev_range(db=db, prev_range=pr)
 
     return {"size": total_size, "measurement_count": total_msmt_count}
-
-
-@workflow.defn
-class ObservationsWorkflow:
-    @workflow.run
-    async def run(self, params: ObservationsWorkflowParams) -> dict:
-        log.info("Optimizing all tables")
-        optimize_all_tables(params.clickhouse)
-
-        t_total = PerfTimer()
-        log.info(
-            f"Starting observation making on {params.probe_cc} ({params.start_day} - {params.end_day})"
-        )
-        task_list = []
-        start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
-        end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
-
-        async with asyncio.TaskGroup() as tg:
-            for day in date_interval(start_day, end_day):
-                task = tg.create_task(
-                    workflow.execute_activity(
-                        make_observation_in_day,
-                        MakeObservationsParams(
-                            probe_cc=params.probe_cc,
-                            test_name=params.test_name,
-                            clickhouse=params.clickhouse,
-                            data_dir=params.data_dir,
-                            fast_fail=params.fast_fail,
-                            bucket_date=day.strftime("%Y-%m-%d"),
-                        ),
-                        start_to_close_timeout=timedelta(minutes=30),
-                    )
-                )
-                task_list.append(task)
-
-        t = PerfTimer()
-        # size, msmt_count =
-        total_size, total_msmt_count = 0, 0
-        for task in task_list:
-            res = task.result()
-
-            total_size += res["size"]
-            total_msmt_count += res["measurement_count"]
-
-        # This needs to be adjusted once we get the the per entry concurrency working
-        # mb_per_sec = round(total_size / t.s / 10**6, 1)
-        # msmt_per_sec = round(total_msmt_count / t.s)
-        # log.info(
-        #     f"finished processing {day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
-        # )
-
-        # with ClickhouseConnection(params.clickhouse) as db:
-        #     db.execute(
-        #         "INSERT INTO oonidata_processing_logs (key, timestamp, runtime_ms, bytes, msmt_count, comment) VALUES",
-        #         [
-        #             [
-        #                 "oonidata.bucket_processed",
-        #                 datetime.now(timezone.utc).replace(tzinfo=None),
-        #                 int(t.ms),
-        #                 total_size,
-        #                 total_msmt_count,
-        #                 day.strftime("%Y-%m-%d"),
-        #             ]
-        #         ],
-        #     )
-
-        mb_per_sec = round(total_size / t_total.s / 10**6, 1)
-        msmt_per_sec = round(total_msmt_count / t_total.s)
-        log.info(
-            f"finished processing {params.start_day} - {params.end_day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
-        )
-        log.info(
-            f"{round(total_size/10**9, 2)}GB {total_msmt_count} msmts in {t_total.pretty}"
-        )
-        return {"size": total_size, "measurement_count": total_msmt_count}
