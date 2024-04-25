@@ -48,10 +48,15 @@ def test_full_workflow(
     )
     assert result.exit_code == 0
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    import ipdb
+
+    ipdb.set_trace()
     res = db.execute(
-        "SELECT COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
+        "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
     )
-    assert res[0][0] == 200  # type: ignore
+    bucket_dict = dict(res[0])
+    assert bucket_dict["2022-10-20"] == 200
+
     res = db.execute(
         "SELECT COUNT() FROM obs_web WHERE bucket_date = '2022-10-20' AND probe_cc = 'BA'"
     )

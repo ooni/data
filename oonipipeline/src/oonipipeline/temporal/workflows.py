@@ -92,8 +92,20 @@ class ObservationsWorkflow:
     async def run(self, params: ObservationsWorkflowParams) -> dict:
         # optimize_all_tables(params.clickhouse)
 
-        read_time = workflow.now() - timedelta(days=1)
-        bucket_date = f"{read_time.year}-{read_time.month:02}-{read_time.day:02}"
+        workflow_id = workflow.info().workflow_id
+
+        # TODO(art): this is quite sketchy. Waiting on temporal slack question:
+        # https://temporalio.slack.com/archives/CTT84RS0P/p1714040382186429
+        bucket_date = "-".join(workflow_id.split("-")[-3:]).split("T")[0]
+
+        # read_time = workflow_info.start_time - timedelta(days=1)
+        # log.info(f"workflow.info().start_time={workflow.info().start_time} ")
+        # log.info(f"workflow.info().cron_schedule={workflow.info().cron_schedule} ")
+        # log.info(f"workflow_info.workflow_id={workflow_info.workflow_id} ")
+        # log.info(f"workflow_info.run_id={workflow_info.run_id} ")
+        # log.info(f"workflow.now()={workflow.now()}")
+        # print(workflow)
+        # bucket_date = f"{read_time.year}-{read_time.month:02}-{read_time.day:02}"
 
         t = PerfTimer()
         log.info(
