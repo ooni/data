@@ -2,18 +2,26 @@ import logging
 import multiprocessing
 from pathlib import Path
 import sys
-from typing import List, Optional
-from datetime import date, timedelta, datetime
+import time
+from typing import Any, Callable, Coroutine, List, Optional
+from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
 
 import click
 from click_loglevel import LogLevel
+import dateutil.parser
 
 from ..temporal.workflows import (
     AnalysisWorkflow,
+    AnalysisWorkflowParams,
     GroundTruthsWorkflow,
+    GroundTruthsWorkflowParams,
     ObservationsWorkflow,
     ObservationsWorkflowParams,
+    make_worker,
+    gen_observation_schedule_id,
+    TASK_QUEUE_NAME,
+    schedule_observations,
 )
 
 from ..__about__ import VERSION
@@ -25,29 +33,14 @@ log = logging.getLogger("oonidata")
 
 import asyncio
 
-import concurrent.futures
 
-from temporalio.client import Client as TemporalClient
-from temporalio.worker import Worker, SharedStateManager
+from temporalio.client import (
+    Client as TemporalClient,
+    ScheduleBackfill,
+    ScheduleOverlapPolicy,
+)
 
 from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
-
-from ..temporal.activities.observations import (
-    make_observation_in_day,
-)
-
-from ..temporal.activities.ground_truths import (
-    GroundTruthsWorkflowParams,
-    make_ground_truths_in_day,
-)
-
-from ..temporal.activities.analysis import (
-    AnalysisWorkflowParams,
-    make_analysis_in_a_day,
-)
-
-
-TASK_QUEUE_NAME = "oonipipeline-task-queue"
 
 
 async def run_workflow(
@@ -57,31 +50,65 @@ async def run_workflow(
     temporal_address: str = "localhost:7233",
 ):
     client = await TemporalClient.connect(temporal_address)
-    async with Worker(
-        client,
-        task_queue=TASK_QUEUE_NAME,
-        workflows=[
-            ObservationsWorkflow,
-            GroundTruthsWorkflow,
-            AnalysisWorkflow,
-        ],
-        activities=[
-            make_observation_in_day,
-            make_ground_truths_in_day,
-            make_analysis_in_a_day,
-        ],
-        activity_executor=concurrent.futures.ProcessPoolExecutor(parallelism + 2),
-        max_concurrent_activities=parallelism,
-        shared_state_manager=SharedStateManager.create_from_multiprocessing(
-            multiprocessing.Manager()
-        ),
-    ):
+    async with make_worker(client, parallelism=parallelism):
         await client.execute_workflow(
             workflow,
             arg,
             id=TASK_QUEUE_NAME,
             task_queue=TASK_QUEUE_NAME,
         )
+
+
+async def run_backfill(
+    start_at: datetime,
+    end_at: datetime,
+    # TODO(art): improve the typing of params
+    params: Any,
+    id_generator: Callable[[Any], str],
+    schedule: Callable[[TemporalClient, Any], Coroutine],
+    parallelism: int,
+    temporal_address: str = "localhost:7233",
+):
+    log.info(f"connecting to temporal: {temporal_address}")
+    client = await TemporalClient.connect(temporal_address)
+
+    schedule_id = id_generator(params)
+
+    try:
+        handle = client.get_schedule_handle(
+            schedule_id,
+        )
+        desc = await handle.describe()
+    except:
+        await schedule(client, params)
+        handle = client.get_schedule_handle(
+            schedule_id,
+        )
+
+    log.info(
+        f"scheduling backfill of {schedule_id} with start_at={start_at} end_at={end_at}"
+    )
+    await handle.backfill(
+        ScheduleBackfill(
+            start_at=start_at,
+            end_at=end_at,
+            overlap=ScheduleOverlapPolicy.CANCEL_OTHER,
+        ),
+    )
+
+    async with make_worker(client, parallelism=parallelism):
+        while True:
+            try:
+                desc = await handle.describe()
+            except:
+                break
+
+            if len(desc.info.running_actions) == 0:
+                break
+            for action in desc.info.running_actions:
+                print(f"* {action.workflow_id} is still running")
+
+            await asyncio.sleep(2)
 
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
@@ -112,6 +139,25 @@ start_day_option = click.option(
 end_day_option = click.option(
     "--end-day",
     default=(date.today() + timedelta(days=1)).strftime("%Y-%m-%d"),
+    help="""the timestamp of the day for which we should start processing data (inclusive). 
+
+    Note: this is the upload date, which doesn't necessarily match the measurement date.
+    """,
+)
+
+start_at_option = click.option(
+    "--start-at",
+    type=click.DateTime(),
+    default=str(datetime.now(timezone.utc).date() - timedelta(days=14)),
+    help="""the timestamp of the day for which we should start processing data (inclusive).
+
+    Note: this is the upload date, which doesn't necessarily match the measurement date.
+    """,
+)
+end_at_option = click.option(
+    "--end-at",
+    type=click.DateTime(),
+    default=str(datetime.now(timezone.utc).date() + timedelta(days=1)),
     help="""the timestamp of the day for which we should start processing data (inclusive). 
 
     Note: this is the upload date, which doesn't necessarily match the measurement date.
@@ -154,8 +200,8 @@ def cli(error_log_file: Path, log_level: int):
 @cli.command()
 @probe_cc_option
 @test_name_option
-@start_day_option
-@end_day_option
+@start_at_option
+@end_at_option
 @clickhouse_option
 @datadir_option
 @click.option(
@@ -182,8 +228,8 @@ def cli(error_log_file: Path, log_level: int):
 def mkobs(
     probe_cc: List[str],
     test_name: List[str],
-    start_day: str,
-    end_day: str,
+    start_at: datetime,
+    end_at: datetime,
     clickhouse: str,
     data_dir: str,
     parallelism: int,
@@ -210,20 +256,21 @@ def mkobs(
     NetinfoDB(datadir=Path(data_dir), download=True)
     click.echo("downloaded netinfodb")
 
-    arg = ObservationsWorkflowParams(
+    params = ObservationsWorkflowParams(
         probe_cc=probe_cc,
         test_name=test_name,
-        start_day=start_day,
-        end_day=end_day,
         clickhouse=clickhouse,
         data_dir=str(data_dir),
         fast_fail=fast_fail,
     )
-    click.echo(f"starting to make observations with arg={arg}")
+    click.echo(f"starting to make observations with params={params}")
     asyncio.run(
-        run_workflow(
-            ObservationsWorkflow.run,
-            arg,
+        run_backfill(
+            start_at=start_at,
+            end_at=end_at,
+            params=params,
+            id_generator=gen_observation_schedule_id,
+            schedule=schedule_observations,
             parallelism=parallelism,
         )
     )

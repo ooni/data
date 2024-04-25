@@ -208,32 +208,3 @@ def make_db_rows(
         rows.append(tuple(maybe_remap(k, getattr(d, k)) for k in column_names))
 
     return table_name, rows
-
-
-class StatusMessage(NamedTuple):
-    src: str
-    exception: Optional[Exception] = None
-    traceback: Optional[str] = None
-    progress: Optional[MeasurementListProgress] = None
-    idx: Optional[int] = None
-    day_str: Optional[str] = None
-    archive_queue_size: Optional[int] = None
-
-
-def run_progress_thread(
-    status_queue: mp.Queue, shutdown_event: EventClass, desc: str = "analyzing data"
-):
-    pbar = tqdm(position=0)
-
-    log.info("starting error handling thread")
-    while not shutdown_event.is_set():
-        try:
-            count = status_queue.get(block=True, timeout=0.1)
-        except queue.Empty:
-            continue
-
-        try:
-            pbar.update(count)
-            pbar.set_description(desc)
-        finally:
-            status_queue.task_done()  # type: ignore

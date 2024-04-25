@@ -36,20 +36,6 @@ log = logging.getLogger("oonidata.processing")
 
 
 @dataclass
-class AnalysisWorkflowParams:
-    probe_cc: List[str]
-    test_name: List[str]
-    start_day: str
-    end_day: str
-    clickhouse: str
-    data_dir: str
-    parallelism: int
-    fast_fail: bool
-    rebuild_ground_truths: bool
-    log_level: int = logging.INFO
-
-
-@dataclass
 class MakeAnalysisParams:
     probe_cc: List[str]
     test_name: List[str]

@@ -1,47 +1,85 @@
 from dataclasses import dataclass
-import logging
 from typing import List
-from oonidata.dataclient import date_interval
-from oonidata.datautils import PerfTimer
-from oonipipeline.db.connections import ClickhouseConnection
-from oonipipeline.temporal.activities.analysis import (
-    AnalysisWorkflowParams,
-    MakeAnalysisParams,
-    log,
-    make_analysis_in_a_day,
-    make_cc_batches,
-)
-from oonipipeline.temporal.common import get_obs_count_by_cc, optimize_all_tables
-from oonipipeline.temporal.activities.observations import (
-    MakeObservationsParams,
-    make_observation_in_day,
-)
 
+import logging
+import multiprocessing
+import concurrent.futures
+import asyncio
+from datetime import datetime, timedelta, timezone
 
 from temporalio import workflow
-
-
-import asyncio
-from datetime import datetime, timedelta
-
-from oonipipeline.temporal.activities.ground_truths import (
-    GroundTruthsWorkflowParams,
-    MakeGroundTruthsParams,
-    make_ground_truths_in_day,
+from temporalio.worker import Worker, SharedStateManager
+from temporalio.client import (
+    Client as TemporalClient,
+    Schedule,
+    ScheduleActionStartWorkflow,
+    ScheduleIntervalSpec,
+    ScheduleSpec,
+    ScheduleState,
 )
 
-log = logging.getLogger("oonidata.processing")
+
+# Handle temporal sandbox violations related to calls to self.processName =
+# mp.current_process().name in logger, see:
+# https://github.com/python/cpython/blob/1316692e8c7c1e1f3b6639e51804f9db5ed892ea/Lib/logging/__init__.py#L362
+logging.logMultiprocessing = False
 
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
+
+    from oonidata.dataclient import date_interval
+    from oonidata.datautils import PerfTimer
+    from oonipipeline.db.connections import ClickhouseConnection
+    from oonipipeline.temporal.activities.analysis import (
+        MakeAnalysisParams,
+        log,
+        make_analysis_in_a_day,
+        make_cc_batches,
+    )
+    from oonipipeline.temporal.common import get_obs_count_by_cc, optimize_all_tables
+    from oonipipeline.temporal.activities.observations import (
+        MakeObservationsParams,
+        make_observation_in_day,
+    )
+
+    from oonipipeline.temporal.activities.ground_truths import (
+        MakeGroundTruthsParams,
+        make_ground_truths_in_day,
+    )
+
+log = logging.getLogger("oonidata.processing")
+
+
+TASK_QUEUE_NAME = "oonipipeline-task-queue"
+OBSERVATION_WORKFLOW_ID = "oonipipeline-observations"
+
+
+def make_worker(client: TemporalClient, parallelism: int) -> Worker:
+    return Worker(
+        client,
+        task_queue=TASK_QUEUE_NAME,
+        workflows=[
+            ObservationsWorkflow,
+            GroundTruthsWorkflow,
+            AnalysisWorkflow,
+        ],
+        activities=[
+            make_observation_in_day,
+            make_ground_truths_in_day,
+            make_analysis_in_a_day,
+        ],
+        activity_executor=concurrent.futures.ProcessPoolExecutor(parallelism + 2),
+        max_concurrent_activities=parallelism,
+        shared_state_manager=SharedStateManager.create_from_multiprocessing(
+            multiprocessing.Manager()
+        ),
+    )
 
 
 @dataclass
 class ObservationsWorkflowParams:
     probe_cc: List[str]
     test_name: List[str]
-    start_day: str
-    end_day: str
     clickhouse: str
     data_dir: str
     fast_fail: bool
@@ -52,50 +90,38 @@ class ObservationsWorkflowParams:
 class ObservationsWorkflow:
     @workflow.run
     async def run(self, params: ObservationsWorkflowParams) -> dict:
-        log.info("Optimizing all tables")
-        optimize_all_tables(params.clickhouse)
+        # optimize_all_tables(params.clickhouse)
 
-        t_total = PerfTimer()
-        log.info(
-            f"Starting observation making on {params.probe_cc} ({params.start_day} - {params.end_day})"
-        )
-        task_list = []
-        start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
-        end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
-
-        async with asyncio.TaskGroup() as tg:
-            for day in date_interval(start_day, end_day):
-                task = tg.create_task(
-                    workflow.execute_activity(
-                        make_observation_in_day,
-                        MakeObservationsParams(
-                            probe_cc=params.probe_cc,
-                            test_name=params.test_name,
-                            clickhouse=params.clickhouse,
-                            data_dir=params.data_dir,
-                            fast_fail=params.fast_fail,
-                            bucket_date=day.strftime("%Y-%m-%d"),
-                        ),
-                        start_to_close_timeout=timedelta(minutes=30),
-                    )
-                )
-                task_list.append(task)
+        read_time = workflow.now() - timedelta(days=1)
+        bucket_date = f"{read_time.year}-{read_time.month:02}-{read_time.day:02}"
 
         t = PerfTimer()
-        # size, msmt_count =
-        total_size, total_msmt_count = 0, 0
-        for task in task_list:
-            res = task.result()
+        log.info(
+            f"Starting observation making with probe_cc={params.probe_cc},test_name={params.test_name} bucket_date={bucket_date}"
+        )
 
-            total_size += res["size"]
-            total_msmt_count += res["measurement_count"]
+        res = await workflow.execute_activity(
+            make_observation_in_day,
+            MakeObservationsParams(
+                probe_cc=params.probe_cc,
+                test_name=params.test_name,
+                clickhouse=params.clickhouse,
+                data_dir=params.data_dir,
+                fast_fail=params.fast_fail,
+                bucket_date=bucket_date,
+            ),
+            start_to_close_timeout=timedelta(minutes=30),
+        )
+
+        total_size = res["size"]
+        total_measurement_count = res["measurement_count"]
 
         # This needs to be adjusted once we get the the per entry concurrency working
-        # mb_per_sec = round(total_size / t.s / 10**6, 1)
-        # msmt_per_sec = round(total_msmt_count / t.s)
-        # log.info(
-        #     f"finished processing {day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
-        # )
+        mb_per_sec = round(total_size / t.s / 10**6, 1)
+        msmt_per_sec = round(total_measurement_count / t.s)
+        log.info(
+            f"finished processing {bucket_date} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
+        )
 
         # with ClickhouseConnection(params.clickhouse) as db:
         #     db.execute(
@@ -106,21 +132,72 @@ class ObservationsWorkflow:
         #                 datetime.now(timezone.utc).replace(tzinfo=None),
         #                 int(t.ms),
         #                 total_size,
-        #                 total_msmt_count,
-        #                 day.strftime("%Y-%m-%d"),
+        #                 total_measurement_count,
+        #                 bucket_date,
         #             ]
         #         ],
         #     )
 
-        mb_per_sec = round(total_size / t_total.s / 10**6, 1)
-        msmt_per_sec = round(total_msmt_count / t_total.s)
-        log.info(
-            f"finished processing {params.start_day} - {params.end_day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
-        )
-        log.info(
-            f"{round(total_size/10**9, 2)}GB {total_msmt_count} msmts in {t_total.pretty}"
-        )
-        return {"size": total_size, "measurement_count": total_msmt_count}
+        return {
+            "size": total_size,
+            "measurement_count": total_measurement_count,
+            "runtime_ms": t.ms,
+            "mb_per_sec": mb_per_sec,
+            "msmt_per_sec": msmt_per_sec,
+        }
+
+
+OBSERVATIONS_SCHEDULE_ID = "oonipipeline-observations-schedule-id"
+
+
+def gen_observation_schedule_id(params: ObservationsWorkflowParams) -> str:
+    probe_cc_key = "ALLCCS"
+    if len(params.probe_cc) > 0:
+        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
+    test_name_key = "ALLTNS"
+    if len(params.test_name) > 0:
+        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
+
+    return f"oonipipeline-observations-{probe_cc_key}-{test_name_key}"
+
+
+async def schedule_observations(
+    client: TemporalClient, params: ObservationsWorkflowParams
+):
+    schedule_id = gen_observation_schedule_id(params)
+
+    await client.create_schedule(
+        schedule_id,
+        Schedule(
+            action=ScheduleActionStartWorkflow(
+                ObservationsWorkflow.run,
+                params,
+                id=OBSERVATION_WORKFLOW_ID,
+                task_queue=TASK_QUEUE_NAME,
+                execution_timeout=timedelta(minutes=30),
+                task_timeout=timedelta(minutes=30),
+                run_timeout=timedelta(minutes=30),
+            ),
+            spec=ScheduleSpec(
+                intervals=[
+                    ScheduleIntervalSpec(
+                        every=timedelta(days=1), offset=timedelta(hours=2)
+                    )
+                ]
+            ),
+            state=ScheduleState(
+                note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
+            ),
+        ),
+    )
+
+
+@dataclass
+class GroundTruthsWorkflowParams:
+    start_day: str
+    end_day: str
+    clickhouse: str
+    data_dir: str
 
 
 @workflow.defn
@@ -149,6 +226,20 @@ class GroundTruthsWorkflow:
                     )
                 )
                 task_list.append(task)
+
+
+@dataclass
+class AnalysisWorkflowParams:
+    probe_cc: List[str]
+    test_name: List[str]
+    start_day: str
+    end_day: str
+    clickhouse: str
+    data_dir: str
+    parallelism: int
+    fast_fail: bool
+    rebuild_ground_truths: bool
+    log_level: int = logging.INFO
 
 
 @workflow.defn(sandboxed=False)

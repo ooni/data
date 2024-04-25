@@ -34,7 +34,7 @@ dependencies = [
   "pandas ~= 2.0.0",
   "flask ~= 2.2.0",
   "jupyterlab ~= 4.0.7",
-  "temporalio ~= 1.5.1",
+  "temporalio ~= 1.5.1"
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -55,6 +55,7 @@ dependencies = [
   "memray",
   "viztracer",
   "pytest-docker",
+  "ipdb"
 ]
 python = "3.11"
 path = ".venv/"

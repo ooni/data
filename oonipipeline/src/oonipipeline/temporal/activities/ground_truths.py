@@ -20,14 +20,6 @@ log = logging.getLogger("oonidata.processing")
 
 
 @dataclass
-class GroundTruthsWorkflowParams:
-    start_day: str
-    end_day: str
-    clickhouse: str
-    data_dir: str
-
-
-@dataclass
 class MakeGroundTruthsParams:
     clickhouse: str
     data_dir: str

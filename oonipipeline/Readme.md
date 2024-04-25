@@ -27,7 +27,8 @@ temporal server start-dev
 
 Start clickhouse server:
 ```
-mkdir -p clickhouse-data
+mkdir -p _clickhouse-data
+cd _clickhouse-data
 clickhouse server
 ```
 
