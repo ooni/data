@@ -219,7 +219,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
                 failures += 1
 
         span.set_attribute("total_failure_count", failures)
-        span.set_attribute("total_observation_count", failures)
+        span.set_attribute("total_observation_count", observation_count)
         span.set_attribute("no_experiment_results_count", no_exp_results)
         span.set_attribute("day", day.strftime("%Y-%m-%d"))
         span.set_attribute("probe_cc", probe_cc)
