@@ -1,3 +1,6 @@
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
+import dataclasses
 import logging
 import multiprocessing
 from pathlib import Path
@@ -28,13 +31,14 @@ from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, Return
 
 from temporalio.contrib.opentelemetry import TracingInterceptor
 
+from ..temporal.workers import make_threaded_worker
+
 from ..temporal.workflows import (
     AnalysisBackfillWorkflow,
     BackfillWorkflowParams,
     GroundTruthsWorkflow,
     GroundTruthsWorkflowParams,
     ObservationsBackfillWorkflow,
-    make_threaded_worker,
     TASK_QUEUE_NAME,
 )
 
@@ -57,6 +61,45 @@ def init_runtime_with_telemetry(endpoint: str) -> TemporalRuntime:
     )
 
 
+async def temporal_connect(telemetry_endpoint: str, temporal_address: str):
+    runtime = init_runtime_with_telemetry(telemetry_endpoint)
+    client = await TemporalClient.connect(
+        temporal_address,
+        interceptors=[TracingInterceptor()],
+        runtime=runtime,
+    )
+    return client
+
+
+@dataclass
+class WorkerParams:
+    temporal_address: str
+    telemetry_endpoint: str
+    thread_count: int
+    process_idx: int = 0
+
+
+async def start_threaded_worker(params: WorkerParams):
+    client = await temporal_connect(
+        telemetry_endpoint=params.telemetry_endpoint,
+        temporal_address=params.temporal_address,
+    )
+    worker = make_threaded_worker(client, parallelism=params.thread_count)
+    await worker.run()
+
+
+def run_worker(params: WorkerParams):
+    asyncio.run(start_threaded_worker(params))
+
+
+def start_workers(params: WorkerParams, process_count: int):
+    process_params = [
+        dataclasses.replace(params, process_idx=idx) for idx in range(process_count)
+    ]
+    with ProcessPoolExecutor(max_workers=process_count) as executor:
+        executor.map(run_worker, process_params)
+
+
 async def run_workflow(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
@@ -69,11 +112,8 @@ async def run_workflow(
         f"running workflow {workflow} temporal_address={temporal_address} telemetry_address={telemetry_endpoint} parallelism={parallelism}"
     )
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    runtime = init_runtime_with_telemetry(telemetry_endpoint)
-    client = await TemporalClient.connect(
-        temporal_address,
-        interceptors=[TracingInterceptor()],
-        runtime=runtime,
+    client = await temporal_connect(
+        telemetry_endpoint=telemetry_endpoint, temporal_address=temporal_address
     )
     async with make_threaded_worker(client, parallelism=parallelism):
         await client.execute_workflow(
@@ -82,6 +122,29 @@ async def run_workflow(
             id=f"{workflow_id_prefix}-{ts}",
             task_queue=TASK_QUEUE_NAME,
         )
+
+
+async def start_workflow(
+    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
+    arg: ParamType,
+    parallelism,
+    workflow_id_prefix: str = "oonipipeline",
+    telemetry_endpoint: str = "http://localhost:4317",
+    temporal_address: str = "localhost:7233",
+):
+    click.echo(
+        f"running workflow {workflow} temporal_address={temporal_address} telemetry_address={telemetry_endpoint} parallelism={parallelism}"
+    )
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    client = await temporal_connect(
+        telemetry_endpoint=telemetry_endpoint, temporal_address=temporal_address
+    )
+    await client.execute_workflow(
+        workflow,
+        arg,
+        id=f"{workflow_id_prefix}-{ts}",
+        task_queue=TASK_QUEUE_NAME,
+    )
 
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
@@ -144,8 +207,9 @@ telemetry_endpoint_option = click.option(
     "--telemetry-endpoint", type=str, required=True, default="http://localhost:4317"
 )
 temporal_address_option = click.option(
-    "--temporal-address", type=str, required=True, default="http://localhost:4317"
+    "--temporal-address", type=str, required=True, default="localhost:7233"
 )
+start_workers_option = click.option("--start-workers/--no-start-workers", default=True)
 
 datadir_option = click.option(
     "--data-dir",
@@ -186,6 +250,7 @@ def cli(log_level: int):
 @parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
+@start_workers_option
 @click.option(
     "--fast-fail",
     is_flag=True,
@@ -214,6 +279,7 @@ def mkobs(
     drop_tables: bool,
     telemetry_endpoint: str,
     temporal_address: str,
+    start_workers: bool,
 ):
     """
     Make observations for OONI measurements and write them into clickhouse or a CSV file
@@ -244,8 +310,12 @@ def mkobs(
         end_day=end_day,
     )
     click.echo(f"starting to make observations with params={params}")
+    action = start_workflow
+    if start_workers:
+        click.echo("starting also workers")
+        action = run_workflow
     asyncio.run(
-        run_workflow(
+        action(
             ObservationsBackfillWorkflow.run,
             params,
             parallelism=parallelism,
@@ -309,8 +379,12 @@ def mkanalysis(
         fast_fail=fast_fail,
     )
     click.echo(f"starting to make analysis with arg={arg}")
+    action = start_workflow
+    if start_workers:
+        click.echo("starting also workers")
+        action = run_workflow
     asyncio.run(
-        run_workflow(
+        action(
             AnalysisBackfillWorkflow.run,
             arg,
             parallelism=parallelism,
@@ -349,8 +423,12 @@ def mkgt(
         data_dir=str(data_dir),
     )
     click.echo(f"starting to make ground truths with arg={arg}")
+    action = start_workflow
+    if start_workers:
+        click.echo("starting also workers")
+        action = run_workflow
     asyncio.run(
-        run_workflow(
+        action(
             GroundTruthsWorkflow.run,
             arg,
             parallelism=parallelism,
@@ -358,6 +436,30 @@ def mkgt(
             telemetry_endpoint=telemetry_endpoint,
             temporal_address=temporal_address,
         )
+    )
+
+
+@cli.command()
+@datadir_option
+@parallelism_option
+@telemetry_endpoint_option
+@temporal_address_option
+def startworkers(
+    data_dir: Path,
+    parallelism: int,
+    telemetry_endpoint: str,
+    temporal_address: str,
+):
+    click.echo("Starting to perform analysis")
+    NetinfoDB(datadir=Path(data_dir), download=True)
+    click.echo("downloaded netinfodb")
+    start_workers(
+        params=WorkerParams(
+            temporal_address=temporal_address,
+            telemetry_endpoint=telemetry_endpoint,
+            thread_count=parallelism,
+        ),
+        process_count=parallelism,
     )
 
 

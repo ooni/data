@@ -1,16 +1,13 @@
 from dataclasses import dataclass
-import multiprocessing
 from typing import List, Optional
 
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 from temporalio import workflow
 from temporalio.common import SearchAttributeKey
-from temporalio.worker import Worker, SharedStateManager
 from temporalio.client import (
     Client as TemporalClient,
     Schedule,
@@ -62,54 +59,9 @@ log = workflow.logger
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
 OBSERVATION_WORKFLOW_ID = "oonipipeline-observations"
 
-
-def make_threaded_worker(client: TemporalClient, parallelism: int) -> Worker:
-    return Worker(
-        client,
-        task_queue=TASK_QUEUE_NAME,
-        workflows=[
-            ObservationsWorkflow,
-            GroundTruthsWorkflow,
-            AnalysisWorkflow,
-            ObservationsBackfillWorkflow,
-            AnalysisBackfillWorkflow,
-        ],
-        activities=[
-            make_observation_in_day,
-            make_ground_truths_in_day,
-            make_analysis_in_a_day,
-            optimize_all_tables,
-            get_obs_count_by_cc,
-        ],
-        activity_executor=ThreadPoolExecutor(parallelism + 2),
-        max_concurrent_activities=parallelism,
-    )
-
-
-def make_multiprocess_worker(client: TemporalClient, parallelism: int) -> Worker:
-    return Worker(
-        client,
-        task_queue=TASK_QUEUE_NAME,
-        workflows=[
-            ObservationsWorkflow,
-            GroundTruthsWorkflow,
-            AnalysisWorkflow,
-            ObservationsBackfillWorkflow,
-            AnalysisBackfillWorkflow,
-        ],
-        activities=[
-            make_observation_in_day,
-            make_ground_truths_in_day,
-            make_analysis_in_a_day,
-            optimize_all_tables,
-            get_obs_count_by_cc,
-        ],
-        activity_executor=ProcessPoolExecutor(parallelism + 2),
-        max_concurrent_activities=parallelism,
-        shared_state_manager=SharedStateManager.create_from_multiprocessing(
-            multiprocessing.Manager()
-        ),
-    )
+MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT = timedelta(minutes=30)
+MAKE_GROUND_TRUTHS_START_TO_CLOSE_TIMEOUT = timedelta(minutes=30)
+MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT = timedelta(minutes=30)
 
 
 def get_workflow_start_time() -> datetime:
@@ -160,7 +112,7 @@ class ObservationsWorkflow:
                 fast_fail=params.fast_fail,
                 bucket_date=params.bucket_date,
             ),
-            start_to_close_timeout=timedelta(minutes=30),
+            start_to_close_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
         )
         res["bucket_date"] = params.bucket_date
         return res
@@ -265,9 +217,9 @@ async def schedule_observations(
                 params,
                 id=OBSERVATION_WORKFLOW_ID,
                 task_queue=TASK_QUEUE_NAME,
-                execution_timeout=timedelta(minutes=30),
-                task_timeout=timedelta(minutes=30),
-                run_timeout=timedelta(minutes=30),
+                execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+                task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+                run_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
             ),
             spec=ScheduleSpec(
                 intervals=[
@@ -311,7 +263,7 @@ class GroundTruthsWorkflow:
                             data_dir=params.data_dir,
                             day=day.strftime("%Y-%m-%d"),
                         ),
-                        start_to_close_timeout=timedelta(minutes=30),
+                        start_to_close_timeout=MAKE_GROUND_TRUTHS_START_TO_CLOSE_TIMEOUT,
                     )
                 )
 
@@ -394,7 +346,7 @@ class AnalysisWorkflow:
                             fast_fail=params.fast_fail,
                             day=params.day,
                         ),
-                        start_to_close_timeout=timedelta(minutes=30),
+                        start_to_close_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
                     )
                 )
                 task_list.append(task)
