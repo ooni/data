@@ -89,25 +89,27 @@ async def start_threaded_worker(params: WorkerParams):
 
 
 def run_worker(params: WorkerParams):
-    asyncio.run(start_threaded_worker(params))
+    try:
+        asyncio.run(start_threaded_worker(params))
+    except KeyboardInterrupt:
+        print("shutting down")
 
 
 def start_workers(params: WorkerParams, process_count: int):
     process_params = [
         dataclasses.replace(params, process_idx=idx) for idx in range(process_count)
     ]
-    # TODO(art): handle ctrl-c to not leave zombie processes
     with ProcessPoolExecutor(max_workers=process_count) as executor:
         executor.map(run_worker, process_params)
 
 
-async def run_workflow(
+async def execute_workflow_with_workers(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
     parallelism,
-    workflow_id_prefix: str = "oonipipeline",
-    telemetry_endpoint: str = "http://localhost:4317",
-    temporal_address: str = "localhost:7233",
+    workflow_id_prefix: str,
+    telemetry_endpoint: str,
+    temporal_address: str,
 ):
     click.echo(
         f"running workflow {workflow} temporal_address={temporal_address} telemetry_address={telemetry_endpoint} parallelism={parallelism}"
@@ -125,13 +127,13 @@ async def run_workflow(
         )
 
 
-async def start_workflow(
+async def execute_workflow(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
     parallelism,
-    workflow_id_prefix: str = "oonipipeline",
-    telemetry_endpoint: str = "http://localhost:4317",
-    temporal_address: str = "localhost:7233",
+    workflow_id_prefix: str,
+    telemetry_endpoint: str,
+    temporal_address: str,
 ):
     click.echo(
         f"running workflow {workflow} temporal_address={temporal_address} telemetry_address={telemetry_endpoint} parallelism={parallelism}"
@@ -146,6 +148,34 @@ async def start_workflow(
         id=f"{workflow_id_prefix}-{ts}",
         task_queue=TASK_QUEUE_NAME,
     )
+
+
+def run_workflow(
+    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
+    arg: ParamType,
+    parallelism,
+    start_workers: bool,
+    workflow_id_prefix: str,
+    telemetry_endpoint: str,
+    temporal_address: str,
+):
+    action = execute_workflow
+    if start_workers:
+        print("starting also workers")
+        action = execute_workflow_with_workers
+    try:
+        asyncio.run(
+            action(
+                workflow=workflow,
+                arg=arg,
+                parallelism=parallelism,
+                workflow_id_prefix=workflow_id_prefix,
+                telemetry_endpoint=telemetry_endpoint,
+                temporal_address=temporal_address,
+            )
+        )
+    except KeyboardInterrupt:
+        print("shutting down")
 
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
@@ -311,19 +341,14 @@ def mkobs(
         end_day=end_day,
     )
     click.echo(f"starting to make observations with params={params}")
-    action = start_workflow
-    if start_workers:
-        click.echo("starting also workers")
-        action = run_workflow
-    asyncio.run(
-        action(
-            ObservationsBackfillWorkflow.run,
-            params,
-            parallelism=parallelism,
-            workflow_id_prefix="oonipipeline-mkobs",
-            telemetry_endpoint=telemetry_endpoint,
-            temporal_address=temporal_address,
-        )
+    run_workflow(
+        ObservationsBackfillWorkflow.run,
+        params,
+        parallelism=parallelism,
+        workflow_id_prefix="oonipipeline-mkobs",
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        start_workers=start_workers,
     )
 
 
@@ -337,6 +362,7 @@ def mkobs(
 @parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
+@start_workers_option
 @click.option(
     "--fast-fail",
     is_flag=True,
@@ -359,6 +385,7 @@ def mkanalysis(
     create_tables: bool,
     telemetry_endpoint: str,
     temporal_address: str,
+    start_workers: bool,
 ):
     if create_tables:
         with ClickhouseConnection(clickhouse) as db:
@@ -370,7 +397,7 @@ def mkanalysis(
     NetinfoDB(datadir=Path(data_dir), download=True)
     click.echo("downloaded netinfodb")
 
-    arg = BackfillWorkflowParams(
+    params = BackfillWorkflowParams(
         probe_cc=probe_cc,
         test_name=test_name,
         start_day=start_day,
@@ -379,20 +406,14 @@ def mkanalysis(
         data_dir=str(data_dir),
         fast_fail=fast_fail,
     )
-    click.echo(f"starting to make analysis with arg={arg}")
-    action = start_workflow
-    if start_workers:
-        click.echo("starting also workers")
-        action = run_workflow
-    asyncio.run(
-        action(
-            AnalysisBackfillWorkflow.run,
-            arg,
-            parallelism=parallelism,
-            workflow_id_prefix="oonipipeline-mkanalysis",
-            telemetry_endpoint=telemetry_endpoint,
-            temporal_address=temporal_address,
-        )
+    run_workflow(
+        AnalysisBackfillWorkflow.run,
+        params,
+        parallelism=parallelism,
+        workflow_id_prefix="oonipipeline-mkanalysis",
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        start_workers=start_workers,
     )
 
 
@@ -404,6 +425,7 @@ def mkanalysis(
 @parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
+@start_workers_option
 def mkgt(
     start_day: str,
     end_day: str,
@@ -412,31 +434,27 @@ def mkgt(
     parallelism: int,
     telemetry_endpoint: str,
     temporal_address: str,
+    start_workers: bool,
 ):
     click.echo("Starting to build ground truths")
     NetinfoDB(datadir=Path(data_dir), download=True)
     click.echo("downloaded netinfodb")
 
-    arg = GroundTruthsWorkflowParams(
+    params = GroundTruthsWorkflowParams(
         start_day=start_day,
         end_day=end_day,
         clickhouse=clickhouse,
         data_dir=str(data_dir),
     )
-    click.echo(f"starting to make ground truths with arg={arg}")
-    action = start_workflow
-    if start_workers:
-        click.echo("starting also workers")
-        action = run_workflow
-    asyncio.run(
-        action(
-            GroundTruthsWorkflow.run,
-            arg,
-            parallelism=parallelism,
-            workflow_id_prefix="oonipipeline-mkgt",
-            telemetry_endpoint=telemetry_endpoint,
-            temporal_address=temporal_address,
-        )
+    click.echo(f"starting to make ground truths with arg={params}")
+    run_workflow(
+        GroundTruthsWorkflow.run,
+        params,
+        parallelism=parallelism,
+        workflow_id_prefix="oonipipeline-mkgt",
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        start_workers=start_workers,
     )
 
 
