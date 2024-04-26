@@ -59,9 +59,9 @@ log = workflow.logger
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
 OBSERVATION_WORKFLOW_ID = "oonipipeline-observations"
 
-MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT = timedelta(minutes=30)
-MAKE_GROUND_TRUTHS_START_TO_CLOSE_TIMEOUT = timedelta(minutes=30)
-MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT = timedelta(minutes=30)
+MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT = timedelta(hours=24)
+MAKE_GROUND_TRUTHS_START_TO_CLOSE_TIMEOUT = timedelta(hours=1)
+MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT = timedelta(hours=10)
 
 
 def get_workflow_start_time() -> datetime:
