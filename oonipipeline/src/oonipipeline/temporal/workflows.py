@@ -24,12 +24,6 @@ from oonipipeline.temporal.activities.common import (
     ClickhouseParams,
 )
 
-
-# Handle temporal sandbox violations related to calls to self.processName =
-# mp.current_process().name in logger, see:
-# https://github.com/python/cpython/blob/1316692e8c7c1e1f3b6639e51804f9db5ed892ea/Lib/logging/__init__.py#L362
-logging.logMultiprocessing = False
-
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
 
@@ -57,8 +51,7 @@ with workflow.unsafe.imports_passed_through():
         make_ground_truths_in_day,
     )
 
-log = logging.getLogger("oonidata.processing")
-
+log = workflow.logger
 
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
 OBSERVATION_WORKFLOW_ID = "oonipipeline-observations"

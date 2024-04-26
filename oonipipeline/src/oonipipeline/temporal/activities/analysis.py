@@ -33,7 +33,7 @@ with workflow.unsafe.imports_passed_through():
         maybe_delete_prev_range,
     )
 
-log = logging.getLogger("oonidata.processing")
+log = activity.logger
 
 
 @dataclass

@@ -16,7 +16,7 @@ with workflow.unsafe.imports_passed_through():
         ClickhouseConnection,
     )
 
-log = logging.getLogger("oonidata.processing")
+log = activity.logger
 
 
 @dataclass

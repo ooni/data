@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 
 from oonipipeline.transforms.observations import measurement_to_observations
 
-log = logging.getLogger("oonidata.processing")
+log = activity.logger
 
 
 @dataclass
