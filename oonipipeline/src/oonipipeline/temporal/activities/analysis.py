@@ -153,7 +153,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
 
     failures = 0
     no_exp_results = 0
-    idx = 0
+    observation_count = 0
     with current_span, tracer.start_as_current_span(
         "MakeObservations:iter_web_observations"
     ) as span:
@@ -187,7 +187,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
                     no_exp_results += 1
                     continue
 
-                idx += 1
+                observation_count += 1
                 table_name, rows = make_db_rows(
                     dc_list=website_analysis, column_names=column_names_wa
                 )
@@ -219,11 +219,13 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
                 failures += 1
 
         span.set_attribute("total_failure_count", failures)
+        span.set_attribute("total_observation_count", failures)
         span.set_attribute("no_experiment_results_count", no_exp_results)
         span.set_attribute("day", day.strftime("%Y-%m-%d"))
+        span.set_attribute("probe_cc", probe_cc)
 
     for prev_range in prev_range_list:
         maybe_delete_prev_range(db=db_lookup, prev_range=prev_range)
     db_writer.close()
 
-    return {"count": idx}
+    return {"count": observation_count}
