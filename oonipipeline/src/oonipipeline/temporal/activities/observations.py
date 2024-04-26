@@ -84,7 +84,7 @@ def make_observations_for_file_entry_batch(
             with current_span, tracer.start_as_current_span(
                 "MakeObservations:stream_file_entry"
             ) as span:
-                log.info(f"processing file s3://{bucket_name}/{s3path}")
+                log.debug(f"processing file s3://{bucket_name}/{s3path}")
                 t = PerfTimer()
                 try:
                     for msmt_dict in stream_measurements(
@@ -118,7 +118,7 @@ def make_observations_for_file_entry_batch(
                             if fast_fail:
                                 db.close()
                                 raise exc
-                    log.info(f"done processing file s3://{bucket_name}/{s3path}")
+                    log.debug(f"done processing file s3://{bucket_name}/{s3path}")
                 except Exception as exc:
                     log.error(
                         f"failed to stream measurements from s3://{bucket_name}/{s3path}"
