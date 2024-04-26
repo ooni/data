@@ -53,6 +53,9 @@ class OutcomeSpace:
     def max(self) -> float:
         return max([v for v in self.to_dict().values()])
 
+    def min(self) -> float:
+        return min([v for v in self.to_dict().values()])
+
 
 @dataclass
 class LoNI:
@@ -962,7 +965,7 @@ def make_website_experiment_results(
     )
     log.debug(f"final_loni: {final_loni}")
 
-    loni_ok_value = 1 - (final_loni.blocked.max() + final_loni.down.max())
+    loni_ok_value = final_ok.min()
 
     loni_down = final_loni.down.to_dict()
     loni_down_keys, loni_down_values = list(loni_down.keys()), list(loni_down.values())
