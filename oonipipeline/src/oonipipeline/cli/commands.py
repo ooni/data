@@ -96,6 +96,7 @@ def start_workers(params: WorkerParams, process_count: int):
     process_params = [
         dataclasses.replace(params, process_idx=idx) for idx in range(process_count)
     ]
+    # TODO(art): handle ctrl-c to not leave zombie processes
     with ProcessPoolExecutor(max_workers=process_count) as executor:
         executor.map(run_worker, process_params)
 
