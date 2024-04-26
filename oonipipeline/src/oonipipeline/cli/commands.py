@@ -141,7 +141,10 @@ clickhouse_option = click.option(
     "--clickhouse", type=str, required=True, default="clickhouse://localhost"
 )
 telemetry_endpoint_option = click.option(
-    "--telemetry_endpoint", type=str, required=True, default="http://localhost:4317"
+    "--telemetry-endpoint", type=str, required=True, default="http://localhost:4317"
+)
+temporal_address_option = click.option(
+    "--temporal-address", type=str, required=True, default="http://localhost:4317"
 )
 
 datadir_option = click.option(
@@ -182,6 +185,7 @@ def cli(log_level: int):
 @datadir_option
 @parallelism_option
 @telemetry_endpoint_option
+@temporal_address_option
 @click.option(
     "--fast-fail",
     is_flag=True,
@@ -209,6 +213,7 @@ def mkobs(
     create_tables: bool,
     drop_tables: bool,
     telemetry_endpoint: str,
+    temporal_address: str,
 ):
     """
     Make observations for OONI measurements and write them into clickhouse or a CSV file
@@ -246,6 +251,7 @@ def mkobs(
             parallelism=parallelism,
             workflow_id_prefix="oonipipeline-mkobs",
             telemetry_endpoint=telemetry_endpoint,
+            temporal_address=temporal_address,
         )
     )
 
@@ -259,6 +265,7 @@ def mkobs(
 @datadir_option
 @parallelism_option
 @telemetry_endpoint_option
+@temporal_address_option
 @click.option(
     "--fast-fail",
     is_flag=True,
@@ -280,6 +287,7 @@ def mkanalysis(
     fast_fail: bool,
     create_tables: bool,
     telemetry_endpoint: str,
+    temporal_address: str,
 ):
     if create_tables:
         with ClickhouseConnection(clickhouse) as db:
@@ -308,6 +316,7 @@ def mkanalysis(
             parallelism=parallelism,
             workflow_id_prefix="oonipipeline-mkanalysis",
             telemetry_endpoint=telemetry_endpoint,
+            temporal_address=temporal_address,
         )
     )
 
@@ -319,6 +328,7 @@ def mkanalysis(
 @datadir_option
 @parallelism_option
 @telemetry_endpoint_option
+@temporal_address_option
 def mkgt(
     start_day: str,
     end_day: str,
@@ -326,6 +336,7 @@ def mkgt(
     data_dir: Path,
     parallelism: int,
     telemetry_endpoint: str,
+    temporal_address: str,
 ):
     click.echo("Starting to build ground truths")
     NetinfoDB(datadir=Path(data_dir), download=True)
@@ -345,6 +356,7 @@ def mkgt(
             parallelism=parallelism,
             workflow_id_prefix="oonipipeline-mkgt",
             telemetry_endpoint=telemetry_endpoint,
+            temporal_address=temporal_address,
         )
     )
 
