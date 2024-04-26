@@ -24,6 +24,7 @@ from oonipipeline.temporal.activities.common import (
     optimize_all_tables,
     ClickhouseParams,
 )
+from oonipipeline.temporal.activities.ground_truths import get_ground_truth_db_path
 
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
@@ -324,7 +325,7 @@ class AnalysisWorkflowParams:
     data_dir: str
     parallelism: int
     fast_fail: bool
-    rebuild_ground_truths: bool
+    force_rebuild_ground_truths: bool = False
     log_level: int = logging.INFO
 
 
@@ -340,7 +341,12 @@ class AnalysisWorkflow:
 
         log.info("building ground truth databases")
         t = PerfTimer()
-        if params.rebuild_ground_truths:
+        if (
+            params.force_rebuild_ground_truths
+            or not get_ground_truth_db_path(
+                day=params.day, data_dir=params.data_dir
+            ).exists()
+        ):
             await workflow.execute_activity(
                 make_ground_truths_in_day,
                 MakeGroundTruthsParams(
@@ -421,7 +427,6 @@ class AnalysisBackfillWorkflow:
                         fast_fail=params.fast_fail,
                         log_level=params.log_level,
                         parallelism=10,
-                        rebuild_ground_truths=True,
                     ),
                     id=f"{workflow_id}/{day_str}",
                 )

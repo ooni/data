@@ -26,22 +26,26 @@ class MakeGroundTruthsParams:
     day: str
 
 
+def get_ground_truth_db_path(data_dir: str, day: str):
+    ground_truth_dir = pathlib.Path(data_dir) / "ground_truths"
+    ground_truth_dir.mkdir(exist_ok=True)
+    return ground_truth_dir / f"web-{day}.sqlite3"
+
+
 @activity.defn
 def make_ground_truths_in_day(params: MakeGroundTruthsParams):
     clickhouse = params.clickhouse
-    day = datetime.strptime(params.day, "%Y-%m-%d").date()
-    data_dir = pathlib.Path(params.data_dir)
 
     db = ClickhouseConnection(clickhouse)
-    netinfodb = NetinfoDB(datadir=data_dir, download=False)
-    ground_truth_dir = data_dir / "ground_truths"
-    ground_truth_dir.mkdir(exist_ok=True)
-    dst_path = ground_truth_dir / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
+    netinfodb = NetinfoDB(datadir=pathlib.Path(params.data_dir), download=False)
+
+    dst_path = get_ground_truth_db_path(data_dir=params.data_dir, day=params.day)
 
     if dst_path.exists():
         dst_path.unlink()
 
     t = PerfTimer()
+    day = datetime.strptime(params.day, "%Y-%m-%d").date()
     log.info(f"building ground truth DB for {day}")
     web_ground_truth_db = WebGroundTruthDB(connect_str=str(dst_path.absolute()))
     web_ground_truth_db.build_from_rows(

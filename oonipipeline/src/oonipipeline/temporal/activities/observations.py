@@ -73,6 +73,7 @@ def make_observations_for_file_entry_batch(
 
     tracer = trace.get_tracer(__name__)
 
+    total_failure_count = 0
     current_span = trace.get_current_span()
     with ClickhouseConnection(clickhouse, row_buffer_size=row_buffer_size) as db:
         ccs = ccs_set(probe_cc)
@@ -129,8 +130,10 @@ def make_observations_for_file_entry_batch(
                 span.set_attribute("fe_size", fe_size)
                 span.set_attribute("failure_count", failure_count)
                 span.add_event(f"s3_path: s3://{bucket_name}/{s3path}")
+                total_failure_count += failure_count
 
     current_span.set_attribute("total_runtime_ms", tbatch.ms)
+    current_span.set_attribute("total_failure_count", total_failure_count)
     return idx
 
 

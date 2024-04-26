@@ -197,6 +197,11 @@ class WebGroundTruthDB:
         self.db.execute("pragma optimize;")
         self.create_indexes()
 
+    def count_rows(self) -> int:
+        row = self.db.execute(f"SELECT COUNT() FROM {self._table_name};").fetchone()
+        assert len(row) == 1
+        return row[0]
+
     def build_from_existing(self, db_str: str):
         with sqlite3.connect(db_str) as src_db:
             self.db = sqlite3.connect(":memory:")

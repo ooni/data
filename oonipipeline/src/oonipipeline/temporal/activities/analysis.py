@@ -1,22 +1,18 @@
 import dataclasses
 from dataclasses import dataclass
-import logging
 import pathlib
 
-from datetime import date, datetime, timezone
+from datetime import datetime
 from typing import Dict, List
 
+import opentelemetry.trace
 from temporalio import workflow, activity
-
-from .common import optimize_all_tables
 
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
 
     import orjson
-    import statsd
 
-    from oonidata.datautils import PerfTimer
     from oonidata.models.analysis import WebAnalysis
     from oonidata.models.experiment_result import MeasurementExperimentResult
 
@@ -103,14 +99,16 @@ class MakeAnalysisParams:
 
 @activity.defn
 def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
-    t_total = PerfTimer()
     data_dir = pathlib.Path(params.data_dir)
     clickhouse = params.clickhouse
     day = datetime.strptime(params.day, "%Y-%m-%d").date()
     probe_cc = params.probe_cc
     test_name = params.test_name
 
-    statsd_client = statsd.StatsClient("localhost", 8125)
+    tracer = opentelemetry.trace.get_tracer(__name__)
+
+    current_span = opentelemetry.trace.get_current_span()
+
     fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
     body_db = BodyDB(db=ClickhouseConnection(clickhouse))
     db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
@@ -140,94 +138,92 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
     ]
 
     log.info(f"loading ground truth DB for {day}")
-    t = PerfTimer()
-    ground_truth_db_path = (
-        data_dir / "ground_truths" / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
-    )
-    web_ground_truth_db = WebGroundTruthDB()
-    web_ground_truth_db.build_from_existing(str(ground_truth_db_path.absolute()))
-    statsd_client.timing("oonidata.web_analysis.ground_truth", t.ms)
-    log.info(f"loaded ground truth DB for {day} in {t.pretty}")
+    with current_span, tracer.start_as_current_span(
+        "MakeObservations:load_ground_truths"
+    ) as span:
+        ground_truth_db_path = (
+            data_dir / "ground_truths" / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
+        )
+        web_ground_truth_db = WebGroundTruthDB()
+        web_ground_truth_db.build_from_existing(str(ground_truth_db_path.absolute()))
+        log.info(f"loaded ground truth DB for {day}")
+        span.add_event(f"loaded ground truth DB for {day}")
+        span.set_attribute("day", day.strftime("%Y-%m-%d"))
+        span.set_attribute("ground_truth_row_count", web_ground_truth_db.count_rows())
 
+    failures = 0
+    no_exp_results = 0
     idx = 0
-    for web_obs in iter_web_observations(
-        db_lookup, measurement_day=day, probe_cc=probe_cc, test_name="web_connectivity"
-    ):
-        try:
-            t_er_gen = PerfTimer()
-            t = PerfTimer()
-            relevant_gts = web_ground_truth_db.lookup_by_web_obs(web_obs=web_obs)
-        except:
-            log.error(
-                f"failed to lookup relevant_gts for {web_obs[0].measurement_uid}",
-                exc_info=True,
-            )
-            continue
-
-        try:
-            statsd_client.timing("oonidata.web_analysis.gt_lookup", t.ms)
-            website_analysis = list(
-                make_web_analysis(
-                    web_observations=web_obs,
-                    body_db=body_db,
-                    web_ground_truths=relevant_gts,
-                    fingerprintdb=fingerprintdb,
+    with current_span, tracer.start_as_current_span(
+        "MakeObservations:iter_web_observations"
+    ) as span:
+        for web_obs in iter_web_observations(
+            db_lookup,
+            measurement_day=day,
+            probe_cc=probe_cc,
+            test_name="web_connectivity",
+        ):
+            try:
+                relevant_gts = web_ground_truth_db.lookup_by_web_obs(web_obs=web_obs)
+            except:
+                log.error(
+                    f"failed to lookup relevant_gts for {web_obs[0].measurement_uid}",
+                    exc_info=True,
                 )
-            )
-            log.info(f"generated {len(website_analysis)} website_analysis")
-            if len(website_analysis) == 0:
-                log.info(f"no website analysis for {probe_cc}, {test_name}")
+                failures += 1
                 continue
-            idx += 1
-            table_name, rows = make_db_rows(
-                dc_list=website_analysis, column_names=column_names_wa
-            )
-            statsd_client.incr("oonidata.web_analysis.analysis.obs", 1, rate=0.1)  # type: ignore
-            statsd_client.gauge("oonidata.web_analysis.analysis.obs_idx", idx, rate=0.1)  # type: ignore
-            statsd_client.timing("oonidata.web_analysis.analysis.obs", t_er_gen.ms, rate=0.1)  # type: ignore
 
-            with statsd_client.timer("db_write_rows.timing"):
+            try:
+                website_analysis = list(
+                    make_web_analysis(
+                        web_observations=web_obs,
+                        body_db=body_db,
+                        web_ground_truths=relevant_gts,
+                        fingerprintdb=fingerprintdb,
+                    )
+                )
+                if len(website_analysis) == 0:
+                    log.info(f"no website analysis for {probe_cc}, {test_name}")
+                    no_exp_results += 1
+                    continue
+
+                idx += 1
+                table_name, rows = make_db_rows(
+                    dc_list=website_analysis, column_names=column_names_wa
+                )
+
                 db_writer.write_rows(
                     table_name=table_name,
                     rows=rows,
                     column_names=column_names_wa,
                 )
 
-            with statsd_client.timer("oonidata.web_analysis.experiment_results.timing"):
                 website_er = list(make_website_experiment_results(website_analysis))
-                log.info(f"generated {len(website_er)} website_er")
                 table_name, rows = make_db_rows(
                     dc_list=website_er,
                     column_names=column_names_er,
                     custom_remap={"loni_list": orjson.dumps},
                 )
 
-            db_writer.write_rows(
-                table_name=table_name,
-                rows=rows,
-                column_names=column_names_er,
-            )
+                db_writer.write_rows(
+                    table_name=table_name,
+                    rows=rows,
+                    column_names=column_names_er,
+                )
 
-        except:
-            web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
-            log.error(f"failed to generate analysis for {web_obs_ids}", exc_info=True)
+            except:
+                web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
+                log.error(
+                    f"failed to generate analysis for {web_obs_ids}", exc_info=True
+                )
+                failures += 1
+
+        span.set_attribute("total_failure_count", failures)
+        span.set_attribute("no_experiment_results_count", no_exp_results)
+        span.set_attribute("day", day.strftime("%Y-%m-%d"))
 
     for prev_range in prev_range_list:
         maybe_delete_prev_range(db=db_lookup, prev_range=prev_range)
     db_writer.close()
 
-    with ClickhouseConnection(clickhouse) as db:
-        db.execute(
-            "INSERT INTO oonidata_processing_logs (key, timestamp, runtime_ms, bytes, msmt_count, comment) VALUES",
-            [
-                [
-                    "oonidata.analysis.made_day_analysis",
-                    datetime.now(timezone.utc).replace(tzinfo=None),
-                    int(t_total.ms),
-                    0,
-                    idx,
-                    day.strftime("%Y-%m-%d"),
-                ]
-            ],
-        )
     return {"count": idx}
