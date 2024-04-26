@@ -231,12 +231,3 @@ def make_cc_batches(
     if len(current_cc_batch) > 0:
         cc_batches.append(current_cc_batch)
     return cc_batches
-
-
-# TODO(art)
-# We disable the sanbox for all this workflow, since otherwise pytz fails to
-# work which is a requirement for clickhouse.
-# This is most likely due to it doing an open() in order to read the timezone
-# definitions.
-# I spent some time debugging this, but eventually gave up. We should eventually
-# look into making this run OK inside of the sandbox.

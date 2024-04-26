@@ -300,7 +300,7 @@ class AnalysisWorkflowParams:
     log_level: int = logging.INFO
 
 
-@workflow.defn(sandboxed=False)
+@workflow.defn
 class AnalysisWorkflow:
     @workflow.run
     async def run(self, params: AnalysisWorkflowParams) -> dict:
