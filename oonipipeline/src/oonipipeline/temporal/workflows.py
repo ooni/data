@@ -158,12 +158,14 @@ class ObservationsBackfillWorkflow:
 
         t = PerfTimer(unstoppable=True)
         task_list = []
+        workflow_id = workflow.info().workflow_id
         for day in date_interval(start_day, end_day):
+            bucket_date = day.strftime("%Y-%m-%d")
             task_list.append(
                 workflow.execute_child_workflow(
                     ObservationsWorkflow.run,
                     ObservationsWorkflowParams(
-                        bucket_date=day.strftime("%Y-%m-%d"),
+                        bucket_date=bucket_date,
                         probe_cc=params.probe_cc,
                         test_name=params.test_name,
                         clickhouse=params.clickhouse,
@@ -171,6 +173,7 @@ class ObservationsBackfillWorkflow:
                         fast_fail=params.fast_fail,
                         log_level=params.log_level,
                     ),
+                    id=f"{workflow_id}/{bucket_date}",
                 )
             )
 
@@ -375,12 +378,14 @@ class AnalysisBackfillWorkflow:
 
         t = PerfTimer(unstoppable=True)
         task_list = []
+        workflow_id = workflow.info().workflow_id
         for day in date_interval(start_day, end_day):
+            day_str = day.strftime("%Y-%m-%d")
             task_list.append(
                 workflow.execute_child_workflow(
                     AnalysisWorkflow.run,
                     AnalysisWorkflowParams(
-                        day=day.strftime("%Y-%m-%d"),
+                        day=day_str,
                         probe_cc=params.probe_cc,
                         test_name=params.test_name,
                         clickhouse=params.clickhouse,
@@ -390,6 +395,7 @@ class AnalysisBackfillWorkflow:
                         parallelism=10,
                         rebuild_ground_truths=True,
                     ),
+                    id=f"{workflow_id}/{day_str}",
                 )
             )
 

@@ -48,14 +48,16 @@ async def run_workflow(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
     parallelism,
+    workflow_id_prefix: str = "oonipipeline",
     temporal_address: str = "localhost:7233",
 ):
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     client = await TemporalClient.connect(temporal_address)
     async with make_worker(client, parallelism=parallelism):
         await client.execute_workflow(
             workflow,
             arg,
-            id=TASK_QUEUE_NAME,
+            id=f"{workflow_id_prefix}-{ts}",
             task_queue=TASK_QUEUE_NAME,
         )
 
@@ -217,7 +219,12 @@ def mkobs(
     )
     click.echo(f"starting to make observations with params={params}")
     asyncio.run(
-        run_workflow(ObservationsBackfillWorkflow.run, params, parallelism=parallelism)
+        run_workflow(
+            ObservationsBackfillWorkflow.run,
+            params,
+            parallelism=parallelism,
+            workflow_id_prefix="oonipipeline-mkobs",
+        )
     )
 
 
@@ -281,6 +288,7 @@ def mkanalysis(
             AnalysisBackfillWorkflow.run,
             arg,
             parallelism=parallelism,
+            workflow_id_prefix="oonipipeline-mkanalysis",
         )
     )
 
@@ -305,7 +313,14 @@ def mkgt(
         data_dir=str(data_dir),
     )
     click.echo(f"starting to make ground truths with arg={arg}")
-    asyncio.run(run_workflow(GroundTruthsWorkflow.run, arg, parallelism=parallelism))
+    asyncio.run(
+        run_workflow(
+            GroundTruthsWorkflow.run,
+            arg,
+            parallelism=parallelism,
+            workflow_id_prefix="oonipipeline-mkgt",
+        )
+    )
 
 
 @cli.command()
