@@ -6,20 +6,27 @@ from typing import List, Optional
 from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
 
+import opentelemetry.context
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
 import click
 from click_loglevel import LogLevel
 
 from temporalio.runtime import (
-    PrometheusConfig,
+    OpenTelemetryConfig,
     Runtime as TemporalRuntime,
     TelemetryConfig,
 )
 from temporalio.client import (
     Client as TemporalClient,
 )
-
 from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
 
+from temporalio.contrib.opentelemetry import TracingInterceptor
 
 from ..temporal.workflows import (
     AnalysisBackfillWorkflow,
@@ -37,9 +44,16 @@ from ..db.create_tables import create_queries, list_all_table_diffs
 from ..netinfo import NetinfoDB
 
 
-def make_temporal_prometheus_runtime(bind_address: str) -> TemporalRuntime:
+def init_runtime_with_telemetry(endpoint: str) -> TemporalRuntime:
+    provider = TracerProvider(resource=Resource.create({SERVICE_NAME: "oonipipeline"}))
+    exporter = OTLPSpanExporter(
+        endpoint=endpoint, insecure=endpoint.startswith("http://")
+    )
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+
     return TemporalRuntime(
-        telemetry=TelemetryConfig(metrics=PrometheusConfig(bind_address=bind_address))
+        telemetry=TelemetryConfig(metrics=OpenTelemetryConfig(url=endpoint))
     )
 
 
@@ -48,16 +62,18 @@ async def run_workflow(
     arg: ParamType,
     parallelism,
     workflow_id_prefix: str = "oonipipeline",
-    prometheus_bind_address: str = "127.0.0.1:9233",
+    telemetry_endpoint: str = "http://localhost:4317",
     temporal_address: str = "localhost:7233",
 ):
     click.echo(
-        f"running workflow {workflow} temporal_address={temporal_address} prometheus_bind_address={prometheus_bind_address} parallelism={parallelism}"
+        f"running workflow {workflow} temporal_address={temporal_address} telemetry_address={telemetry_endpoint} parallelism={parallelism}"
     )
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    runtime = init_runtime_with_telemetry(telemetry_endpoint)
     client = await TemporalClient.connect(
         temporal_address,
-        runtime=make_temporal_prometheus_runtime(prometheus_bind_address),
+        interceptors=[TracingInterceptor()],
+        runtime=runtime,
     )
     async with make_threaded_worker(client, parallelism=parallelism):
         await client.execute_workflow(

@@ -34,7 +34,9 @@ dependencies = [
   "pandas ~= 2.0.0",
   "flask ~= 2.2.0",
   "jupyterlab ~= 4.0.7",
-  "temporalio ~= 1.5.1"
+  "temporalio ~= 1.5.1",
+  "temporalio[opentelemetry] ~= 1.5.1",
+  "opentelemetry-exporter-otlp-proto-grpc ~= 1.18.0"
 ]
 
 [tool.hatch.build.targets.sdist]

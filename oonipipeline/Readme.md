@@ -38,3 +38,15 @@ hatch run oonipipeline mkobs --probe-cc US --test-name signal --start-day 2024-0
 ```
 
 Monitor the workflow executing by accessing: http://localhost:8233/
+
+If you would like to also collect OpenTelemetry traces, you can set it up like so:
+```
+docker run -d --name jaeger \
+  -e COLLECTOR_OTLP_ENABLED=true \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  -p 4318:4318 \
+  jaegertracing/all-in-one:latest
+```
+
+They are then visible at the following address: http://localhost:16686/search
