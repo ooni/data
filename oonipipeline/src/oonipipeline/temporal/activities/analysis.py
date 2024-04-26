@@ -117,6 +117,9 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
     column_names_wa = [f.name for f in dataclasses.fields(WebAnalysis)]
     column_names_er = [f.name for f in dataclasses.fields(MeasurementExperimentResult)]
 
+    # TODO(art): this previous range search and deletion makes the idempotence
+    # of the activity not 100% accurate.
+    # We should look into fixing it.
     prev_range_list = [
         get_prev_range(
             db=db_lookup,

@@ -141,6 +141,9 @@ def make_observations_for_file_entry_batch(
 def make_observation_in_day(params: MakeObservationsParams) -> dict:
     day = datetime.strptime(params.bucket_date, "%Y-%m-%d").date()
 
+    # TODO(art): this previous range search and deletion makes the idempotence
+    # of the activity not 100% accurate.
+    # We should look into fixing it.
     with ClickhouseConnection(params.clickhouse, row_buffer_size=10_000) as db:
         prev_ranges = []
         for table_name in ["obs_web"]:
