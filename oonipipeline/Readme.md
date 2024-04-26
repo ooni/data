@@ -50,3 +50,23 @@ docker run -d --name jaeger \
 ```
 
 They are then visible at the following address: http://localhost:16686/search
+
+### Production usage
+
+By default we use thread based parallelism, but in production you really want to have multiple workers processes which have inside of them multiple threads.
+
+To achieve that you should separately start the worker processes (which can
+also be started on many machines) and then trigger the workflow execution.
+
+You should also be using the temporal docker container or temporal cloud
+instead of the dev-server.
+
+You can start the worker processes like so:
+```
+hatch run oonipipeline startworkers
+```
+
+Then you can trigger the workflow by passing the `--no-start-workers` flag:
+```
+hatch run oonipipeline mkobs --probe-cc US --start-day 2024-01-01 --end-day 2024-01-20 --no-start-workers
+```
