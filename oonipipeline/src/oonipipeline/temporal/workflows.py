@@ -1,11 +1,12 @@
 from dataclasses import dataclass
+import multiprocessing
 from typing import List, Optional
 
 import logging
-import multiprocessing
-import concurrent.futures
 import asyncio
 from datetime import datetime, timedelta, timezone
+
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 from temporalio import workflow
 from temporalio.common import SearchAttributeKey
@@ -27,7 +28,6 @@ from oonipipeline.temporal.activities.common import (
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
 
-    from tqdm import tqdm
     from oonidata.dataclient import date_interval
     from oonidata.datautils import PerfTimer
     from oonipipeline.db.connections import ClickhouseConnection
@@ -51,13 +51,18 @@ with workflow.unsafe.imports_passed_through():
         make_ground_truths_in_day,
     )
 
+# Handle temporal sandbox violations related to calls to self.processName =
+# mp.current_process().name in logger, see:
+# https://github.com/python/cpython/blob/1316692e8c7c1e1f3b6639e51804f9db5ed892ea/Lib/logging/__init__.py#L362
+logging.logMultiprocessing = False
+
 log = workflow.logger
 
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
 OBSERVATION_WORKFLOW_ID = "oonipipeline-observations"
 
 
-def make_worker(client: TemporalClient, parallelism: int) -> Worker:
+def make_threaded_worker(client: TemporalClient, parallelism: int) -> Worker:
     return Worker(
         client,
         task_queue=TASK_QUEUE_NAME,
@@ -75,7 +80,30 @@ def make_worker(client: TemporalClient, parallelism: int) -> Worker:
             optimize_all_tables,
             get_obs_count_by_cc,
         ],
-        activity_executor=concurrent.futures.ProcessPoolExecutor(parallelism + 2),
+        activity_executor=ThreadPoolExecutor(parallelism + 2),
+        max_concurrent_activities=parallelism,
+    )
+
+
+def make_multiprocess_worker(client: TemporalClient, parallelism: int) -> Worker:
+    return Worker(
+        client,
+        task_queue=TASK_QUEUE_NAME,
+        workflows=[
+            ObservationsWorkflow,
+            GroundTruthsWorkflow,
+            AnalysisWorkflow,
+            ObservationsBackfillWorkflow,
+            AnalysisBackfillWorkflow,
+        ],
+        activities=[
+            make_observation_in_day,
+            make_ground_truths_in_day,
+            make_analysis_in_a_day,
+            optimize_all_tables,
+            get_obs_count_by_cc,
+        ],
+        activity_executor=ProcessPoolExecutor(parallelism + 2),
         max_concurrent_activities=parallelism,
         shared_state_manager=SharedStateManager.create_from_multiprocessing(
             multiprocessing.Manager()

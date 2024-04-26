@@ -36,6 +36,61 @@ with workflow.unsafe.imports_passed_through():
 log = activity.logger
 
 
+def make_cc_batches(
+    cnt_by_cc: Dict[str, int],
+    probe_cc: List[str],
+    parallelism: int,
+) -> List[List[str]]:
+    """
+    The goal of this function is to spread the load of each batch of
+    measurements by probe_cc. This allows us to parallelize analysis on a
+    per-country basis based on the number of measurements.
+    We assume that the measurements are uniformly distributed over the tested
+    interval and then break them up into a number of batches equivalent to the
+    parallelism count based on the number of measurements in each country.
+
+    Here is a concrete example, suppose we have 3 countries IT, IR, US with 300,
+    400, 1000 measurements respectively and a parallelism of 2, we will be
+    creating 2 batches where the first has in it IT, IR and the second has US.
+    """
+    if len(probe_cc) > 0:
+        selected_ccs_with_cnt = set(probe_cc).intersection(set(cnt_by_cc.keys()))
+        if len(selected_ccs_with_cnt) == 0:
+            raise Exception(
+                f"No observations for {probe_cc} in the time range. Try adjusting the date range or choosing different countries"
+            )
+        # We remove from the cnt_by_cc all the countries we are not interested in
+        cnt_by_cc = {k: cnt_by_cc[k] for k in selected_ccs_with_cnt}
+
+    total_obs_cnt = sum(cnt_by_cc.values())
+
+    # We assume uniform distribution of observations per (country, day)
+    max_obs_per_batch = total_obs_cnt / parallelism
+
+    # We break up the countries into batches where the count of observations in
+    # each batch is roughly equal.
+    # This is done so that we can spread the load based on the countries in
+    # addition to the time range.
+    cc_batches = []
+    current_cc_batch_size = 0
+    current_cc_batch = []
+    cnt_by_cc_sorted = sorted(cnt_by_cc.items(), key=lambda x: x[0])
+    while cnt_by_cc_sorted:
+        while current_cc_batch_size <= max_obs_per_batch:
+            try:
+                cc, cnt = cnt_by_cc_sorted.pop()
+            except IndexError:
+                break
+            current_cc_batch.append(cc)
+            current_cc_batch_size += cnt
+        cc_batches.append(current_cc_batch)
+        current_cc_batch = []
+        current_cc_batch_size = 0
+    if len(current_cc_batch) > 0:
+        cc_batches.append(current_cc_batch)
+    return cc_batches
+
+
 @dataclass
 class MakeAnalysisParams:
     probe_cc: List[str]
@@ -176,58 +231,3 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
             ],
         )
     return {"count": idx}
-
-
-def make_cc_batches(
-    cnt_by_cc: Dict[str, int],
-    probe_cc: List[str],
-    parallelism: int,
-) -> List[List[str]]:
-    """
-    The goal of this function is to spread the load of each batch of
-    measurements by probe_cc. This allows us to parallelize analysis on a
-    per-country basis based on the number of measurements.
-    We assume that the measurements are uniformly distributed over the tested
-    interval and then break them up into a number of batches equivalent to the
-    parallelism count based on the number of measurements in each country.
-
-    Here is a concrete example, suppose we have 3 countries IT, IR, US with 300,
-    400, 1000 measurements respectively and a parallelism of 2, we will be
-    creating 2 batches where the first has in it IT, IR and the second has US.
-    """
-    if len(probe_cc) > 0:
-        selected_ccs_with_cnt = set(probe_cc).intersection(set(cnt_by_cc.keys()))
-        if len(selected_ccs_with_cnt) == 0:
-            raise Exception(
-                f"No observations for {probe_cc} in the time range. Try adjusting the date range or choosing different countries"
-            )
-        # We remove from the cnt_by_cc all the countries we are not interested in
-        cnt_by_cc = {k: cnt_by_cc[k] for k in selected_ccs_with_cnt}
-
-    total_obs_cnt = sum(cnt_by_cc.values())
-
-    # We assume uniform distribution of observations per (country, day)
-    max_obs_per_batch = total_obs_cnt / parallelism
-
-    # We break up the countries into batches where the count of observations in
-    # each batch is roughly equal.
-    # This is done so that we can spread the load based on the countries in
-    # addition to the time range.
-    cc_batches = []
-    current_cc_batch_size = 0
-    current_cc_batch = []
-    cnt_by_cc_sorted = sorted(cnt_by_cc.items(), key=lambda x: x[0])
-    while cnt_by_cc_sorted:
-        while current_cc_batch_size <= max_obs_per_batch:
-            try:
-                cc, cnt = cnt_by_cc_sorted.pop()
-            except IndexError:
-                break
-            current_cc_batch.append(cc)
-            current_cc_batch_size += cnt
-        cc_batches.append(current_cc_batch)
-        current_cc_batch = []
-        current_cc_batch_size = 0
-    if len(current_cc_batch) > 0:
-        cc_batches.append(current_cc_batch)
-    return cc_batches

@@ -1,28 +1,34 @@
 import logging
 import multiprocessing
 from pathlib import Path
-import sys
-from typing import Any, Callable, Coroutine, List, Optional
+import asyncio
+from typing import List, Optional
 from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
 
 import click
 from click_loglevel import LogLevel
 
+from temporalio.runtime import (
+    PrometheusConfig,
+    Runtime as TemporalRuntime,
+    TelemetryConfig,
+)
+from temporalio.client import (
+    Client as TemporalClient,
+)
+
+from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
+
+
 from ..temporal.workflows import (
     AnalysisBackfillWorkflow,
-    AnalysisWorkflow,
-    AnalysisWorkflowParams,
     BackfillWorkflowParams,
     GroundTruthsWorkflow,
     GroundTruthsWorkflowParams,
     ObservationsBackfillWorkflow,
-    ObservationsWorkflow,
-    ObservationsWorkflowParams,
-    make_worker,
-    gen_observation_schedule_id,
+    make_threaded_worker,
     TASK_QUEUE_NAME,
-    schedule_observations,
 )
 
 from ..__about__ import VERSION
@@ -30,18 +36,11 @@ from ..db.connections import ClickhouseConnection
 from ..db.create_tables import create_queries, list_all_table_diffs
 from ..netinfo import NetinfoDB
 
-log = logging.getLogger("oonidata")
 
-import asyncio
-
-
-from temporalio.client import (
-    Client as TemporalClient,
-    ScheduleBackfill,
-    ScheduleOverlapPolicy,
-)
-
-from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
+def make_temporal_prometheus_runtime(bind_address: str) -> TemporalRuntime:
+    return TemporalRuntime(
+        telemetry=TelemetryConfig(metrics=PrometheusConfig(bind_address=bind_address))
+    )
 
 
 async def run_workflow(
@@ -49,11 +48,18 @@ async def run_workflow(
     arg: ParamType,
     parallelism,
     workflow_id_prefix: str = "oonipipeline",
+    prometheus_bind_address: str = "127.0.0.1:9233",
     temporal_address: str = "localhost:7233",
 ):
+    click.echo(
+        f"running workflow {workflow} temporal_address={temporal_address} prometheus_bind_address={prometheus_bind_address} parallelism={parallelism}"
+    )
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    client = await TemporalClient.connect(temporal_address)
-    async with make_worker(client, parallelism=parallelism):
+    client = await TemporalClient.connect(
+        temporal_address,
+        runtime=make_temporal_prometheus_runtime(prometheus_bind_address),
+    )
+    async with make_threaded_worker(client, parallelism=parallelism):
         await client.execute_workflow(
             workflow,
             arg,
@@ -135,7 +141,6 @@ parallelism_option = click.option(
 
 
 @click.group()
-@click.option("--error-log-file", type=Path)
 @click.option(
     "-l",
     "--log-level",
@@ -145,13 +150,8 @@ parallelism_option = click.option(
     show_default=True,
 )
 @click.version_option(VERSION)
-def cli(error_log_file: Path, log_level: int):
-    log.addHandler(logging.StreamHandler(sys.stderr))
-    log.setLevel(log_level)
-    if error_log_file:
-        logging.basicConfig(
-            filename=error_log_file, encoding="utf-8", level=logging.ERROR
-        )
+def cli(log_level: int):
+    logging.basicConfig(level=log_level)
 
 
 @cli.command()
