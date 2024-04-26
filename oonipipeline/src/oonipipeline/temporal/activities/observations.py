@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import dataclasses
-import logging
 from typing import List, Sequence, Tuple
 from oonidata.dataclient import (
     ccs_set,
@@ -124,10 +123,12 @@ def make_observations_for_file_entry_batch(
                         f"failed to stream measurements from s3://{bucket_name}/{s3path}"
                     )
                     log.error(exc)
+                # TODO(art): figure out if the rate of these metrics is too
+                # much. For each processed file a telemetry event is generated.
                 span.set_attribute("kb_per_sec", fe_size / 1024 / t.s)
                 span.set_attribute("fe_size", fe_size)
                 span.set_attribute("failure_count", failure_count)
-                span.set_attribute("bucket_name", bucket_name)
+                span.add_event(f"s3_path: s3://{bucket_name}/{s3path}")
 
     current_span.set_attribute("total_runtime_ms", tbatch.ms)
     return idx
