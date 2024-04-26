@@ -439,14 +439,14 @@ class AnalysisBackfillWorkflow:
             day = res["day"]
             total_obs_count += res["obs_count"]
 
-            obs_per_sec = round(total_obs_count / t.s / 10**6, 1)
+            obs_per_sec = round(total_obs_count / t.s, 1)
             log.info(
-                f"finished processing {day} speed: {total_obs_count} obs ({obs_per_sec}obs/s)"
+                f"finished processing {day} in {t.pretty} total_obs_count={total_obs_count} ({obs_per_sec}obs/s)"
             )
 
-        obs_per_sec = round(total_obs_count / t.s / 10**6, 1)
+        obs_per_sec = round(total_obs_count / t.s, 1)
         log.info(
-            f"finished processing {day} speed: {total_obs_count} obs ({obs_per_sec}obs/s)"
+            f"finished processing {day} in {t.pretty} total_obse_count={total_obs_count} ({obs_per_sec}obs/s)"
         )
 
         return {
