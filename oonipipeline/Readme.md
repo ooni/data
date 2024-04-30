@@ -97,13 +97,27 @@ hatch run oonipipeline mkobs --probe-cc US --start-day 2024-01-01 --end-day 2024
 
 #### Superset
 
-Superset is a neat data viz platform. In order to set it up to speak to your clickhouse instance, assuming it's listening on localhost of the host container, you should go do the database page of superset and add it like this:
+Superset is a neat data viz platform.
 
-```
-host: host.docker.internal
-port: 8123
-```
+In order to set it up to speak to your clickhouse instance, assuming it's
+listening on localhost of the host container, you should:
 
-In the default settings you can leave everything else blank.
+1. Click Settings -> Data - Database connections
+2. Click + Database
+3. In the Supported Databases drop down pick "Clickhouse Connect"
+4. Enter as Host `host.docker.internal` and port `8123`
 
-For more information on superset usage and setup refer to [their documentation](https://superset.apache.org/docs/).
+Note: `host.docker.internal` only works reliably on windows, macOS and very
+recent linux+docker versions. In linux the needed configuration is a bit more
+complex and requires discovering the gateway IP of the host container,
+adjusting the clickhouse setup to bind to that IP and setting up correct nft or
+similar firewall rules.
+
+5. Click connect
+6. Go to datasets and click + Dataset
+7. Add all the tables from the `clickhouse` database in the `default` schema.
+   Recommended tables to add are `obs_web` and `measurement_experiment_result`.
+8. You are now able to start building dashboards
+
+For more information on superset usage and setup refer to [their
+documentation](https://superset.apache.org/docs/).
