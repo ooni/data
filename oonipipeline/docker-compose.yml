@@ -40,7 +40,7 @@ services:
     volumes:
       - /var/lib/postgresql/data
   kibana:
-    image: docker.elastic.co/kibana/kibana:6.0.0
+    image: docker.elastic.co/kibana/kibana:${ELASTICSEARCH_VERSION}
     ports:
       - "5601:5601"
     environment:
