@@ -3,7 +3,7 @@ set -ex
 
 echo "starting superset"
 
-if [ ! -f /var/run/superset_is_configured ]; then
+if [ ! -f /var/run/superset/superset_is_configured ]; then
     echo "superset is not configured, setting it up"
     superset fab create-admin \
                 --username admin \
@@ -13,6 +13,6 @@ if [ ! -f /var/run/superset_is_configured ]; then
                 --password oonity
     superset db upgrade
     superset init
-    touch /var/run/superset_is_configured
+    touch /var/run/superset/superset_is_configured
 fi
 /usr/bin/run-server.sh
