@@ -1,0 +1,194 @@
+---
+version: "3.5"
+services:
+
+#### Common services
+  elasticsearch:
+    container_name: elasticsearch
+    hostname: elasticsearch
+    environment:
+      - cluster.routing.allocation.disk.threshold_enabled=true
+      - cluster.routing.allocation.disk.watermark.low=512mb
+      - cluster.routing.allocation.disk.watermark.high=256mb
+      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.security.enabled=false
+    image: elasticsearch:${ELASTICSEARCH_VERSION}
+    networks:
+      - main-network
+    expose:
+      - 9200
+    volumes:
+      - /var/lib/elasticsearch/data
+    healthcheck:
+       test: curl -s http://elasticsearch:9200 >/dev/null || exit 1
+       interval: 30s
+       timeout: 10s
+       retries: 50
+  postgresql:
+    container_name: postgresql
+    hostname: postgresql
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal
+    image: postgres:${POSTGRESQL_VERSION}
+    networks:
+      - main-network
+    expose:
+      - 5432
+    volumes:
+      - /var/lib/postgresql/data
+  kibana:
+    image: docker.elastic.co/kibana/kibana:6.0.0
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    depends_on:
+    - elasticsearch
+    networks:
+    - main-network
+#### Temporal
+  temporal:
+    container_name: temporal
+    hostname: temporal
+    depends_on:
+      - postgresql
+      - elasticsearch
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - ENABLE_ES=true
+      - ES_SEEDS=elasticsearch
+      - ES_VERSION=v7
+    image: temporalio/auto-setup:${TEMPORAL_VERSION}
+    networks:
+      - main-network
+    ports:
+      - 7233:7233
+    labels:
+      kompose.volume.type: configMap
+    volumes:
+      - ./temporal-config:/etc/temporal/config/dynamicconfig
+  temporal-admin-tools:
+    container_name: temporal-admin-tools
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    image: temporalio/admin-tools:${TEMPORAL_VERSION}
+    networks:
+      - main-network
+    stdin_open: true
+    tty: true
+  temporal-ui:
+    container_name: temporal-ui
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    image: temporalio/ui:${TEMPORAL_UI_VERSION}
+    networks:
+      - main-network
+    ports:
+      - 8080:8080
+
+#### Jaeger for open telemetry
+  jaeger:
+    image: jaegertracing/all-in-one:${JAEGER_VERSION}
+    ports:
+    - "8081:16686" 
+    - "6831:6831/udp"
+    - "6832:6832/udp"
+    - "5778:5778"
+    - "4317:4317"
+    - "4318:4318"
+    - "14250:14250"
+    - "14268:14268"
+    - "14269:14269"
+    - "9411:9411"
+    container_name: jaeger
+    hostname: jaeger
+    restart: unless-stopped
+    networks:
+    - main-network
+    environment:
+      COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
+
+
+### TODO(art): currently jaeger setup with elastic is not working, so we 
+## are temporarily just using the all-in-one container that's not meant for production use
+  # jaeger-collector:
+  #   image: jaegertracing/jaeger-collector:${JAEGER_VERSION}
+  #   ports:
+  #     - "14267:14267"
+  #     - "14268:14268"
+  #     - "9411:9411"
+  #     - "4317:4317"
+  #     - "4318:4318"
+  #   depends_on:
+  #   - elasticsearch
+  #   container_name: jaeger-collector
+  #   hostname: jaeger-collector
+  #   restart: unless-stopped
+  #   networks:
+  #   - main-network
+  #   volumes:
+  #   - ./scripts/:/scripts
+  #   environment:
+  #     SPAN_STORAGE_TYPE: "elasticsearch"
+  #     ES_SERVER_URLS: "http://elasticsearch:9200"
+  #   entrypoint: ["/bin/sh", "/scripts/wait-for.sh", "elasticsearch:9200"]
+  #   command:
+  #     - "/go/bin/collector-linux"
+
+  # jaeger-agent:
+  #   image: jaegertracing/jaeger-agent:${JAEGER_VERSION}
+  #   ports:
+  #     - "5775:5775/udp"
+  #     - "5778:5778"
+  #     - "6831:6831/udp"
+  #     - "6832:6832/udp"
+  #   depends_on:
+  #   - elasticsearch
+  #   - jaeger-collector
+  #   restart: unless-stopped
+  #   container_name: jaeger-agent
+  #   hostname: jaeger-agent
+  #   networks:
+  #   - main-network
+  #   command:
+  #   - "--reporter.grpc.host-port=jaeger-collector:14250"
+
+  # jaeger-query:
+  #   image: jaegertracing/jaeger-query:${JAEGER_VERSION}
+  #   ports:
+  #     - 8081:16686
+  #   depends_on:
+  #     - elasticsearch
+  #     - jaeger-collector
+  #   restart: unless-stopped
+  #   container_name: jaeger-query
+  #   hostname: jaeger-query
+  #   networks:
+  #   - main-network
+  #   volumes:
+  #   - ./scripts/:/scripts
+  #   entrypoint: ["/bin/sh", "/scripts/wait-for.sh", "elasticsearch:9200"]
+  #   environment:
+  #     SPAN_STORAGE_TYPE: "elasticsearch"
+  #     ES_SERVER_URLS: "http://elasticsearch:9200"
+  #   command:
+  #   - "/go/bin/query-linux"
+
+networks:
+  main-network:
+    driver: bridge
+    name: main-network

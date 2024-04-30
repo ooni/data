@@ -53,20 +53,30 @@ They are then visible at the following address: http://localhost:16686/search
 
 ### Production usage
 
-By default we use thread based parallelism, but in production you really want to have multiple workers processes which have inside of them multiple threads.
+By default we use thread based parallelism, but in production you really want
+to have multiple workers processes which have inside of them multiple threads.
 
-To achieve that you should separately start the worker processes (which can
-also be started on many machines) and then trigger the workflow execution.
+You should also be using the production temporal server with an elasticsearch
+backend as opposed to the dev server.
 
-You should also be using the temporal docker container or temporal cloud
-instead of the dev-server.
+To start all the server side components, we have a handy docker-compose.yml
+that sets everything up.
 
-You can start the worker processes like so:
+It can be started by running from this directory:
 ```
-hatch run oonipipeline startworkers
+docker compose up
+```
+
+The important services you can access are the following:
+* Temporal UI: http://localhost:8080
+* Open Telemetry UI: http://localhost:8081
+
+To start the worker processes:
+```
+hatch run oonipipeline startworkers --telemetry-endpoint http://localhost:14250 --temporal-address localhost:7233
 ```
 
 Then you can trigger the workflow by passing the `--no-start-workers` flag:
 ```
-hatch run oonipipeline mkobs --probe-cc US --start-day 2024-01-01 --end-day 2024-01-20 --no-start-workers
+hatch run oonipipeline mkobs --telemetry-endpoint http://localhost:14250 --temporal-address localhost:7233 --probe-cc US --start-day 2024-01-01 --end-day 2024-01-20 --no-start-workers
 ```
