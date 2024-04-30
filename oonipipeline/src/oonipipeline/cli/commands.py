@@ -1,10 +1,12 @@
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 import dataclasses
 import logging
 import multiprocessing
 from pathlib import Path
 import asyncio
+import signal
+import sys
 from typing import List, Optional
 from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
@@ -96,11 +98,30 @@ def run_worker(params: WorkerParams):
 
 
 def start_workers(params: WorkerParams, process_count: int):
+    def signal_handler(signal, frame):
+        print("shutdown requested: Ctrl+C detected")
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
     process_params = [
         dataclasses.replace(params, process_idx=idx) for idx in range(process_count)
     ]
     with ProcessPoolExecutor(max_workers=process_count) as executor:
-        executor.map(run_worker, process_params)
+        futures = [executor.submit(run_worker, param) for param in process_params]
+        try:
+            for future in as_completed(futures):
+                future.result()
+        except KeyboardInterrupt:
+            print("ctrl+C detected, cancelling tasks...")
+            for future in futures:
+                future.cancel()
+            executor.shutdown(wait=True)
+            print("all tasks have been cancelled and cleaned up")
+        except Exception as e:
+            print(f"an error occurred: {e}")
+            executor.shutdown(wait=False)
+            raise
 
 
 async def execute_workflow_with_workers(
@@ -469,9 +490,10 @@ def startworkers(
     telemetry_endpoint: str,
     temporal_address: str,
 ):
-    click.echo("Starting to perform analysis")
+    click.echo(f"starting {parallelism} workers")
+    click.echo(f"downloading NetinfoDB to {data_dir}")
     NetinfoDB(datadir=Path(data_dir), download=True)
-    click.echo("downloaded netinfodb")
+    click.echo("done downloading netinfodb")
     start_workers(
         params=WorkerParams(
             temporal_address=temporal_address,
