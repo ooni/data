@@ -30,8 +30,8 @@ services:
     container_name: postgresql
     hostname: postgresql
     environment:
-      POSTGRES_PASSWORD: temporal
-      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: oonipipeline
+      POSTGRES_USER: oonipipeline
     image: postgres:${POSTGRESQL_VERSION}
     networks:
       - main-network
@@ -59,8 +59,8 @@ services:
     environment:
       - DB=postgres12
       - DB_PORT=5432
-      - POSTGRES_USER=temporal
-      - POSTGRES_PWD=temporal
+      - POSTGRES_USER=oonipipeline
+      - POSTGRES_PWD=oonipipeline
       - POSTGRES_SEEDS=postgresql
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
       - ENABLE_ES=true
@@ -74,7 +74,7 @@ services:
     labels:
       kompose.volume.type: configMap
     volumes:
-      - ./temporal-config:/etc/temporal/config/dynamicconfig
+      - ./docker/temporal-config:/etc/temporal/config/dynamicconfig
   temporal-admin-tools:
     container_name: temporal-admin-tools
     depends_on:
@@ -187,6 +187,27 @@ services:
   #     ES_SERVER_URLS: "http://elasticsearch:9200"
   #   command:
   #   - "/go/bin/query-linux"
+
+### Superset
+  superset:
+    image: ooni/oonipipeline-superset
+    build:
+      context: .
+      dockerfile: ./docker/superset.Dockerfile
+
+    ports:
+    - "8083:8088"
+    container_name: superset
+    hostname: superset
+    restart: unless-stopped
+    networks:
+    - main-network
+    volumes:
+      - ./docker/superset-config:/etc/superset
+    depends_on:
+      - postgresql
+    environment:
+      SUPERSET_CONFIG_PATH: "/etc/superset/superset_config.py"
 
 networks:
   main-network:
