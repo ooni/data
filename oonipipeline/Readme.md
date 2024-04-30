@@ -73,10 +73,10 @@ The important services you can access are the following:
 
 To start the worker processes:
 ```
-hatch run oonipipeline startworkers --telemetry-endpoint http://localhost:14250 --temporal-address localhost:7233
+hatch run oonipipeline startworkers
 ```
 
 Then you can trigger the workflow by passing the `--no-start-workers` flag:
 ```
-hatch run oonipipeline mkobs --telemetry-endpoint http://localhost:14250 --temporal-address localhost:7233 --probe-cc US --start-day 2024-01-01 --end-day 2024-01-20 --no-start-workers
+hatch run oonipipeline mkobs --probe-cc US --start-day 2024-01-01 --end-day 2024-01-20 --no-start-workers
 ```
