@@ -69,7 +69,7 @@ docker compose up
 
 The important services you can access are the following:
 * Temporal UI: http://localhost:8080
-* Open Telemetry UI: http://localhost:8081
+* Open Telemetry UI: http://localhost:8088
 
 To start the worker processes:
 ```

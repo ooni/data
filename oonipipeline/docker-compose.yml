@@ -104,7 +104,7 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:${JAEGER_VERSION}
     ports:
-    - "8081:16686" 
+    - "8088:16686"
     - "6831:6831/udp"
     - "6832:6832/udp"
     - "5778:5778"
