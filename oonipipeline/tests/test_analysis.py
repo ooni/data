@@ -1,15 +1,23 @@
 from base64 import b64decode
 from datetime import datetime
+from pprint import pprint
 import random
-from typing import List
+from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
 
 from oonidata.dataclient import load_measurement
+from oonidata.models.analysis import WebAnalysis
+from oonidata.models.experiment_result import MeasurementExperimentResult
 from oonidata.models.nettests.signal import Signal
 from oonidata.models.nettests.web_connectivity import WebConnectivity
-from oonidata.models.observations import WebObservation, print_nice, print_nice_vertical
+from oonidata.models.observations import (
+    WebControlObservation,
+    WebObservation,
+    print_nice,
+    print_nice_vertical,
+)
 from oonidata.datautils import validate_cert_chain
 
 from oonipipeline.analysis.web_analysis import make_web_analysis
@@ -19,9 +27,13 @@ from oonipipeline.analysis.control import (
     iter_ground_truths_from_web_control,
     WebGroundTruthDB,
 )
-from oonipipeline.analysis.signal import make_signal_experiment_result
 from oonipipeline.transforms.nettests.signal import SIGNAL_PEM_STORE
 from oonipipeline.transforms.observations import measurement_to_observations
+
+from oonipipeline.analysis.signal import make_signal_experiment_result
+from oonipipeline.analysis.website_experiment_results import (
+    make_website_experiment_results,
+)
 
 
 def test_signal(fingerprintdb, netinfodb, measurements):
@@ -120,67 +132,6 @@ def test_signal(fingerprintdb, netinfodb, measurements):
     assert blocking_event[0].confirmed == True
 
 
-def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
-    pytest.skip("TODO(arturo): implement this with the new analysis")
-    msmt_path = measurements[
-        "20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"
-    ]
-    er = list(make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb))
-    be = list(
-        filter(
-            lambda be: be.outcome_scope == "n",
-            er,
-        )
-    )
-    assert len(be) == 1
-
-    msmt_path = measurements[
-        "20220627134426.194308_DE_webconnectivity_15675b61ec62e268"
-    ]
-    er = list(make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb))
-    be = list(
-        filter(
-            lambda be: be.blocked_score > 0.5,
-            er,
-        )
-    )
-    assert len(be) == 1
-    assert be[0].outcome_detail == "inconsistent.bogon"
-
-    msmt_path = measurements[
-        "20220627125833.737451_FR_webconnectivity_bca9ad9d3371919a"
-    ]
-    er = make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb)
-    be = list(
-        filter(
-            lambda be: be.blocked_score > 0.6,
-            er,
-        )
-    )
-    # TODO: is it reasonable to double count NXDOMAIN for AAAA and A queries?
-    assert len(be) == 2
-    assert be[0].outcome_detail == "inconsistent.nxdomain"
-
-    msmt_path = measurements[
-        "20220625234824.235023_HU_webconnectivity_3435a5df0e743d39"
-    ]
-    er = list(make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb))
-    be = list(
-        filter(
-            lambda be: be.ok_score > 0.5,
-            er,
-        )
-    )
-    nok_be = list(
-        filter(
-            lambda be: be.ok_score < 0.5,
-            er,
-        )
-    )
-    assert len(be) == len(er)
-    assert len(nok_be) == 0
-
-
 def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
     msmt = load_measurement(msmt_path=msmt_path)
     assert isinstance(msmt, WebConnectivity)
@@ -203,32 +154,41 @@ def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):
     return []
 
 
-def test_website_experiment_result_blocked(fingerprintdb, netinfodb, measurements):
-    pytest.skip("TODO(arturo): implement this with the new analysis")
-    experiment_results = list(
-        make_experiment_result_from_wc_ctrl(
-            measurements["20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"],
-            fingerprintdb,
-            netinfodb,
+def make_web_er_from_msmt(msmt, fingerprintdb, netinfodb) -> Tuple[
+    List[MeasurementExperimentResult],
+    List[WebAnalysis],
+    List[WebObservation],
+    List[WebControlObservation],
+]:
+    assert isinstance(msmt, WebConnectivity)
+    web_observations, web_control_observations = measurement_to_observations(
+        msmt, netinfodb=netinfodb
+    )
+    assert isinstance(msmt.input, str)
+    web_ground_truth_db = WebGroundTruthDB()
+    web_ground_truth_db.build_from_rows(
+        rows=iter_ground_truths_from_web_control(
+            web_control_observations=web_control_observations,
+            netinfodb=netinfodb,
+        ),
+    )
+
+    web_ground_truths = web_ground_truth_db.lookup_by_web_obs(web_obs=web_observations)
+    web_analysis = list(
+        make_web_analysis(
+            web_observations=web_observations,
+            web_ground_truths=web_ground_truths,
+            body_db=BodyDB(db=None),  # type: ignore
+            fingerprintdb=fingerprintdb,
         )
     )
-    assert len(experiment_results) == 1
-    assert experiment_results[0].anomaly == True
 
-
-def test_website_experiment_result_ok(fingerprintdb, netinfodb, measurements):
-    pytest.skip("TODO(arturo): implement this with the new analysis")
-    experiment_results = list(
-        make_experiment_result_from_wc_ctrl(
-            measurements["20220608132401.787399_AM_webconnectivity_2285fc373f62729e"],
-            fingerprintdb,
-            netinfodb,
-        )
+    return (
+        list(make_website_experiment_results(web_analysis)),
+        web_analysis,
+        web_observations,
+        web_control_observations,
     )
-    assert len(experiment_results) == 4
-    assert experiment_results[0].anomaly == False
-    for er in experiment_results:
-        assert er.ok_score > 0.5
 
 
 def test_website_web_analysis_blocked(fingerprintdb, netinfodb, measurements, datadir):
@@ -237,74 +197,266 @@ def test_website_web_analysis_blocked(fingerprintdb, netinfodb, measurements, da
             "20221110235922.335062_IR_webconnectivity_e4114ee32b8dbf74"
         ],
     )
-    web_obs: List[WebObservation] = measurement_to_observations(
-        msmt, netinfodb=netinfodb
-    )[0]
-    FASTLY_IPS = [
-        "151.101.1.140",
-        "151.101.129.140",
-        "151.101.193.140",
-        "151.101.65.140",
-        "199.232.253.140",
-        "2a04:4e42:400::396",
-        "2a04:4e42::396",
-        "2a04:4e42:fd3::396",
-    ]
-    # Equivalent to the following call, but done manually
-    # relevant_gts = web_ground_truth_db.lookup_by_web_obs(web_obs=web_obs)
-    relevant_gts = []
-    for is_trusted in [True, False]:
-        for ip in FASTLY_IPS:
-            relevant_gts.append(
-                WebGroundTruth(
-                    vp_asn=0,
-                    vp_cc="ZZ",
-                    # TODO FIXME in lookup
-                    is_trusted_vp=is_trusted,
-                    hostname="www.reddit.com",
-                    ip=ip,
-                    # TODO FIXME in webgroundtruth lookup
-                    port=443,
-                    dns_failure=None,
-                    # TODO fixme in lookup
-                    dns_success=True,
-                    tcp_failure=None,
-                    # TODO fixme in lookup
-                    tcp_success=True,
-                    tls_failure=None,
-                    tls_success=True,
-                    tls_is_certificate_valid=True,
-                    http_request_url=None,
-                    http_failure=None,
-                    http_success=None,
-                    # FIXME in lookup function "ZZ",
-                    http_response_body_length=131072 - random.randint(0, 100),
-                    # TODO FIXME in lookup function
-                    timestamp=datetime(
-                        2022,
-                        11,
-                        10,
-                        0,
-                        0,
-                    ),
-                    count=2,
-                    ip_asn=54113,
-                    # TODO FIXME in lookup function
-                    ip_as_org_name="Fastly, Inc.",
-                ),
-            )
-    # XXX currently not working
-    body_db = BodyDB(db=None)  # type: ignore
-
-    web_analysis = list(
-        make_web_analysis(
-            web_observations=web_obs,
-            body_db=body_db,
-            web_ground_truths=relevant_gts,
-            fingerprintdb=fingerprintdb,
-        )
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
     )
     assert len(web_analysis) == len(web_obs)
-    # for wa in web_analysis:
-    #    print(wa.measurement_uid)
-    #    print_nice_vertical(wa)
+    assert len(web_ctrl_obs) == 5
+
+    assert len(er) == 1
+    assert er[0].loni_blocked_values == [1.0]
+    assert er[0].loni_ok_value == 0
+    assert er[0].loni_blocked_keys[0].startswith("dns.")
+
+
+def test_website_web_analysis_plaintext_ok(fingerprintdb, netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20220608132401.787399_AM_webconnectivity_2285fc373f62729e"
+        ],
+    )
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 2
+
+    assert len(er) == 1
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["dns"] > 0.8
+    assert ok_dict["tcp"] > 0.8
+    assert ok_dict["tls"] > 0.8
+    assert ok_dict["http"] > 0.8
+
+    assert er[0].loni_ok_value > 0.8
+
+
+def test_website_web_analysis_blocked_2(fingerprintdb, netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20220627030703.592775_IR_webconnectivity_80e199b3c572f8d3"
+        ],
+    )
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 6
+
+    assert len(er) == 1
+    assert er[0].loni_blocked_values == [1.0]
+    assert er[0].loni_ok_value == 0
+    assert er[0].loni_blocked_keys[0].startswith("dns.")
+
+
+def test_website_dns_blocking_event(fingerprintdb, netinfodb, measurements):
+    msmt_path = measurements[
+        "20220627134426.194308_DE_webconnectivity_15675b61ec62e268"
+    ]
+    msmt = load_measurement(
+        msmt_path=msmt_path,
+    )
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 6
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value == 0
+    assert er[0].loni_blocked_values[0] > 0.7
+    assert er[0].loni_blocked_keys[0].startswith("dns.")
+
+
+def test_website_dns_blocking_event_2(fingerprintdb, netinfodb, measurements):
+    msmt_path = measurements[
+        "20220627125833.737451_FR_webconnectivity_bca9ad9d3371919a"
+    ]
+    msmt = load_measurement(
+        msmt_path=msmt_path,
+    )
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 5
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value == 0
+    assert er[0].loni_blocked_values[0] > 0.5
+    assert er[0].loni_blocked_keys[0].startswith("dns.")
+
+
+def test_website_dns_ok(fingerprintdb, netinfodb, measurements):
+    msmt_path = measurements[
+        "20220625234824.235023_HU_webconnectivity_3435a5df0e743d39"
+    ]
+    msmt = load_measurement(
+        msmt_path=msmt_path,
+    )
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    # assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 5
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value == 1
+
+
+# Check this for wc 0.5 overwriting tls analsysis
+# 20231031000227.813597_MY_webconnectivity_2f0b80761373aa7e
+def test_website_experiment_results(measurements, netinfodb, fingerprintdb):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20221101055235.141387_RU_webconnectivity_046ce024dd76b564"
+        ]
+    )
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 3
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value < 0.2
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["tcp"] == 0
+
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+    assert blocked_dict["tcp.timeout"] > 0.4
+
+
+def test_website_web_analysis_down(measurements, netinfodb, fingerprintdb):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20240420235427.477327_US_webconnectivity_9b3cac038dc2ba22"
+        ]
+    )
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 3
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value < 0.2
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["tcp"] == 0
+
+    down_dict = dict(zip(er[0].loni_down_keys, er[0].loni_down_values))
+
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+
+    assert sum(down_dict.values()) > sum(blocked_dict.values())
+    assert down_dict["tcp.timeout"] > 0.5
+
+
+def test_website_web_analysis_blocked_connect_reset(
+    measurements, netinfodb, fingerprintdb
+):
+    msmt_path = measurements[
+        "20240302000048.790188_RU_webconnectivity_e7ffd3bc0f525eb7"
+    ]
+    msmt = load_measurement(msmt_path=msmt_path)
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    # assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 4
+
+    assert len(er) == 1
+    # TODO(art): this should be changed
+    # assert er[0].loni_ok_value == 0
+    assert er[0].loni_ok_value < 0.2
+
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["tls"] == 0
+
+    down_dict = dict(zip(er[0].loni_down_keys, er[0].loni_down_values))
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+
+    assert sum(down_dict.values()) < sum(blocked_dict.values())
+    assert blocked_dict["tls.connection_reset"] > 0.5
+
+
+def print_debug_er(er):
+    for idx, e in enumerate(er):
+        print(f"\n# ER#{idx}")
+        for idx, transcript in enumerate(e.analysis_transcript_list):
+            print(f"## Analysis #{idx}")
+            print("\n".join(transcript))
+        pprint(er)
+
+
+def test_website_web_analysis_nxdomain_down(measurements, netinfodb, fingerprintdb):
+    msmt_path = measurements[
+        "20240302000050.000654_SN_webconnectivity_fe4221088fbdcb0a"
+    ]
+    msmt = load_measurement(msmt_path=msmt_path)
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 2
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value < 0.2
+
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["dns"] == 0
+
+    down_dict = dict(zip(er[0].loni_down_keys, er[0].loni_down_values))
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+
+    assert sum(down_dict.values()) > sum(blocked_dict.values())
+    assert down_dict["dns.nxdomain"] > 0.7
+
+
+def test_website_web_analysis_nxdomain_blocked(measurements, netinfodb, fingerprintdb):
+    msmt_path = measurements[
+        "20240302000305.316064_EG_webconnectivity_397bca9091b07444"
+    ]
+    msmt = load_measurement(msmt_path=msmt_path)
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 7
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value < 0.2
+
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["dns"] == 0
+
+    down_dict = dict(zip(er[0].loni_down_keys, er[0].loni_down_values))
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+
+    assert sum(down_dict.values()) < sum(blocked_dict.values())
+    assert blocked_dict["dns.nxdomain"] > 0.7
+
+
+def test_website_web_analysis_blocked_inconsistent_country(
+    measurements, netinfodb, fingerprintdb
+):
+    msmt_path = measurements[
+        "20240309112858.009725_SE_webconnectivity_dce757ef4ec9b6c8"
+    ]
+    msmt = load_measurement(msmt_path=msmt_path)
+    er, web_analysis, web_obs, web_ctrl_obs = make_web_er_from_msmt(
+        msmt, fingerprintdb=fingerprintdb, netinfodb=netinfodb
+    )
+    assert len(web_analysis) == len(web_obs)
+    assert len(web_ctrl_obs) == 3
+
+    assert len(er) == 1
+    assert er[0].loni_ok_value < 0.2
+
+    ok_dict = dict(zip(er[0].loni_ok_keys, er[0].loni_ok_values))
+    assert ok_dict["dns"] == 0
+
+    down_dict = dict(zip(er[0].loni_down_keys, er[0].loni_down_values))
+    blocked_dict = dict(zip(er[0].loni_blocked_keys, er[0].loni_blocked_values))
+
+    assert sum(down_dict.values()) > sum(blocked_dict.values())

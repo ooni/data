@@ -33,6 +33,11 @@ SAMPLE_MEASUREMENTS = [
     "20221101055235.141387_RU_webconnectivity_046ce024dd76b564",  # ru_blocks_twitter
     "20230907000740.785053_BR_httpinvalidrequestline_bdfe6d70dcbda5e9",  # middlebox detected
     "20221110235922.335062_IR_webconnectivity_e4114ee32b8dbf74",  # Iran blocking reddit
+    "20240420235427.477327_US_webconnectivity_9b3cac038dc2ba22",  # down site
+    "20240302000048.790188_RU_webconnectivity_e7ffd3bc0f525eb7",  # connection reset RU
+    "20240302000050.000654_SN_webconnectivity_fe4221088fbdcb0a",  # nxdomain down
+    "20240302000305.316064_EG_webconnectivity_397bca9091b07444",  # nxdomain blocked, unknown_failure and from the future
+    "20240309112858.009725_SE_webconnectivity_dce757ef4ec9b6c8",  # blockpage for Iran in Sweden
 ]
 
 SAMPLE_POSTCANS = ["2024030100_AM_webconnectivity.n1.0.tar.gz"]

@@ -197,6 +197,11 @@ class WebGroundTruthDB:
         self.db.execute("pragma optimize;")
         self.create_indexes()
 
+    def count_rows(self) -> int:
+        row = self.db.execute(f"SELECT COUNT() FROM {self._table_name};").fetchone()
+        assert len(row) == 1
+        return row[0]
+
     def build_from_existing(self, db_str: str):
         with sqlite3.connect(db_str) as src_db:
             self.db = sqlite3.connect(":memory:")
@@ -283,8 +288,13 @@ class WebGroundTruthDB:
         if hostnames:
             sub_q = "("
             sub_q += "OR ".join(
-                # When hostname was supplied, we only care about it in relation to DNS resolutions
-                [" hostname = ? AND dns_success = 1 " for _ in range(len(hostnames))]
+                # When hostname was supplied, we only care about it in relation
+                # to DNS resolutions, so we only get DNS failure or DNS success
+                # rows
+                [
+                    " hostname = ? AND (dns_success = 1 OR dns_failure IS NOT NULL) "
+                    for _ in range(len(hostnames))
+                ]
             )
             sub_q += ")"
             q_args += hostnames

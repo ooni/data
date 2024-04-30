@@ -8,7 +8,9 @@ from oonipipeline.analysis.control import (
     WebGroundTruthDB,
     iter_web_ground_truths,
 )
-from oonipipeline.workflows.observations import make_observations_for_file_entry_batch
+from oonipipeline.temporal.activities.observations import (
+    make_observations_for_file_entry_batch,
+)
 
 
 def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):

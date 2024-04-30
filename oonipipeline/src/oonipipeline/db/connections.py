@@ -6,6 +6,7 @@ from collections import defaultdict, namedtuple
 from datetime import datetime, timezone
 from pprint import pformat
 import logging
+from typing import Optional
 
 log = logging.getLogger("oonidata.processing")
 
@@ -26,7 +27,13 @@ class DatabaseConnection:
 
 
 class ClickhouseConnection(DatabaseConnection):
-    def __init__(self, conn_url, row_buffer_size=0, max_block_size=1_000_000):
+    def __init__(
+        self,
+        conn_url,
+        row_buffer_size=0,
+        max_block_size=1_000_000,
+        dump_failing_rows: Optional[str] = None,
+    ):
         from clickhouse_driver import Client
 
         self.clickhouse_url = conn_url
@@ -37,6 +44,7 @@ class ClickhouseConnection(DatabaseConnection):
 
         self._column_names = {}
         self._row_buffer = defaultdict(list)
+        self.dump_failing_rows = dump_failing_rows
 
     def __enter__(self):
         return self
@@ -91,8 +99,10 @@ class ClickhouseConnection(DatabaseConnection):
                     time.sleep(0.1)
                 except Exception as exc:
                     log.error(f"Failed to write {row} ({exc}) {query_str}")
-                    with open(f"failing-rows.pickle", "ab") as out_file:
-                        pickle.dump({"query_str": query_str, "row": row}, out_file)
+
+                    if self.dump_failing_rows:
+                        with open(self.dump_failing_rows, "ab") as out_file:
+                            pickle.dump({"query_str": query_str, "row": row}, out_file)
 
     def flush_all_rows(self):
         for table_name, rows in self._row_buffer.items():

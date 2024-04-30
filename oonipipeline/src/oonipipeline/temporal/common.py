@@ -4,7 +4,7 @@ import logging
 import multiprocessing as mp
 from multiprocessing.synchronize import Event as EventClass
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from typing import (
     Any,
@@ -21,7 +21,6 @@ from oonidata.dataclient import (
     MeasurementListProgress,
 )
 from ..db.connections import ClickhouseConnection
-from ..db.create_tables import create_queries
 
 log = logging.getLogger("oonidata.processing")
 
@@ -89,7 +88,7 @@ def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange):
     q_args["max_created_at"] = prev_range.max_created_at
     q_args["min_created_at"] = prev_range.min_created_at
     where = f"{where} AND created_at <= %(max_created_at)s AND created_at >= %(min_created_at)s"
-    log.info(f"runing {where} with {q_args}")
+    log.debug(f"runing {where} with {q_args}")
 
     q = f"ALTER TABLE {prev_range.table_name} DELETE "
     final_query = q + where
@@ -165,27 +164,6 @@ def get_prev_range(
     return prev_range
 
 
-def optimize_all_tables(clickhouse):
-    with ClickhouseConnection(clickhouse) as db:
-        for _, table_name in create_queries:
-            db.execute(f"OPTIMIZE TABLE {table_name}")
-
-
-def get_obs_count_by_cc(
-    db: ClickhouseConnection,
-    test_name: List[str],
-    start_day: date,
-    end_day: date,
-    table_name: str = "obs_web",
-) -> Dict[str, int]:
-    q = f"SELECT probe_cc, COUNT() FROM {table_name} WHERE measurement_start_time > %(start_day)s AND measurement_start_time < %(end_day)s GROUP BY probe_cc"
-    cc_list: List[Tuple[str, int]] = db.execute(
-        q, {"start_day": start_day, "end_day": end_day}
-    )  # type: ignore
-    assert isinstance(cc_list, list)
-    return dict(cc_list)
-
-
 def make_db_rows(
     dc_list: List,
     column_names: List[str],
@@ -208,32 +186,3 @@ def make_db_rows(
         rows.append(tuple(maybe_remap(k, getattr(d, k)) for k in column_names))
 
     return table_name, rows
-
-
-class StatusMessage(NamedTuple):
-    src: str
-    exception: Optional[Exception] = None
-    traceback: Optional[str] = None
-    progress: Optional[MeasurementListProgress] = None
-    idx: Optional[int] = None
-    day_str: Optional[str] = None
-    archive_queue_size: Optional[int] = None
-
-
-def run_progress_thread(
-    status_queue: mp.Queue, shutdown_event: EventClass, desc: str = "analyzing data"
-):
-    pbar = tqdm(position=0)
-
-    log.info("starting error handling thread")
-    while not shutdown_event.is_set():
-        try:
-            count = status_queue.get(block=True, timeout=0.1)
-        except queue.Empty:
-            continue
-
-        try:
-            pbar.update(count)
-            pbar.set_description(desc)
-        finally:
-            status_queue.task_done()  # type: ignore

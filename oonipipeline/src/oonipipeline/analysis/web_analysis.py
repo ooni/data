@@ -199,7 +199,7 @@ def make_dns_ground_truth(ground_truths: Iterable[WebGroundTruth]):
     failure_count = 0
     nxdomain_count = 0
     for gt in ground_truths:
-        if gt.dns_success is None:
+        if gt.dns_success is None and gt.dns_failure is None:
             continue
 
         if gt.dns_failure == "dns_nxdomain_error":
@@ -207,7 +207,7 @@ def make_dns_ground_truth(ground_truths: Iterable[WebGroundTruth]):
             nxdomain_cc_asn.add((gt.vp_cc, gt.vp_asn))
             continue
 
-        if not gt.dns_success:
+        if gt.dns_failure is not None:
             failure_count += gt.count
             failure_cc_asn.add((gt.vp_cc, gt.vp_asn))
             continue
@@ -697,18 +697,7 @@ def make_web_analysis(
         )
 
         if dns_analysis:
-            website_analysis.dns_ground_truth_nxdomain_count = (
-                dns_analysis.ground_truth.nxdomain_count
-            )
-            website_analysis.dns_ground_truth_ok_cc_asn_count = (
-                dns_analysis.ground_truth.ok_cc_asn_count
-            )
-            website_analysis.dns_ground_truth_failure_cc_asn_count = (
-                dns_analysis.ground_truth.failure_cc_asn_count
-            )
-            website_analysis.dns_ground_truth_nxdomain_cc_asn_count = (
-                dns_analysis.ground_truth.nxdomain_cc_asn_count
-            )
+
             website_analysis.dns_consistency_system_answers = (
                 dns_analysis.consistency_system.answers
             )
@@ -775,6 +764,26 @@ def make_web_analysis(
             website_analysis.dns_consistency_system_answer_asn_ground_truth_asn_count = (
                 dns_analysis.consistency_system.answer_asn_ground_truth_asn_count
             )
+
+            website_analysis.dns_ground_truth_failure_count = (
+                dns_analysis.ground_truth.failure_count
+            )
+            website_analysis.dns_ground_truth_ok_count = (
+                dns_analysis.ground_truth.ok_count
+            )
+            website_analysis.dns_ground_truth_nxdomain_count = (
+                dns_analysis.ground_truth.nxdomain_count
+            )
+            website_analysis.dns_ground_truth_ok_cc_asn_count = (
+                dns_analysis.ground_truth.ok_cc_asn_count
+            )
+            website_analysis.dns_ground_truth_failure_cc_asn_count = (
+                dns_analysis.ground_truth.failure_cc_asn_count
+            )
+            website_analysis.dns_ground_truth_nxdomain_cc_asn_count = (
+                dns_analysis.ground_truth.nxdomain_cc_asn_count
+            )
+
             """
             website_analysis.dns_ground_truth_nxdomain_cc_asn = (
                 dns_analysis.ground_truth.nxdomain_cc_asn
@@ -782,14 +791,8 @@ def make_web_analysis(
             website_analysis.dns_ground_truth_failure_cc_asn = (
                 dns_analysis.ground_truth.failure_cc_asn
             )
-            website_analysis.dns_ground_truth_failure_count = (
-                dns_analysis.ground_truth.failure_count
-            )
             website_analysis.dns_ground_truth_ok_cc_asn = (
                 dns_analysis.ground_truth.ok_cc_asn
-            )
-            website_analysis.dns_ground_truth_ok_count = (
-                dns_analysis.ground_truth.ok_count
             )
             website_analysis.dns_ground_truth_other_ips = (
                 dns_analysis.ground_truth.other_ips

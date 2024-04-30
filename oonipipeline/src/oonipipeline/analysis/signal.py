@@ -12,6 +12,9 @@ from oonidata.models.observations import WebObservation
 from ..fingerprintdb import FingerprintDB
 
 
+## TODO(art): port this over to the new MeasurementExperimentResult model
+
+
 def make_signal_experiment_result(
     web_observations: List[WebObservation],
     fingerprintdb: FingerprintDB,
