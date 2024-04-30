@@ -75,13 +75,15 @@ def make_observations_for_file_entry_batch(
 
     total_failure_count = 0
     current_span = trace.get_current_span()
-    with ClickhouseConnection(clickhouse, row_buffer_size=row_buffer_size) as db:
+    with current_span, ClickhouseConnection(
+        clickhouse, row_buffer_size=row_buffer_size
+    ) as db:
         ccs = ccs_set(probe_cc)
         idx = 0
         for bucket_name, s3path, ext, fe_size in file_entry_batch:
             failure_count = 0
             # Nest the traced span within the current span
-            with current_span, tracer.start_as_current_span(
+            with tracer.start_as_current_span(
                 "MakeObservations:stream_file_entry"
             ) as span:
                 log.debug(f"processing file s3://{bucket_name}/{s3path}")
@@ -132,8 +134,8 @@ def make_observations_for_file_entry_batch(
                 span.add_event(f"s3_path: s3://{bucket_name}/{s3path}")
                 total_failure_count += failure_count
 
-    current_span.set_attribute("total_runtime_ms", tbatch.ms)
-    current_span.set_attribute("total_failure_count", total_failure_count)
+        current_span.set_attribute("total_runtime_ms", tbatch.ms)
+        current_span.set_attribute("total_failure_count", total_failure_count)
     return idx
 
 

@@ -107,21 +107,21 @@ def start_workers(params: WorkerParams, process_count: int):
     process_params = [
         dataclasses.replace(params, process_idx=idx) for idx in range(process_count)
     ]
-    with ProcessPoolExecutor(max_workers=process_count) as executor:
+    executor = ProcessPoolExecutor(max_workers=process_count)
+    try:
         futures = [executor.submit(run_worker, param) for param in process_params]
-        try:
-            for future in as_completed(futures):
-                future.result()
-        except KeyboardInterrupt:
-            print("ctrl+C detected, cancelling tasks...")
-            for future in futures:
-                future.cancel()
-            executor.shutdown(wait=True)
-            print("all tasks have been cancelled and cleaned up")
-        except Exception as e:
-            print(f"an error occurred: {e}")
-            executor.shutdown(wait=False)
-            raise
+        for future in as_completed(futures):
+            future.result()
+    except KeyboardInterrupt:
+        print("ctrl+C detected, cancelling tasks...")
+        for future in futures:
+            future.cancel()
+        executor.shutdown(wait=True)
+        print("all tasks have been cancelled and cleaned up")
+    except Exception as e:
+        print(f"an error occurred: {e}")
+        executor.shutdown(wait=False)
+        raise
 
 
 async def execute_workflow_with_workers(
