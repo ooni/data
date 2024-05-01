@@ -7,10 +7,8 @@ from typing import (
     Tuple,
 )
 
-from tabulate import tabulate
-
 from oonidata.compat import add_slots
-from oonidata.models.base import BaseTableModel
+from oonidata.models.base import table_model
 from oonidata.models.dataformats import Failure
 from oonidata.datautils import maybe_elipse
 
@@ -30,6 +28,8 @@ class MeasurementMeta:
 
     bucket_date: str
 
+
+@dataclass
 class ProbeMeta:
     probe_asn: int
     probe_cc: str
@@ -60,45 +60,6 @@ class ProbeMeta:
     # those computed by the probe and resolver_ip will be the empty string.
     resolver_asn_probe: int
     resolver_as_org_name_probe: str
-
-@dataclass
-class AnalyzableObservation(MeasurementMeta, ProbeMeta):
-    """
-    AnalyzableObservation are observations that can be used to produce analysis
-    and then experiment results.
-    The key attribute they need to have are probe metadata in addition to
-    metadata about a measurement.
-    """
-    pass
-
-def print_nice(obs):
-    rows = []
-    meta_fields = [f.name for f in dataclasses.fields(AnalyzableObservation)]
-    headers = [f.name for f in dataclasses.fields(obs[0])]
-    headers = list(filter(lambda k: k not in meta_fields, headers))
-    for o in obs:
-        rows.append([maybe_elipse(getattr(o, k)) for k in headers])
-    headers = [maybe_elipse(h, 5) for h in headers]
-    print(tabulate(rows, headers=headers))
-
-
-def print_nice_vertical(single_obs):
-    meta_fields = [f.name for f in dataclasses.fields(AnalyzableObservation)]
-    columns = []
-    if dataclasses.is_dataclass(single_obs):
-        columns = [f.name for f in dataclasses.fields(single_obs)]
-    elif hasattr(single_obs, "_fields"):
-        columns = [name for name in single_obs._fields]
-
-    rows = []
-    for col in columns:
-        rows.append(
-            [
-                maybe_elipse(col, max_len=32, rest_on_newline=True),
-                maybe_elipse(getattr(single_obs, col), 32),
-            ]
-        )
-    print(tabulate(rows, headers=["column", "value"], tablefmt="rounded_grid"))
 
 
 @dataclass
@@ -218,10 +179,14 @@ class TCPObservation:
     transaction_id: Optional[int] = None
 
 
+@table_model(
+    table_name="obs_web_ctrl",
+    table_index=("measurement_uid", "observation_id", "measurement_start_time"),
+)
 @dataclass
-class WebControlObservation(BaseTableModel, MeasurementMeta, 
-                            table_name="obs_web_ctrl", 
-                            table_index=("measurement_uid", "observation_id", "measurement_start_time")):
+class WebControlObservation:
+    measurement_meta: MeasurementMeta
+
     hostname: str
     observation_id: str = ""
 
@@ -253,11 +218,15 @@ class WebControlObservation(BaseTableModel, MeasurementMeta,
     http_response_body_length: Optional[int] = None
 
 
+@table_model(
+    table_name="obs_web",
+    table_index=("measurement_uid", "observation_id", "measurement_start_time"),
+)
 @dataclass
-class WebObservation(BaseTableModel, AnalyzableObservation, 
-                     table_name="obs_web", 
-                     table_index=("measurement_uid", "observation_id", "measurement_start_time")
-):
+class WebObservation:
+    measurement_meta: MeasurementMeta
+    probe_meta: ProbeMeta
+
     # These fields are added by the processor
     observation_id: str = ""
     bucket_date: Optional[str] = None
@@ -352,24 +321,30 @@ class WebObservation(BaseTableModel, AnalyzableObservation,
     probe_analysis: Optional[str] = None
 
     # Removed in v5.0.0-alpha.1
-    #post_processed_at: Optional[datetime] = None
-    #pp_http_response_fingerprints: List[str] = field(default_factory=list)
-    #pp_http_fingerprint_country_consistent: Optional[bool] = None
-    #pp_http_response_matches_blockpage: bool = False
-    #pp_http_response_matches_false_positive: bool = False
-    #pp_http_response_body_title: Optional[str] = None
-    #pp_http_response_body_meta_title: Optional[str] = None
+    # post_processed_at: Optional[datetime] = None
+    # pp_http_response_fingerprints: List[str] = field(default_factory=list)
+    # pp_http_fingerprint_country_consistent: Optional[bool] = None
+    # pp_http_response_matches_blockpage: bool = False
+    # pp_http_response_matches_false_positive: bool = False
+    # pp_http_response_body_title: Optional[str] = None
+    # pp_http_response_body_meta_title: Optional[str] = None
 
-    #pp_dns_fingerprint_id: Optional[str] = None
-    #pp_dns_fingerprint_country_consistent: Optional[bool] = None
+    # pp_dns_fingerprint_id: Optional[str] = None
+    # pp_dns_fingerprint_country_consistent: Optional[bool] = None
 
     # Added in v5.0.0-alpha.1
     post_processed_at: Optional[datetime] = None
 
+
+@table_model(
+    table_name="obs_http_middlebox",
+    table_index=("measurement_uid", "measurement_start_time"),
+)
 @dataclass
-class HTTPMiddleboxObservation(BaseTableModel, AnalyzableObservation, 
-                               table_name="obs_http_middlebox", 
-                               table_index=("measurement_uid", "measurement_start_time")):
+class HTTPMiddleboxObservation:
+    measurement_meta: MeasurementMeta
+    probe_meta: ProbeMeta
+
     observation_id: str = ""
 
     bucket_date: Optional[str] = None

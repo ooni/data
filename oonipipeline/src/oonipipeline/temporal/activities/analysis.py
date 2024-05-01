@@ -164,7 +164,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
                 relevant_gts = web_ground_truth_db.lookup_by_web_obs(web_obs=web_obs)
             except:
                 log.error(
-                    f"failed to lookup relevant_gts for {web_obs[0].measurement_uid}",
+                    f"failed to lookup relevant_gts for {web_obs[0].measurement_meta.measurement_uid}",
                     exc_info=True,
                 )
                 failures += 1

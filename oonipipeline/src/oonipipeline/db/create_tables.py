@@ -1,22 +1,25 @@
 from datetime import datetime
 
 from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict
-from dataclasses import dataclass, fields
+from dataclasses import fields
 import typing
 
-from oonidata.models.base import BaseTableModel
+from oonidata.models.base import TableModelProtocol
 from oonidata.models.experiment_result import (
     ExperimentResult,
     MeasurementExperimentResult,
 )
 from oonidata.models.analysis import WebAnalysis
 from oonidata.models.observations import (
+    MeasurementMeta,
+    ProbeMeta,
     WebControlObservation,
     WebObservation,
     HTTPMiddleboxObservation,
 )
 
 from .connections import ClickhouseConnection
+
 
 def typing_to_clickhouse(t: Any) -> str:
     if t == str:
@@ -87,13 +90,24 @@ def typing_to_clickhouse(t: Any) -> str:
     raise Exception(f"Unhandled type {t}")
 
 
-def format_create_query(table_name : str, model: Type[BaseTableModel]) -> Tuple[str, str]:
+def format_create_query(
+    table_name: str, model: Type[TableModelProtocol]
+) -> Tuple[str, str]:
     columns = []
     for f in fields(model):
+        if f.type == ProbeMeta:
+            for f in fields(ProbeMeta):
+                type_str = typing_to_clickhouse(f.type)
+                columns.append(f"     {f.name} {type_str}")
+            continue
+        if f.type == MeasurementMeta:
+            for f in fields(MeasurementMeta):
+                type_str = typing_to_clickhouse(f.type)
+                columns.append(f"     {f.name} {type_str}")
+            continue
         type_str = typing_to_clickhouse(f.type)
         columns.append(f"     {f.name} {type_str}")
 
-    print(f"model {model.__table_index__}")
     columns_str = ",\n".join(columns)
     index_str = ",\n".join(model.__table_index__)
 
@@ -115,7 +129,7 @@ table_models = [
     WebControlObservation,
     HTTPMiddleboxObservation,
     WebAnalysis,
-    MeasurementExperimentResult
+    MeasurementExperimentResult,
 ]
 
 create_queries = []
@@ -124,9 +138,8 @@ for model in table_models:
     create_queries.append(
         format_create_query(table_name, model),
     )
-    create_queries.append(
-        format_create_query(f"buffer_{table_name}", model)
-    )
+    create_queries.append(format_create_query(f"buffer_{table_name}", model))
+
 
 class TableDoesNotExistError(Exception):
     pass
