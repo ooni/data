@@ -3,36 +3,28 @@ import dataclasses
 from datetime import datetime
 from typing import List, Optional
 
-from oonidata.models.base import BaseTableModel
+from oonidata.models.base import table_model
+from oonidata.models.observations import MeasurementMeta, ProbeMeta
 
 
-@dataclass
-class WebAnalysis(BaseTableModel, table_name="obs_web_analysis", table_index=(
+@table_model(
+    table_name="obs_web_analysis",
+    table_index=(
         "analysis_id",
         "measurement_uid",
         "observation_id",
-        "measurement_start_time"
-)):
+        "measurement_start_time",
+    ),
+)
+@dataclass
+class WebAnalysis:
+    probe_meta: ProbeMeta
+    measurement_meta: MeasurementMeta
+
     analysis_id: str
-    measurement_uid: str
     observation_id: str
 
-    measurement_start_time: datetime
     created_at: datetime
-
-    probe_asn: int
-    probe_cc: str
-
-    probe_as_org_name: str
-    probe_as_cc: str
-
-    network_type: str
-
-    resolver_ip: Optional[str]
-    resolver_asn: Optional[int]
-    resolver_as_org_name: Optional[str]
-    resolver_as_cc: Optional[str]
-    resolver_cc: Optional[str]
 
     # This is the domain name associated with the target, for example for
     # facebook it will be www.facebook.com, but also edge-mqtt.facebook.com

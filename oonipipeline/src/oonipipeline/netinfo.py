@@ -131,6 +131,7 @@ class NetinfoDB:
         self.last_updated_file.write_text(datetime.now().isoformat())
 
     def refresh_netinfodb(self):
+        print("refreshing netinfodb")
         self.ip2country_as_dir.mkdir(parents=True, exist_ok=True)
 
         for item in list_all_ia_items("ip2country-as"):

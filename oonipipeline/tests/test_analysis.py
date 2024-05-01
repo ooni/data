@@ -15,8 +15,6 @@ from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.observations import (
     WebControlObservation,
     WebObservation,
-    print_nice,
-    print_nice_vertical,
 )
 from oonidata.datautils import validate_cert_chain
 

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from oonidata.models.observations import WebObservation, print_nice_vertical
+from oonidata.models.observations import WebObservation
 
 from oonipipeline.analysis.datasources import iter_web_observations
 from oonipipeline.db.connections import ClickhouseConnection

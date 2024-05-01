@@ -764,8 +764,10 @@ def calculate_web_loni(
 
         if prefix == "tls":
             if blocked.tls is not None:
-                log.info(
-                    f"Overwriting previous TLS blocking status {blocked.tls} - {down.tls} with {blocked_value} {down_value} ({web_analysis.measurement_uid})"
+                log.debug(
+                    f"overwriting previous TLS blocking status {blocked.tls} - {down.tls} with "
+                    f"blk_val={blocked_value} dwn_val={down_value} "
+                    f"msmt_uid=({web_analysis.measurement_meta.measurement_uid})"
                 )
             blocked.tls = OutcomeStatus(key=blocked_key, value=blocked_value * ok_value)
             down.tls = OutcomeStatus(key=down_key, value=down_value * ok_value)
@@ -808,8 +810,8 @@ def make_website_experiment_results(
     observation_id_list = []
     first_analysis = web_analysis[0]
 
-    measurement_uid = first_analysis.measurement_uid
-    timeofday = first_analysis.measurement_start_time
+    measurement_uid = first_analysis.measurement_meta.measurement_uid
+    timeofday = first_analysis.measurement_meta.measurement_start_time
 
     target_nettest_group = "websites"
     target_category = "MISC"
@@ -982,20 +984,24 @@ def make_website_experiment_results(
     is_confirmed = final_loni.blocked.sum() > 0.9
 
     er = MeasurementExperimentResult(
-        measurement_uid=measurement_uid,
+        measurement_meta=first_analysis.measurement_meta,
+        probe_meta=first_analysis.probe_meta,
+        # Extra info
         observation_id_list=observation_id_list,
         timeofday=timeofday,
         created_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        location_network_type=first_analysis.network_type,
-        location_network_asn=first_analysis.probe_asn,
-        location_network_cc=first_analysis.probe_cc,
-        location_network_as_org_name=first_analysis.probe_as_org_name,
-        location_network_as_cc=first_analysis.probe_as_cc,
-        location_resolver_asn=first_analysis.resolver_asn,
-        location_resolver_as_org_name=first_analysis.resolver_as_org_name,
-        location_resolver_as_cc=first_analysis.resolver_as_cc,
-        location_resolver_cc=first_analysis.resolver_cc,
+        # Location info
+        location_network_type=first_analysis.probe_meta.network_type,
+        location_network_asn=first_analysis.probe_meta.probe_asn,
+        location_network_cc=first_analysis.probe_meta.probe_cc,
+        location_network_as_org_name=first_analysis.probe_meta.probe_as_org_name,
+        location_network_as_cc=first_analysis.probe_meta.probe_as_cc,
+        location_resolver_asn=first_analysis.probe_meta.resolver_asn,
+        location_resolver_as_org_name=first_analysis.probe_meta.resolver_as_org_name,
+        location_resolver_as_cc=first_analysis.probe_meta.resolver_as_cc,
+        location_resolver_cc=first_analysis.probe_meta.resolver_cc,
         location_blocking_scope=None,
+        # Target info
         target_nettest_group=target_nettest_group,
         target_category=target_category,
         target_name=target_name,
