@@ -116,7 +116,7 @@ def create_db_for_fixture(conn_url):
     except:
         pytest.skip("no database connection")
 
-    db = ClickhouseConnection(conn_url=conn_url.replace("default", "testing_oonidata"))
+    db = ClickhouseConnection(conn_url=conn_url.replace("default", "testing_oonidata"), max_backoff=0.2)
     try:
         db.execute("SELECT 1")
     except:

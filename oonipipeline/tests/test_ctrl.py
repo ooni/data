@@ -78,7 +78,6 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
             resolver_asn_probe=22394,
             resolver_as_org_name_probe="Verizon Business",
             observation_id="TEST",
-            post_processed_at=None,
             target_id=None,
             transaction_id=None,
             ip_asn=54113,
@@ -135,15 +134,7 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
             http_request_redirect_from=None,
             http_request_body_is_truncated=None,
             http_t=None,
-            probe_analysis="false",
-            pp_http_response_fingerprints=[],
-            pp_http_fingerprint_country_consistent=None,
-            pp_http_response_matches_blockpage=False,
-            pp_http_response_matches_false_positive=False,
-            pp_http_response_body_title=None,
-            pp_http_response_body_meta_title=None,
-            pp_dns_fingerprint_id=None,
-            pp_dns_fingerprint_country_consistent=None,
+            probe_analysis="false"
         )
     ]
 
