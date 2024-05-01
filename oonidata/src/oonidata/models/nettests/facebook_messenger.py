@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from typing import List, Optional
-from oonidata.compat import add_slots
-from oonidata.models.base_model import BaseModel
-from oonidata.models.dataformats import (
+
+from ...compat import add_slots
+
+from ..base import BaseModel
+from ..dataformats import (
     TCPConnect,
     DNSQuery
 )
@@ -30,7 +32,7 @@ class FacebookMessengerTestKeys(BaseModel):
     facebook_stun_reachable: Optional[bool] = None
     facebook_tcp_blocking: Optional[bool] = None
 
-    socksproxy: Optional[str] = None,
+    socksproxy: Optional[str] = None
     tcp_connect: Optional[List[TCPConnect]] = None
     queries: Optional[List[DNSQuery]] = None
 
