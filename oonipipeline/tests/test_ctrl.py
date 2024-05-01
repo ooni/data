@@ -23,7 +23,7 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
         )
     ]
     obs_msmt_count = make_observations_for_file_entry_batch(
-        file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", "US", False
+        file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", ["US"], False
     )
     assert obs_msmt_count == 299
     ground_truth_db_path = tmp_path / "test-groundtruthdbUSONLY-2023-10-31.sqlite3"
@@ -134,7 +134,7 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
             http_request_redirect_from=None,
             http_request_body_is_truncated=None,
             http_t=None,
-            probe_analysis="false"
+            probe_analysis="false",
         )
     ]
 

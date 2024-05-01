@@ -33,9 +33,6 @@ from oonipipeline.temporal.activities.ground_truths import (
     MakeGroundTruthsParams,
     make_ground_truths_in_day,
 )
-from oonipipeline.temporal.activities.observations import (
-    write_observations_to_db,
-)
 
 # from oonipipeline.workflows.response_archiver import ResponseArchiver
 # from oonipipeline.workflows.fingerprint_hunter import fingerprint_hunter
@@ -190,7 +187,10 @@ def test_write_observations(measurements, netinfodb, db):
     ]
     for msmt_uid, bucket_date in msmt_uids:
         msmt = load_measurement(msmt_path=measurements[msmt_uid])
-        write_observations_to_db(msmt, netinfodb, db, bucket_date)
+        for obs_list in measurement_to_observations(
+            msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        ):
+            db.write_table_model_rows(obs_list)
     db.close()
     cnt_by_cc = get_obs_count_by_cc(
         ObsCountParams(
@@ -213,7 +213,7 @@ def test_hirl_observations(measurements, netinfodb):
     )
     assert isinstance(msmt, HTTPInvalidRequestLine)
     middlebox_obs: List[HTTPMiddleboxObservation] = measurement_to_observations(
-        msmt, netinfodb=netinfodb
+        msmt, netinfodb=netinfodb, bucket_date="2023-09-07"
     )[0]
     assert isinstance(middlebox_obs[0], HTTPMiddleboxObservation)
     assert middlebox_obs[0].hirl_success == True

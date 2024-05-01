@@ -91,7 +91,10 @@ def typing_to_clickhouse(t: Any) -> str:
 
 
 def format_create_query(
-    table_name: str, model: Type[TableModelProtocol]
+    table_name: str,
+    model: Type[TableModelProtocol],
+    engine: str = "ReplacingMergeTree",
+    extra: bool = True,
 ) -> Tuple[str, str]:
     columns = []
     for f in fields(model):
@@ -110,15 +113,16 @@ def format_create_query(
 
     columns_str = ",\n".join(columns)
     index_str = ",\n".join(model.__table_index__)
-
+    extra_str = ""
+    if extra:
+        extra_str = f"ORDER BY ({index_str}) SETTINGS index_granularity = 8192;"
     return (
         f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
 {columns_str}
     )
-    ENGINE = ReplacingMergeTree
-    ORDER BY ({index_str})
-    SETTINGS index_granularity = 8192;
+    ENGINE = {engine}
+    {extra_str}
     """,
         table_name,
     )
@@ -138,7 +142,30 @@ for model in table_models:
     create_queries.append(
         format_create_query(table_name, model),
     )
-    create_queries.append(format_create_query(f"buffer_{table_name}", model))
+    num_layers = 1
+    min_time = 10
+    max_time = 500
+    min_rows = 10_0000
+    max_rows = 100_000
+    min_bytes = 10_000_000
+    max_bytes = 1_000_000_000
+    engine_str = f"""
+    Buffer(
+        currentDatabase(), {table_name}, 
+        {num_layers},
+        {min_time}, {max_time}, 
+        {min_rows}, {max_rows},
+        {min_bytes}, {max_bytes}
+    )
+    """
+    create_queries.append(
+        format_create_query(
+            f"buffer_{table_name}",
+            model,
+            engine=engine_str,
+            extra=False,
+        )
+    )
 
 
 class TableDoesNotExistError(Exception):
