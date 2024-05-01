@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from typing import List, Optional
-from oonidata.compat import add_slots
-from oonidata.models.dataformats import (
+
+from ...compat import add_slots
+from ..dataformats import (
     BaseTestKeys,
 )
 from oonidata.models.nettests.base_measurement import BaseMeasurement
@@ -10,7 +11,7 @@ from oonidata.models.nettests.base_measurement import BaseMeasurement
 @add_slots
 @dataclass
 class BrowserWebTestKeys(BaseTestKeys):
-    result: str = None
+    result: Optional[str] = None
     load_time_ms: Optional[float] = None
     browser: Optional[str] = None
 

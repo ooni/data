@@ -10,16 +10,13 @@ from typing import (
 from tabulate import tabulate
 
 from oonidata.compat import add_slots
+from oonidata.models.base import BaseTableModel
 from oonidata.models.dataformats import Failure
 from oonidata.datautils import maybe_elipse
 
 
-@add_slots
 @dataclass
-class ObservationBase:
-    __table_name__ = "obs_generic"
-    __table_index__ = ("measurement_start_time", "measurement_uid")
-
+class MeasurementMeta:
     measurement_uid: str
     input: Optional[str]
     report_id: str
@@ -31,10 +28,9 @@ class ObservationBase:
     test_name: str
     test_version: str
 
+    bucket_date: str
 
-@add_slots
-@dataclass
-class MeasurementMeta(ObservationBase):
+class ProbeMeta:
     probe_asn: int
     probe_cc: str
 
@@ -65,12 +61,19 @@ class MeasurementMeta(ObservationBase):
     resolver_asn_probe: int
     resolver_as_org_name_probe: str
 
-    bucket_date: str
-
+@dataclass
+class AnalyzableObservation(MeasurementMeta, ProbeMeta):
+    """
+    AnalyzableObservation are observations that can be used to produce analysis
+    and then experiment results.
+    The key attribute they need to have are probe metadata in addition to
+    metadata about a measurement.
+    """
+    pass
 
 def print_nice(obs):
     rows = []
-    meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
+    meta_fields = [f.name for f in dataclasses.fields(AnalyzableObservation)]
     headers = [f.name for f in dataclasses.fields(obs[0])]
     headers = list(filter(lambda k: k not in meta_fields, headers))
     for o in obs:
@@ -80,7 +83,7 @@ def print_nice(obs):
 
 
 def print_nice_vertical(single_obs):
-    meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
+    meta_fields = [f.name for f in dataclasses.fields(AnalyzableObservation)]
     columns = []
     if dataclasses.is_dataclass(single_obs):
         columns = [f.name for f in dataclasses.fields(single_obs)]
@@ -98,7 +101,6 @@ def print_nice_vertical(single_obs):
     print(tabulate(rows, headers=["column", "value"], tablefmt="rounded_grid"))
 
 
-@add_slots
 @dataclass
 class HTTPObservation:
     timestamp: datetime
@@ -144,7 +146,6 @@ class HTTPObservation:
         return self.request_url.startswith("https://")
 
 
-@add_slots
 @dataclass
 class TLSObservation:
     timestamp: datetime
@@ -183,7 +184,6 @@ class TLSObservation:
     t: Optional[float] = None
 
 
-@add_slots
 @dataclass
 class DNSObservation:
     timestamp: datetime
@@ -204,7 +204,6 @@ class DNSObservation:
     t: Optional[float] = None
 
 
-@add_slots
 @dataclass
 class TCPObservation:
     timestamp: datetime
@@ -219,12 +218,10 @@ class TCPObservation:
     transaction_id: Optional[int] = None
 
 
-@add_slots
 @dataclass
-class WebControlObservation(ObservationBase):
-    __table_name__ = "obs_web_ctrl"
-    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
-
+class WebControlObservation(BaseTableModel, MeasurementMeta, 
+                            table_name="obs_web_ctrl", 
+                            table_index=("measurement_uid", "observation_id", "measurement_start_time")):
     hostname: str
     observation_id: str = ""
 
@@ -256,17 +253,16 @@ class WebControlObservation(ObservationBase):
     http_response_body_length: Optional[int] = None
 
 
-@add_slots
 @dataclass
-class WebObservation(MeasurementMeta):
-    __table_name__ = "obs_web"
-    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
-
+class WebObservation(BaseTableModel, AnalyzableObservation, 
+                     table_name="obs_web", 
+                     table_index=("measurement_uid", "observation_id", "measurement_start_time")
+):
     # These fields are added by the processor
     observation_id: str = ""
     bucket_date: Optional[str] = None
     created_at: Optional[datetime] = None
-    post_processed_at: Optional[datetime] = None
+    processing_time: Optional[float] = None
 
     target_id: Optional[str] = None
     hostname: Optional[str] = None
@@ -355,24 +351,25 @@ class WebObservation(MeasurementMeta):
     # probe level analysis
     probe_analysis: Optional[str] = None
 
-    # All of these fields are added as part of a post-processing stage
-    pp_http_response_fingerprints: List[str] = field(default_factory=list)
-    pp_http_fingerprint_country_consistent: Optional[bool] = None
-    pp_http_response_matches_blockpage: bool = False
-    pp_http_response_matches_false_positive: bool = False
-    pp_http_response_body_title: Optional[str] = None
-    pp_http_response_body_meta_title: Optional[str] = None
+    # Removed in v5.0.0-alpha.1
+    #post_processed_at: Optional[datetime] = None
+    #pp_http_response_fingerprints: List[str] = field(default_factory=list)
+    #pp_http_fingerprint_country_consistent: Optional[bool] = None
+    #pp_http_response_matches_blockpage: bool = False
+    #pp_http_response_matches_false_positive: bool = False
+    #pp_http_response_body_title: Optional[str] = None
+    #pp_http_response_body_meta_title: Optional[str] = None
 
-    pp_dns_fingerprint_id: Optional[str] = None
-    pp_dns_fingerprint_country_consistent: Optional[bool] = None
+    #pp_dns_fingerprint_id: Optional[str] = None
+    #pp_dns_fingerprint_country_consistent: Optional[bool] = None
 
+    # Added in v5.0.0-alpha.1
+    post_processed_at: Optional[datetime] = None
 
-@add_slots
 @dataclass
-class HTTPMiddleboxObservation(MeasurementMeta):
-    __table_name__ = "obs_http_middlebox"
-    __table_index__ = ("measurement_uid", "measurement_start_time")
-
+class HTTPMiddleboxObservation(BaseTableModel, AnalyzableObservation, 
+                               table_name="obs_http_middlebox", 
+                               table_index=("measurement_uid", "measurement_start_time")):
     observation_id: str = ""
 
     bucket_date: Optional[str] = None

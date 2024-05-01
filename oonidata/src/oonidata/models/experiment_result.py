@@ -6,9 +6,11 @@ from enum import Enum
 from datetime import datetime, timezone
 
 from tabulate import tabulate
-from oonidata.datautils import maybe_elipse
 
-from ..models.observations import MeasurementMeta
+from ..datautils import maybe_elipse
+
+from .base import BaseTableModel
+from .observations import AnalyzableObservation, MeasurementMeta
 
 log = logging.getLogger("oonidata.events")
 
@@ -70,13 +72,11 @@ class Outcome(NamedTuple):
 
 
 @dataclass
-class MeasurementExperimentResult:
-    __table_name__ = "measurement_experiment_result"
-    __table_index__ = (
+class MeasurementExperimentResult(BaseTableModel, table_name="measurement_experiment_result", table_index=(
         "measurement_uid",
         "timeofday",
     )
-
+):
     # The measurement used to generate this experiment result
     measurement_uid: str
 
@@ -257,7 +257,7 @@ class ExperimentResult(NamedTuple):
 
 def print_nice_er(er_list):
     rows = []
-    meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
+    meta_fields = [f.name for f in dataclasses.fields(AnalyzableObservation)]
     meta_fields += ["timestamp", "created_at"]
     headers: List[str] = list(
         filter(lambda k: k not in meta_fields, er_list[0]._fields)
@@ -269,7 +269,7 @@ def print_nice_er(er_list):
 
 
 def iter_experiment_results(
-    obs: MeasurementMeta,
+    obs: AnalyzableObservation,
     experiment_group: str,
     anomaly: bool,
     confirmed: bool,

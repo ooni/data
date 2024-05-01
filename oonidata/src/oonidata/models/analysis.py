@@ -3,17 +3,16 @@ import dataclasses
 from datetime import datetime
 from typing import List, Optional
 
+from oonidata.models.base import BaseTableModel
+
 
 @dataclass
-class WebAnalysis:
-    __table_name__ = "obs_web_analysis"
-    __table_index__ = (
+class WebAnalysis(BaseTableModel, table_name="obs_web_analysis", table_index=(
         "analysis_id",
         "measurement_uid",
         "observation_id",
-        "measurement_start_time",
-    )
-
+        "measurement_start_time"
+)):
     analysis_id: str
     measurement_uid: str
     observation_id: str

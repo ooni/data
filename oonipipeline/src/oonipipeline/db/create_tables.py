@@ -1,36 +1,22 @@
 from datetime import datetime
 
 from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict
-from dataclasses import fields
+from dataclasses import dataclass, fields
+import typing
 
-from .connections import ClickhouseConnection
-
+from oonidata.models.base import BaseTableModel
 from oonidata.models.experiment_result import (
     ExperimentResult,
     MeasurementExperimentResult,
 )
 from oonidata.models.analysis import WebAnalysis
 from oonidata.models.observations import (
-    ObservationBase,
     WebControlObservation,
     WebObservation,
     HTTPMiddleboxObservation,
 )
 
-"""
-CREATE TABLE IF NOT EXISTS oonidata_processing_logs 
-(
-    key String,
-    timestamp DateTime('UTC'),
-    runtime_ms Nullable(UInt64),
-    bytes Nullable(UInt64),
-    msmt_count Nullable(UInt32),
-    comment Nullable(String)
-)
-ENGINE = MergeTree
-ORDER BY (timestamp, key)
-"""
-
+from .connections import ClickhouseConnection
 
 def typing_to_clickhouse(t: Any) -> str:
     if t == str:
@@ -82,8 +68,15 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Optional[List[str]]:
         return "Nullable(Array(String))"
 
-    if t == Optional[Tuple[str, str]]:
-        return "Nullable(Tuple(String, String))"
+    if t == Optional[Tuple[str, ...]]:
+        tuple_length = len(typing.get_args(typing.get_args(t)[0]))
+        tuple_args = ", ".join(["String" for x in range(tuple_length)])
+        return f"Nullable(Tuple({tuple_args}))"
+
+    if t == Tuple[str, ...]:
+        tuple_length = len(typing.get_args(typing.get_args(t)[0]))
+        tuple_args = ", ".join(["String" for x in range(tuple_length)])
+        return f"Tuple({tuple_args})"
 
     if t == Optional[List[Tuple[str, bytes]]]:
         return "Nullable(Array(Array(String)))"
@@ -94,75 +87,46 @@ def typing_to_clickhouse(t: Any) -> str:
     raise Exception(f"Unhandled type {t}")
 
 
-def create_query_for_observation(obs_class: Type[ObservationBase]) -> Tuple[str, str]:
+def format_create_query(table_name : str, model: Type[BaseTableModel]) -> Tuple[str, str]:
     columns = []
-    for f in fields(obs_class):
+    for f in fields(model):
         type_str = typing_to_clickhouse(f.type)
         columns.append(f"     {f.name} {type_str}")
 
+    print(f"model {model.__table_index__}")
     columns_str = ",\n".join(columns)
-    index_str = ",\n".join(obs_class.__table_index__)
+    index_str = ",\n".join(model.__table_index__)
 
     return (
         f"""
-    CREATE TABLE IF NOT EXISTS {obs_class.__table_name__} (
+    CREATE TABLE IF NOT EXISTS {table_name} (
 {columns_str}
     )
     ENGINE = ReplacingMergeTree
     ORDER BY ({index_str})
     SETTINGS index_granularity = 8192;
     """,
-        obs_class.__table_name__,
+        table_name,
     )
 
 
-def create_query_for_analysis(base_class) -> Tuple[str, str]:
-    columns = []
-    for f in fields(base_class):
-        type_str = typing_to_clickhouse(f.type)
-        columns.append(f"     {f.name} {type_str}")
-
-    columns_str = ",\n".join(columns)
-    index_str = ",\n".join(base_class.__table_index__)
-
-    return (
-        f"""
-    CREATE TABLE IF NOT EXISTS {base_class.__table_name__} (
-{columns_str}
-    )
-    ENGINE = ReplacingMergeTree
-    ORDER BY ({index_str})
-    SETTINGS index_granularity = 8192;
-    """,
-        base_class.__table_name__,
-    )
-
-
-CREATE_QUERY_FOR_LOGS = (
-    """CREATE TABLE IF NOT EXISTS oonidata_processing_logs
-(
-    key String,
-    timestamp DateTime('UTC'),
-    runtime_ms Nullable(UInt64),
-    bytes Nullable(UInt64),
-    msmt_count Nullable(UInt32),
-    comment Nullable(String)
-)
-ENGINE = MergeTree
-ORDER BY (timestamp, key)
-""",
-    "oonidata_processing_logs",
-)
-
-create_queries = [
-    create_query_for_observation(WebObservation),
-    create_query_for_observation(WebControlObservation),
-    create_query_for_observation(HTTPMiddleboxObservation),
-    create_query_for_analysis(WebAnalysis),
-    create_query_for_analysis(MeasurementExperimentResult),
-    CREATE_QUERY_FOR_LOGS,
+table_models = [
+    WebObservation,
+    WebControlObservation,
+    HTTPMiddleboxObservation,
+    WebAnalysis,
+    MeasurementExperimentResult
 ]
 
+create_queries = []
+for model in table_models:
+    table_name = model.__table_name__
+    create_queries.append(
+        format_create_query(table_name, model),
+    )
+    create_queries.append(
+        format_create_query(f"buffer_{table_name}", model)
+    )
 
 class TableDoesNotExistError(Exception):
     pass

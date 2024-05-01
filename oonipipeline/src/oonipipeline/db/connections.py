@@ -34,8 +34,8 @@ class ClickhouseConnection(DatabaseConnection):
         row_buffer_size=0,
         max_block_size=1_000_000,
         max_retries=3,
-        backoff_factor=1,
-        max_backoff=32,
+        backoff_factor=1.0,
+        max_backoff=32.0,
     ):
         from clickhouse_driver import Client
 
@@ -79,7 +79,7 @@ class ClickhouseConnection(DatabaseConnection):
                     f"failed to execute {query_str} args[{len(args)}] kwargs[{len(kwargs)}] (attempt {attempt})"
                 )
                 log.error(e)
-                log.error("exception history")
+                log.error("### Exception history")
                 for exc in exception_list[:-1]:
                     log.error(exc)
                 sleep_time += random.uniform(0, sleep_time * 0.1)
@@ -92,32 +92,14 @@ class ClickhouseConnection(DatabaseConnection):
             *args, **kwargs, settings={"max_block_size": self.max_block_size}
         )
 
-    def write_rows(self, table_name, rows, column_names):
-        if table_name in self._column_names:
-            assert self._column_names[table_name] == column_names
-        else:
-            self._column_names[table_name] = column_names
-
-        if self.row_buffer_size:
-            self._row_buffer[table_name] += rows
-            if len(self._row_buffer[table_name]) >= self.row_buffer_size:
-                self.flush_rows(table_name, self._row_buffer[table_name])
-                self._row_buffer[table_name] = []
-        else:
-            self.flush_rows(table_name=table_name, rows=rows)
-
-    def flush_rows(self, table_name, rows):
-        fields_str = ", ".join(self._column_names[table_name])
+    def write_rows(self, table_name, rows, column_names, use_buffer_table=False):
+        if use_buffer_table:
+            table_name = f"buffer_{table_name}"
+        fields_str = ", ".join(column_names)
         query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
         self.execute(query_str, rows)
 
-    def flush_all_rows(self):
-        for table_name, rows in self._row_buffer.items():
-            self.flush_rows(table_name=table_name, rows=rows)
-            self._row_buffer[table_name] = []
-
     def close(self):
-        self.flush_all_rows()
         self.client.disconnect()
 
 
