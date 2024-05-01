@@ -1,4 +1,5 @@
 import csv
+from dataclasses import asdict
 import pickle
 import random
 import time
@@ -7,7 +8,9 @@ from collections import defaultdict, namedtuple
 from datetime import datetime, timezone
 from pprint import pformat
 import logging
-from typing import Optional
+from typing import Iterable, List, Optional, Union
+
+from oonidata.models.base import TableModelProtocol
 
 log = logging.getLogger("oonidata.processing")
 
@@ -98,6 +101,40 @@ class ClickhouseConnection(DatabaseConnection):
         fields_str = ", ".join(column_names)
         query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
         self.execute(query_str, rows)
+
+    def write_table_model_rows(
+        self,
+        row_iterator: Union[Iterable, List],
+        use_buffer_table=True,
+    ):
+        row_list = []
+        column_names = None
+        table_name = None
+        for row in row_iterator:
+            d = asdict(row)
+            if "probe_meta" in d:
+                d.update(d.pop("probe_meta"))
+            if "measurement_meta" in d:
+                d.update(d.pop("measurement_meta"))
+
+            if column_names is None:
+                assert table_name is None
+                table_name = row.__table_name__
+                column_names = list(d.keys())
+            else:
+                assert column_names == list(d.keys())
+            row_list.append(d)
+
+        if len(row_list) == 0:
+            return
+
+        assert table_name is not None
+        assert column_names is not None
+        if use_buffer_table:
+            table_name = f"buffer_{table_name}"
+        fields_str = ", ".join(column_names)
+        query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
+        self.execute(query_str, row_list)
 
     def close(self):
         self.client.disconnect()

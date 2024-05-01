@@ -185,27 +185,10 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
                     continue
 
                 observation_count += 1
-                table_name, rows = make_db_rows(
-                    dc_list=website_analysis, column_names=column_names_wa
-                )
 
-                db_writer.write_rows(
-                    table_name=table_name,
-                    rows=rows,
-                    column_names=column_names_wa,
-                )
-
-                website_er = list(make_website_experiment_results(website_analysis))
-                table_name, rows = make_db_rows(
-                    dc_list=website_er,
-                    column_names=column_names_er,
-                    custom_remap={"loni_list": orjson.dumps},
-                )
-
-                db_writer.write_rows(
-                    table_name=table_name,
-                    rows=rows,
-                    column_names=column_names_er,
+                db_writer.write_table_model_rows(website_analysis)
+                db_writer.write_table_model_rows(
+                    make_website_experiment_results(website_analysis)
                 )
 
             except:

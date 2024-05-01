@@ -46,7 +46,9 @@ def write_observations_to_db(
     db: ClickhouseConnection,
     bucket_date: str,
 ):
-    for observations in measurement_to_observations(msmt=msmt, netinfodb=netinfodb):
+    for observations in measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date=bu
+    ):
         if len(observations) == 0:
             continue
 
@@ -102,7 +104,13 @@ def make_observations_for_file_entry_batch(
                                     exc_info=True,
                                 )
                                 continue
-                            write_observations_to_db(msmt, netinfodb, db, bucket_date)
+                            obs_tuple = measurement_to_observations(
+                                msmt=msmt,
+                                netinfodb=netinfodb,
+                                bucket_date=bucket_date,
+                            )
+                            for obs_list in obs_tuple:
+                                db.write_table_model_rows(obs_list)
                             idx += 1
                         except Exception as exc:
                             msmt_str = msmt_dict.get("report_id", None)

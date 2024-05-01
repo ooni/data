@@ -665,7 +665,7 @@ def make_probe_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> ProbeMeta:
     )
 
 
-def make_measurement_meta(msmt: BaseMeasurement) -> MeasurementMeta:
+def make_measurement_meta(msmt: BaseMeasurement, bucket_date: str) -> MeasurementMeta:
     assert msmt.measurement_uid is not None
     measurement_start_time = datetime.strptime(
         msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S"
@@ -683,7 +683,7 @@ def make_measurement_meta(msmt: BaseMeasurement) -> MeasurementMeta:
         software_version=msmt.software_version,
         test_name=msmt.test_name,
         test_version=msmt.test_version,
-        bucket_date="",
+        bucket_date=bucket_date,
         measurement_start_time=measurement_start_time,
     )
 
@@ -701,9 +701,16 @@ class MeasurementTransformer:
     final observation model that's going to be written to the desired database.
     """
 
-    def __init__(self, measurement: BaseMeasurement, netinfodb: NetinfoDB):
+    def __init__(
+        self,
+        measurement: BaseMeasurement,
+        bucket_date: str,
+        netinfodb: NetinfoDB,
+    ):
         self.netinfodb = netinfodb
-        self.measurement_meta = make_measurement_meta(msmt=measurement)
+        self.measurement_meta = make_measurement_meta(
+            msmt=measurement, bucket_date=bucket_date
+        )
         self.probe_meta = make_probe_meta(msmt=measurement, netinfodb=netinfodb)
 
     def make_http_observations(

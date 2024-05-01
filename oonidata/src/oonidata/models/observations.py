@@ -13,6 +13,8 @@ from oonidata.models.dataformats import Failure
 from oonidata.datautils import maybe_elipse
 
 
+## These two classes are special, and it's essential that the columns don't clash with the classes that compose them.
+# TODO(art): we should eventually add a prefix to these columns in the clickhouse map to avoid that.
 @dataclass
 class MeasurementMeta:
     measurement_uid: str
@@ -190,7 +192,6 @@ class WebControlObservation:
     hostname: str
     observation_id: str = ""
 
-    bucket_date: Optional[str] = None
     created_at: Optional[datetime] = None
 
     ip: str = ""
@@ -229,7 +230,6 @@ class WebObservation:
 
     # These fields are added by the processor
     observation_id: str = ""
-    bucket_date: Optional[str] = None
     created_at: Optional[datetime] = None
     processing_time: Optional[float] = None
 
@@ -347,7 +347,6 @@ class HTTPMiddleboxObservation:
 
     observation_id: str = ""
 
-    bucket_date: Optional[str] = None
     created_at: Optional[datetime] = None
 
     # Set the payload returned by the HTTP Invalid Request Line test

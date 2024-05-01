@@ -1,3 +1,10 @@
+from typing import List, Tuple, Union
+
+from oonidata.models.observations import (
+    HTTPMiddleboxObservation,
+    WebControlObservation,
+    WebObservation,
+)
 from .nettests.dnscheck import DNSCheckTransformer
 from .nettests.http_header_field_manipulation import (
     HTTPHeaderFieldManipulationTransformer,
@@ -32,11 +39,22 @@ NETTEST_TRANSFORMERS = {
     "web_connectivity": WebConnectivityTransformer,
 }
 
+TypeWebConnectivityObservations = Tuple[
+    List[WebObservation], List[WebControlObservation]
+]
+TypeWebObservations = Tuple[List[WebObservation]]
+TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 
-def measurement_to_observations(msmt, netinfodb: NetinfoDB):
+
+def measurement_to_observations(msmt, bucket_date: str, netinfodb: NetinfoDB) -> Union[
+    TypeWebConnectivityObservations,
+    TypeWebObservations,
+    TypeHTTPMiddleboxObservations,
+    Tuple[()],
+]:
     if msmt.test_name in NETTEST_TRANSFORMERS:
         transformer = NETTEST_TRANSFORMERS[msmt.test_name](
-            measurement=msmt, netinfodb=netinfodb
+            measurement=msmt, netinfodb=netinfodb, bucket_date=bucket_date
         )
         return transformer.make_observations(msmt)
-    return [[]]
+    return ()
