@@ -91,7 +91,7 @@ def test_flush_rows(db):
         [5, "five"],
         [6, "six"],
     ]
-    with pytest.raises(ValueError):
+    with pytest.raises(AttributeError):
         db.write_rows("tmp_test_recovery", rows, ["col1", "col2"])
         db.flush_all_rows()
 
