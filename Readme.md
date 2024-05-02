@@ -56,7 +56,8 @@ Note: The path will be updated in the future to live under `/jsonl/`
 
 Listing JSONL files:
 ```
-aws s3 --no-sign-request ls s3://ooni-data-eu-fra/raw/20210817/15/US/webconnectivity/
+aws s3 --no-sign-request ls \
+    s3://ooni-data-eu-fra/raw/20210817/15/US/webconnectivity/
 ```
 
 #### Downloading entire dates
@@ -66,7 +67,9 @@ you can use the `aws s3 sync` command.
 
 For example to download all measurements from Italy on the 1st of February 2024, you can run:
 ```
-aws s3 --no-sign-request sync s3://ooni-data-eu-fra/raw/20240201/ ./ --exclude "*" --include "*/IT/*"
+aws s3 --no-sign-request sync \
+    s3://ooni-data-eu-fra/raw/20240201/ ./ \
+    --exclude "*" --include "*/IT/*"
 ```
 
 **Note**: the difference in paths compared to older data
@@ -80,7 +83,8 @@ Example: `s3://ooni-data-eu-fra/jsonl/webconnectivity/IT/20200921/00/20200921_IT
 Listing JSONL files:
 ```
 aws s3 --no-sign-request ls s3://ooni-data-eu-fra/jsonl/
-aws s3 --no-sign-request ls s3://ooni-data-eu-fra/jsonl/webconnectivity/US/20201021/00/
+aws s3 --no-sign-request ls \
+    s3://ooni-data-eu-fra/jsonl/webconnectivity/US/20201021/00/
 ```
 
 #### Downloading entire dates
@@ -90,7 +94,10 @@ you can use the `aws s3 sync` command.
 
 For example to download webconnectivity measurements from Italy on the 1st of February 2024, you can run:
 ```
-aws s3 --no-sign-request sync s3://ooni-data-eu-fra/jsonl/webconnectivity/IT/20200201/ ./ --exclude "*" --include "*"
+aws s3 --no-sign-request sync \
+    s3://ooni-data-eu-fra/jsonl/webconnectivity/IT/20200201/ ./ \
+    --exclude "*" \
+    --include "*"
 ```
 
 **Note**: the difference in paths compared to newer data
@@ -105,5 +112,6 @@ Example: `s3://ooni-data-eu-fra/raw/20210817/11/GB/webconnectivity/2021081711_GB
 Listing postcan files:
 ```
 aws s3 --no-sign-request ls s3://ooni-data-eu-fra/raw/20210817/
-aws s3 --no-sign-request ls s3://ooni-data-eu-fra/raw/20210817/11/GB/webconnectivity/
+aws s3 --no-sign-request ls \
+    s3://ooni-data-eu-fra/raw/20210817/11/GB/webconnectivity/
 ```
