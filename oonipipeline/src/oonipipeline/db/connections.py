@@ -159,7 +159,7 @@ class ClickhouseConnection(DatabaseConnection):
             self.row_buffer[table_name] = []
         self.row_buffer[table_name] += row_list
 
-        if len(self.row_buffer[table_name]) >= self.max_block_size:
+        if len(self.row_buffer[table_name]) >= self.write_batch_size:
             log.debug(f"flushing table {table_name}")
             self.flush(table_name)
 
