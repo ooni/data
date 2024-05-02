@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict
+from types import NoneType
+from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict, Union
 from dataclasses import fields
 import typing
 
@@ -21,36 +22,41 @@ from oonidata.models.observations import (
 from .connections import ClickhouseConnection
 
 
-def typing_to_clickhouse(t: Any) -> str:
+MAPPED_BASIC_TYPES = [str, int, bool, datetime, float, dict]
+BasicType = Union[str, int, bool, datetime, float, dict]
+
+
+def python_basic_type_to_clickhouse(t: BasicType) -> str:
     if t == str:
         return "String"
+    if t == int:
+        return "Int32"
+    if t == bool:
+        return "Int8"
+    if t == datetime:
+        return "Datetime64(3, 'UTC')"
+    if t == float:
+        return "Float64"
+    if t == dict:
+        return "String"
+    raise Exception(f"Unsupported type {t}")
+
+
+def typing_to_clickhouse(t: Any) -> str:
+    if t in MAPPED_BASIC_TYPES:
+        return python_basic_type_to_clickhouse(t)
 
     if t in (Optional[str], Optional[bytes]):
         return "Nullable(String)"
 
-    if t == int:
-        return "Int32"
-
     if t == Optional[int]:
         return "Nullable(Int32)"
-
-    if t == bool:
-        return "Int8"
 
     if t == Optional[bool]:
         return "Nullable(Int8)"
 
-    if t == datetime:
-        return "Datetime64(3, 'UTC')"
-
     if t == Optional[datetime]:
         return "Nullable(Datetime64(3, 'UTC'))"
-
-    if t == float:
-        return "Float64"
-
-    if t == dict:
-        return "String"
 
     # Casting it to JSON
     if t == List[Dict]:
@@ -71,23 +77,27 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Optional[List[str]]:
         return "Nullable(Array(String))"
 
-    if t == Optional[Tuple[str, ...]]:
-        tuple_length = len(typing.get_args(typing.get_args(t)[0]))
-        tuple_args = ", ".join(["String" for x in range(tuple_length)])
-        return f"Nullable(Tuple({tuple_args}))"
-
-    if t == Tuple[str, ...]:
-        tuple_length = len(typing.get_args(typing.get_args(t)[0]))
-        tuple_args = ", ".join(["String" for x in range(tuple_length)])
-        return f"Tuple({tuple_args})"
-
     if t == Optional[List[Tuple[str, bytes]]]:
         return "Nullable(Array(Array(String)))"
 
     if t in (Mapping[str, str], Dict[str, str]):
         return "Map(String, String)"
 
-    raise Exception(f"Unhandled type {t}")
+    # TODO(art): eventually all the above types should be mapped using a similar pattern
+    child_type, parent_type = typing.get_args(t)
+    is_nullable = False
+    if parent_type == NoneType:
+        is_nullable = True
+        target_type = child_type
+    else:
+        target_type = parent_type
+    target_origin = typing.get_origin(target_type)
+    target_args = typing.get_args(target_type)
+    assert target_origin == tuple
+    tuple_args = ", ".join([python_basic_type_to_clickhouse(a) for a in target_args])
+    if is_nullable:
+        return f"Nullable(Tuple({tuple_args}))"
+    return f"Tuple({tuple_args})"
 
 
 def format_create_query(
