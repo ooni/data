@@ -227,7 +227,9 @@ def test_insert_query_for_observation(measurements, netinfodb):
         ]
     )
     assert isinstance(http_blocked, WebConnectivity)
-    mt = MeasurementTransformer(measurement=http_blocked, netinfodb=netinfodb)
+    mt = MeasurementTransformer(
+        measurement=http_blocked, netinfodb=netinfodb, bucket_date="2022-06-08"
+    )
     all_web_obs = [
         obs
         for obs in mt.make_http_observations(
@@ -245,7 +247,9 @@ def test_web_connectivity_processor(netinfodb, measurements):
     )
     assert isinstance(msmt, WebConnectivity)
 
-    web_obs_list, web_ctrl_list = measurement_to_observations(msmt, netinfodb=netinfodb)
+    web_obs_list, web_ctrl_list = measurement_to_observations(
+        msmt, netinfodb=netinfodb, bucket_date="2022-06-27"
+    )
     assert len(web_obs_list) == 3
     assert len(web_ctrl_list) == 3
 
