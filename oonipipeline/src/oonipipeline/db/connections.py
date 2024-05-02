@@ -11,6 +11,7 @@ import logging
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from oonidata.models.base import TableModelProtocol
+import orjson
 
 log = logging.getLogger("oonidata.processing")
 
@@ -68,19 +69,22 @@ class ClickhouseConnection(DatabaseConnection):
     def _execute(self, *args, **kwargs):
         return self.client.execute(*args, **kwargs)
 
-    def execute(self, query_str, *args, **kwargs):
+    def execute(self, query_str, rows=None, *args, **kwargs):
         exception_list = []
         # Exponentially backoff the retries
         for attempt in range(self._max_retries):
             try:
-                return self._execute(query_str, *args, **kwargs)
+                return self._execute(query_str, rows, *args, **kwargs)
             except Exception as e:
                 exception_list.append(e)
                 sleep_time = min(self._max_backoff, self._backoff_factor * (2**attempt))
+                row_len = 0
+                if rows:
+                    row_len = len(rows)
+                    log.info(f"{query_str} {rows[0]}")
                 log.error(
-                    f"failed to execute {query_str} args[{len(args)}] kwargs[{len(kwargs)}] (attempt {attempt})"
+                    f"failed to execute {query_str} row_len={row_len} args=[{args}] kwargs[{kwargs}] (attempt {attempt})"
                 )
-                log.error(e)
                 log.error("### Exception history")
                 for exc in exception_list[:-1]:
                     log.error(exc)
@@ -106,13 +110,17 @@ class ClickhouseConnection(DatabaseConnection):
     ) -> Tuple[List[Dict], str]:
         row_list = []
         table_name = None
-        # TODO move this into a function
+        # TODO(art): I'm not a fan of this living in here. It should be much closer to the actual models.
         for row in row_iterator:
             d = asdict(row)
             if "probe_meta" in d:
                 d.update(d.pop("probe_meta"))
             if "measurement_meta" in d:
                 d.update(d.pop("measurement_meta"))
+
+            # TODO(art): this custom_remap should not be here
+            if "loni_list" in d:
+                d["loni_list"] = orjson.dumps(d["loni_list"])
 
             if table_name is None:
                 table_name = row.__table_name__
