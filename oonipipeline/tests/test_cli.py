@@ -160,9 +160,9 @@ def test_full_workflow(
         ],
     )
     assert result.exit_code == 0
+    time.sleep(3)
     res = db.execute(
         "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
     )
     assert res[0][0] == 200  # type: ignore
     # We wait on the table buffers to be flushed
-    time.sleep(3)
