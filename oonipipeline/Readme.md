@@ -21,6 +21,10 @@ In order to run the pipeline you should setup the following dependencies:
 
 ### Quick start
 
+```
+git clone https://github.com/ooni/data
+```
+
 Start temporal dev server:
 
 ```
@@ -38,7 +42,7 @@ clickhouse server
 You can then start the desired workflow, for example to create signal observations for the US:
 
 ```
-hatch run oonipipeline mkobs --probe-cc US --test-name signal --start-day 2024-01-01 --end-day 2024-01-02
+hatch run oonipipeline mkobs --probe-cc US --test-name signal --start-day 2024-01-01 --end-day 2024-01-02 --create-tables
 ```
 
 Monitor the workflow executing by accessing: http://localhost:8233/
@@ -92,7 +96,7 @@ hatch run oonipipeline startworkers
 Then you can trigger the workflow by passing the `--no-start-workers` flag:
 
 ```
-hatch run oonipipeline mkobs --probe-cc US --start-day 2024-01-01 --end-day 2024-01-20 --no-start-workers
+hatch run oonipipeline mkobs --probe-cc US --start-day 2024-01-01 --end-day 2024-01-20 --no-start-workers --create-tables
 ```
 
 #### Superset
