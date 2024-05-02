@@ -47,7 +47,7 @@ def write_observations_to_db(
     bucket_date: str,
 ):
     for observations in measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bu
+        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
     ):
         if len(observations) == 0:
             continue
@@ -64,7 +64,7 @@ def write_observations_to_db(
 def make_observations_for_file_entry_batch(
     file_entry_batch: Sequence[Tuple[str, str, str, int]],
     clickhouse: str,
-    row_buffer_size: int,
+    write_batch_size: int,
     data_dir: pathlib.Path,
     bucket_date: str,
     probe_cc: List[str],
@@ -77,7 +77,7 @@ def make_observations_for_file_entry_batch(
 
     total_failure_count = 0
     current_span = trace.get_current_span()
-    with ClickhouseConnection(clickhouse, row_buffer_size=row_buffer_size) as db:
+    with ClickhouseConnection(clickhouse, write_batch_size=write_batch_size) as db:
         ccs = ccs_set(probe_cc)
         idx = 0
         for bucket_name, s3path, ext, fe_size in file_entry_batch:
@@ -150,7 +150,7 @@ def make_observation_in_day(params: MakeObservationsParams) -> dict:
     # TODO(art): this previous range search and deletion makes the idempotence
     # of the activity not 100% accurate.
     # We should look into fixing it.
-    with ClickhouseConnection(params.clickhouse, row_buffer_size=10_000) as db:
+    with ClickhouseConnection(params.clickhouse, write_batch_size=10_000) as db:
         prev_ranges = []
         for table_name in ["obs_web"]:
             prev_ranges.append(
@@ -197,7 +197,7 @@ def make_observation_in_day(params: MakeObservationsParams) -> dict:
     )
 
     if len(prev_ranges) > 0:
-        with ClickhouseConnection(params.clickhouse, row_buffer_size=10_000) as db:
+        with ClickhouseConnection(params.clickhouse, write_batch_size=10_000) as db:
             for table_name, pr in prev_ranges:
                 log.info("deleting previous range of {pr}")
                 maybe_delete_prev_range(db=db, prev_range=pr)
