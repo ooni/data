@@ -1,5 +1,6 @@
 import csv
 import pickle
+import random
 import time
 
 from collections import defaultdict, namedtuple
@@ -32,7 +33,9 @@ class ClickhouseConnection(DatabaseConnection):
         conn_url,
         row_buffer_size=0,
         max_block_size=1_000_000,
-        dump_failing_rows: Optional[str] = None,
+        max_retries=3,
+        backoff_factor=1,
+        max_backoff=32,
     ):
         from clickhouse_driver import Client
 
@@ -44,7 +47,10 @@ class ClickhouseConnection(DatabaseConnection):
 
         self._column_names = {}
         self._row_buffer = defaultdict(list)
-        self.dump_failing_rows = dump_failing_rows
+
+        self._max_retries = max_retries
+        self._max_backoff = max_backoff
+        self._backoff_factor = backoff_factor
 
     def __enter__(self):
         return self
@@ -57,8 +63,29 @@ class ClickhouseConnection(DatabaseConnection):
         self.execute("SET mutations_sync = 1;")
         return self.execute(f"DELETE FROM {table_name} WHERE {where};")
 
-    def execute(self, *args, **kwargs):
+    def _execute(self, *args, **kwargs):
         return self.client.execute(*args, **kwargs)
+
+    def execute(self, query_str, *args, **kwargs):
+        exception_list = []
+        # Exponentially backoff the retries
+        for attempt in range(self._max_retries):
+            try:
+                return self._execute(query_str, *args, **kwargs)
+            except Exception as e:
+                exception_list.append(e)
+                sleep_time = min(self._max_backoff, self._backoff_factor * (2**attempt))
+                log.error(
+                    f"failed to execute {query_str} args[{len(args)}] kwargs[{len(kwargs)}] (attempt {attempt})"
+                )
+                log.error(e)
+                log.error("exception history")
+                for exc in exception_list[:-1]:
+                    log.error(exc)
+                sleep_time += random.uniform(0, sleep_time * 0.1)
+                time.sleep(sleep_time)
+        # Raise the last exception
+        raise exception_list[-1]
 
     def execute_iter(self, *args, **kwargs):
         return self.client.execute_iter(
@@ -82,27 +109,7 @@ class ClickhouseConnection(DatabaseConnection):
     def flush_rows(self, table_name, rows):
         fields_str = ", ".join(self._column_names[table_name])
         query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
-        try:
-            self.execute(query_str, rows)
-        except Exception as exc:
-            log.error(
-                f"Failed to write {len(rows)} rows. Trying to savage what is savageable. ({exc})"
-            )
-            for idx, row in enumerate(rows):
-                try:
-                    self.execute(
-                        query_str,
-                        [row],
-                        types_check=True,
-                        query_id=f"oonidata-savage-{idx}-{time.time()}",
-                    )
-                    time.sleep(0.1)
-                except Exception as exc:
-                    log.error(f"Failed to write {row} ({exc}) {query_str}")
-
-                    if self.dump_failing_rows:
-                        with open(self.dump_failing_rows, "ab") as out_file:
-                            pickle.dump({"query_str": query_str, "row": row}, out_file)
+        self.execute(query_str, rows)
 
     def flush_all_rows(self):
         for table_name, rows in self._row_buffer.items():

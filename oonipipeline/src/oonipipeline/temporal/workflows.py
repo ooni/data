@@ -59,7 +59,8 @@ log = workflow.logger
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
 OBSERVATION_WORKFLOW_ID = "oonipipeline-observations"
 
-MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT = timedelta(hours=24)
+# TODO(art): come up with a nicer way to nest workflows so we don't need such a high global timeout
+MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT = timedelta(hours=48)
 MAKE_GROUND_TRUTHS_START_TO_CLOSE_TIMEOUT = timedelta(hours=1)
 MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT = timedelta(hours=10)
 

@@ -107,132 +107,119 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
 
     tracer = opentelemetry.trace.get_tracer(__name__)
 
-    with opentelemetry.trace.get_current_span():
-        fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
-        body_db = BodyDB(db=ClickhouseConnection(clickhouse))
-        db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
-        db_lookup = ClickhouseConnection(clickhouse)
+    fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
+    body_db = BodyDB(db=ClickhouseConnection(clickhouse))
+    db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
+    db_lookup = ClickhouseConnection(clickhouse)
 
-        column_names_wa = [f.name for f in dataclasses.fields(WebAnalysis)]
-        column_names_er = [
-            f.name for f in dataclasses.fields(MeasurementExperimentResult)
-        ]
+    column_names_wa = [f.name for f in dataclasses.fields(WebAnalysis)]
+    column_names_er = [f.name for f in dataclasses.fields(MeasurementExperimentResult)]
 
-        # TODO(art): this previous range search and deletion makes the idempotence
-        # of the activity not 100% accurate.
-        # We should look into fixing it.
-        prev_range_list = [
-            get_prev_range(
-                db=db_lookup,
-                table_name=WebAnalysis.__table_name__,
-                timestamp=datetime.combine(day, datetime.min.time()),
-                test_name=[],
-                probe_cc=probe_cc,
-                timestamp_column="measurement_start_time",
-            ),
-            get_prev_range(
-                db=db_lookup,
-                table_name=MeasurementExperimentResult.__table_name__,
-                timestamp=datetime.combine(day, datetime.min.time()),
-                test_name=[],
-                probe_cc=probe_cc,
-                timestamp_column="timeofday",
-                probe_cc_column="location_network_cc",
-            ),
-        ]
+    # TODO(art): this previous range search and deletion makes the idempotence
+    # of the activity not 100% accurate.
+    # We should look into fixing it.
+    prev_range_list = [
+        get_prev_range(
+            db=db_lookup,
+            table_name=WebAnalysis.__table_name__,
+            timestamp=datetime.combine(day, datetime.min.time()),
+            test_name=[],
+            probe_cc=probe_cc,
+            timestamp_column="measurement_start_time",
+        ),
+        get_prev_range(
+            db=db_lookup,
+            table_name=MeasurementExperimentResult.__table_name__,
+            timestamp=datetime.combine(day, datetime.min.time()),
+            test_name=[],
+            probe_cc=probe_cc,
+            timestamp_column="timeofday",
+            probe_cc_column="location_network_cc",
+        ),
+    ]
 
-        log.info(f"loading ground truth DB for {day}")
-        with tracer.start_as_current_span(
-            "MakeObservations:load_ground_truths"
-        ) as span:
-            ground_truth_db_path = (
-                data_dir / "ground_truths" / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
-            )
-            web_ground_truth_db = WebGroundTruthDB()
-            web_ground_truth_db.build_from_existing(
-                str(ground_truth_db_path.absolute())
-            )
-            log.info(f"loaded ground truth DB for {day}")
-            span.add_event(f"loaded ground truth DB for {day}")
-            span.set_attribute("day", day.strftime("%Y-%m-%d"))
-            span.set_attribute(
-                "ground_truth_row_count", web_ground_truth_db.count_rows()
-            )
+    log.info(f"loading ground truth DB for {day}")
+    with tracer.start_span("MakeObservations:load_ground_truths") as span:
+        ground_truth_db_path = (
+            data_dir / "ground_truths" / f"web-{day.strftime('%Y-%m-%d')}.sqlite3"
+        )
+        web_ground_truth_db = WebGroundTruthDB()
+        web_ground_truth_db.build_from_existing(str(ground_truth_db_path.absolute()))
+        log.info(f"loaded ground truth DB for {day}")
+        span.add_event(f"loaded ground truth DB for {day}")
+        span.set_attribute("day", day.strftime("%Y-%m-%d"))
+        span.set_attribute("ground_truth_row_count", web_ground_truth_db.count_rows())
 
-        failures = 0
-        no_exp_results = 0
-        observation_count = 0
-        with tracer.start_as_current_span(
-            "MakeObservations:iter_web_observations"
-        ) as span:
-            for web_obs in iter_web_observations(
-                db_lookup,
-                measurement_day=day,
-                probe_cc=probe_cc,
-                test_name="web_connectivity",
-            ):
-                try:
-                    relevant_gts = web_ground_truth_db.lookup_by_web_obs(
-                        web_obs=web_obs
+    failures = 0
+    no_exp_results = 0
+    observation_count = 0
+    with tracer.start_span("MakeObservations:iter_web_observations") as span:
+        for web_obs in iter_web_observations(
+            db_lookup,
+            measurement_day=day,
+            probe_cc=probe_cc,
+            test_name="web_connectivity",
+        ):
+            try:
+                relevant_gts = web_ground_truth_db.lookup_by_web_obs(web_obs=web_obs)
+            except:
+                log.error(
+                    f"failed to lookup relevant_gts for {web_obs[0].measurement_uid}",
+                    exc_info=True,
+                )
+                failures += 1
+                continue
+
+            try:
+                website_analysis = list(
+                    make_web_analysis(
+                        web_observations=web_obs,
+                        body_db=body_db,
+                        web_ground_truths=relevant_gts,
+                        fingerprintdb=fingerprintdb,
                     )
-                except:
-                    log.error(
-                        f"failed to lookup relevant_gts for {web_obs[0].measurement_uid}",
-                        exc_info=True,
-                    )
-                    failures += 1
+                )
+                if len(website_analysis) == 0:
+                    log.info(f"no website analysis for {probe_cc}, {test_name}")
+                    no_exp_results += 1
                     continue
 
-                try:
-                    website_analysis = list(
-                        make_web_analysis(
-                            web_observations=web_obs,
-                            body_db=body_db,
-                            web_ground_truths=relevant_gts,
-                            fingerprintdb=fingerprintdb,
-                        )
-                    )
-                    if len(website_analysis) == 0:
-                        log.info(f"no website analysis for {probe_cc}, {test_name}")
-                        no_exp_results += 1
-                        continue
+                observation_count += 1
+                table_name, rows = make_db_rows(
+                    dc_list=website_analysis, column_names=column_names_wa
+                )
 
-                    observation_count += 1
-                    table_name, rows = make_db_rows(
-                        dc_list=website_analysis, column_names=column_names_wa
-                    )
+                db_writer.write_rows(
+                    table_name=table_name,
+                    rows=rows,
+                    column_names=column_names_wa,
+                )
 
-                    db_writer.write_rows(
-                        table_name=table_name,
-                        rows=rows,
-                        column_names=column_names_wa,
-                    )
+                website_er = list(make_website_experiment_results(website_analysis))
+                table_name, rows = make_db_rows(
+                    dc_list=website_er,
+                    column_names=column_names_er,
+                    custom_remap={"loni_list": orjson.dumps},
+                )
 
-                    website_er = list(make_website_experiment_results(website_analysis))
-                    table_name, rows = make_db_rows(
-                        dc_list=website_er,
-                        column_names=column_names_er,
-                        custom_remap={"loni_list": orjson.dumps},
-                    )
+                db_writer.write_rows(
+                    table_name=table_name,
+                    rows=rows,
+                    column_names=column_names_er,
+                )
 
-                    db_writer.write_rows(
-                        table_name=table_name,
-                        rows=rows,
-                        column_names=column_names_er,
-                    )
+            except:
+                web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
+                log.error(
+                    f"failed to generate analysis for {web_obs_ids}", exc_info=True
+                )
+                failures += 1
 
-                except:
-                    web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
-                    log.error(
-                        f"failed to generate analysis for {web_obs_ids}", exc_info=True
-                    )
-                    failures += 1
-
-            span.set_attribute("total_failure_count", failures)
-            span.set_attribute("total_observation_count", observation_count)
-            span.set_attribute("no_experiment_results_count", no_exp_results)
-            span.set_attribute("day", day.strftime("%Y-%m-%d"))
-            span.set_attribute("probe_cc", probe_cc)
+        span.set_attribute("total_failure_count", failures)
+        span.set_attribute("total_observation_count", observation_count)
+        span.set_attribute("no_experiment_results_count", no_exp_results)
+        span.set_attribute("day", day.strftime("%Y-%m-%d"))
+        span.set_attribute("probe_cc", probe_cc)
 
     for prev_range in prev_range_list:
         maybe_delete_prev_range(db=db_lookup, prev_range=prev_range)
