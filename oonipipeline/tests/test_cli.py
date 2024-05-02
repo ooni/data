@@ -47,6 +47,8 @@ def test_full_workflow(
             1,
             "--clickhouse-buffer-max-time",
             2,
+            "--parallelism",
+            1,
             # "--archives-dir",
             # tmp_path.absolute(),
         ],
@@ -85,6 +87,8 @@ def test_full_workflow(
             1,
             "--clickhouse-buffer-max-time",
             2,
+            "--parallelism",
+            1,
         ],
     )
     assert result.exit_code == 0
@@ -151,6 +155,8 @@ def test_full_workflow(
             1,
             "--clickhouse-buffer-max-time",
             2,
+            "--parallelism",
+            1,
         ],
     )
     assert result.exit_code == 0
