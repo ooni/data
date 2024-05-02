@@ -8,9 +8,10 @@ from ..measurement_transformer import MeasurementTransformer
 
 class BrowserWebTransformer(MeasurementTransformer):
     def make_observations(self, msmt: BrowserWeb) -> Tuple[List[WebObservation]]:
-        bw_obs = WebObservation(**dataclasses.asdict(self.measurement_meta))
-
-        bw_obs.http_failure = msmt.test_keys.result
-        bw_obs.http_runtime = msmt.test_keys.load_time_ms
-
+        bw_obs = WebObservation(
+            measurement_meta=self.measurement_meta,
+            probe_meta=self.probe_meta,
+            http_failure=msmt.test_keys.result,
+            http_runtime=msmt.test_keys.load_time_ms,
+        )
         return ([bw_obs],)

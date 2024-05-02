@@ -63,8 +63,10 @@ def init_runtime_with_telemetry(endpoint: str) -> TemporalRuntime:
     )
 
 
-async def temporal_connect(telemetry_endpoint: str, temporal_address: str):
-    runtime = init_runtime_with_telemetry(telemetry_endpoint)
+async def temporal_connect(telemetry_endpoint: Optional[str], temporal_address: str):
+    runtime = None
+    if telemetry_endpoint:
+        runtime = init_runtime_with_telemetry(telemetry_endpoint)
     client = await TemporalClient.connect(
         temporal_address,
         interceptors=[TracingInterceptor()],
@@ -76,7 +78,7 @@ async def temporal_connect(telemetry_endpoint: str, temporal_address: str):
 @dataclass
 class WorkerParams:
     temporal_address: str
-    telemetry_endpoint: str
+    telemetry_endpoint: Optional[str]
     thread_count: int
     process_idx: int = 0
 
@@ -129,7 +131,7 @@ async def execute_workflow_with_workers(
     arg: ParamType,
     parallelism,
     workflow_id_prefix: str,
-    telemetry_endpoint: str,
+    telemetry_endpoint: Optional[str],
     temporal_address: str,
 ):
     click.echo(
@@ -153,7 +155,7 @@ async def execute_workflow(
     arg: ParamType,
     parallelism,
     workflow_id_prefix: str,
-    telemetry_endpoint: str,
+    telemetry_endpoint: Optional[str],
     temporal_address: str,
 ):
     click.echo(
@@ -177,7 +179,7 @@ def run_workflow(
     parallelism,
     start_workers: bool,
     workflow_id_prefix: str,
-    telemetry_endpoint: str,
+    telemetry_endpoint: Optional[str],
     temporal_address: str,
 ):
     action = execute_workflow
@@ -270,7 +272,7 @@ clickhouse_buffer_max_time_option = click.option(
     help="max_time for the Buffer tables in clickhouse. only applied during create. see: https://clickhouse.com/docs/en/engines/table-engines/special/buffer",
 )
 telemetry_endpoint_option = click.option(
-    "--telemetry-endpoint", type=str, required=True, default="http://localhost:4317"
+    "--telemetry-endpoint", type=Optional[str], required=False, default=None
 )
 temporal_address_option = click.option(
     "--temporal-address", type=str, required=True, default="localhost:7233"
@@ -347,7 +349,7 @@ def mkobs(
     fast_fail: bool,
     create_tables: bool,
     drop_tables: bool,
-    telemetry_endpoint: str,
+    telemetry_endpoint: Optional[str],
     temporal_address: str,
     start_workers: bool,
 ):
@@ -428,7 +430,7 @@ def mkanalysis(
     parallelism: int,
     fast_fail: bool,
     create_tables: bool,
-    telemetry_endpoint: str,
+    telemetry_endpoint: Optional[str],
     temporal_address: str,
     start_workers: bool,
 ):
@@ -479,7 +481,7 @@ def mkgt(
     clickhouse: str,
     data_dir: Path,
     parallelism: int,
-    telemetry_endpoint: str,
+    telemetry_endpoint: Optional[str],
     temporal_address: str,
     start_workers: bool,
 ):
@@ -513,7 +515,7 @@ def mkgt(
 def startworkers(
     data_dir: Path,
     parallelism: int,
-    telemetry_endpoint: str,
+    telemetry_endpoint: Optional[str],
     temporal_address: str,
 ):
     click.echo(f"starting {parallelism} workers")

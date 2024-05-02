@@ -16,7 +16,8 @@ class HTTPHeaderFieldManipulationTransformer(MeasurementTransformer):
             hfm_success=True,
             observation_id=f"{msmt.measurement_uid}_0",
             created_at=datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
-            **dataclasses.asdict(self.measurement_meta),
+            measurement_meta=self.measurement_meta,
+            probe_meta=self.probe_meta,
         )
 
         if msmt.test_keys.requests is None or len(msmt.test_keys.requests) == 0:
