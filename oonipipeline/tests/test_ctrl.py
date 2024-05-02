@@ -1,6 +1,7 @@
 from datetime import date, datetime
+import time
 
-from oonidata.models.observations import WebObservation
+from oonidata.models.observations import MeasurementMeta, ProbeMeta, WebObservation
 
 from oonipipeline.analysis.datasources import iter_web_observations
 from oonipipeline.db.connections import ClickhouseConnection
@@ -10,6 +11,40 @@ from oonipipeline.analysis.control import (
 )
 from oonipipeline.temporal.activities.observations import (
     make_observations_for_file_entry_batch,
+)
+
+DUMMY_PROBE_META = ProbeMeta(
+    probe_asn=6167,
+    probe_cc="US",
+    probe_as_org_name="Verizon Business",
+    probe_as_cc="US",
+    probe_as_name="20211102",
+    network_type="TEST",
+    platform="TEST",
+    origin="",
+    engine_name="TEST",
+    engine_version="TEST",
+    architecture="TEST",
+    resolver_ip="141.207.147.254",
+    resolver_asn=22394,
+    resolver_cc="US",
+    resolver_as_org_name="Verizon Business",
+    resolver_as_cc="US",
+    resolver_is_scrubbed=False,
+    resolver_asn_probe=22394,
+    resolver_as_org_name_probe="Verizon Business",
+)
+
+DUMMY_MEASUREMENT_META = MeasurementMeta(
+    software_name="TEST",
+    software_version="TEST",
+    bucket_date="2023-10-31",
+    test_name="web_connectivity",
+    test_version="0.4.2",
+    measurement_uid="TEST",
+    input=None,
+    report_id="TEST",
+    measurement_start_time=datetime(2023, 10, 31, 15, 56, 12),
 )
 
 
@@ -26,6 +61,8 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
         file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", ["US"], False
     )
     assert obs_msmt_count == 299
+    # Wait for buffers to flush
+    time.sleep(3)
     ground_truth_db_path = tmp_path / "test-groundtruthdbUSONLY-2023-10-31.sqlite3"
     web_ground_truth_db = WebGroundTruthDB(
         connect_str=str(ground_truth_db_path.absolute())
@@ -43,40 +80,14 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
 
     web_obs = [
         WebObservation(
+            probe_meta=DUMMY_PROBE_META,
+            measurement_meta=DUMMY_MEASUREMENT_META,
             # The only things we look at to find the groundtruth are hostname, ip, http_request_url
             hostname="explorer.ooni.org",
             ip="37.218.242.149",
             port=443,
             http_request_url="https://explorer.ooni.org/",
-            probe_asn=6167,
-            probe_cc="US",
-            probe_as_org_name="Verizon Business",
-            probe_as_cc="US",
-            probe_as_name="20211102",
-            measurement_start_time=datetime(2023, 10, 31, 15, 56, 12),
             created_at=datetime(2023, 11, 17, 10, 35, 34),
-            bucket_date="2023-10-31",
-            test_name="web_connectivity",
-            test_version="0.4.2",
-            measurement_uid="TEST",
-            input=None,
-            report_id="TEST",
-            software_name="TEST",
-            software_version="TEST",
-            network_type="TEST",
-            platform="TEST",
-            origin="",
-            engine_name="TEST",
-            engine_version="TEST",
-            architecture="TEST",
-            resolver_ip="141.207.147.254",
-            resolver_asn=22394,
-            resolver_cc="US",
-            resolver_as_org_name="Verizon Business",
-            resolver_as_cc="US",
-            resolver_is_scrubbed=False,
-            resolver_asn_probe=22394,
-            resolver_as_org_name_probe="Verizon Business",
             observation_id="TEST",
             target_id=None,
             transaction_id=None,
