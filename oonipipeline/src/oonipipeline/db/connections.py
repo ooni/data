@@ -107,7 +107,7 @@ class ClickhouseConnection(DatabaseConnection):
 
     def _consume_rows(
         self, row_iterator: Union[Iterable, List]
-    ) -> Tuple[List[Dict], str]:
+    ) -> Tuple[List[Dict], Optional[str]]:
         row_list = []
         table_name = None
         # TODO(art): I'm not a fan of this living in here. It should be much closer to the actual models.
@@ -128,7 +128,6 @@ class ClickhouseConnection(DatabaseConnection):
                 assert table_name == row.__table_name__, "mixed tables in row iterator"
             row_list.append(d)
 
-        assert table_name is not None
         return row_list, table_name
 
     def write_table_model_rows(
@@ -151,6 +150,7 @@ class ClickhouseConnection(DatabaseConnection):
         row_list, table_name = self._consume_rows(row_iterator)
         if len(row_list) == 0:
             return
+        assert table_name is not None, f"no table for {row_list}"
 
         if use_buffer_table:
             table_name = f"buffer_{table_name}"

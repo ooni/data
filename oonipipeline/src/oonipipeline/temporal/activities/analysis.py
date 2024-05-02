@@ -112,12 +112,9 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
     db_writer = ClickhouseConnection(clickhouse)
     db_lookup = ClickhouseConnection(clickhouse)
 
-    column_names_wa = [f.name for f in dataclasses.fields(WebAnalysis)]
-    column_names_er = [f.name for f in dataclasses.fields(MeasurementExperimentResult)]
-
-    # TODO(art): this previous range search and deletion makes the idempotence
-    # of the activity not 100% accurate.
-    # We should look into fixing it.
+    # TODO(art): IMPORTANT: since the switch to buffer tables we must make sure
+    # everything has been flushed to the table otherwise these will not be
+    # accurate
     prev_range_list = [
         get_prev_range(
             db=db_lookup,
