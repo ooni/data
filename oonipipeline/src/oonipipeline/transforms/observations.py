@@ -54,8 +54,8 @@ def measurement_to_observations(
     # to signal that the bucket is unknown.
     bucket_date: str = "1984-01-01",
 ) -> Union[
-    TypeWebConnectivityObservations,
     TypeWebObservations,
+    TypeWebConnectivityObservations,
     TypeHTTPMiddleboxObservations,
     Tuple[()],
 ]:

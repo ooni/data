@@ -16,7 +16,10 @@ from oonidata.models.observations import WebObservation
 from oonipipeline.transforms.measurement_transformer import (
     MeasurementTransformer,
 )
-from oonipipeline.transforms.observations import measurement_to_observations
+from oonipipeline.transforms.observations import (
+    TypeWebObservations,
+    measurement_to_observations,
+)
 
 
 def test_wc_v5_observations(netinfodb, measurements):
@@ -26,9 +29,12 @@ def test_wc_v5_observations(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs, web_ctrl_obs = measurement_to_observations(
-        msmt, netinfodb=netinfodb, bucket_date="2022-09-24"
+    bucket_date = "2022-09-24"
+    obs_tup = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
     )
+    assert len(obs_tup) == 2
+    web_obs, web_ctrl_obs = obs_tup
     assert isinstance(web_obs[0], WebObservation)
     assert len(web_obs) == 15
     assert len(web_ctrl_obs) == 13
@@ -127,7 +133,7 @@ def test_wc_v5_observations_chained(netinfodb, measurements):
     obs_tup = measurement_to_observations(
         msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
     )
-    assert len(obs_tup) == 1
+    assert len(obs_tup) == 2
     web_obs: List[WebObservation] = obs_tup[0]
 
     # TODO: there is something weird here.
@@ -157,7 +163,7 @@ def test_wc_observations_chained(netinfodb, measurements):
     obs_tup = measurement_to_observations(
         msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
     )
-    assert len(obs_tup) == 1
+    assert len(obs_tup) == 2
     web_obs = obs_tup[0]
 
     # Check if DNS and TCP connect observations are being linked together
@@ -174,7 +180,7 @@ def test_wc_observations_chained(netinfodb, measurements):
     obs_tup = measurement_to_observations(
         msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
     )
-    assert len(obs_tup) == 1
+    assert len(obs_tup) == 2
     web_obs: List[WebObservation] = obs_tup[0]
 
     assert len(list(filter(lambda o: o.ip == "172.67.16.69", web_obs))) == 1
