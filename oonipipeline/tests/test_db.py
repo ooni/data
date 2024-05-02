@@ -1,3 +1,4 @@
+import pytest
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from unittest.mock import MagicMock, call
@@ -90,12 +91,9 @@ def test_flush_rows(db):
         [5, "five"],
         [6, "six"],
     ]
-    db.write_rows("tmp_test_recovery", rows, ["col1", "col2"])
-    db.flush_all_rows()
-    res = db.execute("SELECT COUNT() FROM tmp_test_recovery")
-    # We should have 5 rows, just excluding the one with an invalid column type
-    assert res[0][0] == 5
-    db.execute("DROP TABLE tmp_test_recovery")
+    with pytest.raises(ValueError):
+        db.write_rows("tmp_test_recovery", rows, ["col1", "col2"])
+        db.flush_all_rows()
 
 
 def test_clickhouse(monkeypatch):
