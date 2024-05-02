@@ -25,6 +25,7 @@ def test_full_workflow(
     tmp_path: Path,
     temporal_dev_server,
 ):
+    print("running mkobs")
     result = cli_runner.invoke(
         cli,
         [
@@ -62,6 +63,7 @@ def test_full_workflow(
     assert bucket_dict["2022-10-20"] == 200, bucket_dict
     obs_count = bucket_dict["2022-10-20"]
 
+    print("running mkobs")
     result = cli_runner.invoke(
         cli,
         [
@@ -99,6 +101,7 @@ def test_full_workflow(
     # By re-running it against the same date, we should still get the same observation count
     assert bucket_dict["2022-10-20"] == obs_count, bucket_dict
 
+    print("running mkgt")
     result = cli_runner.invoke(
         cli,
         [
@@ -127,6 +130,7 @@ def test_full_workflow(
     # )
     # assert result.exit_code == 0
 
+    print("running mkanalysis")
     result = cli_runner.invoke(
         cli,
         [
