@@ -46,7 +46,14 @@ TypeWebObservations = Tuple[List[WebObservation]]
 TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 
 
-def measurement_to_observations(msmt, bucket_date: str, netinfodb: NetinfoDB) -> Union[
+def measurement_to_observations(
+    msmt,
+    netinfodb: NetinfoDB,
+    # the bucket_date should be set for all the workflows that deal with ingesting data,
+    # but it's not strictly needed. We use the special value of 1984-01-01
+    # to signal that the bucket is unknown.
+    bucket_date: str = "1984-01-01",
+) -> Union[
     TypeWebConnectivityObservations,
     TypeWebObservations,
     TypeHTTPMiddleboxObservations,

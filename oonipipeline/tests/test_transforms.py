@@ -26,7 +26,9 @@ def test_wc_v5_observations(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs, web_ctrl_obs = measurement_to_observations(msmt, netinfodb=netinfodb)
+    web_obs, web_ctrl_obs = measurement_to_observations(
+        msmt, netinfodb=netinfodb, bucket_date="2022-09-24"
+    )
     assert isinstance(web_obs[0], WebObservation)
     assert len(web_obs) == 15
     assert len(web_ctrl_obs) == 13
@@ -38,7 +40,9 @@ def test_http_observations(measurements, netinfodb):
             "20220608132401.787399_AM_webconnectivity_2285fc373f62729e"
         ]
     )
-    mt = MeasurementTransformer(measurement=msmt, netinfodb=netinfodb)
+    mt = MeasurementTransformer(
+        measurement=msmt, netinfodb=netinfodb, bucket_date="2022-06-08"
+    )
     assert isinstance(msmt, WebConnectivity)
     all_http_obs = [
         obs
@@ -54,7 +58,9 @@ def test_http_observations(measurements, netinfodb):
             "20220608155654.044764_AM_webconnectivity_ccb727b4812234a5"
         ]
     )
-    mt = MeasurementTransformer(measurement=msmt, netinfodb=netinfodb)
+    mt = MeasurementTransformer(
+        measurement=msmt, netinfodb=netinfodb, bucket_date="2022-06-08"
+    )
     assert isinstance(msmt, WebConnectivity)
     all_dns_obs = [
         obs
@@ -97,7 +103,9 @@ def test_http_observations(measurements, netinfodb):
             "20220608121828.356206_RU_webconnectivity_80e3fa60eb2cd026"
         ]
     )
-    mt = MeasurementTransformer(measurement=http_blocked, netinfodb=netinfodb)
+    mt = MeasurementTransformer(
+        measurement=http_blocked, netinfodb=netinfodb, bucket_date="2022-06-08"
+    )
     assert isinstance(http_blocked, WebConnectivity)
     all_http_obs = [
         obs
@@ -115,7 +123,9 @@ def test_wc_v5_observations_chained(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs = measurement_to_observations(msmt, netinfodb=netinfodb)[0]
+    web_obs = measurement_to_observations(
+        msmt, netinfodb=netinfodb, bucket_date="2022-09-24"
+    )[0]
     # TODO: there is something weird here.
     # Both DNS query answers are labeled with
     # transaction_id=2.
@@ -139,7 +149,9 @@ def test_wc_observations_chained(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs = measurement_to_observations(msmt, netinfodb=netinfodb)[0]
+    web_obs = measurement_to_observations(
+        msmt, netinfodb=netinfodb, bucket_date="2022-06-08"
+    )[0]
 
     # Check if DNS and TCP connect observations are being linked together
     assert len(list(filter(lambda o: o.ip == "188.186.154.79", web_obs))) == 1
@@ -151,7 +163,9 @@ def test_wc_observations_chained(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    web_obs = measurement_to_observations(msmt, netinfodb=netinfodb)[0]
+    web_obs = measurement_to_observations(
+        msmt, netinfodb=netinfodb, bucket_date="2022-11-14"
+    )[0]
 
     assert len(list(filter(lambda o: o.ip == "172.67.16.69", web_obs))) == 1
     assert len(web_obs) == 4
@@ -162,7 +176,9 @@ def test_dnscheck_obs(netinfodb, measurements):
         msmt_path=measurements["20221013000000.517636_US_dnscheck_bfd6d991e70afa0e"]
     )
     assert isinstance(msmt, DNSCheck)
-    web_obs = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)[0]
+    web_obs = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2022-10-13"
+    )[0]
     assert len(web_obs) == 20
 
 
@@ -172,7 +188,7 @@ def test_telegram_obs(netinfodb, measurements):
     )
     assert isinstance(msmt, Telegram)
     web_obs: List[WebObservation] = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2023-04-27"
     )[0]
     for wo in web_obs:
         if wo.dns_engine:

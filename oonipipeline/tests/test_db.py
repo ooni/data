@@ -82,7 +82,7 @@ def test_flush_rows(db):
     PRIMARY KEY (col1)
     """
     )
-    db.row_buffer_size = 5
+    db.write_batch_size = 5
 
     rows = [
         [1, "one"],
@@ -110,9 +110,9 @@ def test_clickhouse(monkeypatch):
         return mock_client
 
     rows_to_write = list(range(100))
-    row_buffer_size = 100
+    write_batch_size = 100
     monkeypatch.setattr(Client, "from_url", mock_from_url)
-    db = ClickhouseConnection(conn_url="mock", row_buffer_size=row_buffer_size)
+    db = ClickhouseConnection(conn_url="mock", write_batch_size=write_batch_size)
     db.write_rows("table_a", rows_to_write[:80], column_names=["a"])
     assert mock_client.execute.call_count == 0
 

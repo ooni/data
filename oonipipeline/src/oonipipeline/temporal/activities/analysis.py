@@ -109,7 +109,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
 
     fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
     body_db = BodyDB(db=ClickhouseConnection(clickhouse))
-    db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
+    db_writer = ClickhouseConnection(clickhouse, write_batch_size=10_000)
     db_lookup = ClickhouseConnection(clickhouse)
 
     column_names_wa = [f.name for f in dataclasses.fields(WebAnalysis)]

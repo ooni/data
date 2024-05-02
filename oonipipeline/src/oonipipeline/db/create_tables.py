@@ -136,36 +136,41 @@ table_models = [
     MeasurementExperimentResult,
 ]
 
-create_queries = []
-for model in table_models:
-    table_name = model.__table_name__
-    create_queries.append(
-        format_create_query(table_name, model),
-    )
-    num_layers = 1
-    min_time = 10
-    max_time = 500
-    min_rows = 10_0000
-    max_rows = 100_000
-    min_bytes = 10_000_000
-    max_bytes = 1_000_000_000
-    engine_str = f"""
-    Buffer(
-        currentDatabase(), {table_name}, 
-        {num_layers},
-        {min_time}, {max_time}, 
-        {min_rows}, {max_rows},
-        {min_bytes}, {max_bytes}
-    )
-    """
-    create_queries.append(
-        format_create_query(
-            f"buffer_{table_name}",
-            model,
-            engine=engine_str,
-            extra=False,
+
+def make_create_queries(
+    num_layers=1,
+    min_time=10,
+    max_time=500,
+    min_rows=10_0000,
+    max_rows=100_000,
+    min_bytes=10_000_000,
+    max_bytes=1_000_000_000,
+):
+    create_queries = []
+    for model in table_models:
+        table_name = model.__table_name__
+        create_queries.append(
+            format_create_query(table_name, model),
         )
-    )
+
+        engine_str = f"""
+        Buffer(
+            currentDatabase(), {table_name}, 
+            {num_layers},
+            {min_time}, {max_time}, 
+            {min_rows}, {max_rows},
+            {min_bytes}, {max_bytes}
+        )
+        """
+        create_queries.append(
+            format_create_query(
+                f"buffer_{table_name}",
+                model,
+                engine=engine_str,
+                extra=False,
+            )
+        )
+    return create_queries
 
 
 class TableDoesNotExistError(Exception):
@@ -284,7 +289,7 @@ def list_all_table_diffs(db: ClickhouseConnection):
 
 
 def main():
-    for query, table_name in create_queries:
+    for query, table_name in make_create_queries():
         print(f"clickhouse-client -q 'DROP TABLE {table_name}';")
         print("cat <<EOF | clickhouse-client -nm")
         print(query)

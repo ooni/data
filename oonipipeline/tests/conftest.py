@@ -16,7 +16,7 @@ from oonidata.dataclient import sync_measurements
 from oonidata.apiclient import get_measurement_dict_by_uid
 
 from oonipipeline.db.connections import ClickhouseConnection
-from oonipipeline.db.create_tables import create_queries
+from oonipipeline.db.create_tables import make_create_queries
 from oonipipeline.fingerprintdb import FingerprintDB
 from oonipipeline.netinfo import NetinfoDB
 
@@ -116,12 +116,14 @@ def create_db_for_fixture(conn_url):
     except:
         pytest.skip("no database connection")
 
-    db = ClickhouseConnection(conn_url=conn_url.replace("default", "testing_oonidata"), max_backoff=0.2)
+    db = ClickhouseConnection(
+        conn_url=conn_url.replace("default", "testing_oonidata"), max_backoff=0.2
+    )
     try:
         db.execute("SELECT 1")
     except:
         pytest.skip("no database connection")
-    for query, _ in create_queries:
+    for query, _ in make_create_queries(min_time=1, max_time=2):
         db.execute(query)
     return db
 
@@ -134,6 +136,8 @@ def db_notruncate(clickhouse_server):
 @pytest.fixture
 def db(clickhouse_server):
     db = create_db_for_fixture(clickhouse_server)
-    for _, table_name in create_queries:
+    for _, table_name in make_create_queries(min_time=1, max_time=2):
+        if table_name.startswith("buffer_"):
+            continue
         db.execute(f"TRUNCATE TABLE {table_name};")
     yield db

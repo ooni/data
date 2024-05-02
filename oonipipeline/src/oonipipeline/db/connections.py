@@ -8,7 +8,7 @@ from collections import defaultdict, namedtuple
 from datetime import datetime, timezone
 from pprint import pformat
 import logging
-from typing import Iterable, List, Optional, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from oonidata.models.base import TableModelProtocol
 
@@ -34,7 +34,7 @@ class ClickhouseConnection(DatabaseConnection):
     def __init__(
         self,
         conn_url,
-        row_buffer_size=0,
+        write_batch_size=1_000_000,
         max_block_size=1_000_000,
         max_retries=3,
         backoff_factor=1.0,
@@ -45,11 +45,10 @@ class ClickhouseConnection(DatabaseConnection):
         self.clickhouse_url = conn_url
         self.client = Client.from_url(conn_url)
 
-        self.row_buffer_size = row_buffer_size
         self.max_block_size = max_block_size
 
-        self._column_names = {}
-        self._row_buffer = defaultdict(list)
+        self.write_batch_size = write_batch_size
+        self.row_buffer = defaultdict(list)
 
         self._max_retries = max_retries
         self._max_backoff = max_backoff
@@ -102,14 +101,12 @@ class ClickhouseConnection(DatabaseConnection):
         query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
         self.execute(query_str, rows)
 
-    def write_table_model_rows(
-        self,
-        row_iterator: Union[Iterable, List],
-        use_buffer_table=True,
-    ):
+    def _consume_rows(
+        self, row_iterator: Union[Iterable, List]
+    ) -> Tuple[List[Dict], str]:
         row_list = []
-        column_names = None
         table_name = None
+        # TODO move this into a function
         for row in row_iterator:
             d = asdict(row)
             if "probe_meta" in d:
@@ -117,26 +114,66 @@ class ClickhouseConnection(DatabaseConnection):
             if "measurement_meta" in d:
                 d.update(d.pop("measurement_meta"))
 
-            if column_names is None:
-                assert table_name is None
+            if table_name is None:
                 table_name = row.__table_name__
-                column_names = list(d.keys())
             else:
-                assert column_names == list(d.keys())
+                assert table_name == row.__table_name__, "mixed tables in row iterator"
             row_list.append(d)
 
+        assert table_name is not None
+        return row_list, table_name
+
+    def write_table_model_rows(
+        self,
+        row_iterator: Union[Iterable, List],
+        use_buffer_table=True,
+    ):
+        """
+        Write rows from a TableModelProtocol to the database.
+
+        We use two stages of buffering for performance reasons:
+        1. Python in memory buffer to batch writes to the underlying database
+            connection via the max_block_size argument
+        2. An optional Buffer table to batch the actual writes at the Clickhouse level.
+
+        The second is needed because we might have multiple connections
+        hitting the database at a given time and it's desirable to be able to
+        tune the actual underlying writes at the clickhouse level.
+        """
+        row_list, table_name = self._consume_rows(row_iterator)
         if len(row_list) == 0:
             return
 
-        assert table_name is not None
-        assert column_names is not None
         if use_buffer_table:
             table_name = f"buffer_{table_name}"
-        fields_str = ", ".join(column_names)
-        query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
-        self.execute(query_str, row_list)
+
+        if table_name not in self.row_buffer:
+            self.row_buffer[table_name] = []
+        self.row_buffer[table_name] += row_list
+
+        if len(self.row_buffer[table_name]) >= self.max_block_size:
+            log.debug(f"flushing table {table_name}")
+            self.flush(table_name)
+
+    def flush(self, table_name=None):
+        if table_name:
+            self._flush_table(table_name)
+        else:
+            for t_name in list(self.row_buffer.keys()):
+                self._flush_table(t_name)
+
+    def _flush_table(self, table_name):
+        if table_name in self.row_buffer and self.row_buffer[table_name]:
+            rows_to_flush = self.row_buffer[table_name]
+            if rows_to_flush:
+                column_names = list(rows_to_flush[0].keys())
+                fields_str = ", ".join(column_names)
+                query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES "
+                self.execute(query_str, rows_to_flush)
+                self.row_buffer[table_name] = []
 
     def close(self):
+        self.flush()
         self.client.disconnect()
 
 

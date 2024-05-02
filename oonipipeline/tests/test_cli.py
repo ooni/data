@@ -42,11 +42,17 @@ def test_full_workflow(
             datadir,
             "--clickhouse",
             db.clickhouse_url,
+            "--clickhouse-buffer-min-time",
+            1,
+            "--clickhouse-buffer-max-time",
+            2,
             # "--archives-dir",
             # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
+    # We wait on the table buffers to be flushed
+    time.sleep(3)
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
     res = db.execute(
         "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
@@ -73,9 +79,15 @@ def test_full_workflow(
             datadir,
             "--clickhouse",
             db.clickhouse_url,
+            "--clickhouse-buffer-min-time",
+            1,
+            "--clickhouse-buffer-max-time",
+            2,
         ],
     )
     assert result.exit_code == 0
+    # We wait on the table buffers to be flushed
+    time.sleep(3)
 
     # Wait for the mutation to finish running
     wait_for_mutations(db, "obs_web")
@@ -99,9 +111,15 @@ def test_full_workflow(
             datadir,
             "--clickhouse",
             db.clickhouse_url,
+            "--clickhouse-buffer-min-time",
+            1,
+            "--clickhouse-buffer-max-time",
+            2,
         ],
     )
     assert result.exit_code == 0
+    # We wait on the table buffers to be flushed
+    time.sleep(3)
 
     # result = cli_runner.invoke(
     #    cli,
@@ -131,6 +149,10 @@ def test_full_workflow(
             datadir,
             "--clickhouse",
             db.clickhouse_url,
+            "--clickhouse-buffer-min-time",
+            1,
+            "--clickhouse-buffer-max-time",
+            2,
         ],
     )
     assert result.exit_code == 0
@@ -138,3 +160,5 @@ def test_full_workflow(
         "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
     )
     assert res[0][0] == 200  # type: ignore
+    # We wait on the table buffers to be flushed
+    time.sleep(3)
