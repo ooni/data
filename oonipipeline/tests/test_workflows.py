@@ -153,6 +153,7 @@ def test_make_file_entry_batch(datadir, db):
             data_dir=datadir,
         ),
     )
+    time.sleep(3)
     analysis_res = make_analysis_in_a_day(
         MakeAnalysisParams(
             probe_cc=["IR"],
@@ -192,6 +193,8 @@ def test_write_observations(measurements, netinfodb, db):
         ):
             db.write_table_model_rows(obs_list)
     db.close()
+    # Wait for buffer tables to flush
+    time.sleep(3)
     cnt_by_cc = get_obs_count_by_cc(
         ObsCountParams(
             clickhouse_url=db.clickhouse_url,
