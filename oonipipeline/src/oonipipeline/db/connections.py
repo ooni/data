@@ -73,7 +73,7 @@ class ClickhouseConnection(DatabaseConnection):
             try:
                 return self._execute(query_str, *args, **kwargs)
             except Exception as e:
-                exception_list.append(exception_list)
+                exception_list.append(e)
                 sleep_time = min(self._max_backoff, self._backoff_factor * (2**attempt))
                 log.error(
                     f"failed to execute {query_str} args[{len(args)}] kwargs[{len(kwargs)}] (attempt {attempt})"
