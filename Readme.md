@@ -65,11 +65,11 @@ aws s3 --no-sign-request ls \
 If you would like to download the raw measurements for a particular country,
 you can use the `aws s3 sync` command.
 
-For example to download all measurements from Italy on the 1st of February 2024, you can run:
+For example to download all JSONL measurements from Italy on the 1st of February 2024, you can run:
 ```
 aws s3 --no-sign-request sync \
     s3://ooni-data-eu-fra/raw/20240201/ ./ \
-    --exclude "*" --include "*/IT/*"
+    --exclude "*" --include "*/IT/*.jsonl.gz"
 ```
 
 **Note**: the difference in paths compared to older data
