@@ -111,15 +111,9 @@ def test_full_workflow(
             datadir,
             "--clickhouse",
             db.clickhouse_url,
-            "--clickhouse-buffer-min-time",
-            1,
-            "--clickhouse-buffer-max-time",
-            2,
         ],
     )
     assert result.exit_code == 0
-    # We wait on the table buffers to be flushed
-    time.sleep(3)
 
     # result = cli_runner.invoke(
     #    cli,

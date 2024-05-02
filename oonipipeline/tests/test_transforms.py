@@ -176,9 +176,11 @@ def test_dnscheck_obs(netinfodb, measurements):
         msmt_path=measurements["20221013000000.517636_US_dnscheck_bfd6d991e70afa0e"]
     )
     assert isinstance(msmt, DNSCheck)
-    web_obs = measurement_to_observations(
+    obs_tup = measurement_to_observations(
         msmt=msmt, netinfodb=netinfodb, bucket_date="2022-10-13"
-    )[0]
+    )
+    assert len(obs_tup) == 1
+    web_obs = obs_tup[0]
     assert len(web_obs) == 20
 
 
@@ -187,10 +189,13 @@ def test_telegram_obs(netinfodb, measurements):
         msmt_path=measurements["20230427235943.206438_US_telegram_ac585306869eca7b"]
     )
     assert isinstance(msmt, Telegram)
-    web_obs: List[WebObservation] = measurement_to_observations(
+    obs_tup = measurement_to_observations(
         msmt=msmt, netinfodb=netinfodb, bucket_date="2023-04-27"
-    )[0]
+    )
+    assert len(obs_tup) == 1
+    web_obs = obs_tup[0]
     for wo in web_obs:
+        assert isinstance(wo, WebObservation)
         if wo.dns_engine:
             assert wo.dns_t
         if wo.tcp_success is not None:
