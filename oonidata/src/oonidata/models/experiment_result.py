@@ -24,7 +24,7 @@ class BlockingScope(Enum):
     LOCAL_BLOCK = "l"
     # s: server-side blocking
     SERVER_SIDE_BLOCK = "s"
-    # t: this is a signal indiating some form of network throttling
+    # t: this is a signal indicating some form of network throttling
     THROTTLING = "t"
     # u: unknown blocking scope
     UNKNOWN = "u"
