@@ -37,14 +37,6 @@ def make_web_control_observations(
     if not hostname:
         return web_ctrl_obs
 
-    obs_base = WebControlObservation(
-        measurement_meta=measurement_meta,
-        processing_meta=ProcessingMeta(
-            processing_start_time=datetime.now(timezone.utc)
-        ),
-        hostname=hostname,
-        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
-    )
     created_at = datetime.now(timezone.utc).replace(tzinfo=None)
     # Reference for new-style web_connectivity:
     # https://explorer.ooni.org/measurement/20220924T215758Z_webconnectivity_IR_206065_n1_2CRoWBNJkWc7VyAs?input=https%3A%2F%2Fdoh.dns.apple.com%2Fdns-query%3Fdns%3Dq80BAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB
