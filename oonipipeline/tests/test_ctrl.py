@@ -1,6 +1,7 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import time
 
+from oonidata.models.base import ProcessingMeta
 from oonidata.models.observations import MeasurementMeta, ProbeMeta, WebObservation
 
 from oonipipeline.analysis.datasources import iter_web_observations
@@ -82,6 +83,10 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
         WebObservation(
             probe_meta=DUMMY_PROBE_META,
             measurement_meta=DUMMY_MEASUREMENT_META,
+            processing_meta=ProcessingMeta(
+                processing_start_time=datetime.now(timezone.utc),
+                processing_end_time=datetime.now(timezone.utc),
+            ),
             # The only things we look at to find the groundtruth are hostname, ip, http_request_url
             hostname="explorer.ooni.org",
             ip="37.218.242.149",
