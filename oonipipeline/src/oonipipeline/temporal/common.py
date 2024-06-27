@@ -170,6 +170,7 @@ def make_db_rows(
     bucket_date: Optional[str] = None,
     custom_remap: Optional[Dict[str, Callable]] = None,
 ) -> Tuple[str, List[str]]:
+    # TODO(art): this function is quite sketchy
     assert len(dc_list) > 0
 
     def maybe_remap(k, value):

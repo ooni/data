@@ -3,8 +3,14 @@ from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 from urllib.parse import urlparse
 from oonidata.datautils import is_ip_bogon
+from oonidata.models.base import ProcessingMeta
 from oonidata.models.nettests import WebConnectivity
-from oonidata.models.observations import WebControlObservation, WebObservation
+from oonidata.models.observations import (
+    MeasurementMeta,
+    ProbeMeta,
+    WebControlObservation,
+    WebObservation,
+)
 
 from ..measurement_transformer import MeasurementTransformer
 
@@ -12,9 +18,11 @@ from ...netinfo import NetinfoDB
 
 
 def make_web_control_observations(
-    msmt: WebConnectivity, netinfodb: NetinfoDB
+    msmt: WebConnectivity,
+    measurement_meta: MeasurementMeta,
+    netinfodb: NetinfoDB,
 ) -> List[WebControlObservation]:
-    web_ctrl_obs = []
+    web_ctrl_obs: List[WebControlObservation] = []
 
     if msmt.test_keys.control_failure or msmt.test_keys.control is None:
         # TODO: do we care to note these failures somewhere?
@@ -24,32 +32,24 @@ def make_web_control_observations(
     if not isinstance(msmt.input, str):
         return web_ctrl_obs
 
-    measurement_start_time = datetime.strptime(
-        msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S"
-    )
-
     # The hostname is implied from the input
     hostname = urlparse(msmt.input).hostname
     if not hostname:
         return web_ctrl_obs
 
-    obs_base = WebControlObservation(
-        measurement_uid=msmt.measurement_uid or "",
-        input=msmt.input,
-        report_id=msmt.report_id,
-        measurement_start_time=measurement_start_time,
-        software_name=msmt.software_name,
-        software_version=msmt.software_version,
-        test_name=msmt.test_name,
-        test_version=msmt.test_version,
-        hostname=hostname,
-        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
-    )
+    created_at = datetime.now(timezone.utc).replace(tzinfo=None)
     # Reference for new-style web_connectivity:
     # https://explorer.ooni.org/measurement/20220924T215758Z_webconnectivity_IR_206065_n1_2CRoWBNJkWc7VyAs?input=https%3A%2F%2Fdoh.dns.apple.com%2Fdns-query%3Fdns%3Dq80BAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB
 
     if msmt.test_keys.control.dns and msmt.test_keys.control.dns.failure:
-        obs = deepcopy(obs_base)
+        obs = WebControlObservation(
+            measurement_meta=measurement_meta,
+            processing_meta=ProcessingMeta(
+                processing_start_time=datetime.now(timezone.utc)
+            ),
+            hostname=hostname,
+            created_at=created_at,
+        )
         obs.dns_failure = msmt.test_keys.control.dns.failure
         web_ctrl_obs.append(obs)
 
@@ -62,7 +62,14 @@ def make_web_control_observations(
         for addr, res in msmt.test_keys.control.tcp_connect.items():
             p = urlparse("//" + addr)
 
-            obs = deepcopy(obs_base)
+            obs = WebControlObservation(
+                measurement_meta=measurement_meta,
+                processing_meta=ProcessingMeta(
+                    processing_start_time=datetime.now(timezone.utc)
+                ),
+                hostname=hostname,
+                created_at=created_at,
+            )
             assert p.hostname, "missing hostname in tcp_connect control key"
             obs.ip = p.hostname
             obs.port = p.port
@@ -77,10 +84,16 @@ def make_web_control_observations(
                 obs = addr_map[addr]
             else:
                 p = urlparse("//" + addr)
-                obs = deepcopy(obs_base)
                 assert p.hostname, "missing hostname in tls_handshakes control key"
-                obs.ip = p.hostname
-                obs.port = p.port
+                obs = WebControlObservation(
+                    measurement_meta=measurement_meta,
+                    hostname=p.hostname,
+                    port=p.port,
+                    processing_meta=ProcessingMeta(
+                        processing_start_time=datetime.now(timezone.utc)
+                    ),
+                    created_at=created_at,
+                )
 
             obs.tls_failure = res.failure
             obs.tls_server_name = res.server_name
@@ -93,7 +106,9 @@ def make_web_control_observations(
         assert obs.ip, "missing IP in ctrl observation"
         if obs.ip:
             obs.ip_is_bogon = is_ip_bogon(obs.ip)
-            ip_info = netinfodb.lookup_ip(obs.measurement_start_time, obs.ip)
+            ip_info = netinfodb.lookup_ip(
+                obs.measurement_meta.measurement_start_time, obs.ip
+            )
             if ip_info:
                 obs.ip_cc = ip_info.cc
                 obs.ip_asn = ip_info.as_info.asn
@@ -110,13 +125,27 @@ def make_web_control_observations(
         web_ctrl_obs.append(obs)
 
     for ip in dns_ips - mapped_dns_ips:
-        obs = deepcopy(obs_base)
+        obs = WebControlObservation(
+            measurement_meta=measurement_meta,
+            processing_meta=ProcessingMeta(
+                processing_start_time=datetime.now(timezone.utc)
+            ),
+            hostname=hostname,
+            created_at=created_at,
+        )
         obs.ip = ip
         obs.dns_success = True
         web_ctrl_obs.append(obs)
 
     if msmt.test_keys.control.http_request:
-        obs = deepcopy(obs_base)
+        obs = WebControlObservation(
+            measurement_meta=measurement_meta,
+            processing_meta=ProcessingMeta(
+                processing_start_time=datetime.now(timezone.utc)
+            ),
+            hostname=hostname,
+            created_at=created_at,
+        )
         obs.http_request_url = msmt.input
         obs.http_failure = msmt.test_keys.control.http_request.failure
         obs.http_success = msmt.test_keys.control.http_request.failure is None
@@ -124,7 +153,8 @@ def make_web_control_observations(
         web_ctrl_obs.append(obs)
 
     for idx, obs in enumerate(web_ctrl_obs):
-        obs.observation_id = f"{obs.measurement_uid}_{idx}"
+        obs.observation_id = f"{obs.measurement_meta.measurement_uid}_{idx}"
+        obs.processing_meta.processing_end_time = datetime.now(timezone.utc)
 
     return web_ctrl_obs
 
@@ -150,5 +180,10 @@ class WebConnectivityTransformer(MeasurementTransformer):
             http_observations=http_observations,
             probe_analysis=probe_analysis,
         )
-        web_ctrl_observations = make_web_control_observations(msmt, self.netinfodb)
+
+        web_ctrl_observations = make_web_control_observations(
+            msmt,
+            measurement_meta=self.measurement_meta,
+            netinfodb=self.netinfodb,
+        )
         return (web_observations, web_ctrl_observations)

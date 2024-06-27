@@ -1,12 +1,15 @@
 from dataclasses import dataclass
 from typing import List, Optional
-from oonidata.compat import add_slots
-from oonidata.models.dataformats import (
+
+from ...compat import add_slots
+
+from ..dataformats import (
     BaseTestKeys,
     HTTPTransaction,
 )
-from oonidata.models.base_model import BaseModel
-from oonidata.models.nettests.base_measurement import BaseMeasurement
+
+from ..base import BaseModel
+from ..nettests.base_measurement import BaseMeasurement
 
 
 @add_slots

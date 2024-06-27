@@ -10,9 +10,10 @@ from typing import Optional, Tuple, Union, List, Dict
 
 from dataclasses import dataclass
 
-from oonidata.datautils import guess_decode
-from oonidata.models.base_model import BaseModel
-from oonidata.compat import add_slots
+from ..datautils import guess_decode
+from ..compat import add_slots
+
+from .base import BaseModel
 
 
 @add_slots

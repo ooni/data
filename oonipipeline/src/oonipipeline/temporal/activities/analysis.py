@@ -25,7 +25,6 @@ with workflow.unsafe.imports_passed_through():
 
     from ..common import (
         get_prev_range,
-        make_db_rows,
         maybe_delete_prev_range,
     )
 
@@ -109,15 +108,15 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
 
     fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
     body_db = BodyDB(db=ClickhouseConnection(clickhouse))
-    db_writer = ClickhouseConnection(clickhouse, row_buffer_size=10_000)
+    db_writer = ClickhouseConnection(clickhouse)
     db_lookup = ClickhouseConnection(clickhouse)
 
-    column_names_wa = [f.name for f in dataclasses.fields(WebAnalysis)]
-    column_names_er = [f.name for f in dataclasses.fields(MeasurementExperimentResult)]
-
-    # TODO(art): this previous range search and deletion makes the idempotence
-    # of the activity not 100% accurate.
-    # We should look into fixing it.
+    # This makes sure that the buffer tables are being flushed so that the
+    # following queries are accurate
+    db_writer.execute(f"OPTIMIZE TABLE {WebAnalysis.__table_name__} FINAL")
+    db_writer.execute(
+        f"OPTIMIZE TABLE {MeasurementExperimentResult.__table_name__} FINAL"
+    )
     prev_range_list = [
         get_prev_range(
             db=db_lookup,
@@ -164,7 +163,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
                 relevant_gts = web_ground_truth_db.lookup_by_web_obs(web_obs=web_obs)
             except:
                 log.error(
-                    f"failed to lookup relevant_gts for {web_obs[0].measurement_uid}",
+                    f"failed to lookup relevant_gts for {web_obs[0].measurement_meta.measurement_uid}",
                     exc_info=True,
                 )
                 failures += 1
@@ -185,27 +184,10 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
                     continue
 
                 observation_count += 1
-                table_name, rows = make_db_rows(
-                    dc_list=website_analysis, column_names=column_names_wa
-                )
 
-                db_writer.write_rows(
-                    table_name=table_name,
-                    rows=rows,
-                    column_names=column_names_wa,
-                )
-
-                website_er = list(make_website_experiment_results(website_analysis))
-                table_name, rows = make_db_rows(
-                    dc_list=website_er,
-                    column_names=column_names_er,
-                    custom_remap={"loni_list": orjson.dumps},
-                )
-
-                db_writer.write_rows(
-                    table_name=table_name,
-                    rows=rows,
-                    column_names=column_names_er,
+                db_writer.write_table_model_rows(website_analysis)
+                db_writer.write_table_model_rows(
+                    make_website_experiment_results(website_analysis)
                 )
 
             except:

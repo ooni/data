@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-import typing
 from typing import Dict, List, Literal, Optional, Union
-from oonidata.compat import add_slots
-from oonidata.models.base_model import BaseModel
-from oonidata.models.dataformats import (
+
+from ...compat import add_slots
+
+from ..base import BaseModel
+from ..dataformats import (
     BaseTestKeys,
     DNSQuery,
     Failure,
@@ -13,7 +14,7 @@ from oonidata.models.dataformats import (
     TCPConnect,
     TLSHandshake,
 )
-from oonidata.models.nettests.base_measurement import BaseMeasurement
+from ..nettests.base_measurement import BaseMeasurement
 
 
 @add_slots

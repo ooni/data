@@ -1,3 +1,10 @@
+from typing import List, Tuple, Union
+
+from oonidata.models.observations import (
+    HTTPMiddleboxObservation,
+    WebControlObservation,
+    WebObservation,
+)
 from .nettests.dnscheck import DNSCheckTransformer
 from .nettests.http_header_field_manipulation import (
     HTTPHeaderFieldManipulationTransformer,
@@ -32,11 +39,29 @@ NETTEST_TRANSFORMERS = {
     "web_connectivity": WebConnectivityTransformer,
 }
 
+TypeWebConnectivityObservations = Tuple[
+    List[WebObservation], List[WebControlObservation]
+]
+TypeWebObservations = Tuple[List[WebObservation]]
+TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 
-def measurement_to_observations(msmt, netinfodb: NetinfoDB):
+
+def measurement_to_observations(
+    msmt,
+    netinfodb: NetinfoDB,
+    # the bucket_date should be set for all the workflows that deal with ingesting data,
+    # but it's not strictly needed. We use the special value of 1984-01-01
+    # to signal that the bucket is unknown.
+    bucket_date: str = "1984-01-01",
+) -> Union[
+    TypeWebObservations,
+    TypeWebConnectivityObservations,
+    TypeHTTPMiddleboxObservations,
+    Tuple[()],
+]:
     if msmt.test_name in NETTEST_TRANSFORMERS:
         transformer = NETTEST_TRANSFORMERS[msmt.test_name](
-            measurement=msmt, netinfodb=netinfodb
+            measurement=msmt, netinfodb=netinfodb, bucket_date=bucket_date
         )
         return transformer.make_observations(msmt)
-    return [[]]
+    return ()

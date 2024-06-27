@@ -12,6 +12,7 @@ from typing import (
     List,
     Dict,
 )
+from oonidata.models.base import ProcessingMeta
 from oonidata.models.analysis import WebAnalysis
 from oonidata.models.observations import WebControlObservation, WebObservation
 
@@ -47,9 +48,11 @@ def get_web_ctrl_observations(
 
     for res in db.execute_iter(q, {"measurement_uid": measurement_uid}):
         row = res[0]
-        obs_list.append(
-            WebControlObservation(**{k: row[idx] for idx, k in enumerate(column_names)})
+        # TODO(art): IMPORTANT, fix this to make use of the nested column names
+        web_control_obs = WebControlObservation(
+            **{k: row[idx] for idx, k in enumerate(column_names)}
         )
+        obs_list.append(web_control_obs)
     return obs_list
 
 
@@ -316,7 +319,10 @@ def check_dns_consistency(
 
         if fp:
             consistency_results.is_answer_fp_match = True
-            if fp.expected_countries and web_o.probe_cc in fp.expected_countries:
+            if (
+                fp.expected_countries
+                and web_o.probe_meta.probe_cc in fp.expected_countries
+            ):
                 consistency_results.is_answer_fp_country_consistent = True
             if fp.scope == "fp":
                 consistency_results.is_answer_fp_false_positive = True
@@ -327,9 +333,9 @@ def check_dns_consistency(
 
         if not web_o.dns_engine or web_o.dns_engine in SYSTEM_RESOLVERS:
             # TODO: do the same thing for the non-system resolver
-            if web_o.resolver_asn == web_o.probe_asn:
+            if web_o.probe_meta.resolver_asn == web_o.probe_meta.probe_asn:
                 consistency_results.is_resolver_probe_asn_match = True
-            if web_o.resolver_cc == web_o.probe_cc:
+            if web_o.probe_meta.resolver_cc == web_o.probe_meta.probe_cc:
                 consistency_results.is_resolver_probe_cc_match = True
 
         if web_o.tls_is_certificate_valid == True:
@@ -366,9 +372,9 @@ def check_dns_consistency(
         if is_cloud_provider(asn=web_o.ip_asn, as_org_name=web_o.ip_as_org_name):
             consistency_results.is_answer_cloud_provider = True
 
-        if web_o.dns_answer_asn == web_o.probe_asn:
+        if web_o.dns_answer_asn == web_o.probe_meta.probe_asn:
             consistency_results.is_answer_probe_asn_match = True
-        elif web_o.ip_as_cc == web_o.probe_cc:
+        elif web_o.ip_as_cc == web_o.probe_meta.probe_cc:
             consistency_results.is_answer_probe_cc_match = True
 
     return consistency_results
@@ -409,7 +415,8 @@ def make_dns_analysis(
         elif resolver_str.startswith("udp"):
             if dns_consistency_other is not None:
                 log.warn(
-                    f"more than one alternative resolver in query list. overriding. {dns_observations[0].report_id}?input={dns_observations[0].input}"
+                    f"more than one alternative resolver in query list. overriding. "
+                    f"msmt_uid={dns_observations[0].measurement_meta.measurement_uid}"
                 )
             dns_consistency_other = check_dns_consistency(
                 fingerprintdb=fingerprintdb,
@@ -590,7 +597,7 @@ def make_http_analysis(
                         http_analysis.is_http_fp_false_positive = True
                     if (
                         fp.expected_countries
-                        and web_o.probe_cc in fp.expected_countries
+                        and web_o.probe_meta.probe_cc in fp.expected_countries
                     ):
                         http_analysis.is_http_fp_country_consistent = True
                     if fp.name:
@@ -677,21 +684,14 @@ def make_web_analysis(
 
         created_at = datetime.now(timezone.utc).replace(tzinfo=None)
         website_analysis = WebAnalysis(
-            measurement_uid=web_o.measurement_uid,
+            measurement_meta=web_o.measurement_meta,
+            probe_meta=web_o.probe_meta,
+            processing_meta=ProcessingMeta(
+                processing_start_time=datetime.now(timezone.utc)
+            ),
             observation_id=web_o.observation_id,
             created_at=created_at,
-            measurement_start_time=web_o.measurement_start_time,
-            probe_asn=web_o.probe_asn,
-            probe_cc=web_o.probe_cc,
-            probe_as_org_name=web_o.probe_as_org_name,
-            probe_as_cc=web_o.probe_as_cc,
-            network_type=web_o.network_type,
-            resolver_ip=web_o.resolver_ip,
-            resolver_asn=web_o.resolver_asn,
-            resolver_as_org_name=web_o.resolver_as_org_name,
-            resolver_as_cc=web_o.resolver_as_cc,
-            resolver_cc=web_o.resolver_cc,
-            analysis_id=f"{web_o.measurement_uid}_{idx}",
+            analysis_id=f"{web_o.measurement_meta.measurement_uid}_{idx}",
             target_domain_name=domain_name,
             target_detail=target_detail,
         )
@@ -980,4 +980,7 @@ def make_web_analysis(
                 http_analysis.is_http_fp_false_positive
             )
 
+        website_analysis.processing_meta.processing_start_time = datetime.now(
+            timezone.utc
+        )
         yield website_analysis

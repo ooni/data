@@ -1,67 +1,62 @@
 from datetime import datetime
 
-from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict
+from types import NoneType
+from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict, Union
 from dataclasses import fields
+import typing
 
-from .connections import ClickhouseConnection
-
+from oonidata.models.base import TableModelProtocol, ProcessingMeta
 from oonidata.models.experiment_result import (
     ExperimentResult,
     MeasurementExperimentResult,
 )
 from oonidata.models.analysis import WebAnalysis
 from oonidata.models.observations import (
-    ObservationBase,
+    MeasurementMeta,
+    ProbeMeta,
     WebControlObservation,
     WebObservation,
     HTTPMiddleboxObservation,
 )
 
-"""
-CREATE TABLE IF NOT EXISTS oonidata_processing_logs 
-(
-    key String,
-    timestamp DateTime('UTC'),
-    runtime_ms Nullable(UInt64),
-    bytes Nullable(UInt64),
-    msmt_count Nullable(UInt32),
-    comment Nullable(String)
-)
-ENGINE = MergeTree
-ORDER BY (timestamp, key)
-"""
+from .connections import ClickhouseConnection
+
+
+MAPPED_BASIC_TYPES = [str, int, bool, datetime, float, dict]
+BasicType = Union[str, int, bool, datetime, float, dict]
+
+
+def python_basic_type_to_clickhouse(t: BasicType) -> str:
+    if t == str:
+        return "String"
+    if t == int:
+        return "Int32"
+    if t == bool:
+        return "Int8"
+    if t == datetime:
+        return "Datetime64(3, 'UTC')"
+    if t == float:
+        return "Float64"
+    if t == dict:
+        return "String"
+    raise Exception(f"Unsupported type {t}")
 
 
 def typing_to_clickhouse(t: Any) -> str:
-    if t == str:
-        return "String"
+    if t in MAPPED_BASIC_TYPES:
+        return python_basic_type_to_clickhouse(t)
 
     if t in (Optional[str], Optional[bytes]):
         return "Nullable(String)"
 
-    if t == int:
-        return "Int32"
-
     if t == Optional[int]:
         return "Nullable(Int32)"
-
-    if t == bool:
-        return "Int8"
 
     if t == Optional[bool]:
         return "Nullable(Int8)"
 
-    if t == datetime:
-        return "Datetime64(3, 'UTC')"
-
     if t == Optional[datetime]:
         return "Nullable(Datetime64(3, 'UTC'))"
-
-    if t == float:
-        return "Float64"
-
-    if t == dict:
-        return "String"
 
     # Casting it to JSON
     if t == List[Dict]:
@@ -82,86 +77,115 @@ def typing_to_clickhouse(t: Any) -> str:
     if t == Optional[List[str]]:
         return "Nullable(Array(String))"
 
-    if t == Optional[Tuple[str, str]]:
-        return "Nullable(Tuple(String, String))"
-
     if t == Optional[List[Tuple[str, bytes]]]:
         return "Nullable(Array(Array(String)))"
 
     if t in (Mapping[str, str], Dict[str, str]):
         return "Map(String, String)"
 
-    raise Exception(f"Unhandled type {t}")
+    # TODO(art): eventually all the above types should be mapped using a similar pattern
+    child_type, parent_type = typing.get_args(t)
+    is_nullable = False
+    if parent_type == NoneType:
+        is_nullable = True
+        target_type = child_type
+    else:
+        target_type = parent_type
+    target_origin = typing.get_origin(target_type)
+    target_args = typing.get_args(target_type)
+    assert target_origin == tuple
+    tuple_args = ", ".join([python_basic_type_to_clickhouse(a) for a in target_args])
+    if is_nullable:
+        return f"Nullable(Tuple({tuple_args}))"
+    return f"Tuple({tuple_args})"
 
 
-def create_query_for_observation(obs_class: Type[ObservationBase]) -> Tuple[str, str]:
+def format_create_query(
+    table_name: str,
+    model: Type[TableModelProtocol],
+    engine: str = "ReplacingMergeTree",
+    extra: bool = True,
+) -> Tuple[str, str]:
     columns = []
-    for f in fields(obs_class):
+    for f in fields(model):
+        if f.type == ProbeMeta:
+            for f in fields(ProbeMeta):
+                type_str = typing_to_clickhouse(f.type)
+                columns.append(f"     {f.name} {type_str}")
+            continue
+        if f.type == MeasurementMeta:
+            for f in fields(MeasurementMeta):
+                type_str = typing_to_clickhouse(f.type)
+                columns.append(f"     {f.name} {type_str}")
+            continue
+        if f.type == ProcessingMeta:
+            for f in fields(ProcessingMeta):
+                type_str = typing_to_clickhouse(f.type)
+                columns.append(f"     {f.name} {type_str}")
+            continue
         type_str = typing_to_clickhouse(f.type)
         columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
-    index_str = ",\n".join(obs_class.__table_index__)
-
+    index_str = ",\n".join(model.__table_index__)
+    extra_str = ""
+    if extra:
+        extra_str = f"ORDER BY ({index_str}) SETTINGS index_granularity = 8192;"
     return (
         f"""
-    CREATE TABLE IF NOT EXISTS {obs_class.__table_name__} (
+    CREATE TABLE IF NOT EXISTS {table_name} (
 {columns_str}
     )
-    ENGINE = ReplacingMergeTree
-    ORDER BY ({index_str})
-    SETTINGS index_granularity = 8192;
+    ENGINE = {engine}
+    {extra_str}
     """,
-        obs_class.__table_name__,
+        table_name,
     )
 
 
-def create_query_for_analysis(base_class) -> Tuple[str, str]:
-    columns = []
-    for f in fields(base_class):
-        type_str = typing_to_clickhouse(f.type)
-        columns.append(f"     {f.name} {type_str}")
-
-    columns_str = ",\n".join(columns)
-    index_str = ",\n".join(base_class.__table_index__)
-
-    return (
-        f"""
-    CREATE TABLE IF NOT EXISTS {base_class.__table_name__} (
-{columns_str}
-    )
-    ENGINE = ReplacingMergeTree
-    ORDER BY ({index_str})
-    SETTINGS index_granularity = 8192;
-    """,
-        base_class.__table_name__,
-    )
-
-
-CREATE_QUERY_FOR_LOGS = (
-    """CREATE TABLE IF NOT EXISTS oonidata_processing_logs
-(
-    key String,
-    timestamp DateTime('UTC'),
-    runtime_ms Nullable(UInt64),
-    bytes Nullable(UInt64),
-    msmt_count Nullable(UInt32),
-    comment Nullable(String)
-)
-ENGINE = MergeTree
-ORDER BY (timestamp, key)
-""",
-    "oonidata_processing_logs",
-)
-
-create_queries = [
-    create_query_for_observation(WebObservation),
-    create_query_for_observation(WebControlObservation),
-    create_query_for_observation(HTTPMiddleboxObservation),
-    create_query_for_analysis(WebAnalysis),
-    create_query_for_analysis(MeasurementExperimentResult),
-    CREATE_QUERY_FOR_LOGS,
+table_models = [
+    WebObservation,
+    WebControlObservation,
+    HTTPMiddleboxObservation,
+    WebAnalysis,
+    MeasurementExperimentResult,
 ]
+
+
+def make_create_queries(
+    num_layers=1,
+    min_time=10,
+    max_time=500,
+    min_rows=10_0000,
+    max_rows=100_000,
+    min_bytes=10_000_000,
+    max_bytes=1_000_000_000,
+):
+    create_queries = []
+    for model in table_models:
+        table_name = model.__table_name__
+        create_queries.append(
+            format_create_query(table_name, model),
+        )
+
+        engine_str = f"""
+        Buffer(
+            currentDatabase(), {table_name}, 
+            {num_layers},
+            {min_time}, {max_time}, 
+            {min_rows}, {max_rows},
+            {min_bytes}, {max_bytes}
+        )
+        """
+        create_queries.append(
+            format_create_query(
+                f"buffer_{table_name}",
+                model,
+                engine=engine_str,
+                extra=False,
+            )
+        )
+    return create_queries
 
 
 class TableDoesNotExistError(Exception):
@@ -280,7 +304,7 @@ def list_all_table_diffs(db: ClickhouseConnection):
 
 
 def main():
-    for query, table_name in create_queries:
+    for query, table_name in make_create_queries():
         print(f"clickhouse-client -q 'DROP TABLE {table_name}';")
         print("cat <<EOF | clickhouse-client -nm")
         print(query)

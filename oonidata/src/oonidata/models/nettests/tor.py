@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional
-from oonidata.compat import add_slots
-from oonidata.models.base_model import BaseModel
-from oonidata.models.dataformats import (
+
+from ...compat import add_slots
+
+from ..base import BaseModel
+from ..dataformats import (
     DNSQuery,
     Failure,
     HTTPTransaction,

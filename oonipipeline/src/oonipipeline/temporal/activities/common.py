@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Dict, List, Tuple
 from oonipipeline.db.connections import ClickhouseConnection
-from oonipipeline.db.create_tables import create_queries
+from oonipipeline.db.create_tables import make_create_queries
 
 from temporalio import activity
 
@@ -15,7 +15,9 @@ class ClickhouseParams:
 @activity.defn
 def optimize_all_tables(params: ClickhouseParams):
     with ClickhouseConnection(params.clickhouse_url) as db:
-        for _, table_name in create_queries:
+        for _, table_name in make_create_queries():
+            if table_name.startswith("buffer_"):
+                continue
             db.execute(f"OPTIMIZE TABLE {table_name}")
 
 

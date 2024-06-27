@@ -55,14 +55,16 @@ def iter_ground_truths_from_web_control(
         ip_as_org_name = ""
         ip_asn = 0
         if obs.ip:
-            ip_info = netinfodb.lookup_ip(obs.measurement_start_time, obs.ip)
+            ip_info = netinfodb.lookup_ip(
+                obs.measurement_meta.measurement_start_time, obs.ip
+            )
             ip_asn = ip_info.as_info.asn
             ip_as_org_name = ip_info.as_info.as_org_name
 
         wgt = WebGroundTruth(
             vp_asn=0,
             vp_cc="ZZ",
-            timestamp=obs.measurement_start_time,
+            timestamp=obs.measurement_meta.measurement_start_time,
             is_trusted_vp=True,
             hostname=obs.hostname,
             ip=obs.ip,
@@ -384,13 +386,13 @@ class WebGroundTruthDB:
         to_lookup_hostnames = set()
         to_lookup_ip_ports = set()
         to_lookup_http_request_urls = set()
-        probe_cc = web_obs[0].probe_cc
-        probe_asn = web_obs[0].probe_asn
+        probe_cc = web_obs[0].probe_meta.probe_cc
+        probe_asn = web_obs[0].probe_meta.probe_asn
         for web_o in web_obs:
             # All the observations in this group should be coming from the
             # same probe
-            assert web_o.probe_cc == probe_cc
-            assert web_o.probe_asn == probe_asn
+            assert web_o.probe_meta.probe_cc == probe_cc
+            assert web_o.probe_meta.probe_asn == probe_asn
             if web_o.hostname is not None:
                 to_lookup_hostnames.add(web_o.hostname)
             if web_o.ip is not None:

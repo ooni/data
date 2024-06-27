@@ -11,6 +11,7 @@ from oonipipeline.db.create_tables import (
     get_column_map_from_create_query,
     typing_to_clickhouse,
 )
+from oonidata.models.base import table_model
 
 
 def test_create_tables():
@@ -70,10 +71,10 @@ def test_create_tables():
 
 
 def test_flush_rows(db):
-    db.execute("DROP TABLE IF EXISTS tmp_test_recovery")
+    db.execute("DROP TABLE IF EXISTS tmp_test_flush")
     db.execute(
         """
-    CREATE TABLE IF NOT EXISTS tmp_test_recovery (
+    CREATE TABLE IF NOT EXISTS tmp_test_flush (
         col1 UInt32,
         col2 String 
     )
@@ -81,7 +82,7 @@ def test_flush_rows(db):
     PRIMARY KEY (col1)
     """
     )
-    db.row_buffer_size = 5
+    db.write_batch_size = 5
 
     rows = [
         [1, "one"],
@@ -92,8 +93,8 @@ def test_flush_rows(db):
         [6, "six"],
     ]
     with pytest.raises(AttributeError):
-        db.write_rows("tmp_test_recovery", rows, ["col1", "col2"])
-        db.flush_all_rows()
+        db.write_rows("tmp_test_flush", rows, ["col1", "col2"])
+        db.flush()
 
 
 def test_clickhouse(monkeypatch):
@@ -102,20 +103,25 @@ def test_clickhouse(monkeypatch):
     def mock_from_url(*_):
         return mock_client
 
-    rows_to_write = list(range(100))
-    row_buffer_size = 100
+    @table_model(table_index=(), table_name="table_a")
+    @dataclass
+    class MockRow:
+        i: int
+
+    rows_to_write = [MockRow(i=i) for i in range(200)]
+    write_batch_size = 100
     monkeypatch.setattr(Client, "from_url", mock_from_url)
-    db = ClickhouseConnection(conn_url="mock", row_buffer_size=row_buffer_size)
-    db.write_rows("table_a", rows_to_write[:80], column_names=["a"])
+    db = ClickhouseConnection(conn_url="mock", write_batch_size=write_batch_size)
+    db.write_table_model_rows(rows_to_write[:80])
     assert mock_client.execute.call_count == 0
 
-    db.write_rows("table_a", rows_to_write[80:], column_names=["a"])
+    db.write_table_model_rows(rows_to_write[80:])
     assert mock_client.execute.call_count == 1
 
     # TODO: for some reason this fails on python3.7. Probably due to magic_mock API changes
     # assert mock_client.execute.call_args_list[0].args[1] == rows_to_write
 
-    db.write_rows("table_a", list(range(42)), column_names=["a"])
+    db.write_table_model_rows([MockRow(i=i) for i in range(42)])
 
     db.close()
 

@@ -2,7 +2,8 @@ import dataclasses
 from datetime import date, timedelta
 from typing import Generator, List, Optional
 
-from oonidata.models.observations import WebObservation
+from oonidata.models.base import ProcessingMeta
+from oonidata.models.observations import MeasurementMeta, ProbeMeta, WebObservation
 
 from ..db.connections import ClickhouseConnection
 
@@ -24,7 +25,15 @@ def iter_web_observations(
         test_name=test_name,
     )
 
-    column_names = [f.name for f in dataclasses.fields(WebObservation)]
+    measurement_meta_cols = [f.name for f in dataclasses.fields(MeasurementMeta)]
+    probe_meta_cols = [f.name for f in dataclasses.fields(ProbeMeta)]
+    processing_meta_cols = [f.name for f in dataclasses.fields(ProcessingMeta)]
+    obs_cols = [f.name for f in dataclasses.fields(WebObservation)]
+    obs_cols.remove("probe_meta")
+    obs_cols.remove("measurement_meta")
+    obs_cols.remove("processing_meta")
+    column_names = measurement_meta_cols + probe_meta_cols + processing_meta_cols + obs_cols
+
     q = "SELECT ("
     q += ",\n".join(column_names)
     q += ") FROM obs_web\n"
@@ -51,7 +60,44 @@ def iter_web_observations(
             last_msmt_uid = row[msmt_uid_idx]
             obs_group = []
 
-        obs_group.append(WebObservation(*row))
+        # TODO(art): this is super sketchy.
+        # We need to do this in order to obtain the correct offsets into the queried columns
+        # Basically probe_meta, measurement_meta and processing_meta are class
+        # attributes that are composed into the dataclass, however in the
+        # database they need to be stored flat, since nesting is not desirable.
+        # What we are doing here is figuring out how to construct the nested
+        # class in order by manually recomputing the offsets of the returned
+        # queries.
+        # If we had an ORM this might be all avoided and even without it there
+        # is probably a better pattern.
+        # See: https://github.com/ooni/data/issues/77
+        measurement_meta = dict(
+            zip(measurement_meta_cols, row[: len(measurement_meta_cols)])
+        )
+        probe_meta = dict(
+            zip(
+                probe_meta_cols,
+                row[
+                    len(measurement_meta_cols) : len(measurement_meta_cols)
+                    + len(probe_meta_cols)
+                ],
+            )
+        )
+        processing_meta = dict(
+            zip(processing_meta_cols, row[: len(processing_meta_cols)])
+        )
+
+        rest = dict(
+            zip(obs_cols, row[len(measurement_meta_cols) + len(probe_meta_cols) + len(processing_meta_cols) :])
+        )
+        obs_group.append(
+            WebObservation(
+                measurement_meta=MeasurementMeta(**measurement_meta),
+                probe_meta=ProbeMeta(**probe_meta),
+                processing_meta=ProcessingMeta(**processing_meta),
+                **rest,
+            )
+        )
 
     if len(obs_group) > 0:
         yield obs_group

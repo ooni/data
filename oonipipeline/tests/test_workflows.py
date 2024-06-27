@@ -33,9 +33,6 @@ from oonipipeline.temporal.activities.ground_truths import (
     MakeGroundTruthsParams,
     make_ground_truths_in_day,
 )
-from oonipipeline.temporal.activities.observations import (
-    write_observations_to_db,
-)
 
 # from oonipipeline.workflows.response_archiver import ResponseArchiver
 # from oonipipeline.workflows.fingerprint_hunter import fingerprint_hunter
@@ -156,6 +153,7 @@ def test_make_file_entry_batch(datadir, db):
             data_dir=datadir,
         ),
     )
+    time.sleep(3)
     analysis_res = make_analysis_in_a_day(
         MakeAnalysisParams(
             probe_cc=["IR"],
@@ -190,8 +188,13 @@ def test_write_observations(measurements, netinfodb, db):
     ]
     for msmt_uid, bucket_date in msmt_uids:
         msmt = load_measurement(msmt_path=measurements[msmt_uid])
-        write_observations_to_db(msmt, netinfodb, db, bucket_date)
+        for obs_list in measurement_to_observations(
+            msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        ):
+            db.write_table_model_rows(obs_list)
     db.close()
+    # Wait for buffer tables to flush
+    time.sleep(3)
     cnt_by_cc = get_obs_count_by_cc(
         ObsCountParams(
             clickhouse_url=db.clickhouse_url,
@@ -213,7 +216,7 @@ def test_hirl_observations(measurements, netinfodb):
     )
     assert isinstance(msmt, HTTPInvalidRequestLine)
     middlebox_obs: List[HTTPMiddleboxObservation] = measurement_to_observations(
-        msmt, netinfodb=netinfodb
+        msmt, netinfodb=netinfodb, bucket_date="2023-09-07"
     )[0]
     assert isinstance(middlebox_obs[0], HTTPMiddleboxObservation)
     assert middlebox_obs[0].hirl_success == True
@@ -227,7 +230,9 @@ def test_insert_query_for_observation(measurements, netinfodb):
         ]
     )
     assert isinstance(http_blocked, WebConnectivity)
-    mt = MeasurementTransformer(measurement=http_blocked, netinfodb=netinfodb)
+    mt = MeasurementTransformer(
+        measurement=http_blocked, netinfodb=netinfodb, bucket_date="2022-06-08"
+    )
     all_web_obs = [
         obs
         for obs in mt.make_http_observations(
@@ -245,7 +250,9 @@ def test_web_connectivity_processor(netinfodb, measurements):
     )
     assert isinstance(msmt, WebConnectivity)
 
-    web_obs_list, web_ctrl_list = measurement_to_observations(msmt, netinfodb=netinfodb)
+    web_obs_list, web_ctrl_list = measurement_to_observations(
+        msmt, netinfodb=netinfodb, bucket_date="2022-06-27"
+    )
     assert len(web_obs_list) == 3
     assert len(web_ctrl_list) == 3
 

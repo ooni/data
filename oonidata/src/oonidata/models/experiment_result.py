@@ -6,9 +6,11 @@ from enum import Enum
 from datetime import datetime, timezone
 
 from tabulate import tabulate
-from oonidata.datautils import maybe_elipse
 
-from ..models.observations import MeasurementMeta
+from ..datautils import maybe_elipse
+
+from .base import table_model
+from .observations import ProbeMeta, MeasurementMeta, WebObservation
 
 log = logging.getLogger("oonidata.events")
 
@@ -69,16 +71,17 @@ class Outcome(NamedTuple):
     blocked_score: float
 
 
-@dataclass
-class MeasurementExperimentResult:
-    __table_name__ = "measurement_experiment_result"
-    __table_index__ = (
+@table_model(
+    table_name="measurement_experiment_result",
+    table_index=(
         "measurement_uid",
         "timeofday",
-    )
-
-    # The measurement used to generate this experiment result
-    measurement_uid: str
+    ),
+)
+@dataclass
+class MeasurementExperimentResult:
+    measurement_meta: MeasurementMeta
+    probe_meta: ProbeMeta
 
     # The list of observations used to generate this experiment result
     observation_id_list: List[str]
@@ -255,21 +258,8 @@ class ExperimentResult(NamedTuple):
     experiment_result_id: str
 
 
-def print_nice_er(er_list):
-    rows = []
-    meta_fields = [f.name for f in dataclasses.fields(MeasurementMeta)]
-    meta_fields += ["timestamp", "created_at"]
-    headers: List[str] = list(
-        filter(lambda k: k not in meta_fields, er_list[0]._fields)
-    )
-    for er in er_list:
-        rows.append([maybe_elipse(getattr(er, k)) for k in headers])
-    headers = [maybe_elipse(h, 5) for h in headers]
-    print(tabulate(rows, headers=headers))  # type: ignore # tabulate library doesn't seem to have correct type hints
-
-
 def iter_experiment_results(
-    obs: MeasurementMeta,
+    obs: WebObservation,
     experiment_group: str,
     anomaly: bool,
     confirmed: bool,
@@ -280,22 +270,22 @@ def iter_experiment_results(
     created_at = datetime.now(timezone.utc).replace(tzinfo=None)
     for idx, outcome in enumerate(outcomes):
         yield ExperimentResult(
-            measurement_uid=obs.measurement_uid,
+            measurement_uid=obs.measurement_meta.measurement_uid,
             created_at=created_at,
-            report_id=obs.report_id,
-            input=obs.input,
-            timestamp=obs.measurement_start_time,
-            probe_asn=obs.probe_asn,
-            probe_cc=obs.probe_cc,
-            probe_as_org_name=obs.probe_as_org_name,
-            probe_as_cc=obs.probe_as_cc,
-            network_type=obs.network_type,
-            resolver_ip=obs.resolver_ip,
-            resolver_asn=obs.resolver_asn,
-            resolver_as_org_name=obs.resolver_as_org_name,
-            resolver_as_cc=obs.resolver_as_cc,
-            resolver_cc=obs.resolver_cc,
-            experiment_result_id=f"{obs.measurement_uid}_{idx}",
+            report_id=obs.measurement_meta.report_id,
+            input=obs.measurement_meta.input,
+            timestamp=obs.measurement_meta.measurement_start_time,
+            probe_asn=obs.probe_meta.probe_asn,
+            probe_cc=obs.probe_meta.probe_cc,
+            probe_as_org_name=obs.probe_meta.probe_as_org_name,
+            probe_as_cc=obs.probe_meta.probe_as_cc,
+            network_type=obs.probe_meta.network_type,
+            resolver_ip=obs.probe_meta.resolver_ip,
+            resolver_asn=obs.probe_meta.resolver_asn,
+            resolver_as_org_name=obs.probe_meta.resolver_as_org_name,
+            resolver_as_cc=obs.probe_meta.resolver_as_cc,
+            resolver_cc=obs.probe_meta.resolver_cc,
+            experiment_result_id=f"{obs.measurement_meta.measurement_uid}_{idx}",
             experiment_group=experiment_group,
             anomaly=anomaly,
             confirmed=confirmed,

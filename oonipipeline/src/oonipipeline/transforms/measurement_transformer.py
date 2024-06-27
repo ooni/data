@@ -14,6 +14,7 @@ from typing import (
     Union,
 )
 
+from oonidata.models.base import ProcessingMeta
 from oonidata.models.dataformats import (
     DNSAnswer,
     DNSQuery,
@@ -29,6 +30,7 @@ from oonidata.models.observations import (
     DNSObservation,
     HTTPObservation,
     MeasurementMeta,
+    ProbeMeta,
     TCPObservation,
     TLSObservation,
     WebObservation,
@@ -470,6 +472,7 @@ WEB_OBS_FIELDS = tuple(f.name for f in dataclasses.fields(WebObservation))
 
 def make_web_observation(
     msmt_meta: MeasurementMeta,
+    probe_meta: ProbeMeta,
     netinfodb: NetinfoDB,
     dns_o: Optional[DNSObservation] = None,
     tcp_o: Optional[TCPObservation] = None,
@@ -485,7 +488,11 @@ def make_web_observation(
     web_obs = WebObservation(
         target_id=target_id,
         probe_analysis=probe_analysis,
-        **dataclasses.asdict(msmt_meta),
+        measurement_meta=msmt_meta,
+        probe_meta=probe_meta,
+        processing_meta=ProcessingMeta(
+            processing_start_time=datetime.now(timezone.utc)
+        ),
     )
     dns_ip = None
     if dns_o and dns_o.answer:
@@ -503,7 +510,7 @@ def make_web_observation(
     web_obs.hostname = (dns_o and dns_o.hostname) or (http_o and http_o.hostname)
     if web_obs.ip:
         web_obs.ip_is_bogon = is_ip_bogon(web_obs.ip)
-        ip_info = netinfodb.lookup_ip(web_obs.measurement_start_time, web_obs.ip)
+        ip_info = netinfodb.lookup_ip(msmt_meta.measurement_start_time, web_obs.ip)
         if ip_info:
             web_obs.ip_cc = ip_info.cc
             web_obs.ip_asn = ip_info.as_info.asn
@@ -522,6 +529,7 @@ def make_web_observation(
     maybe_set_web_fields(
         src_obs=http_o, prefix="http_", web_obs=web_obs, field_names=WEB_OBS_FIELDS
     )
+    web_obs.processing_meta.processing_end_time = datetime.now(timezone.utc)
     return web_obs
 
 
@@ -589,9 +597,7 @@ def find_relevant_observations(
     return found_tcp_obs, found_tls_obs, found_http_obs
 
 
-def make_measurement_meta(
-    msmt: BaseMeasurement, netinfodb: NetinfoDB
-) -> MeasurementMeta:
+def make_probe_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> ProbeMeta:
     assert msmt.measurement_uid is not None
     probe_asn = int(msmt.probe_asn[len("AS") :])
     measurement_start_time = datetime.strptime(
@@ -641,19 +647,12 @@ def make_measurement_meta(
         input_ = ":".join(input_)
 
     annotations = msmt.annotations or {}
-    return MeasurementMeta(
-        measurement_uid=msmt.measurement_uid,
+    return ProbeMeta(
         probe_asn=probe_asn,
         probe_cc=msmt.probe_cc,
         probe_as_org_name=probe_as_info.as_org_name if probe_as_info else "",
         probe_as_cc=probe_as_info.as_cc if probe_as_info else "",
         probe_as_name=probe_as_info.as_name if probe_as_info else "",
-        report_id=msmt.report_id,
-        input=input_,
-        software_name=msmt.software_name,
-        software_version=msmt.software_version,
-        test_name=msmt.test_name,
-        test_version=msmt.test_version,
         network_type=annotations.get("network_type", "unknown"),
         platform=annotations.get("platform", "unknown"),
         origin=annotations.get("origin", "unknown"),
@@ -668,7 +667,28 @@ def make_measurement_meta(
         resolver_asn_probe=resolver_asn_probe,
         resolver_as_org_name_probe=resolver_as_org_name_probe,
         resolver_is_scrubbed=resolver_is_scrubbed,
-        bucket_date="",
+    )
+
+
+def make_measurement_meta(msmt: BaseMeasurement, bucket_date: str) -> MeasurementMeta:
+    assert msmt.measurement_uid is not None
+    measurement_start_time = datetime.strptime(
+        msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S"
+    )
+
+    input_ = msmt.input
+    if isinstance(input_, list):
+        input_ = ":".join(input_)
+
+    return MeasurementMeta(
+        measurement_uid=msmt.measurement_uid,
+        report_id=msmt.report_id,
+        input=input_,
+        software_name=msmt.software_name,
+        software_version=msmt.software_version,
+        test_name=msmt.test_name,
+        test_version=msmt.test_version,
+        bucket_date=bucket_date,
         measurement_start_time=measurement_start_time,
     )
 
@@ -686,11 +706,17 @@ class MeasurementTransformer:
     final observation model that's going to be written to the desired database.
     """
 
-    def __init__(self, measurement: BaseMeasurement, netinfodb: NetinfoDB):
+    def __init__(
+        self,
+        measurement: BaseMeasurement,
+        bucket_date: str,
+        netinfodb: NetinfoDB,
+    ):
         self.netinfodb = netinfodb
         self.measurement_meta = make_measurement_meta(
-            msmt=measurement, netinfodb=netinfodb
+            msmt=measurement, bucket_date=bucket_date
         )
+        self.probe_meta = make_probe_meta(msmt=measurement, netinfodb=netinfodb)
 
     def make_http_observations(
         self,
@@ -820,7 +846,7 @@ class MeasurementTransformer:
         Any observation that cannot be mapped will be returned inside of it's
         own WebObservation with all other columns set to None.
         """
-        web_obs_list = []
+        web_obs_list: List[WebObservation] = []
         # TODO: surely there is some way to refactor this into a better pattern
         for dns_o in dns_observations:
             tcp_o, tls_o, http_o = find_relevant_observations(
@@ -833,6 +859,7 @@ class MeasurementTransformer:
             web_obs_list.append(
                 make_web_observation(
                     msmt_meta=self.measurement_meta,
+                    probe_meta=self.probe_meta,
                     netinfodb=self.netinfodb,
                     dns_o=dns_o,
                     tcp_o=tcp_o,
@@ -863,6 +890,7 @@ class MeasurementTransformer:
             web_obs_list.append(
                 make_web_observation(
                     msmt_meta=self.measurement_meta,
+                    probe_meta=self.probe_meta,
                     netinfodb=self.netinfodb,
                     tcp_o=tcp_o,
                     tls_o=tls_o,
@@ -883,6 +911,7 @@ class MeasurementTransformer:
             web_obs_list.append(
                 make_web_observation(
                     msmt_meta=self.measurement_meta,
+                    probe_meta=self.probe_meta,
                     netinfodb=self.netinfodb,
                     tls_o=tls_o,
                     http_o=http_o,
@@ -895,6 +924,7 @@ class MeasurementTransformer:
             web_obs_list.append(
                 make_web_observation(
                     msmt_meta=self.measurement_meta,
+                    probe_meta=self.probe_meta,
                     netinfodb=self.netinfodb,
                     http_o=http_o,
                     target_id=target_id,
@@ -903,7 +933,7 @@ class MeasurementTransformer:
             )
 
         for idx, obs in enumerate(web_obs_list):
-            obs.observation_id = f"{obs.measurement_uid}_{idx}"
+            obs.observation_id = f"{obs.measurement_meta.measurement_uid}_{idx}"
             obs.created_at = datetime.now(timezone.utc).replace(
                 microsecond=0, tzinfo=None
             )
