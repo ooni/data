@@ -1,8 +1,4 @@
 import pytest
-<<<<<<< HEAD
-=======
-
->>>>>>> 03dfd79 (WIP refactoring the table data models)
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from unittest.mock import MagicMock, call
