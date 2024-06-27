@@ -5,7 +5,7 @@ from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict, 
 from dataclasses import fields
 import typing
 
-from oonidata.models.base import TableModelProtocol
+from oonidata.models.base import TableModelProtocol, ProcessingMeta
 from oonidata.models.experiment_result import (
     ExperimentResult,
     MeasurementExperimentResult,
@@ -115,6 +115,11 @@ def format_create_query(
             continue
         if f.type == MeasurementMeta:
             for f in fields(MeasurementMeta):
+                type_str = typing_to_clickhouse(f.type)
+                columns.append(f"     {f.name} {type_str}")
+            continue
+        if f.type == ProcessingMeta:
+            for f in fields(ProcessingMeta):
                 type_str = typing_to_clickhouse(f.type)
                 columns.append(f"     {f.name} {type_str}")
             continue

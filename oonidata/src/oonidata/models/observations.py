@@ -7,10 +7,8 @@ from typing import (
     Tuple,
 )
 
-from oonidata.compat import add_slots
-from oonidata.models.base import table_model
+from oonidata.models.base import table_model, ProcessingMeta
 from oonidata.models.dataformats import Failure
-from oonidata.datautils import maybe_elipse
 
 
 ## These two classes are special, and it's essential that the columns don't clash with the classes that compose them.
@@ -188,6 +186,7 @@ class TCPObservation:
 @dataclass
 class WebControlObservation:
     measurement_meta: MeasurementMeta
+    processing_meta: ProcessingMeta
 
     hostname: str
     observation_id: str = ""
@@ -227,6 +226,7 @@ class WebControlObservation:
 class WebObservation:
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
+    processing_meta: ProcessingMeta
 
     # These fields are added by the processor
     observation_id: str = ""
@@ -332,8 +332,8 @@ class WebObservation:
     # pp_dns_fingerprint_id: Optional[str] = None
     # pp_dns_fingerprint_country_consistent: Optional[bool] = None
 
-    # Added in v5.0.0-alpha.1
-    post_processed_at: Optional[datetime] = None
+    # removed in v5.0.0-alpha.2
+    # post_processed_at: Optional[datetime] = None
 
 
 @table_model(

@@ -14,6 +14,7 @@ from typing import (
     Union,
 )
 
+from oonidata.models.base import ProcessingMeta
 from oonidata.models.dataformats import (
     DNSAnswer,
     DNSQuery,
@@ -489,6 +490,9 @@ def make_web_observation(
         probe_analysis=probe_analysis,
         measurement_meta=msmt_meta,
         probe_meta=probe_meta,
+        processing_meta=ProcessingMeta(
+            processing_start_time=datetime.now(timezone.utc)
+        ),
     )
     dns_ip = None
     if dns_o and dns_o.answer:
@@ -525,6 +529,7 @@ def make_web_observation(
     maybe_set_web_fields(
         src_obs=http_o, prefix="http_", web_obs=web_obs, field_names=WEB_OBS_FIELDS
     )
+    web_obs.processing_meta.processing_end_time = datetime.now(timezone.utc)
     return web_obs
 
 

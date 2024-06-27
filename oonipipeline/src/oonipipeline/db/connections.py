@@ -117,6 +117,8 @@ class ClickhouseConnection(DatabaseConnection):
                 d.update(d.pop("probe_meta"))
             if "measurement_meta" in d:
                 d.update(d.pop("measurement_meta"))
+            if "processing_meta" in d:
+                d.update(d.pop("processing_meta"))
 
             # TODO(art): this custom_remap should not be here
             if "loni_list" in d:
