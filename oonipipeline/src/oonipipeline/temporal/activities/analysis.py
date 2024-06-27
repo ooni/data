@@ -25,7 +25,6 @@ with workflow.unsafe.imports_passed_through():
 
     from ..common import (
         get_prev_range,
-        make_db_rows,
         maybe_delete_prev_range,
     )
 
@@ -114,9 +113,9 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
 
     # This makes sure that the buffer tables are being flushed so that the
     # following queries are accurate
-    db_writer.execute(f"OPTIMIZE TABLE buffer_{WebAnalysis.__table_name__}")
+    db_writer.execute(f"OPTIMIZE TABLE {WebAnalysis.__table_name__} FINAL")
     db_writer.execute(
-        f"OPTIMIZE TABLE buffer_{MeasurementExperimentResult.__table_name__}"
+        f"OPTIMIZE TABLE {MeasurementExperimentResult.__table_name__} FINAL"
     )
     prev_range_list = [
         get_prev_range(
