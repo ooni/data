@@ -112,9 +112,12 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
     db_writer = ClickhouseConnection(clickhouse)
     db_lookup = ClickhouseConnection(clickhouse)
 
-    # TODO(art): IMPORTANT: since the switch to buffer tables we must make sure
-    # everything has been flushed to the table otherwise these will not be
-    # accurate
+    # This makes sure that the buffer tables are being flushed so that the
+    # following queries are accurate
+    db_writer.execute(f"OPTIMIZE TABLE buffer_{WebAnalysis.__table_name__}")
+    db_writer.execute(
+        f"OPTIMIZE TABLE buffer_{MeasurementExperimentResult.__table_name__}"
+    )
     prev_range_list = [
         get_prev_range(
             db=db_lookup,
