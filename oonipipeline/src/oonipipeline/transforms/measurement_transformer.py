@@ -301,6 +301,7 @@ def network_events_until_connect(
 
 
 def find_tls_handshake_events_without_transaction_id(
+    msmt_uid: str,
     tls_handshake: TLSHandshake,
     src_idx: int,
     network_events: Optional[List[NetworkEvent]],
@@ -427,7 +428,7 @@ def measurement_to_tls_observation(
         # find tls handshake network events based on this. This is a weak check and
         # somewhat sketchy 
         if network_events[0] and network_events[0].transaction_id is None:
-            tls_network_events = find_tls_handshake_events_without_transaction_id(tls_h, idx, network_events)
+            tls_network_events = find_tls_handshake_events_without_transaction_id(msmt_uid, tls_h, idx, network_events)
         else:
             tls_network_events = find_tls_handshake_network_events_with_transaction_id(msmt_uid, tls_h, network_events)
 
