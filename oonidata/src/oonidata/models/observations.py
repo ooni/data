@@ -403,6 +403,7 @@ class OpenVPNObservation:
     openvpn_handshake_failure: Optional[Failure] = None
     openvpn_handshake_t: Optional[float] = None
     openvpn_handshake_t0: Optional[float] = None
+    openvpn_bootstrap_time: Optional[float] = None
 
     # timing info about the handshake packets
     openvpn_handshake_hr_client_t: Optional[float] = None

@@ -7,15 +7,14 @@ from ..measurement_transformer import MeasurementTransformer
 
 class OpenVPNTransformer(MeasurementTransformer):
     def make_observations(self, msmt: OpenVPN) -> Tuple[List[OpenVPNObservation]]:
-        openvpn_obs_list = []
         if not msmt.test_keys:
-            return (openvpn_obs_list,)
+            return ([],)
 
-        tcp_observations = self.make_tcp_observations(msmt.tcp_connect)
-
-        return self.make_openvpn_observations(
-            tcp_observations=tcp_observations,
+        openvpn_obs = self.make_openvpn_observations(
+            tcp_observations=self.make_tcp_observations(msmt.tcp_connect),
             openvpn_handshakes=msmt.openvpn_handshake,
             network_events=msmt.network_events,
             bootstrap_time=msmt.bootstrap_time,
         )
+        return (openvpn_obs, )
+            
