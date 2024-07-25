@@ -370,10 +370,19 @@ class HTTPMiddleboxObservation:
     hfm_success: Optional[bool] = None
 
 
-@add_slots
+@table_model(
+    table_name="obs_openvpn",
+    table_index=("measurement_uid", "observation_id", "measurement_start_time"),
+)
 @dataclass
 class OpenVPNHandshakeObservation:
+    measurement_meta: MeasurementMeta
+    probe_meta: ProbeMeta
+    processing_meta: ProcessingMeta
+
     timestamp: datetime
+
+    # Fields added by the processor
 
     ip: str
     port: int
@@ -407,11 +416,14 @@ class OpenVPNHandshakeObservation:
 
 
 
-@add_slots
+@table_model(
+    table_name="obs_tunnel",
+    table_index= ("measurement_uid", "observation_id", "measurement_start_time"),
+)
 @dataclass
-class TunnelEndpointObservation(MeasurementMeta):
-    __table_name__ = "obs_tunnel"
-    __table_index__ = ("measurement_uid", "observation_id", "measurement_start_time")
+class TunnelEndpointObservation:
+    measurement_meta: MeasurementMeta
+    probe_meta: ProbeMeta
 
     measurement_start_time: datetime
 
