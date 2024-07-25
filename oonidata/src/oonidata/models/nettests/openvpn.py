@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from typing import List, Optional
-from oonidata.compat import add_slots
-from oonidata.models.dataformats import (
+
+from ..compat import add_slots
+
+from ..base import BaseModel
+from ..dataformats import (
     BaseTestKeys,
     Failure,
     TCPConnect,
@@ -14,12 +17,15 @@ from oonidata.models.nettests.base_measurement import BaseMeasurement
 @add_slots
 @dataclass
 class OpenVPNTestKeys(BaseTestKeys):
-    failure: Failure = None
     success: Optional[bool] = False
+    failure: Failure = None
 
     network_events: Optional[List[OpenVPNNetworkEvent]] = None
-    openvpn_handshake: Optional[List[OpenVPNHandshake]] = None
     tcp_connect: Optional[List[TCPConnect]] = None
+    openvpn_handshake: Optional[List[OpenVPNHandshake]] = None
+
+    bootstrap_time: Optional[float] = None
+    tunnel: str = None
 
 
 @add_slots

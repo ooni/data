@@ -375,7 +375,7 @@ class HTTPMiddleboxObservation:
     table_index=("measurement_uid", "observation_id", "measurement_start_time"),
 )
 @dataclass
-class OpenVPNHandshakeObservation:
+class OpenVPNObservation:
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
     processing_meta: ProcessingMeta
@@ -401,8 +401,8 @@ class OpenVPNHandshakeObservation:
 
     # OpenVPN handshake observation
     openvpn_handshake_failure: Optional[Failure] = None
-    openvpn_handshake_success: Optional[bool] = None
     openvpn_handshake_t: Optional[float] = None
+    openvpn_handshake_t0: Optional[float] = None
 
     # timing info about the handshake packets
     openvpn_handshake_hr_client_t: Optional[float] = None

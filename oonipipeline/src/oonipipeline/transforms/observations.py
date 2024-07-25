@@ -18,6 +18,7 @@ from .nettests.tor import TorTransformer
 from .nettests.browser_web import BrowserWebTransformer
 from .nettests.urlgetter import UrlGetterTransformer
 from .nettests.web_connectivity import WebConnectivityTransformer
+from .nettests.openvpn import OpenVPNTransformer 
 from .nettests.http_invalid_request_line import (
     HTTPInvalidRequestLineTransformer,
 )
@@ -37,6 +38,7 @@ NETTEST_TRANSFORMERS = {
     "http_header_field_manipulation": HTTPHeaderFieldManipulationTransformer,
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
+    "openvpn": OpenVPNTransformer,
 }
 
 TypeWebConnectivityObservations = Tuple[

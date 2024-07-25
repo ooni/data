@@ -367,23 +367,17 @@ class NetworkEvent(BaseModel):
     dial_id: Optional[int] = None
     conn_id: Optional[int] = None
 
-@add_slots
-@dataclass
-class OpenVPNConnectStatus(BaseModel):
-    success: bool
-    failure: Union[Failure, bool] = None
 
 @add_slots
 @dataclass
 class OpenVPNHandshake(BaseModel):
-    bootstrap_time: float
+    handshake_time: float
     endpoint: str
     ip: str # we might want to make this optional, and scrub in favor of ASN/prefix
     port: int
     transport: str
     provider: str
     openvpn_options: Optional[Dict[str, str]] = None
-    status: OpenVPNConnectStatus
     t0: float
     t: float
     tags: Optional[List[str]] = None
