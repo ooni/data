@@ -18,6 +18,7 @@ from .nettests.tor import TorTransformer
 from .nettests.browser_web import BrowserWebTransformer
 from .nettests.urlgetter import UrlGetterTransformer
 from .nettests.web_connectivity import WebConnectivityTransformer
+from .nettests.openvpn import OpenVPNTransformer 
 from .nettests.http_invalid_request_line import (
     HTTPInvalidRequestLineTransformer,
 )
@@ -37,12 +38,14 @@ NETTEST_TRANSFORMERS = {
     "http_header_field_manipulation": HTTPHeaderFieldManipulationTransformer,
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
+    "openvpn": OpenVPNTransformer,
 }
 
 TypeWebConnectivityObservations = Tuple[
     List[WebObservation], List[WebControlObservation]
 ]
 TypeWebObservations = Tuple[List[WebObservation]]
+TypeOpenVPNObservations = Tuple[List[OpenVPNObservation]]
 TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 
 
@@ -57,6 +60,7 @@ def measurement_to_observations(
     TypeWebObservations,
     TypeWebConnectivityObservations,
     TypeHTTPMiddleboxObservations,
+    TypeOpenVPNObservations,
     Tuple[()],
 ]:
     if msmt.test_name in NETTEST_TRANSFORMERS:
