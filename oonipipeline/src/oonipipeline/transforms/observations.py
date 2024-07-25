@@ -45,6 +45,7 @@ TypeWebConnectivityObservations = Tuple[
     List[WebObservation], List[WebControlObservation]
 ]
 TypeWebObservations = Tuple[List[WebObservation]]
+TypeOpenVPNObservations = Tuple[List[OpenVPNObservation]]
 TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 
 
@@ -59,6 +60,7 @@ def measurement_to_observations(
     TypeWebObservations,
     TypeWebConnectivityObservations,
     TypeHTTPMiddleboxObservations,
+    TypeOpenVPNObservations,
     Tuple[()],
 ]:
     if msmt.test_name in NETTEST_TRANSFORMERS:
