@@ -17,6 +17,7 @@ from oonidata.models.observations import (
     WebControlObservation,
     WebObservation,
     HTTPMiddleboxObservation,
+    OpenVPNObservation,
 )
 
 from .connections import ClickhouseConnection
