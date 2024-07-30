@@ -112,12 +112,12 @@ def format_create_query(
     for f in fields(model):
         if f.name in ("__table_index__", "__table_name__"):
             continue
-        if f.type == ProbeMeta:
+        if f.name == "probe_meta":
             for f in fields(ProbeMeta):
                 type_str = typing_to_clickhouse(f.type)
                 columns.append(f"     {f.name} {type_str}")
             continue
-        if f.type == MeasurementMeta:
+        if f.name == "measurement_meta":
             for f in fields(MeasurementMeta):
                 type_str = typing_to_clickhouse(f.type)
                 columns.append(f"     {f.name} {type_str}")
