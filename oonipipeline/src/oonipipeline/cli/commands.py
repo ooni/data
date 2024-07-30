@@ -135,13 +135,17 @@ parallelism_option = click.option(
 
 
 def parse_config_file(ctx, _, filename):
-    try:
-        cfg = ConfigParser()
-        cfg.read(filename)
-        options = dict(cfg["options"])
-    except KeyError:
-        options = {}
-    ctx.default_map = options
+    cfg = ConfigParser()
+    cfg.read(filename)
+    ctx.default_map = {}
+    for sect in cfg.sections():
+        command_path = sect.split(".")
+        if command_path[0] != "options":
+            continue
+        defaults = ctx.default_map
+        for cmdname in command_path[1:]:
+            defaults = defaults.setdefault(cmdname, {})
+        defaults.update(cfg[sect])
 
 
 @click.group()
