@@ -334,6 +334,12 @@ def backfill(
     help="should we fail immediately when we encounter an error?",
 )
 @click.option(
+    "--delete",
+    is_flag=True,
+    default=False,
+    help="if we should delete the schedule instead of creating it",
+)
+@click.option(
     "--create-tables",
     is_flag=True,
     help="should we attempt to create the required clickhouse tables",
@@ -343,7 +349,7 @@ def backfill(
     is_flag=True,
     help="should we drop tables before creating them",
 )
-def create_schedules(
+def schedule(
     probe_cc: List[str],
     test_name: List[str],
     clickhouse: str,
@@ -358,6 +364,7 @@ def create_schedules(
     temporal_namespace: Optional[str],
     temporal_tls_client_cert_path: Optional[str],
     temporal_tls_client_key_path: Optional[str],
+    delete: bool,
 ):
     """
     Create schedules for the specified parameters
@@ -395,6 +402,7 @@ def create_schedules(
         temporal_namespace=temporal_namespace,
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
         temporal_tls_client_key_path=temporal_tls_client_key_path,
+        delete=delete,
     )
 
 

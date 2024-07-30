@@ -306,6 +306,7 @@ async def create_schedules(
     temporal_namespace: Optional[str],
     temporal_tls_client_cert_path: Optional[str],
     temporal_tls_client_key_path: Optional[str],
+    delete: bool,
 ):
     log.info(
         f"creating all schedules temporal_address={temporal_address}"
@@ -323,7 +324,7 @@ async def create_schedules(
         temporal_namespace=temporal_namespace,
         tls_config=tls_config,
     )
-    await schedule_observations(client=client, params=obs_params)
+    await schedule_observations(client=client, params=obs_params, delete=delete)
 
 
 def run_workflow(
@@ -396,6 +397,7 @@ def run_create_schedules(
     temporal_namespace: Optional[str],
     temporal_tls_client_cert_path: Optional[str],
     temporal_tls_client_key_path: Optional[str],
+    delete: bool,
 ):
     try:
         asyncio.run(
@@ -406,6 +408,7 @@ def run_create_schedules(
                 temporal_namespace=temporal_namespace,
                 temporal_tls_client_cert_path=temporal_tls_client_cert_path,
                 temporal_tls_client_key_path=temporal_tls_client_key_path,
+                delete=delete,
             )
         )
     except KeyboardInterrupt:

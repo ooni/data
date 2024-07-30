@@ -207,33 +207,37 @@ def gen_observation_schedule_id(params: ObservationsWorkflowParams) -> str:
 
 
 async def schedule_observations(
-    client: TemporalClient, params: ObservationsWorkflowParams
+    client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
 ):
     schedule_id = gen_observation_schedule_id(params)
-    await client.create_schedule(
-        schedule_id,
-        Schedule(
-            action=ScheduleActionStartWorkflow(
-                ObservationsWorkflow.run,
-                params,
-                id=OBSERVATIONS_SCHEDULE_ID,
-                task_queue=TASK_QUEUE_NAME,
-                execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
-                task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
-                run_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+    if delete is True:
+        handle = client.get_schedule_handle(schedule_id)
+        await handle.delete()
+    else:
+        await client.create_schedule(
+            schedule_id,
+            Schedule(
+                action=ScheduleActionStartWorkflow(
+                    ObservationsWorkflow.run,
+                    params,
+                    id=OBSERVATIONS_SCHEDULE_ID,
+                    task_queue=TASK_QUEUE_NAME,
+                    execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+                    task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+                    run_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+                ),
+                spec=ScheduleSpec(
+                    intervals=[
+                        ScheduleIntervalSpec(
+                            every=timedelta(days=1), offset=timedelta(hours=2)
+                        )
+                    ],
+                ),
+                state=ScheduleState(
+                    note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
+                ),
             ),
-            spec=ScheduleSpec(
-                intervals=[
-                    ScheduleIntervalSpec(
-                        every=timedelta(days=1), offset=timedelta(hours=2)
-                    )
-                ],
-            ),
-            state=ScheduleState(
-                note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
-            ),
-        ),
-    )
+        )
 
 
 @dataclass
