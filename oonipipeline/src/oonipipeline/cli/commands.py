@@ -328,8 +328,6 @@ def backfill(
 @cli.command()
 @probe_cc_option
 @test_name_option
-@start_day_option
-@end_day_option
 @clickhouse_option
 @clickhouse_buffer_min_time_option
 @clickhouse_buffer_max_time_option
