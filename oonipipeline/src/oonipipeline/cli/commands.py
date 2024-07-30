@@ -255,13 +255,7 @@ def mkobs(
 @temporal_namespace_option
 @temporal_tls_client_cert_path_option
 @temporal_tls_client_key_path_option
-@start_workers_option
 @click.option("--schedule-id", type=str, required=True)
-@click.option(
-    "--fast-fail",
-    is_flag=True,
-    help="should we fail immediately when we encounter an error?",
-)
 @click.option(
     "--create-tables",
     is_flag=True,
