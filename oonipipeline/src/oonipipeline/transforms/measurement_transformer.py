@@ -340,61 +340,19 @@ def find_tls_handshake_events_without_transaction_id(
 
 
 def find_tls_handshake_network_events_with_transaction_id(
-    msmt_uid: str,
     tls_handshake: TLSHandshake,
-    network_events: Optional[List[NetworkEvent]],
-) -> Optional[List[NetworkEvent]]:
-    transaction_map = {}
-    all_event_windows_dict = {}
-
-    for idx, ne in enumerate(network_events):
-        if ne.transaction_id is None:
-            log.warning(
-                f'''detected network event without transaction_id:
-                measurement_uid: {msmt_uid},
-                transaction_id: {ne.transaction_id}, 
-                index: {idx}, 
-                address: {ne_addr}'''
-            )
-            continue
-        
-        ne_addr = ne.address
-        if ne_addr not in all_event_windows_dict:
-            all_event_windows_dict[ne_addr] = defaultdict(list)
-            if not transaction_map[ne.transaction_id]:
-                transaction_map[ne.transaction_id] = True
-            else:
-                log.warning(
-                    f'''detected same transactions with different addresses:
-                    measurement_uid: {msmt_uid},
-                    transaction_id: {ne.transaction_id}, 
-                    index: {idx}, 
-                    address: {ne_addr}'''
-                )
-
-        # NOTE: we only return the first network event we encounter for a given address.
-        if not transaction_map[ne.transaction_id]:
-            log.warning(
-                f'''detected distinct network events with same address:
-                measurement_uid: {msmt_uid},
-                transaction_id: {ne.transaction_id},
-                index: {idx},
-                address: {address}
-                '''
-            )
-            continue
-        all_event_windows_dict[ne_addr].append(ne)
-        
-    address = tls_handshake.address
-
-    # We first handle the case when we have a transaction_id in the network events
-    # and all_event_windows_dict is populated with the event windows
-    if len(all_event_windows_dict) > 0 and address in all_event_windows_dict:
-        event_window = all_event_windows_dict[address]
-        event_window.sort(key=lambda x: x.t)
-        return event_window
-    
-    return None
+    network_events: List[NetworkEvent],
+) -> List[NetworkEvent]:
+    relevant_network_events = sorted(
+        filter(
+            lambda ne: ne.transaction_id == tls_handshake.transaction_id, network_events
+        ),
+        key=lambda ne: ne.t,
+    )
+    assert (
+        relevant_network_events[0].address == tls_handshake.address
+    ), "inconsistent address detected"
+    return relevant_network_events
 
 
 def measurement_to_tls_observation(
@@ -422,17 +380,21 @@ def measurement_to_tls_observation(
         tlso.ip = p.hostname
         tlso.port = p.port
 
-    tls_network_events: List[NetworkEvent] = None
+    tls_network_events: Optional[List[NetworkEvent]] = None
     if network_events:
         # TODO(decfox): We check the first network event for the transaction_id and
         # find tls handshake network events based on this. This is a weak check and
-        # somewhat sketchy 
+        # somewhat sketchy
         if network_events[0] and network_events[0].transaction_id is None:
-            tls_network_events = find_tls_handshake_events_without_transaction_id(msmt_uid, tls_h, idx, network_events)
+            tls_network_events = find_tls_handshake_events_without_transaction_id(
+                msmt_uid, tls_h, idx, network_events
+            )
         else:
-            tls_network_events = find_tls_handshake_network_events_with_transaction_id(msmt_uid, tls_h, network_events)
+            tls_network_events = find_tls_handshake_network_events_with_transaction_id(
+                tls_h, network_events
+            )
 
-    if network_events:
+    if tls_network_events:
         if tls_network_events[0].address:
             p = urlsplit("//" + tls_network_events[0].address)
             tlso.ip = p.hostname
