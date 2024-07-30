@@ -623,7 +623,7 @@ def checkdb(
             )
 
         with ClickhouseConnection(clickhouse) as db:
-            for query, table_name in create_queries:
+            for query, table_name in make_create_queries():
                 if drop_tables:
                     db.execute(f"DROP TABLE IF EXISTS {table_name};")
                 db.execute(query)
