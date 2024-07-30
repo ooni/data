@@ -125,7 +125,11 @@ def format_create_query(
                 type_str = typing_to_clickhouse(f.type)
                 columns.append(f"     {f.name} {type_str}")
             continue
-        type_str = typing_to_clickhouse(f.type)
+        try:
+            type_str = typing_to_clickhouse(f.type)
+        except:
+            print(f"failed to generate create table for {f} of {model}")
+            raise
         columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
