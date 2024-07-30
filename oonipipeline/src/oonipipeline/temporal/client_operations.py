@@ -324,7 +324,10 @@ async def create_schedules(
         temporal_namespace=temporal_namespace,
         tls_config=tls_config,
     )
-    await schedule_observations(client=client, params=obs_params, delete=delete)
+    schedule_id = await schedule_observations(
+        client=client, params=obs_params, delete=delete
+    )
+    log.info(f"created schedule with ID={schedule_id}")
 
 
 def run_workflow(

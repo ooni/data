@@ -208,11 +208,12 @@ def gen_observation_schedule_id(params: ObservationsWorkflowParams) -> str:
 
 async def schedule_observations(
     client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
-):
+) -> str:
     schedule_id = gen_observation_schedule_id(params)
     if delete is True:
         handle = client.get_schedule_handle(schedule_id)
         await handle.delete()
+        return schedule_id
     else:
         await client.create_schedule(
             schedule_id,
@@ -238,6 +239,7 @@ async def schedule_observations(
                 ),
             ),
         )
+    return schedule_id
 
 
 @dataclass
