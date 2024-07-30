@@ -332,13 +332,11 @@ def backfill(
 @clickhouse_buffer_min_time_option
 @clickhouse_buffer_max_time_option
 @datadir_option
-@parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
 @temporal_namespace_option
 @temporal_tls_client_cert_path_option
 @temporal_tls_client_key_path_option
-@start_workers_option
 @click.option(
     "--fast-fail",
     is_flag=True,
