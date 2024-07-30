@@ -1,3 +1,4 @@
+from configparser import ConfigParser
 import logging
 import multiprocessing
 from pathlib import Path
@@ -133,6 +134,16 @@ parallelism_option = click.option(
 )
 
 
+def parse_config_file(ctx, _, filename):
+    try:
+        cfg = ConfigParser()
+        cfg.read(filename)
+        options = dict(cfg["options"])
+    except KeyError:
+        options = {}
+    ctx.default_map = options
+
+
 @click.group()
 @click.option(
     "-l",
@@ -140,6 +151,17 @@ parallelism_option = click.option(
     type=LogLevel(),
     default="INFO",
     help="Set logging level",
+    show_default=True,
+)
+@click.option(
+    "-c",
+    "--config",
+    type=click.Path(dir_okay=False),
+    default="config.ini",
+    callback=parse_config_file,
+    is_eager=True,
+    expose_value=False,
+    help="Read option defaults from the specified INI file",
     show_default=True,
 )
 @click.version_option(VERSION)
