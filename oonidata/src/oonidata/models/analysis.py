@@ -3,7 +3,7 @@ import dataclasses
 from datetime import datetime
 from typing import List, Optional
 
-from oonidata.models.base import table_model, ProcessingMeta
+from .base import TableModelProtocol, table_model, ProcessingMeta
 from oonidata.models.observations import MeasurementMeta, ProbeMeta
 
 
@@ -17,7 +17,7 @@ from oonidata.models.observations import MeasurementMeta, ProbeMeta
     ),
 )
 @dataclass
-class WebAnalysis:
+class WebAnalysis(TableModelProtocol):
     probe_meta: ProbeMeta
     measurement_meta: MeasurementMeta
     processing_meta: ProcessingMeta

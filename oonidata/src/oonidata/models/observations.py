@@ -7,7 +7,7 @@ from typing import (
     Tuple,
 )
 
-from oonidata.models.base import table_model, ProcessingMeta
+from oonidata.models.base import TableModelProtocol, table_model, ProcessingMeta
 from oonidata.models.dataformats import Failure
 
 
@@ -184,7 +184,7 @@ class TCPObservation:
     table_index=("measurement_uid", "observation_id", "measurement_start_time"),
 )
 @dataclass
-class WebControlObservation:
+class WebControlObservation(TableModelProtocol):
     measurement_meta: MeasurementMeta
     processing_meta: ProcessingMeta
 
@@ -223,7 +223,7 @@ class WebControlObservation:
     table_index=("measurement_uid", "observation_id", "measurement_start_time"),
 )
 @dataclass
-class WebObservation:
+class WebObservation(TableModelProtocol):
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
     processing_meta: ProcessingMeta
@@ -341,7 +341,7 @@ class WebObservation:
     table_index=("measurement_uid", "measurement_start_time"),
 )
 @dataclass
-class HTTPMiddleboxObservation:
+class HTTPMiddleboxObservation(TableModelProtocol):
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
 
