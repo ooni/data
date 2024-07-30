@@ -68,7 +68,7 @@ async def temporal_connect(
     if tls_config is not None:
         extra_kw["tls"] = tls_config
 
-    log.info(f"connecting to {temporal_address} with extra_kw={extra_kw}")
+    log.info(f"connecting to {temporal_address} with extra_kw={extra_kw.keys()}")
     client = await TemporalClient.connect(
         temporal_address,
         interceptors=[TracingInterceptor()],
