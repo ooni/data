@@ -93,7 +93,9 @@ def typing_to_clickhouse(t: Any) -> str:
         target_type = parent_type
     target_origin = typing.get_origin(target_type)
     target_args = typing.get_args(target_type)
-    assert target_origin == tuple
+    assert (
+        target_origin == tuple
+    ), f"{target_origin} is not tuple (target_args={target_args}, {target_type} {parent_type})"
     tuple_args = ", ".join([python_basic_type_to_clickhouse(a) for a in target_args])
     if is_nullable:
         return f"Nullable(Tuple({tuple_args}))"
