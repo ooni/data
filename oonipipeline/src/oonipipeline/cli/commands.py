@@ -244,15 +244,12 @@ def mkobs(
 
 
 @cli.command()
-@probe_cc_option
-@test_name_option
 @start_at_option
 @end_at_option
 @clickhouse_option
 @clickhouse_buffer_min_time_option
 @clickhouse_buffer_max_time_option
 @datadir_option
-@parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
 @temporal_namespace_option
