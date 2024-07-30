@@ -9,7 +9,7 @@ from tabulate import tabulate
 
 from ..datautils import maybe_elipse
 
-from .base import TableModelProtocol, table_model
+from .base import table_model
 from .observations import ProbeMeta, MeasurementMeta, WebObservation
 
 log = logging.getLogger("oonidata.events")
@@ -79,7 +79,7 @@ class Outcome(NamedTuple):
     ),
 )
 @dataclass
-class MeasurementExperimentResult(TableModelProtocol):
+class MeasurementExperimentResult:
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
 
