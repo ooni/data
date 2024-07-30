@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 
 from temporalio import workflow
-from temporalio.common import SearchAttributeKey
+from temporalio.common import SearchAttributeKey, WorkflowIDReusePolicy
 from temporalio.client import (
     Client as TemporalClient,
     Schedule,
@@ -57,7 +57,7 @@ logging.logMultiprocessing = False
 log = workflow.logger
 
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
-OBSERVATION_WORKFLOW_ID = "oonipipeline-observations"
+OBSERVATION_WORKFLOW_ID = "observation-workflow"
 
 # TODO(art): come up with a nicer way to nest workflows so we don't need such a high global timeout
 MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT = timedelta(hours=48)
@@ -102,10 +102,9 @@ class ObservationsWorkflow:
         log.info(
             f"Starting observation making with probe_cc={params.probe_cc},test_name={params.test_name} bucket_date={params.bucket_date}"
         )
-
         res = await workflow.execute_activity(
-            make_observation_in_day,
-            MakeObservationsParams(
+            activity=make_observation_in_day,
+            arg=MakeObservationsParams(
                 probe_cc=params.probe_cc,
                 test_name=params.test_name,
                 clickhouse=params.clickhouse,
@@ -113,6 +112,7 @@ class ObservationsWorkflow:
                 fast_fail=params.fast_fail,
                 bucket_date=params.bucket_date,
             ),
+            task_queue=TASK_QUEUE_NAME,
             start_to_close_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
         )
         res["bucket_date"] = params.bucket_date
@@ -156,6 +156,7 @@ class ObservationsBackfillWorkflow:
                         log_level=params.log_level,
                     ),
                     id=f"{workflow_id}/{bucket_date}",
+                    id_reuse_policy=WorkflowIDReusePolicy.TERMINATE_IF_RUNNING,
                 )
             )
 
@@ -202,21 +203,20 @@ def gen_observation_schedule_id(params: ObservationsWorkflowParams) -> str:
     if len(params.test_name) > 0:
         test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
 
-    return f"oonipipeline-observations-{probe_cc_key}-{test_name_key}"
+    return f"oonipipeline-observations-schedule-{probe_cc_key}-{test_name_key}"
 
 
 async def schedule_observations(
     client: TemporalClient, params: ObservationsWorkflowParams
 ):
     schedule_id = gen_observation_schedule_id(params)
-
     await client.create_schedule(
         schedule_id,
         Schedule(
             action=ScheduleActionStartWorkflow(
                 ObservationsWorkflow.run,
                 params,
-                id=OBSERVATION_WORKFLOW_ID,
+                id=OBSERVATIONS_SCHEDULE_ID,
                 task_queue=TASK_QUEUE_NAME,
                 execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
                 task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,

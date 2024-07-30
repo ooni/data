@@ -6,11 +6,15 @@ import logging
 import dataclasses
 from dataclasses import dataclass
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 
 from oonipipeline.temporal.workers import make_threaded_worker
-from oonipipeline.temporal.workflows import TASK_QUEUE_NAME
+from oonipipeline.temporal.workflows import (
+    TASK_QUEUE_NAME,
+    ObservationsWorkflowParams,
+    schedule_observations,
+)
 
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -18,7 +22,11 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry import trace
 
-from temporalio.client import Client as TemporalClient
+from temporalio.client import (
+    Client as TemporalClient,
+    ScheduleBackfill,
+    ScheduleOverlapPolicy,
+)
 from temporalio.service import TLSConfig
 from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.runtime import (
@@ -252,6 +260,71 @@ async def execute_workflow(
     )
 
 
+async def execute_backfill(
+    schedule_id: str,
+    workflow_id_prefix: str,
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+    start_at: datetime,
+    end_at: datetime,
+):
+    log.info(
+        f"running backfill {workflow_id_prefix} temporal_address={temporal_address}"
+        f" telemetry_address={telemetry_endpoint}"
+    )
+
+    tls_config = make_tls_config(
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
+
+    client = await temporal_connect(
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        tls_config=tls_config,
+    )
+    handle = client.get_schedule_handle(schedule_id)
+
+    await handle.backfill(
+        ScheduleBackfill(
+            start_at=start_at + timedelta(hours=1),
+            end_at=end_at + timedelta(hours=1),
+            overlap=ScheduleOverlapPolicy.ALLOW_ALL,
+        ),
+    )
+
+
+async def create_schedules(
+    obs_params: ObservationsWorkflowParams,
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+):
+    log.info(
+        f"creating all schedules temporal_address={temporal_address}"
+        f" telemetry_address={telemetry_endpoint}"
+    )
+
+    tls_config = make_tls_config(
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
+
+    client = await temporal_connect(
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        tls_config=tls_config,
+    )
+    await schedule_observations(client=client, params=obs_params)
+
+
 def run_workflow(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
@@ -275,6 +348,58 @@ def run_workflow(
                 arg=arg,
                 parallelism=parallelism,
                 workflow_id_prefix=workflow_id_prefix,
+                telemetry_endpoint=telemetry_endpoint,
+                temporal_address=temporal_address,
+                temporal_namespace=temporal_namespace,
+                temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+                temporal_tls_client_key_path=temporal_tls_client_key_path,
+            )
+        )
+    except KeyboardInterrupt:
+        print("shutting down")
+
+
+def run_backfill(
+    schedule_id: str,
+    workflow_id_prefix: str,
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+    start_at: datetime,
+    end_at: datetime,
+):
+    try:
+        asyncio.run(
+            execute_backfill(
+                schedule_id=schedule_id,
+                workflow_id_prefix=workflow_id_prefix,
+                telemetry_endpoint=telemetry_endpoint,
+                temporal_address=temporal_address,
+                temporal_namespace=temporal_namespace,
+                temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+                temporal_tls_client_key_path=temporal_tls_client_key_path,
+                start_at=start_at,
+                end_at=end_at,
+            )
+        )
+    except KeyboardInterrupt:
+        print("shutting down")
+
+
+def run_create_schedules(
+    obs_params: ObservationsWorkflowParams,
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+):
+    try:
+        asyncio.run(
+            create_schedules(
+                obs_params=obs_params,
                 telemetry_endpoint=telemetry_endpoint,
                 temporal_address=temporal_address,
                 temporal_namespace=temporal_namespace,

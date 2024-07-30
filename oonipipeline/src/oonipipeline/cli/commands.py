@@ -5,15 +5,16 @@ from typing import List, Optional
 from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
 
-from oonipipeline.temporal.client_operations import WorkerParams
+from oonipipeline.temporal.client_operations import (
+    WorkerParams,
+    run_backfill,
+    run_create_schedules,
+)
 from oonipipeline.temporal.client_operations import start_workers
 from oonipipeline.temporal.client_operations import run_workflow
 
 import click
 from click_loglevel import LogLevel
-
-from temporalio.types import SelfType
-
 
 from ..temporal.workflows import (
     AnalysisBackfillWorkflow,
@@ -21,6 +22,7 @@ from ..temporal.workflows import (
     GroundTruthsWorkflow,
     GroundTruthsWorkflowParams,
     ObservationsBackfillWorkflow,
+    ObservationsWorkflowParams,
 )
 
 from ..__about__ import VERSION
@@ -238,6 +240,174 @@ def mkobs(
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
         temporal_tls_client_key_path=temporal_tls_client_key_path,
         start_workers=start_workers,
+    )
+
+
+@cli.command()
+@probe_cc_option
+@test_name_option
+@start_at_option
+@end_at_option
+@clickhouse_option
+@clickhouse_buffer_min_time_option
+@clickhouse_buffer_max_time_option
+@datadir_option
+@parallelism_option
+@telemetry_endpoint_option
+@temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
+@start_workers_option
+@click.option("--schedule-id", type=str, required=True)
+@click.option(
+    "--fast-fail",
+    is_flag=True,
+    help="should we fail immediately when we encounter an error?",
+)
+@click.option(
+    "--create-tables",
+    is_flag=True,
+    help="should we attempt to create the required clickhouse tables",
+)
+@click.option(
+    "--drop-tables",
+    is_flag=True,
+    help="should we drop tables before creating them",
+)
+def backfill(
+    start_at: datetime,
+    end_at: datetime,
+    clickhouse: str,
+    clickhouse_buffer_min_time: int,
+    clickhouse_buffer_max_time: int,
+    data_dir: str,
+    create_tables: bool,
+    drop_tables: bool,
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+    schedule_id: str,
+):
+    """
+    Backfill for OONI measurements and write them into clickhouse
+    """
+    if create_tables:
+        if drop_tables:
+            click.confirm(
+                "Are you sure you want to drop the tables before creation?", abort=True
+            )
+
+        with ClickhouseConnection(clickhouse) as db:
+            for query, table_name in make_create_queries(
+                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
+            ):
+                if drop_tables:
+                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
+                db.execute(query)
+
+    click.echo("Starting to process observations")
+    NetinfoDB(datadir=Path(data_dir), download=True)
+    click.echo("downloaded netinfodb")
+
+    run_backfill(
+        schedule_id,
+        workflow_id_prefix=f"oonipipeline-schedule-{schedule_id}",
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
+        start_at=start_at,
+        end_at=end_at,
+    )
+
+
+@cli.command()
+@probe_cc_option
+@test_name_option
+@start_day_option
+@end_day_option
+@clickhouse_option
+@clickhouse_buffer_min_time_option
+@clickhouse_buffer_max_time_option
+@datadir_option
+@parallelism_option
+@telemetry_endpoint_option
+@temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
+@start_workers_option
+@click.option(
+    "--fast-fail",
+    is_flag=True,
+    help="should we fail immediately when we encounter an error?",
+)
+@click.option(
+    "--create-tables",
+    is_flag=True,
+    help="should we attempt to create the required clickhouse tables",
+)
+@click.option(
+    "--drop-tables",
+    is_flag=True,
+    help="should we drop tables before creating them",
+)
+def create_schedules(
+    probe_cc: List[str],
+    test_name: List[str],
+    clickhouse: str,
+    clickhouse_buffer_min_time: int,
+    clickhouse_buffer_max_time: int,
+    data_dir: str,
+    fast_fail: bool,
+    create_tables: bool,
+    drop_tables: bool,
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+):
+    """
+    Create schedules for the specified parameters
+    """
+    if create_tables:
+        if drop_tables:
+            click.confirm(
+                "Are you sure you want to drop the tables before creation?", abort=True
+            )
+
+        with ClickhouseConnection(clickhouse) as db:
+            for query, table_name in make_create_queries(
+                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
+            ):
+                if drop_tables:
+                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
+                db.execute(query)
+
+    click.echo("Starting to process observations")
+    NetinfoDB(datadir=Path(data_dir), download=True)
+    click.echo("downloaded netinfodb")
+
+    obs_params = ObservationsWorkflowParams(
+        probe_cc=probe_cc,
+        test_name=test_name,
+        clickhouse=clickhouse,
+        data_dir=str(data_dir),
+        fast_fail=fast_fail,
+    )
+
+    run_create_schedules(
+        obs_params=obs_params,
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
     )
 
 
