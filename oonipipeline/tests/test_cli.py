@@ -2,8 +2,10 @@ import asyncio
 from multiprocessing import Process
 from pathlib import Path
 import time
+import textwrap
 
 from oonipipeline.cli.commands import cli
+from oonipipeline.cli.commands import parse_config_file
 
 
 def wait_for_mutations(db, table_name):
@@ -14,6 +16,30 @@ def wait_for_mutations(db, table_name):
         if len(res) == 0:  # type: ignore
             break
         time.sleep(1)
+
+
+class MockContext:
+    def __init__(self):
+        self.default_map = {}
+
+
+def test_parse_config(tmp_path):
+    ctx = MockContext()
+
+    config_content = """[options]
+    something = other
+    [options.subcommand]
+    otherthing = bar
+    [options.subcommand2]
+    spam = ham
+    """
+    config_path = tmp_path / "config.ini"
+    with config_path.open("w") as out_file:
+        out_file.write(textwrap.dedent(config_content))
+    defaults = parse_config_file(ctx, str(config_path))
+    assert defaults["something"] == "other"
+    assert defaults["subcommand"]["otherthing"] == "bar"
+    assert defaults["subcommand2"]["spam"] == "ham"
 
 
 def test_full_workflow(

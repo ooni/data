@@ -1,6 +1,7 @@
 from configparser import ConfigParser
 import logging
 import multiprocessing
+import os
 from pathlib import Path
 from typing import List, Optional
 from datetime import date, timedelta, datetime, timezone
@@ -134,18 +135,17 @@ parallelism_option = click.option(
 )
 
 
-def parse_config_file(ctx, _, filename):
+def parse_config_file(ctx, path):
     cfg = ConfigParser()
-    cfg.read(filename)
+    cfg.read(path)
     ctx.default_map = {}
     for sect in cfg.sections():
         command_path = sect.split(".")
-        if command_path[0] != "options":
-            continue
         defaults = ctx.default_map
         for cmdname in command_path[1:]:
             defaults = defaults.setdefault(cmdname, {})
         defaults.update(cfg[sect])
+    return ctx.default_map
 
 
 @click.group()
@@ -162,15 +162,15 @@ def parse_config_file(ctx, _, filename):
     "--config",
     type=click.Path(dir_okay=False),
     default="config.ini",
-    callback=parse_config_file,
-    is_eager=True,
-    expose_value=False,
     help="Read option defaults from the specified INI file",
     show_default=True,
 )
 @click.version_option(VERSION)
-def cli(log_level: int):
+@click.pass_context
+def cli(ctx, log_level: int, config: str):
     logging.basicConfig(level=log_level)
+    if os.path.exists(config):
+        ctx.default_map = parse_config_file(ctx, config)
 
 
 @cli.command()
