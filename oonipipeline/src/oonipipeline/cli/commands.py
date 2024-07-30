@@ -105,6 +105,15 @@ telemetry_endpoint_option = click.option(
 temporal_address_option = click.option(
     "--temporal-address", type=str, required=True, default="localhost:7233"
 )
+temporal_namespace_option = click.option(
+    "--temporal-namespace", type=str, required=False, default=None
+)
+temporal_tls_client_cert_path_option = click.option(
+    "--temporal-tls-client-cert-path", type=str, required=False, default=None
+)
+temporal_tls_client_key_path_option = click.option(
+    "--temporal-tls-client-key-path", type=str, required=False, default=None
+)
 start_workers_option = click.option("--start-workers/--no-start-workers", default=True)
 
 datadir_option = click.option(
@@ -148,6 +157,9 @@ def cli(log_level: int):
 @parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
 @start_workers_option
 @click.option(
     "--fast-fail",
@@ -179,6 +191,9 @@ def mkobs(
     drop_tables: bool,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
     start_workers: bool,
 ):
     """
@@ -219,6 +234,9 @@ def mkobs(
         workflow_id_prefix="oonipipeline-mkobs",
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
         start_workers=start_workers,
     )
 
@@ -235,6 +253,9 @@ def mkobs(
 @parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
 @start_workers_option
 @click.option(
     "--fast-fail",
@@ -260,6 +281,9 @@ def mkanalysis(
     create_tables: bool,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
     start_workers: bool,
 ):
     if create_tables:
@@ -290,6 +314,9 @@ def mkanalysis(
         workflow_id_prefix="oonipipeline-mkanalysis",
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
         start_workers=start_workers,
     )
 
@@ -302,6 +329,9 @@ def mkanalysis(
 @parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
 @start_workers_option
 def mkgt(
     start_day: str,
@@ -311,6 +341,9 @@ def mkgt(
     parallelism: int,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
     start_workers: bool,
 ):
     click.echo("Starting to build ground truths")
@@ -331,6 +364,9 @@ def mkgt(
         workflow_id_prefix="oonipipeline-mkgt",
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
         start_workers=start_workers,
     )
 
@@ -340,11 +376,17 @@ def mkgt(
 @parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
 def startworkers(
     data_dir: Path,
     parallelism: int,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
 ):
     click.echo(f"starting {parallelism} workers")
     click.echo(f"downloading NetinfoDB to {data_dir}")
@@ -355,6 +397,9 @@ def startworkers(
             temporal_address=temporal_address,
             telemetry_endpoint=telemetry_endpoint,
             thread_count=parallelism,
+            temporal_namespace=temporal_namespace,
+            temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+            temporal_tls_client_key_path=temporal_tls_client_key_path,
         ),
         process_count=parallelism,
     )
