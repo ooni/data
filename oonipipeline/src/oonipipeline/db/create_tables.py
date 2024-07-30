@@ -110,6 +110,8 @@ def format_create_query(
 ) -> Tuple[str, str]:
     columns = []
     for f in fields(model):
+        if f.name in ("__table_index__", "__table_name__"):
+            continue
         if f.type == ProbeMeta:
             for f in fields(ProbeMeta):
                 type_str = typing_to_clickhouse(f.type)
