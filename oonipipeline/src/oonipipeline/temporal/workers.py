@@ -3,15 +3,14 @@ from oonipipeline.temporal.activities.analysis import make_analysis_in_a_day
 from oonipipeline.temporal.activities.common import (
     get_obs_count_by_cc,
     optimize_all_tables,
+    update_assets,
 )
 from oonipipeline.temporal.activities.ground_truths import make_ground_truths_in_day
 from oonipipeline.temporal.activities.observations import make_observation_in_day
 from oonipipeline.temporal.workflows import (
     TASK_QUEUE_NAME,
-    AnalysisBackfillWorkflow,
     AnalysisWorkflow,
     GroundTruthsWorkflow,
-    ObservationsBackfillWorkflow,
     ObservationsWorkflow,
 )
 
@@ -26,8 +25,6 @@ WORKFLOWS = [
     ObservationsWorkflow,
     GroundTruthsWorkflow,
     AnalysisWorkflow,
-    ObservationsBackfillWorkflow,
-    AnalysisBackfillWorkflow,
 ]
 
 ACTIVTIES = [
@@ -36,6 +33,7 @@ ACTIVTIES = [
     make_analysis_in_a_day,
     optimize_all_tables,
     get_obs_count_by_cc,
+    update_assets,
 ]
 
 

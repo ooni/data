@@ -38,6 +38,8 @@ with workflow.unsafe.imports_passed_through():
     from oonipipeline.temporal.activities.common import (
         get_obs_count_by_cc,
         ObsCountParams,
+        update_assets,
+        UpdateAssetsParams,
     )
     from oonipipeline.temporal.activities.observations import (
         MakeObservationsParams,
@@ -88,6 +90,11 @@ class ObservationsWorkflowParams:
 class ObservationsWorkflow:
     @workflow.run
     async def run(self, params: ObservationsWorkflowParams) -> dict:
+        await workflow.execute_activity(
+            update_assets,
+            UpdateAssetsParams(data_dir=params.data_dir),
+        )
+
         if params.bucket_date is None:
             params.bucket_date = (
                 get_workflow_start_time() - timedelta(days=1)
@@ -120,129 +127,6 @@ class ObservationsWorkflow:
 
 
 @dataclass
-class BackfillWorkflowParams:
-    probe_cc: List[str]
-    test_name: List[str]
-    start_day: str
-    end_day: str
-    clickhouse: str
-    data_dir: str
-    fast_fail: bool
-    log_level: int = logging.INFO
-
-
-@workflow.defn
-class ObservationsBackfillWorkflow:
-    @workflow.run
-    async def run(self, params: BackfillWorkflowParams) -> dict:
-        start_day = datetime.strptime(params.start_day, "%Y-%m-%d")
-        end_day = datetime.strptime(params.end_day, "%Y-%m-%d")
-
-        t = PerfTimer(unstoppable=True)
-        task_list = []
-        workflow_id = workflow.info().workflow_id
-        for day in date_interval(start_day, end_day):
-            bucket_date = day.strftime("%Y-%m-%d")
-            task_list.append(
-                workflow.execute_child_workflow(
-                    ObservationsWorkflow.run,
-                    ObservationsWorkflowParams(
-                        bucket_date=bucket_date,
-                        probe_cc=params.probe_cc,
-                        test_name=params.test_name,
-                        clickhouse=params.clickhouse,
-                        data_dir=params.data_dir,
-                        fast_fail=params.fast_fail,
-                        log_level=params.log_level,
-                    ),
-                    id=f"{workflow_id}/{bucket_date}",
-                    id_reuse_policy=WorkflowIDReusePolicy.TERMINATE_IF_RUNNING,
-                )
-            )
-
-        total_size = 0
-        total_measurement_count = 0
-
-        for task in asyncio.as_completed(task_list):
-            res = await task
-            bucket_date = res["bucket_date"]
-            total_size += res["size"]
-            total_measurement_count += res["measurement_count"]
-
-            mb_per_sec = round(total_size / t.s / 10**6, 1)
-            msmt_per_sec = round(total_measurement_count / t.s)
-            log.info(
-                f"finished processing {bucket_date} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
-            )
-
-        mb_per_sec = round(total_size / t.s / 10**6, 1)
-        msmt_per_sec = round(total_measurement_count / t.s)
-        log.info(
-            f"finished processing {params.start_day} - {params.end_day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
-        )
-
-        return {
-            "size": total_size,
-            "measurement_count": total_measurement_count,
-            "runtime_ms": t.ms,
-            "mb_per_sec": mb_per_sec,
-            "msmt_per_sec": msmt_per_sec,
-            "start_day": params.start_day,
-            "end_day": params.start_day,
-        }
-
-
-OBSERVATIONS_SCHEDULE_ID = "oonipipeline-observations-schedule-id"
-
-
-def gen_observation_schedule_id(params: ObservationsWorkflowParams) -> str:
-    probe_cc_key = "ALLCCS"
-    if len(params.probe_cc) > 0:
-        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
-    test_name_key = "ALLTNS"
-    if len(params.test_name) > 0:
-        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
-
-    return f"oonipipeline-observations-schedule-{probe_cc_key}-{test_name_key}"
-
-
-async def schedule_observations(
-    client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
-) -> str:
-    schedule_id = gen_observation_schedule_id(params)
-    if delete is True:
-        handle = client.get_schedule_handle(schedule_id)
-        await handle.delete()
-        return schedule_id
-    else:
-        await client.create_schedule(
-            schedule_id,
-            Schedule(
-                action=ScheduleActionStartWorkflow(
-                    ObservationsWorkflow.run,
-                    params,
-                    id=OBSERVATIONS_SCHEDULE_ID,
-                    task_queue=TASK_QUEUE_NAME,
-                    execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
-                    task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
-                    run_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
-                ),
-                spec=ScheduleSpec(
-                    intervals=[
-                        ScheduleIntervalSpec(
-                            every=timedelta(days=1), offset=timedelta(hours=2)
-                        )
-                    ],
-                ),
-                state=ScheduleState(
-                    note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
-                ),
-            ),
-        )
-    return schedule_id
-
-
-@dataclass
 class GroundTruthsWorkflowParams:
     start_day: str
     end_day: str
@@ -257,6 +141,11 @@ class GroundTruthsWorkflow:
         self,
         params: GroundTruthsWorkflowParams,
     ):
+        await workflow.execute_activity(
+            update_assets,
+            UpdateAssetsParams(data_dir=params.data_dir),
+        )
+
         start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
         end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
 
@@ -279,11 +168,11 @@ class GroundTruthsWorkflow:
 class AnalysisWorkflowParams:
     probe_cc: List[str]
     test_name: List[str]
-    day: str
     clickhouse: str
     data_dir: str
-    parallelism: int
-    fast_fail: bool
+    parallelism: int = 10
+    fast_fail: bool = False
+    day: Optional[str] = None
     force_rebuild_ground_truths: bool = False
     log_level: int = logging.INFO
 
@@ -292,6 +181,16 @@ class AnalysisWorkflowParams:
 class AnalysisWorkflow:
     @workflow.run
     async def run(self, params: AnalysisWorkflowParams) -> dict:
+        if params.day is None:
+            params.day = (get_workflow_start_time() - timedelta(days=1)).strftime(
+                "%Y-%m-%d"
+            )
+
+        await workflow.execute_activity(
+            update_assets,
+            UpdateAssetsParams(data_dir=params.data_dir),
+        )
+
         await workflow.execute_activity(
             optimize_all_tables,
             ClickhouseParams(clickhouse_url=params.clickhouse),
@@ -362,56 +261,111 @@ class AnalysisWorkflow:
         return {"obs_count": total_obs_count, "day": params.day}
 
 
-@workflow.defn
-class AnalysisBackfillWorkflow:
-    @workflow.run
-    async def run(self, params: BackfillWorkflowParams) -> dict:
-        start_day = datetime.strptime(params.start_day, "%Y-%m-%d")
-        end_day = datetime.strptime(params.end_day, "%Y-%m-%d")
+OBSERVATIONS_SCHEDULE_ID = "oonipipeline-observations-schedule-id"
 
-        t = PerfTimer(unstoppable=True)
-        task_list = []
-        workflow_id = workflow.info().workflow_id
-        for day in date_interval(start_day, end_day):
-            day_str = day.strftime("%Y-%m-%d")
-            task_list.append(
-                workflow.execute_child_workflow(
-                    AnalysisWorkflow.run,
-                    AnalysisWorkflowParams(
-                        day=day_str,
-                        probe_cc=params.probe_cc,
-                        test_name=params.test_name,
-                        clickhouse=params.clickhouse,
-                        data_dir=params.data_dir,
-                        fast_fail=params.fast_fail,
-                        log_level=params.log_level,
-                        parallelism=10,
-                    ),
-                    id=f"{workflow_id}/{day_str}",
-                )
-            )
 
-        total_obs_count = 0
+def gen_observation_schedule_id(params: ObservationsWorkflowParams) -> str:
+    probe_cc_key = "ALLCCS"
+    if len(params.probe_cc) > 0:
+        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
+    test_name_key = "ALLTNS"
+    if len(params.test_name) > 0:
+        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
 
-        for task in asyncio.as_completed(task_list):
-            res = await task
-            day = res["day"]
-            total_obs_count += res["obs_count"]
+    return f"oonipipeline-observations-schedule-{probe_cc_key}-{test_name_key}"
 
-            obs_per_sec = round(total_obs_count / t.s, 1)
-            log.info(
-                f"finished processing {day} in {t.pretty} total_obs_count={total_obs_count} ({obs_per_sec}obs/s)"
-            )
 
-        obs_per_sec = round(total_obs_count / t.s, 1)
-        log.info(
-            f"finished processing {day} in {t.pretty} total_obse_count={total_obs_count} ({obs_per_sec}obs/s)"
-        )
+async def schedule_observations(
+    client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
+) -> str:
+    schedule_id = gen_observation_schedule_id(params)
+    schedule_handle = client.get_schedule_handle(schedule_id)
+    if delete is True:
+        await schedule_handle.delete()
+        return schedule_id
 
-        return {
-            "observation_count": total_obs_count,
-            "runtime_ms": t.ms,
-            "obs_per_sec": obs_per_sec,
-            "start_day": params.start_day,
-            "end_day": params.start_day,
-        }
+    schedule_desc = await schedule_handle.describe()
+    if schedule_desc.id:
+        log.info(f"schedule with ID {schedule_id} already scheduled, returning early")
+        return schedule_id
+
+    await client.create_schedule(
+        id=schedule_id,
+        schedule=Schedule(
+            action=ScheduleActionStartWorkflow(
+                ObservationsWorkflow.run,
+                params,
+                id=OBSERVATIONS_SCHEDULE_ID,
+                task_queue=TASK_QUEUE_NAME,
+                execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+                task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+                run_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+            ),
+            spec=ScheduleSpec(
+                intervals=[
+                    ScheduleIntervalSpec(
+                        every=timedelta(days=1), offset=timedelta(hours=2)
+                    )
+                ],
+            ),
+            state=ScheduleState(
+                note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
+            ),
+        ),
+    )
+    return schedule_id
+
+
+ANALYSIS_SCHEDULE_ID = "oonipipeline-analysis-schedule-id"
+
+
+def gen_analysis_schedule_id(params: AnalysisWorkflowParams) -> str:
+    probe_cc_key = "ALLCCS"
+    if len(params.probe_cc) > 0:
+        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
+    test_name_key = "ALLTNS"
+    if len(params.test_name) > 0:
+        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
+
+    return f"oonipipeline-analysis-schedule-{probe_cc_key}-{test_name_key}"
+
+
+async def schedule_analysis(
+    client: TemporalClient, params: AnalysisWorkflowParams, delete: bool
+) -> str:
+    schedule_id = gen_analysis_schedule_id(params)
+    schedule_handle = client.get_schedule_handle(schedule_id)
+    if delete is True:
+        await schedule_handle.delete()
+        return schedule_id
+
+    schedule_desc = await schedule_handle.describe()
+    if schedule_desc.id:
+        log.info(f"schedule with ID {schedule_id} already scheduled, returning early")
+        return schedule_id
+
+    await client.create_schedule(
+        id=schedule_id,
+        schedule=Schedule(
+            action=ScheduleActionStartWorkflow(
+                AnalysisWorkflow.run,
+                params,
+                id=ANALYSIS_SCHEDULE_ID,
+                task_queue=TASK_QUEUE_NAME,
+                execution_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+                task_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+                run_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+            ),
+            spec=ScheduleSpec(
+                intervals=[
+                    ScheduleIntervalSpec(
+                        every=timedelta(days=1), offset=timedelta(hours=2)
+                    )
+                ],
+            ),
+            state=ScheduleState(
+                note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
+            ),
+        ),
+    )
+    return schedule_id

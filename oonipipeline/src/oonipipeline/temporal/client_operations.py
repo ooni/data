@@ -12,7 +12,9 @@ from typing import Optional, Tuple
 from oonipipeline.temporal.workers import make_threaded_worker
 from oonipipeline.temporal.workflows import (
     TASK_QUEUE_NAME,
+    AnalysisWorkflowParams,
     ObservationsWorkflowParams,
+    schedule_analysis,
     schedule_observations,
 )
 
@@ -263,7 +265,6 @@ async def execute_workflow(
 
 async def execute_backfill(
     schedule_id: str,
-    workflow_id_prefix: str,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
     temporal_namespace: Optional[str],
@@ -273,7 +274,7 @@ async def execute_backfill(
     end_at: datetime,
 ):
     log.info(
-        f"running backfill {workflow_id_prefix} temporal_address={temporal_address}"
+        f"running backfill for schedule_id={schedule_id} temporal_address={temporal_address}"
         f" telemetry_address={telemetry_endpoint}"
     )
 
@@ -300,14 +301,15 @@ async def execute_backfill(
 
 
 async def create_schedules(
-    obs_params: ObservationsWorkflowParams,
+    obs_params: Optional[ObservationsWorkflowParams],
+    analysis_params: Optional[AnalysisWorkflowParams],
     telemetry_endpoint: Optional[str],
     temporal_address: str,
     temporal_namespace: Optional[str],
     temporal_tls_client_cert_path: Optional[str],
     temporal_tls_client_key_path: Optional[str],
     delete: bool,
-):
+) -> dict:
     log.info(
         f"creating all schedules temporal_address={temporal_address}"
         f" telemetry_address={telemetry_endpoint}"
@@ -324,10 +326,64 @@ async def create_schedules(
         temporal_namespace=temporal_namespace,
         tls_config=tls_config,
     )
-    schedule_id = await schedule_observations(
-        client=client, params=obs_params, delete=delete
+
+    obs_schedule_id = None
+    if obs_params is not None:
+        obs_schedule_id = await schedule_observations(
+            client=client, params=obs_params, delete=delete
+        )
+        log.info(f"created schedule observations schedule with ID={obs_schedule_id}")
+
+    analysis_schedule_id = None
+    if analysis_params is not None:
+        analysis_schedule_id = await schedule_analysis(
+            client=client, params=analysis_params, delete=delete
+        )
+        log.info(f"created schedule analysis schedule with ID={analysis_schedule_id}")
+
+    return {
+        "analysis_schedule_id": analysis_schedule_id,
+        "observations_schedule_id": obs_schedule_id,
+    }
+
+
+async def create_schedules_and_backfill(
+    obs_params: Optional[ObservationsWorkflowParams],
+    analysis_params: Optional[AnalysisWorkflowParams],
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+    delete: bool,
+    start_at: datetime,
+    end_at: datetime,
+):
+    log.info(f"creating schedules")
+    schedules_dict = await create_schedules(
+        obs_params=obs_params,
+        analysis_params=analysis_params,
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
+        delete=delete,
     )
-    log.info(f"created schedule with ID={schedule_id}")
+    for name, schedule_id in schedules_dict.items():
+        if schedule_id is None:
+            continue
+        log.info(f"starting backfilll for {name}={schedule_id}")
+        await execute_backfill(
+            schedule_id=schedule_id,
+            telemetry_endpoint=telemetry_endpoint,
+            temporal_address=temporal_address,
+            temporal_namespace=temporal_namespace,
+            temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+            temporal_tls_client_key_path=temporal_tls_client_key_path,
+            start_at=start_at,
+            end_at=end_at,
+        )
 
 
 def run_workflow(
@@ -366,7 +422,6 @@ def run_workflow(
 
 def run_backfill(
     schedule_id: str,
-    workflow_id_prefix: str,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
     temporal_namespace: Optional[str],
@@ -379,7 +434,6 @@ def run_backfill(
         asyncio.run(
             execute_backfill(
                 schedule_id=schedule_id,
-                workflow_id_prefix=workflow_id_prefix,
                 telemetry_endpoint=telemetry_endpoint,
                 temporal_address=temporal_address,
                 temporal_namespace=temporal_namespace,
@@ -395,6 +449,7 @@ def run_backfill(
 
 def run_create_schedules(
     obs_params: ObservationsWorkflowParams,
+    analysis_params: AnalysisWorkflowParams,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
     temporal_namespace: Optional[str],
@@ -406,12 +461,50 @@ def run_create_schedules(
         asyncio.run(
             create_schedules(
                 obs_params=obs_params,
+                analysis_params=analysis_params,
                 telemetry_endpoint=telemetry_endpoint,
                 temporal_address=temporal_address,
                 temporal_namespace=temporal_namespace,
                 temporal_tls_client_cert_path=temporal_tls_client_cert_path,
                 temporal_tls_client_key_path=temporal_tls_client_key_path,
                 delete=delete,
+            )
+        )
+    except KeyboardInterrupt:
+        print("shutting down")
+
+
+def start_event_loop(async_task):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(async_task())
+
+
+def run_create_schedules_and_backfill(
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+    start_at: datetime,
+    end_at: datetime,
+    obs_params: Optional[ObservationsWorkflowParams] = None,
+    analysis_params: Optional[AnalysisWorkflowParams] = None,
+    delete: bool = False,
+):
+    try:
+        asyncio.run(
+            create_schedules_and_backfill(
+                obs_params=obs_params,
+                analysis_params=analysis_params,
+                telemetry_endpoint=telemetry_endpoint,
+                temporal_address=temporal_address,
+                temporal_namespace=temporal_namespace,
+                temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+                temporal_tls_client_key_path=temporal_tls_client_key_path,
+                delete=delete,
+                start_at=start_at,
+                end_at=end_at,
             )
         )
     except KeyboardInterrupt:

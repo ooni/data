@@ -4,13 +4,15 @@ import multiprocessing
 import os
 from pathlib import Path
 from typing import List, Optional
-from datetime import date, timedelta, datetime, timezone
+from datetime import date, timedelta, datetime, timezone, time
 from typing import List, Optional
 
 from oonipipeline.temporal.client_operations import (
     WorkerParams,
     run_backfill,
     run_create_schedules,
+    run_create_schedules_and_backfill,
+    run_worker,
 )
 from oonipipeline.temporal.client_operations import start_workers
 from oonipipeline.temporal.client_operations import run_workflow
@@ -19,12 +21,10 @@ import click
 from click_loglevel import LogLevel
 
 from ..temporal.workflows import (
-    AnalysisBackfillWorkflow,
-    BackfillWorkflowParams,
     GroundTruthsWorkflow,
     GroundTruthsWorkflowParams,
-    ObservationsBackfillWorkflow,
     ObservationsWorkflowParams,
+    AnalysisWorkflowParams,
 )
 
 from ..__about__ import VERSION
@@ -235,7 +235,6 @@ def mkobs(
     clickhouse_buffer_min_time: int,
     clickhouse_buffer_max_time: int,
     data_dir: str,
-    parallelism: int,
     fast_fail: bool,
     create_tables: bool,
     drop_tables: bool,
@@ -257,31 +256,23 @@ def mkobs(
         clickhouse_buffer_max_time=clickhouse_buffer_max_time,
     )
 
-    click.echo("Starting to create")
-    NetinfoDB(datadir=Path(data_dir), download=True)
-    click.echo("downloaded netinfodb")
-
-    params = BackfillWorkflowParams(
+    obs_params = ObservationsWorkflowParams(
         probe_cc=probe_cc,
         test_name=test_name,
         clickhouse=clickhouse,
         data_dir=str(data_dir),
         fast_fail=fast_fail,
-        start_day=start_day,
-        end_day=end_day,
     )
-    click.echo(f"starting to make observations with params={params}")
-    run_workflow(
-        ObservationsBackfillWorkflow.run,
-        params,
-        parallelism=parallelism,
-        workflow_id_prefix="oonipipeline-mkobs",
+    # TODO support start_workers option
+    run_create_schedules_and_backfill(
+        obs_params=obs_params,
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
         temporal_tls_client_key_path=temporal_tls_client_key_path,
-        start_workers=start_workers,
+        start_at=datetime.strptime(start_day, "%Y-%m-%d").replace(tzinfo=timezone.utc),
+        end_at=datetime.strptime(end_day, "%Y-%m-%d").replace(tzinfo=timezone.utc),
     )
 
 
@@ -291,7 +282,6 @@ def mkobs(
 @clickhouse_option
 @clickhouse_buffer_min_time_option
 @clickhouse_buffer_max_time_option
-@datadir_option
 @telemetry_endpoint_option
 @temporal_address_option
 @temporal_namespace_option
@@ -314,7 +304,6 @@ def backfill(
     clickhouse: str,
     clickhouse_buffer_min_time: int,
     clickhouse_buffer_max_time: int,
-    data_dir: str,
     create_tables: bool,
     drop_tables: bool,
     telemetry_endpoint: Optional[str],
@@ -327,6 +316,8 @@ def backfill(
     """
     Backfill for OONI measurements and write them into clickhouse
     """
+    click.echo(f"Runnning backfill of schedule {schedule_id}")
+
     maybe_create_delete_tables(
         clickhouse_url=clickhouse,
         create_tables=create_tables,
@@ -335,13 +326,8 @@ def backfill(
         clickhouse_buffer_max_time=clickhouse_buffer_max_time,
     )
 
-    click.echo("Starting to process observations")
-    NetinfoDB(datadir=Path(data_dir), download=True)
-    click.echo("downloaded netinfodb")
-
     run_backfill(
-        schedule_id,
-        workflow_id_prefix=f"oonipipeline-schedule-{schedule_id}",
+        schedule_id=schedule_id,
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
@@ -421,9 +407,16 @@ def schedule(
         data_dir=str(data_dir),
         fast_fail=fast_fail,
     )
+    analysis_params = AnalysisWorkflowParams(
+        probe_cc=probe_cc,
+        test_name=test_name,
+        clickhouse=clickhouse,
+        data_dir=str(data_dir),
+    )
 
     run_create_schedules(
         obs_params=obs_params,
+        analysis_params=analysis_params,
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
@@ -473,7 +466,6 @@ def mkanalysis(
     clickhouse_buffer_min_time: int,
     clickhouse_buffer_max_time: int,
     data_dir: Path,
-    parallelism: int,
     fast_fail: bool,
     create_tables: bool,
     drop_tables: bool,
@@ -492,31 +484,52 @@ def mkanalysis(
         clickhouse_buffer_max_time=clickhouse_buffer_max_time,
     )
 
-    click.echo("Starting to perform analysis")
-    NetinfoDB(datadir=Path(data_dir), download=True)
-    click.echo("downloaded netinfodb")
-
-    params = BackfillWorkflowParams(
+    analysis_params = AnalysisWorkflowParams(
         probe_cc=probe_cc,
         test_name=test_name,
-        start_day=start_day,
-        end_day=end_day,
         clickhouse=clickhouse,
         data_dir=str(data_dir),
         fast_fail=fast_fail,
     )
-    run_workflow(
-        AnalysisBackfillWorkflow.run,
-        params,
-        parallelism=parallelism,
-        workflow_id_prefix="oonipipeline-mkanalysis",
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-        start_workers=start_workers,
-    )
+
+    kwargs = {
+        "analysis_params": analysis_params,
+        "telemetry_endpoint": telemetry_endpoint,
+        "temporal_address": temporal_address,
+        "temporal_namespace": temporal_namespace,
+        "temporal_tls_client_cert_path": temporal_tls_client_cert_path,
+        "temporal_tls_client_key_path": temporal_tls_client_key_path,
+        "start_at": datetime.strptime(start_day, "%Y-%m-%d").replace(
+            tzinfo=timezone.utc
+        ),
+        "end_at": datetime.strptime(end_day, "%Y-%m-%d").replace(tzinfo=timezone.utc),
+    }
+
+    if start_workers:
+        worker_params = WorkerParams(
+            telemetry_endpoint=telemetry_endpoint,
+            temporal_address=temporal_address,
+            temporal_namespace=temporal_namespace,
+            temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+            temporal_tls_client_key_path=temporal_tls_client_key_path,
+            thread_count=5,
+        )
+        backfill_event_loop = multiprocessing.Process(
+            target=run_create_schedules_and_backfill, kwargs=kwargs
+        )
+        backfill_event_loop.start()
+
+        worker_event_loop = multiprocessing.Process(
+            target=run_worker, args=(worker_params,)
+        )
+        worker_event_loop.start()
+
+        backfill_event_loop.join()
+        # TODO there probably needs to be some polling here to check the status of the backfill
+        worker_event_loop.join()
+
+    else:
+        run_create_schedules_and_backfill(**kwargs)
 
 
 @cli.command()
@@ -544,10 +557,6 @@ def mkgt(
     temporal_tls_client_key_path: Optional[str],
     start_workers: bool,
 ):
-    click.echo("Starting to build ground truths")
-    NetinfoDB(datadir=Path(data_dir), download=True)
-    click.echo("downloaded netinfodb")
-
     params = GroundTruthsWorkflowParams(
         start_day=start_day,
         end_day=end_day,
