@@ -17,11 +17,6 @@ from temporalio.client import (
     ScheduleState,
 )
 
-from oonipipeline.temporal.activities.common import (
-    optimize_all_tables,
-    ClickhouseParams,
-)
-from oonipipeline.temporal.activities.ground_truths import get_ground_truth_db_path
 
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
@@ -50,6 +45,11 @@ with workflow.unsafe.imports_passed_through():
         MakeGroundTruthsParams,
         make_ground_truths_in_day,
     )
+    from oonipipeline.temporal.activities.common import (
+        optimize_all_tables,
+        ClickhouseParams,
+    )
+    from oonipipeline.temporal.activities.ground_truths import get_ground_truth_db_path
 
 # Handle temporal sandbox violations related to calls to self.processName =
 # mp.current_process().name in logger, see:
