@@ -461,7 +461,8 @@ def run_create_schedules(
         asyncio.run(
             create_schedules(
                 obs_params=obs_params,
-                analysis_params=analysis_params,
+                # TODO(art): temporarily disabled
+                analysis_params=None,
                 telemetry_endpoint=telemetry_endpoint,
                 temporal_address=temporal_address,
                 temporal_namespace=temporal_namespace,

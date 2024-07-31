@@ -416,7 +416,7 @@ def schedule(
 
     run_create_schedules(
         obs_params=obs_params,
-        analysis_params=analysis_params,
+        analysis_params=None,
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
