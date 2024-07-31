@@ -7,7 +7,9 @@ from datetime import datetime, timedelta, timezone
 
 
 from temporalio import workflow
-from temporalio.common import SearchAttributeKey, WorkflowIDReusePolicy
+from temporalio.common import (
+    SearchAttributeKey,
+)
 from temporalio.client import (
     Client as TemporalClient,
     Schedule,
@@ -15,6 +17,8 @@ from temporalio.client import (
     ScheduleIntervalSpec,
     ScheduleSpec,
     ScheduleState,
+    SchedulePolicy,
+    ScheduleOverlapPolicy,
 )
 
 
@@ -264,10 +268,7 @@ class AnalysisWorkflow:
         return {"obs_count": total_obs_count, "day": params.day}
 
 
-OBSERVATIONS_SCHEDULE_ID = "oonipipeline-observations-schedule-id"
-
-
-def gen_observation_schedule_id(params: ObservationsWorkflowParams) -> str:
+def gen_observation_id(params: ObservationsWorkflowParams, name: str) -> str:
     probe_cc_key = "ALLCCS"
     if len(params.probe_cc) > 0:
         probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
@@ -275,13 +276,13 @@ def gen_observation_schedule_id(params: ObservationsWorkflowParams) -> str:
     if len(params.test_name) > 0:
         test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
 
-    return f"oonipipeline-observations-schedule-{probe_cc_key}-{test_name_key}"
+    return f"oonipipeline-observations-{name}-{probe_cc_key}-{test_name_key}"
 
 
 async def schedule_observations(
     client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
 ) -> str:
-    schedule_id = gen_observation_schedule_id(params)
+    schedule_id = gen_observation_id(params, "schedule")
     try:
         schedule_handle = client.get_schedule_handle(schedule_id)
         if delete is True:
@@ -306,7 +307,7 @@ async def schedule_observations(
             action=ScheduleActionStartWorkflow(
                 ObservationsWorkflow.run,
                 params,
-                id=OBSERVATIONS_SCHEDULE_ID,
+                id=gen_observation_id(params, "workflow"),
                 task_queue=TASK_QUEUE_NAME,
                 execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
                 task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
@@ -319,6 +320,7 @@ async def schedule_observations(
                     )
                 ],
             ),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.TERMINATE_OTHER),
             state=ScheduleState(
                 note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
             ),
@@ -327,10 +329,7 @@ async def schedule_observations(
     return schedule_id
 
 
-ANALYSIS_SCHEDULE_ID = "oonipipeline-analysis-schedule-id"
-
-
-def gen_analysis_schedule_id(params: AnalysisWorkflowParams) -> str:
+def gen_analysis_id(params: AnalysisWorkflowParams, name: str) -> str:
     probe_cc_key = "ALLCCS"
     if len(params.probe_cc) > 0:
         probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
@@ -338,13 +337,13 @@ def gen_analysis_schedule_id(params: AnalysisWorkflowParams) -> str:
     if len(params.test_name) > 0:
         test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
 
-    return f"oonipipeline-analysis-schedule-{probe_cc_key}-{test_name_key}"
+    return f"oonipipeline-analysis-{name}-{probe_cc_key}-{test_name_key}"
 
 
 async def schedule_analysis(
     client: TemporalClient, params: AnalysisWorkflowParams, delete: bool
 ) -> str:
-    schedule_id = gen_analysis_schedule_id(params)
+    schedule_id = gen_analysis_id(params, "schedule")
     try:
         schedule_handle = client.get_schedule_handle(schedule_id)
         if delete is True:
@@ -369,7 +368,7 @@ async def schedule_analysis(
             action=ScheduleActionStartWorkflow(
                 AnalysisWorkflow.run,
                 params,
-                id=ANALYSIS_SCHEDULE_ID,
+                id=gen_analysis_id(params, "workflow"),
                 task_queue=TASK_QUEUE_NAME,
                 execution_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
                 task_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
@@ -382,6 +381,7 @@ async def schedule_analysis(
                     )
                 ],
             ),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.TERMINATE_OTHER),
             state=ScheduleState(
                 note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
             ),
