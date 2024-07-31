@@ -56,7 +56,7 @@ with workflow.unsafe.imports_passed_through():
 # https://github.com/python/cpython/blob/1316692e8c7c1e1f3b6639e51804f9db5ed892ea/Lib/logging/__init__.py#L362
 logging.logMultiprocessing = False
 
-log = workflow.logger
+log = logging.getLogger("oonipipeline.workflows")
 
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
 OBSERVATION_WORKFLOW_ID = "observation-workflow"
@@ -106,7 +106,7 @@ class ObservationsWorkflow:
             start_to_close_timeout=timedelta(minutes=5),
         )
 
-        log.info(
+        workflow.logger.info(
             f"Starting observation making with probe_cc={params.probe_cc},test_name={params.test_name} bucket_date={params.bucket_date}"
         )
         res = await workflow.execute_activity(
@@ -197,7 +197,7 @@ class AnalysisWorkflow:
             start_to_close_timeout=timedelta(minutes=5),
         )
 
-        log.info("building ground truth databases")
+        workflow.logger.info("building ground truth databases")
         t = PerfTimer()
         if (
             params.force_rebuild_ground_truths
@@ -214,7 +214,7 @@ class AnalysisWorkflow:
                 ),
                 start_to_close_timeout=timedelta(minutes=30),
             )
-            log.info(f"built ground truth db in {t.pretty}")
+            workflow.logger.info(f"built ground truth db in {t.pretty}")
 
         start_day = datetime.strptime(params.day, "%Y-%m-%d").date()
         cnt_by_cc = await workflow.execute_activity(
@@ -233,10 +233,10 @@ class AnalysisWorkflow:
             parallelism=params.parallelism,
         )
 
-        log.info(
+        workflow.logger.info(
             f"starting processing of {len(cc_batches)} batches for {params.day} days (parallelism = {params.parallelism})"
         )
-        log.info(f"({cc_batches})")
+        workflow.logger.info(f"({cc_batches})")
 
         task_list = []
         async with asyncio.TaskGroup() as tg:
