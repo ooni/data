@@ -135,6 +135,28 @@ parallelism_option = click.option(
 )
 
 
+def maybe_create_delete_tables(
+    clickhouse_url: str,
+    create_tables: bool,
+    drop_tables: bool,
+    clickhouse_buffer_min_time: int = 10,
+    clickhouse_buffer_max_time: int = 60,
+):
+    if create_tables:
+        if drop_tables:
+            click.confirm(
+                "Are you sure you want to drop the tables before creation?", abort=True
+            )
+
+        with ClickhouseConnection(clickhouse_url) as db:
+            for query, table_name in make_create_queries(
+                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
+            ):
+                if drop_tables:
+                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
+                db.execute(query)
+
+
 def parse_config_file(ctx, path):
     cfg = ConfigParser()
     cfg.read(path)
@@ -227,21 +249,15 @@ def mkobs(
     """
     Make observations for OONI measurements and write them into clickhouse or a CSV file
     """
-    if create_tables:
-        if drop_tables:
-            click.confirm(
-                "Are you sure you want to drop the tables before creation?", abort=True
-            )
+    maybe_create_delete_tables(
+        clickhouse_url=clickhouse,
+        create_tables=create_tables,
+        drop_tables=drop_tables,
+        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+    )
 
-        with ClickhouseConnection(clickhouse) as db:
-            for query, table_name in make_create_queries(
-                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
-            ):
-                if drop_tables:
-                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
-                db.execute(query)
-
-    click.echo("Starting to process observations")
+    click.echo("Starting to create")
     NetinfoDB(datadir=Path(data_dir), download=True)
     click.echo("downloaded netinfodb")
 
@@ -311,19 +327,13 @@ def backfill(
     """
     Backfill for OONI measurements and write them into clickhouse
     """
-    if create_tables:
-        if drop_tables:
-            click.confirm(
-                "Are you sure you want to drop the tables before creation?", abort=True
-            )
-
-        with ClickhouseConnection(clickhouse) as db:
-            for query, table_name in make_create_queries(
-                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
-            ):
-                if drop_tables:
-                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
-                db.execute(query)
+    maybe_create_delete_tables(
+        clickhouse_url=clickhouse,
+        create_tables=create_tables,
+        drop_tables=drop_tables,
+        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+    )
 
     click.echo("Starting to process observations")
     NetinfoDB(datadir=Path(data_dir), download=True)
@@ -395,23 +405,14 @@ def schedule(
     """
     Create schedules for the specified parameters
     """
-    if create_tables:
-        if drop_tables:
-            click.confirm(
-                "Are you sure you want to drop the tables before creation?", abort=True
-            )
-
-        with ClickhouseConnection(clickhouse) as db:
-            for query, table_name in make_create_queries(
-                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
-            ):
-                if drop_tables:
-                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
-                db.execute(query)
-
-    click.echo("Starting to process observations")
-    NetinfoDB(datadir=Path(data_dir), download=True)
-    click.echo("downloaded netinfodb")
+    maybe_create_delete_tables(
+        clickhouse_url=clickhouse,
+        create_tables=create_tables,
+        drop_tables=drop_tables,
+        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+    )
+    click.echo("Scheduling observation creation")
 
     obs_params = ObservationsWorkflowParams(
         probe_cc=probe_cc,
@@ -458,6 +459,11 @@ def schedule(
     is_flag=True,
     help="should we attempt to create the required clickhouse tables",
 )
+@click.option(
+    "--drop-tables",
+    is_flag=True,
+    help="should we drop tables before creating them",
+)
 def mkanalysis(
     probe_cc: List[str],
     test_name: List[str],
@@ -470,6 +476,7 @@ def mkanalysis(
     parallelism: int,
     fast_fail: bool,
     create_tables: bool,
+    drop_tables: bool,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
     temporal_namespace: Optional[str],
@@ -477,13 +484,13 @@ def mkanalysis(
     temporal_tls_client_key_path: Optional[str],
     start_workers: bool,
 ):
-    if create_tables:
-        with ClickhouseConnection(clickhouse) as db:
-            for query, table_name in make_create_queries(
-                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
-            ):
-                click.echo(f"Running create query for {table_name}")
-                db.execute(query)
+    maybe_create_delete_tables(
+        clickhouse_url=clickhouse,
+        create_tables=create_tables,
+        drop_tables=drop_tables,
+        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+    )
 
     click.echo("Starting to perform analysis")
     NetinfoDB(datadir=Path(data_dir), download=True)
@@ -583,6 +590,7 @@ def startworkers(
     click.echo(f"downloading NetinfoDB to {data_dir}")
     NetinfoDB(datadir=Path(data_dir), download=True)
     click.echo("done downloading netinfodb")
+
     start_workers(
         params=WorkerParams(
             temporal_address=temporal_address,
@@ -656,6 +664,8 @@ def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
 
 
 @cli.command()
+@clickhouse_buffer_min_time_option
+@clickhouse_buffer_max_time_option
 @click.option("--clickhouse", type=str)
 @click.option(
     "--create-tables",
@@ -668,7 +678,9 @@ def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
     help="should we drop tables before creating them",
 )
 def checkdb(
-    clickhouse: Optional[str],
+    clickhouse: str,
+    clickhouse_buffer_min_time: int,
+    clickhouse_buffer_max_time: int,
     create_tables: bool,
     drop_tables: bool,
 ):
@@ -676,21 +688,13 @@ def checkdb(
     Check if the database tables require migrations. If the create-tables flag
     is not specified, it will not perform any operations.
     """
-
-    if create_tables:
-        if not clickhouse:
-            click.echo("--clickhouse needs to be specified when creating tables")
-            return 1
-        if drop_tables:
-            click.confirm(
-                "Are you sure you want to drop the tables before creation?", abort=True
-            )
-
-        with ClickhouseConnection(clickhouse) as db:
-            for query, table_name in make_create_queries():
-                if drop_tables:
-                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
-                db.execute(query)
+    maybe_create_delete_tables(
+        clickhouse_url=clickhouse,
+        create_tables=create_tables,
+        drop_tables=drop_tables,
+        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+    )
 
     with ClickhouseConnection(clickhouse) as db:
         list_all_table_diffs(db)
