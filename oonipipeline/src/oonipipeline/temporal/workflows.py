@@ -279,15 +279,23 @@ async def schedule_observations(
     client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
 ) -> str:
     schedule_id = gen_observation_schedule_id(params)
-    schedule_handle = client.get_schedule_handle(schedule_id)
-    if delete is True:
-        await schedule_handle.delete()
-        return schedule_id
+    try:
+        schedule_handle = client.get_schedule_handle(schedule_id)
+        if delete is True:
+            await schedule_handle.delete()
+            return schedule_id
 
-    schedule_desc = await schedule_handle.describe()
-    if schedule_desc.id:
-        log.info(f"schedule with ID {schedule_id} already scheduled, returning early")
-        return schedule_id
+        schedule_desc = await schedule_handle.describe()
+        if schedule_desc.id:
+            log.info(
+                f"schedule with ID {schedule_id} already scheduled, returning early"
+            )
+            return schedule_id
+    except:
+        if delete is True:
+            log.info("schedule already missing. returning")
+            return schedule_id
+        log.info("schedule not found, setting up schedule for it")
 
     await client.create_schedule(
         id=schedule_id,
@@ -334,15 +342,23 @@ async def schedule_analysis(
     client: TemporalClient, params: AnalysisWorkflowParams, delete: bool
 ) -> str:
     schedule_id = gen_analysis_schedule_id(params)
-    schedule_handle = client.get_schedule_handle(schedule_id)
-    if delete is True:
-        await schedule_handle.delete()
-        return schedule_id
+    try:
+        schedule_handle = client.get_schedule_handle(schedule_id)
+        if delete is True:
+            await schedule_handle.delete()
+            return schedule_id
 
-    schedule_desc = await schedule_handle.describe()
-    if schedule_desc.id:
-        log.info(f"schedule with ID {schedule_id} already scheduled, returning early")
-        return schedule_id
+        schedule_desc = await schedule_handle.describe()
+        if schedule_desc.id:
+            log.info(
+                f"schedule with ID {schedule_id} already scheduled, returning early"
+            )
+            return schedule_id
+    except:
+        if delete is True:
+            log.info("schedule already missing. returning")
+            return schedule_id
+        log.info("schedule not found, setting up schedule for it")
 
     await client.create_schedule(
         id=schedule_id,
