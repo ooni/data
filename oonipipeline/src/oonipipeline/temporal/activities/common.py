@@ -2,6 +2,9 @@ import pathlib
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
+
+import fasteners
+
 from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.db.create_tables import make_create_queries
 
@@ -38,24 +41,31 @@ class UpdateAssetsParams:
 def update_assets(params: UpdateAssetsParams):
     last_updated_at = datetime(1984, 1, 1).replace(tzinfo=timezone.utc)
     datadir = pathlib.Path(params.data_dir)
-    try:
-        last_updated_at = datetime.strptime(
-            (datadir / "last_updated.txt").read_text(), DATETIME_UTC_FORMAT
-        ).replace(tzinfo=timezone.utc)
-    except FileNotFoundError:
-        pass
+    lock = fasteners.InterProcessLock(datadir / "last_updated.lock")
 
-    last_updated_delta = datetime.now(timezone.utc) - last_updated_at
-    if (
-        last_updated_delta > timedelta(hours=params.refresh_hours)
-        or params.force_update
-    ):
-        log.info("triggering update of netinfodb")
-        NetinfoDB(datadir=datadir, download=True)
-    else:
-        log.info(
-            f"skipping updating netinfodb because {last_updated_delta} < {params.refresh_hours}h"
-        )
+    last_updated_path = datadir / "last_updated.txt"
+
+    with lock:
+        try:
+            last_updated_at = datetime.strptime(
+                last_updated_path.read_text(), DATETIME_UTC_FORMAT
+            ).replace(tzinfo=timezone.utc)
+        except FileNotFoundError:
+            pass
+        now = datetime.now(timezone.utc)
+
+        last_updated_delta = now - last_updated_at
+        if (
+            last_updated_delta > timedelta(hours=params.refresh_hours)
+            or params.force_update
+        ):
+            log.info("triggering update of netinfodb")
+            NetinfoDB(datadir=datadir, download=True)
+            last_updated_path.write_text(now.strftime(DATETIME_UTC_FORMAT))
+        else:
+            log.info(
+                f"skipping updating netinfodb because {last_updated_delta} < {params.refresh_hours}h"
+            )
 
 
 @dataclass

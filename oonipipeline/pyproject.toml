@@ -36,7 +36,8 @@ dependencies = [
   "jupyterlab ~= 4.0.7",
   "temporalio ~= 1.5.1",
   "temporalio[opentelemetry] ~= 1.5.1",
-  "opentelemetry-exporter-otlp-proto-grpc ~= 1.18.0"
+  "opentelemetry-exporter-otlp-proto-grpc ~= 1.18.0",
+  "fasteners ~= 0.19",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -57,7 +58,7 @@ dependencies = [
   "memray",
   "viztracer",
   "pytest-docker",
-  "ipdb"
+  "ipdb",
 ]
 python = "3.11"
 path = ".venv/"
