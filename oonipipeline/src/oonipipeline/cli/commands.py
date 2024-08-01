@@ -12,6 +12,7 @@ from oonipipeline.temporal.client_operations import (
     run_backfill,
     run_create_schedules,
     run_create_schedules_and_backfill,
+    run_status,
     run_worker,
 )
 from oonipipeline.temporal.client_operations import start_workers
@@ -204,13 +205,11 @@ def cli(ctx, log_level: int, config: str):
 @clickhouse_buffer_min_time_option
 @clickhouse_buffer_max_time_option
 @datadir_option
-@parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
 @temporal_namespace_option
 @temporal_tls_client_cert_path_option
 @temporal_tls_client_key_path_option
-@start_workers_option
 @click.option(
     "--fast-fail",
     is_flag=True,
@@ -243,7 +242,6 @@ def mkobs(
     temporal_namespace: Optional[str],
     temporal_tls_client_cert_path: Optional[str],
     temporal_tls_client_key_path: Optional[str],
-    start_workers: bool,
 ):
     """
     Make observations for OONI measurements and write them into clickhouse or a CSV file
@@ -416,7 +414,7 @@ def schedule(
 
     run_create_schedules(
         obs_params=obs_params,
-        analysis_params=None,
+        analysis_params=analysis_params,
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
@@ -575,6 +573,29 @@ def mkgt(
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
         temporal_tls_client_key_path=temporal_tls_client_key_path,
         start_workers=start_workers,
+    )
+
+
+@cli.command()
+@telemetry_endpoint_option
+@temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
+def status(
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+):
+    click.echo(f"getting stattus")
+    run_status(
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
     )
 
 

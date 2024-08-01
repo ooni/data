@@ -63,7 +63,6 @@ logging.logMultiprocessing = False
 log = logging.getLogger("oonipipeline.workflows")
 
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
-OBSERVATION_WORKFLOW_ID = "observation-workflow"
 
 # TODO(art): come up with a nicer way to nest workflows so we don't need such a high global timeout
 MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT = timedelta(hours=48)

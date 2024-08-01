@@ -7,7 +7,7 @@ import dataclasses
 from dataclasses import dataclass
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from oonipipeline.temporal.workers import make_threaded_worker
 from oonipipeline.temporal.workflows import (
@@ -28,6 +28,7 @@ from temporalio.client import (
     Client as TemporalClient,
     ScheduleBackfill,
     ScheduleOverlapPolicy,
+    WorkflowExecution,
 )
 from temporalio.service import TLSConfig
 from temporalio.contrib.opentelemetry import TracingInterceptor
@@ -39,6 +40,15 @@ from temporalio.runtime import (
 from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
 
 log = logging.getLogger("oonidata.client_operations")
+
+
+@dataclass
+class TemporalConfig:
+    telemetry_endpoint: str
+    temporal_address: str
+    temporal_namespace: Optional[str]
+    temporal_tls_client_cert_path: Optional[str]
+    temporal_tls_client_key_path: Optional[str]
 
 
 def init_runtime_with_telemetry(endpoint: str) -> TemporalRuntime:
@@ -386,6 +396,56 @@ async def create_schedules_and_backfill(
         )
 
 
+async def get_status(
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+) -> Tuple[List[WorkflowExecution], List[WorkflowExecution]]:
+    tls_config = make_tls_config(
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
+
+    client = await temporal_connect(
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        tls_config=tls_config,
+    )
+    active_observation_workflows = []
+    async for workflow in client.list_workflows('WorkflowType="ObservationsWorkflow"'):
+        if workflow.status == 1:
+            active_observation_workflows.append(workflow)
+
+    if len(active_observation_workflows) == 0:
+        print("No active Observations workflows")
+    else:
+        print("Active observations workflows")
+        for workflow in active_observation_workflows:
+            print(f"workflow_id={workflow.id}")
+            print(f"  run_id={workflow.run_id}")
+            print(f"  execution_time={workflow.execution_time}")
+            print(f"  execution_time={workflow.execution_time}")
+
+    active_analysis_workflows = []
+    async for workflow in client.list_workflows('WorkflowType="AnalysisWorkflow"'):
+        if workflow.status == 1:
+            active_analysis_workflows.append(workflow)
+
+    if len(active_analysis_workflows) == 0:
+        print("No active Analysis workflows")
+    else:
+        print("Active analysis workflows")
+        for workflow in active_analysis_workflows:
+            print(f"workflow_id={workflow.id}")
+            print(f"  run_id={workflow.run_id}")
+            print(f"  execution_time={workflow.execution_time}")
+            print(f"  execution_time={workflow.execution_time}")
+    return active_observation_workflows, active_observation_workflows
+
+
 def run_workflow(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
@@ -506,6 +566,27 @@ def run_create_schedules_and_backfill(
                 delete=delete,
                 start_at=start_at,
                 end_at=end_at,
+            )
+        )
+    except KeyboardInterrupt:
+        print("shutting down")
+
+
+def run_status(
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+):
+    try:
+        asyncio.run(
+            get_status(
+                telemetry_endpoint=telemetry_endpoint,
+                temporal_address=temporal_address,
+                temporal_namespace=temporal_namespace,
+                temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+                temporal_tls_client_key_path=temporal_tls_client_key_path,
             )
         )
     except KeyboardInterrupt:
