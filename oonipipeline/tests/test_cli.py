@@ -222,3 +222,60 @@ def test_full_workflow(
     # assert res[0][0] == 200  # type: ignore
     # print("finished ALL")
     # # We wait on the table buffers to be flushed
+
+    print("running schedule analysis")
+    result = cli_runner.invoke(
+        cli,
+        [
+            "schedule",
+            "--probe-cc",
+            "BA",
+            "--test-name",
+            "web_connectivity",
+            "--create-tables",
+            "--data-dir",
+            datadir,
+            "--clickhouse",
+            db.clickhouse_url,
+            "--clickhouse-buffer-min-time",
+            1,
+            "--clickhouse-buffer-max-time",
+            2,
+            "--no-observations",
+            "--analysis",
+            # "--archives-dir",
+            # tmp_path.absolute(),
+        ],
+    )
+    assert result.exit_code == 0
+    result = cli_runner.invoke(
+        cli,
+        [
+            "backfill",
+            "--start-at",
+            "2022-10-21",
+            "--end-at",
+            "2022-10-22",
+            "--clickhouse",
+            db.clickhouse_url,
+            "--clickhouse-buffer-min-time",
+            1,
+            "--clickhouse-buffer-max-time",
+            2,
+            "--schedule-id",
+            "oonipipeline-analysis-schedule-ba-web_connectivity",
+            # "--archives-dir",
+            # tmp_path.absolute(),
+        ],
+    )
+    # We wait on the table buffers to be flushed
+    assert result.exit_code == 0
+
+    wait_for_backfill(event_loop=event_loop)
+    # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    time.sleep(3)
+    res = db.execute(
+        "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
+    )
+    assert res[0][0] == 200  # type: ignore
+    print("finished ALL")

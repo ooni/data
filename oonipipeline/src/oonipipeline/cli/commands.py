@@ -12,9 +12,7 @@ from oonipipeline.temporal.client_operations import (
     WorkerParams,
     run_backfill,
     run_create_schedules,
-    run_create_schedules_and_backfill,
     run_status,
-    run_worker,
 )
 from oonipipeline.temporal.client_operations import start_workers
 from oonipipeline.temporal.client_operations import run_workflow
@@ -198,88 +196,6 @@ def cli(ctx, log_level: int, config: str):
 
 
 @cli.command()
-@probe_cc_option
-@test_name_option
-@start_day_option
-@end_day_option
-@clickhouse_option
-@clickhouse_buffer_min_time_option
-@clickhouse_buffer_max_time_option
-@datadir_option
-@telemetry_endpoint_option
-@temporal_address_option
-@temporal_namespace_option
-@temporal_tls_client_cert_path_option
-@temporal_tls_client_key_path_option
-@click.option(
-    "--fast-fail",
-    is_flag=True,
-    help="should we fail immediately when we encounter an error?",
-)
-@click.option(
-    "--create-tables",
-    is_flag=True,
-    help="should we attempt to create the required clickhouse tables",
-)
-@click.option(
-    "--drop-tables",
-    is_flag=True,
-    help="should we drop tables before creating them",
-)
-def mkobs(
-    probe_cc: List[str],
-    test_name: List[str],
-    start_day: str,
-    end_day: str,
-    clickhouse: str,
-    clickhouse_buffer_min_time: int,
-    clickhouse_buffer_max_time: int,
-    data_dir: str,
-    fast_fail: bool,
-    create_tables: bool,
-    drop_tables: bool,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
-):
-    """
-    Make observations for OONI measurements and write them into clickhouse or a CSV file
-    """
-    maybe_create_delete_tables(
-        clickhouse_url=clickhouse,
-        create_tables=create_tables,
-        drop_tables=drop_tables,
-        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
-    )
-
-    temporal_config = TemporalConfig(
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-    )
-
-    obs_params = ObservationsWorkflowParams(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse=clickhouse,
-        data_dir=str(data_dir),
-        fast_fail=fast_fail,
-    )
-    # TODO support start_workers option
-    run_create_schedules_and_backfill(
-        obs_params=obs_params,
-        temporal_config=temporal_config,
-        start_at=datetime.strptime(start_day, "%Y-%m-%d").replace(tzinfo=timezone.utc),
-        end_at=datetime.strptime(end_day, "%Y-%m-%d").replace(tzinfo=timezone.utc),
-    )
-
-
-@cli.command()
 @start_at_option
 @end_at_option
 @clickhouse_option
@@ -363,6 +279,12 @@ def backfill(
     help="should we fail immediately when we encounter an error?",
 )
 @click.option(
+    "--analysis", is_flag=True, help="should we schedule an analysis", default=False
+)
+@click.option(
+    "--observations", is_flag=True, help="should we schedule observations", default=True
+)
+@click.option(
     "--delete",
     is_flag=True,
     default=False,
@@ -393,11 +315,17 @@ def schedule(
     temporal_namespace: Optional[str],
     temporal_tls_client_cert_path: Optional[str],
     temporal_tls_client_key_path: Optional[str],
+    analysis: bool,
+    observations: bool,
     delete: bool,
 ):
     """
     Create schedules for the specified parameters
     """
+    if not observations and not analysis:
+        click.echo("either observations or analysis should be set")
+        return 1
+
     maybe_create_delete_tables(
         clickhouse_url=clickhouse,
         create_tables=create_tables,
@@ -405,21 +333,14 @@ def schedule(
         clickhouse_buffer_min_time=clickhouse_buffer_min_time,
         clickhouse_buffer_max_time=clickhouse_buffer_max_time,
     )
-    click.echo("Scheduling observation creation")
+    what_we_schedule = []
+    if analysis:
+        what_we_schedule.append("analysis")
+    if observations:
+        what_we_schedule.append("observations")
 
-    obs_params = ObservationsWorkflowParams(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse=clickhouse,
-        data_dir=str(data_dir),
-        fast_fail=fast_fail,
-    )
-    analysis_params = AnalysisWorkflowParams(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse=clickhouse,
-        data_dir=str(data_dir),
-    )
+    click.echo(f"Scheduling {' and'.join(what_we_schedule)}")
+
     temporal_config = TemporalConfig(
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
@@ -427,6 +348,23 @@ def schedule(
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
         temporal_tls_client_key_path=temporal_tls_client_key_path,
     )
+    obs_params = None
+    if observations:
+        obs_params = ObservationsWorkflowParams(
+            probe_cc=probe_cc,
+            test_name=test_name,
+            clickhouse=clickhouse,
+            data_dir=str(data_dir),
+            fast_fail=fast_fail,
+        )
+    analysis_params = None
+    if analysis:
+        analysis_params = AnalysisWorkflowParams(
+            probe_cc=probe_cc,
+            test_name=test_name,
+            clickhouse=clickhouse,
+            data_dir=str(data_dir),
+        )
 
     run_create_schedules(
         obs_params=obs_params,
@@ -434,112 +372,6 @@ def schedule(
         temporal_config=temporal_config,
         delete=delete,
     )
-
-
-@cli.command()
-@probe_cc_option
-@test_name_option
-@start_day_option
-@end_day_option
-@clickhouse_option
-@clickhouse_buffer_min_time_option
-@clickhouse_buffer_max_time_option
-@datadir_option
-@parallelism_option
-@telemetry_endpoint_option
-@temporal_address_option
-@temporal_namespace_option
-@temporal_tls_client_cert_path_option
-@temporal_tls_client_key_path_option
-@start_workers_option
-@click.option(
-    "--fast-fail",
-    is_flag=True,
-    help="should we fail immediately when we encounter an error?",
-)
-@click.option(
-    "--create-tables",
-    is_flag=True,
-    help="should we attempt to create the required clickhouse tables",
-)
-@click.option(
-    "--drop-tables",
-    is_flag=True,
-    help="should we drop tables before creating them",
-)
-def mkanalysis(
-    probe_cc: List[str],
-    test_name: List[str],
-    start_day: str,
-    end_day: str,
-    clickhouse: str,
-    clickhouse_buffer_min_time: int,
-    clickhouse_buffer_max_time: int,
-    data_dir: Path,
-    fast_fail: bool,
-    create_tables: bool,
-    drop_tables: bool,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
-    start_workers: bool,
-):
-    maybe_create_delete_tables(
-        clickhouse_url=clickhouse,
-        create_tables=create_tables,
-        drop_tables=drop_tables,
-        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
-    )
-
-    analysis_params = AnalysisWorkflowParams(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse=clickhouse,
-        data_dir=str(data_dir),
-        fast_fail=fast_fail,
-    )
-
-    kwargs = {
-        "analysis_params": analysis_params,
-        "telemetry_endpoint": telemetry_endpoint,
-        "temporal_address": temporal_address,
-        "temporal_namespace": temporal_namespace,
-        "temporal_tls_client_cert_path": temporal_tls_client_cert_path,
-        "temporal_tls_client_key_path": temporal_tls_client_key_path,
-        "start_at": datetime.strptime(start_day, "%Y-%m-%d").replace(
-            tzinfo=timezone.utc
-        ),
-        "end_at": datetime.strptime(end_day, "%Y-%m-%d").replace(tzinfo=timezone.utc),
-    }
-
-    if start_workers:
-        worker_params = WorkerParams(
-            telemetry_endpoint=telemetry_endpoint,
-            temporal_address=temporal_address,
-            temporal_namespace=temporal_namespace,
-            temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-            temporal_tls_client_key_path=temporal_tls_client_key_path,
-            thread_count=5,
-        )
-        backfill_event_loop = multiprocessing.Process(
-            target=run_create_schedules_and_backfill, kwargs=kwargs
-        )
-        backfill_event_loop.start()
-
-        worker_event_loop = multiprocessing.Process(
-            target=run_worker, args=(worker_params,)
-        )
-        worker_event_loop.start()
-
-        backfill_event_loop.join()
-        # TODO there probably needs to be some polling here to check the status of the backfill
-        worker_event_loop.join()
-
-    else:
-        run_create_schedules_and_backfill(**kwargs)
 
 
 @cli.command()

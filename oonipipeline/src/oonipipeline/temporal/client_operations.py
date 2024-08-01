@@ -258,31 +258,6 @@ async def create_schedules(
     }
 
 
-async def create_schedules_and_backfill(
-    obs_params: Optional[ObservationsWorkflowParams],
-    analysis_params: Optional[AnalysisWorkflowParams],
-    temporal_config: TemporalConfig,
-    start_at: datetime,
-    end_at: datetime,
-):
-    log.info(f"creating schedules")
-    schedules_dict = await create_schedules(
-        obs_params=obs_params,
-        analysis_params=analysis_params,
-        temporal_config=temporal_config,
-    )
-    for name, schedule_id in schedules_dict.items():
-        if schedule_id is None:
-            continue
-        log.info(f"starting backfilll for {name}={schedule_id}")
-        await execute_backfill(
-            schedule_id=schedule_id,
-            temporal_config=temporal_config,
-            start_at=start_at,
-            end_at=end_at,
-        )
-
-
 async def get_status(
     temporal_config: TemporalConfig,
 ) -> Tuple[List[WorkflowExecution], List[WorkflowExecution]]:
@@ -368,8 +343,8 @@ def run_backfill(
 
 
 def run_create_schedules(
-    obs_params: ObservationsWorkflowParams,
-    analysis_params: AnalysisWorkflowParams,
+    obs_params: Optional[ObservationsWorkflowParams],
+    analysis_params: Optional[AnalysisWorkflowParams],
     temporal_config: TemporalConfig,
     delete: bool,
 ):
@@ -377,8 +352,7 @@ def run_create_schedules(
         asyncio.run(
             create_schedules(
                 obs_params=obs_params,
-                # TODO(art): temporarily disabled
-                analysis_params=None,
+                analysis_params=analysis_params,
                 temporal_config=temporal_config,
                 delete=delete,
             )
@@ -391,27 +365,6 @@ def start_event_loop(async_task):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(async_task())
-
-
-def run_create_schedules_and_backfill(
-    temporal_config: TemporalConfig,
-    start_at: datetime,
-    end_at: datetime,
-    obs_params: Optional[ObservationsWorkflowParams] = None,
-    analysis_params: Optional[AnalysisWorkflowParams] = None,
-):
-    try:
-        asyncio.run(
-            create_schedules_and_backfill(
-                obs_params=obs_params,
-                analysis_params=analysis_params,
-                temporal_config=temporal_config,
-                start_at=start_at,
-                end_at=end_at,
-            )
-        )
-    except KeyboardInterrupt:
-        print("shutting down")
 
 
 def run_status(
