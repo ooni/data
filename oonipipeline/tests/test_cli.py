@@ -2,8 +2,11 @@ import asyncio
 from multiprocessing import Process
 from pathlib import Path
 import time
+import textwrap
 
 from oonipipeline.cli.commands import cli
+from oonipipeline.cli.commands import parse_config_file
+from oonipipeline.temporal.client_operations import TemporalConfig, get_status
 
 
 def wait_for_mutations(db, table_name):
@@ -16,6 +19,42 @@ def wait_for_mutations(db, table_name):
         time.sleep(1)
 
 
+def wait_for_backfill(event_loop):
+    temporal_config = TemporalConfig(temporal_address="localhost:7233")
+
+    time.sleep(1)
+
+    while True:
+        res = event_loop.run_until_complete(get_status(temporal_config))
+        if len(res[0]) == 0 and len(res[1]) == 0:
+            break
+        time.sleep(3)
+
+
+class MockContext:
+    def __init__(self):
+        self.default_map = {}
+
+
+def test_parse_config(tmp_path):
+    ctx = MockContext()
+
+    config_content = """[options]
+    something = other
+    [options.subcommand]
+    otherthing = bar
+    [options.subcommand2]
+    spam = ham
+    """
+    config_path = tmp_path / "config.ini"
+    with config_path.open("w") as out_file:
+        out_file.write(textwrap.dedent(config_content))
+    defaults = parse_config_file(ctx, str(config_path))
+    assert defaults["something"] == "other"
+    assert defaults["subcommand"]["otherthing"] == "bar"
+    assert defaults["subcommand2"]["spam"] == "ham"
+
+
 def test_full_workflow(
     db,
     cli_runner,
@@ -24,18 +63,16 @@ def test_full_workflow(
     datadir,
     tmp_path: Path,
     temporal_dev_server,
+    temporal_workers,
+    event_loop,
 ):
-    print("running mkobs")
+    print("running schedule observations")
     result = cli_runner.invoke(
         cli,
         [
-            "mkobs",
+            "schedule",
             "--probe-cc",
             "BA",
-            "--start-day",
-            "2022-10-20",
-            "--end-day",
-            "2022-10-21",
             "--test-name",
             "web_connectivity",
             "--create-tables",
@@ -47,16 +84,37 @@ def test_full_workflow(
             1,
             "--clickhouse-buffer-max-time",
             2,
-            "--parallelism",
-            1,
             # "--archives-dir",
             # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
+    result = cli_runner.invoke(
+        cli,
+        [
+            "backfill",
+            "--start-at",
+            "2022-10-21",
+            "--end-at",
+            "2022-10-22",
+            "--clickhouse",
+            db.clickhouse_url,
+            "--clickhouse-buffer-min-time",
+            1,
+            "--clickhouse-buffer-max-time",
+            2,
+            "--schedule-id",
+            "oonipipeline-observations-schedule-ba-web_connectivity",
+            # "--archives-dir",
+            # tmp_path.absolute(),
+        ],
+    )
     # We wait on the table buffers to be flushed
-    time.sleep(3)
+    assert result.exit_code == 0
+
+    wait_for_backfill(event_loop=event_loop)
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    time.sleep(3)
     res = db.execute(
         "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
     )
@@ -65,33 +123,30 @@ def test_full_workflow(
     assert bucket_dict["2022-10-20"] == 200, bucket_dict
     obs_count = bucket_dict["2022-10-20"]
 
-    print("running mkobs")
+    print("running backfill")
     result = cli_runner.invoke(
         cli,
         [
-            "mkobs",
-            "--probe-cc",
-            "BA",
-            "--start-day",
-            "2022-10-20",
-            "--end-day",
+            "backfill",
+            "--start-at",
             "2022-10-21",
-            "--test-name",
-            "web_connectivity",
-            "--create-tables",
-            "--data-dir",
-            datadir,
+            "--end-at",
+            "2022-10-22",
             "--clickhouse",
             db.clickhouse_url,
             "--clickhouse-buffer-min-time",
             1,
             "--clickhouse-buffer-max-time",
             2,
-            "--parallelism",
-            1,
+            "--schedule-id",
+            "oonipipeline-observations-schedule-ba-web_connectivity",
+            # "--archives-dir",
+            # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
+
+    wait_for_backfill(event_loop=event_loop)
     # We wait on the table buffers to be flushed
     time.sleep(3)
 
@@ -134,19 +189,50 @@ def test_full_workflow(
     # )
     # assert result.exit_code == 0
 
-    print("running mkanalysis")
+    # print("running mkanalysis")
+    # result = cli_runner.invoke(
+    #     cli,
+    #     [
+    #         "mkanalysis",
+    #         "--probe-cc",
+    #         "BA",
+    #         "--start-day",
+    #         "2022-10-20",
+    #         "--end-day",
+    #         "2022-10-21",
+    #         "--test-name",
+    #         "web_connectivity",
+    #         "--data-dir",
+    #         datadir,
+    #         "--clickhouse",
+    #         db.clickhouse_url,
+    #         "--clickhouse-buffer-min-time",
+    #         1,
+    #         "--clickhouse-buffer-max-time",
+    #         2,
+    #         "--parallelism",
+    #         1,
+    #     ],
+    # )
+    # assert result.exit_code == 0
+    # time.sleep(3)
+    # res = db.execute(
+    #     "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
+    # )
+    # assert res[0][0] == 200  # type: ignore
+    # print("finished ALL")
+    # # We wait on the table buffers to be flushed
+
+    print("running schedule analysis")
     result = cli_runner.invoke(
         cli,
         [
-            "mkanalysis",
+            "schedule",
             "--probe-cc",
             "BA",
-            "--start-day",
-            "2022-10-20",
-            "--end-day",
-            "2022-10-21",
             "--test-name",
             "web_connectivity",
+            "--create-tables",
             "--data-dir",
             datadir,
             "--clickhouse",
@@ -155,15 +241,41 @@ def test_full_workflow(
             1,
             "--clickhouse-buffer-max-time",
             2,
-            "--parallelism",
-            1,
+            "--no-observations",
+            "--analysis",
+            # "--archives-dir",
+            # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
+    result = cli_runner.invoke(
+        cli,
+        [
+            "backfill",
+            "--start-at",
+            "2022-10-21",
+            "--end-at",
+            "2022-10-22",
+            "--clickhouse",
+            db.clickhouse_url,
+            "--clickhouse-buffer-min-time",
+            1,
+            "--clickhouse-buffer-max-time",
+            2,
+            "--schedule-id",
+            "oonipipeline-analysis-schedule-ba-web_connectivity",
+            # "--archives-dir",
+            # tmp_path.absolute(),
+        ],
+    )
+    # We wait on the table buffers to be flushed
+    assert result.exit_code == 0
+
+    wait_for_backfill(event_loop=event_loop)
+    # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
     time.sleep(3)
     res = db.execute(
         "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
     )
     assert res[0][0] == 200  # type: ignore
     print("finished ALL")
-    # We wait on the table buffers to be flushed

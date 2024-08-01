@@ -1,8 +1,5 @@
 from dataclasses import dataclass
-import queue
 import logging
-import multiprocessing as mp
-from multiprocessing.synchronize import Event as EventClass
 
 from datetime import datetime, timedelta
 
@@ -11,15 +8,10 @@ from typing import (
     Callable,
     Dict,
     List,
-    NamedTuple,
     Optional,
     Tuple,
 )
 
-from tqdm import tqdm
-from oonidata.dataclient import (
-    MeasurementListProgress,
-)
 from ..db.connections import ClickhouseConnection
 
 log = logging.getLogger("oonidata.processing")

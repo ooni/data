@@ -1,204 +1,36 @@
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
-import dataclasses
+from configparser import ConfigParser
 import logging
 import multiprocessing
+import os
 from pathlib import Path
-import asyncio
-import signal
-import sys
 from typing import List, Optional
-from datetime import date, timedelta, datetime, timezone
+from datetime import date, timedelta, datetime, timezone, time
 from typing import List, Optional
 
-import opentelemetry.context
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from oonipipeline.temporal.client_operations import (
+    TemporalConfig,
+    WorkerParams,
+    run_backfill,
+    run_create_schedules,
+    run_status,
+)
+from oonipipeline.temporal.client_operations import start_workers
+from oonipipeline.temporal.client_operations import run_workflow
 
 import click
 from click_loglevel import LogLevel
 
-from temporalio.runtime import (
-    OpenTelemetryConfig,
-    Runtime as TemporalRuntime,
-    TelemetryConfig,
-)
-from temporalio.client import (
-    Client as TemporalClient,
-)
-from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
-
-from temporalio.contrib.opentelemetry import TracingInterceptor
-
-from ..temporal.workers import make_threaded_worker
-
 from ..temporal.workflows import (
-    AnalysisBackfillWorkflow,
-    BackfillWorkflowParams,
     GroundTruthsWorkflow,
     GroundTruthsWorkflowParams,
-    ObservationsBackfillWorkflow,
-    TASK_QUEUE_NAME,
+    ObservationsWorkflowParams,
+    AnalysisWorkflowParams,
 )
 
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
 from ..db.create_tables import make_create_queries, list_all_table_diffs
 from ..netinfo import NetinfoDB
-
-
-def init_runtime_with_telemetry(endpoint: str) -> TemporalRuntime:
-    provider = TracerProvider(resource=Resource.create({SERVICE_NAME: "oonipipeline"}))
-    exporter = OTLPSpanExporter(
-        endpoint=endpoint, insecure=endpoint.startswith("http://")
-    )
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
-
-    return TemporalRuntime(
-        telemetry=TelemetryConfig(metrics=OpenTelemetryConfig(url=endpoint))
-    )
-
-
-async def temporal_connect(telemetry_endpoint: Optional[str], temporal_address: str):
-    runtime = None
-    if telemetry_endpoint:
-        runtime = init_runtime_with_telemetry(telemetry_endpoint)
-    client = await TemporalClient.connect(
-        temporal_address,
-        interceptors=[TracingInterceptor()],
-        runtime=runtime,
-    )
-    return client
-
-
-@dataclass
-class WorkerParams:
-    temporal_address: str
-    telemetry_endpoint: Optional[str]
-    thread_count: int
-    process_idx: int = 0
-
-
-async def start_threaded_worker(params: WorkerParams):
-    client = await temporal_connect(
-        telemetry_endpoint=params.telemetry_endpoint,
-        temporal_address=params.temporal_address,
-    )
-    worker = make_threaded_worker(client, parallelism=params.thread_count)
-    await worker.run()
-
-
-def run_worker(params: WorkerParams):
-    try:
-        asyncio.run(start_threaded_worker(params))
-    except KeyboardInterrupt:
-        print("shutting down")
-
-
-def start_workers(params: WorkerParams, process_count: int):
-    def signal_handler(signal, frame):
-        print("shutdown requested: Ctrl+C detected")
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-
-    process_params = [
-        dataclasses.replace(params, process_idx=idx) for idx in range(process_count)
-    ]
-    executor = ProcessPoolExecutor(max_workers=process_count)
-    try:
-        futures = [executor.submit(run_worker, param) for param in process_params]
-        for future in as_completed(futures):
-            future.result()
-    except KeyboardInterrupt:
-        print("ctrl+C detected, cancelling tasks...")
-        for future in futures:
-            future.cancel()
-        executor.shutdown(wait=True)
-        print("all tasks have been cancelled and cleaned up")
-    except Exception as e:
-        print(f"an error occurred: {e}")
-        executor.shutdown(wait=False)
-        raise
-
-
-async def execute_workflow_with_workers(
-    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
-    arg: ParamType,
-    parallelism,
-    workflow_id_prefix: str,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-):
-    click.echo(
-        f"running workflow {workflow} temporal_address={temporal_address} telemetry_address={telemetry_endpoint} parallelism={parallelism}"
-    )
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    client = await temporal_connect(
-        telemetry_endpoint=telemetry_endpoint, temporal_address=temporal_address
-    )
-    async with make_threaded_worker(client, parallelism=parallelism):
-        await client.execute_workflow(
-            workflow,
-            arg,
-            id=f"{workflow_id_prefix}-{ts}",
-            task_queue=TASK_QUEUE_NAME,
-        )
-
-
-async def execute_workflow(
-    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
-    arg: ParamType,
-    parallelism,
-    workflow_id_prefix: str,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-):
-    click.echo(
-        f"running workflow {workflow} temporal_address={temporal_address} telemetry_address={telemetry_endpoint} parallelism={parallelism}"
-    )
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    client = await temporal_connect(
-        telemetry_endpoint=telemetry_endpoint, temporal_address=temporal_address
-    )
-    await client.execute_workflow(
-        workflow,
-        arg,
-        id=f"{workflow_id_prefix}-{ts}",
-        task_queue=TASK_QUEUE_NAME,
-    )
-
-
-def run_workflow(
-    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
-    arg: ParamType,
-    parallelism,
-    start_workers: bool,
-    workflow_id_prefix: str,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-):
-    action = execute_workflow
-    if start_workers:
-        print("starting also workers")
-        action = execute_workflow_with_workers
-    try:
-        asyncio.run(
-            action(
-                workflow=workflow,
-                arg=arg,
-                parallelism=parallelism,
-                workflow_id_prefix=workflow_id_prefix,
-                telemetry_endpoint=telemetry_endpoint,
-                temporal_address=temporal_address,
-            )
-        )
-    except KeyboardInterrupt:
-        print("shutting down")
 
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
@@ -277,6 +109,15 @@ telemetry_endpoint_option = click.option(
 temporal_address_option = click.option(
     "--temporal-address", type=str, required=True, default="localhost:7233"
 )
+temporal_namespace_option = click.option(
+    "--temporal-namespace", type=str, required=False, default=None
+)
+temporal_tls_client_cert_path_option = click.option(
+    "--temporal-tls-client-cert-path", type=str, required=False, default=None
+)
+temporal_tls_client_key_path_option = click.option(
+    "--temporal-tls-client-key-path", type=str, required=False, default=None
+)
 start_workers_option = click.option("--start-workers/--no-start-workers", default=True)
 
 datadir_option = click.option(
@@ -294,6 +135,41 @@ parallelism_option = click.option(
 )
 
 
+def maybe_create_delete_tables(
+    clickhouse_url: str,
+    create_tables: bool,
+    drop_tables: bool,
+    clickhouse_buffer_min_time: int = 10,
+    clickhouse_buffer_max_time: int = 60,
+):
+    if create_tables:
+        if drop_tables:
+            click.confirm(
+                "Are you sure you want to drop the tables before creation?", abort=True
+            )
+
+        with ClickhouseConnection(clickhouse_url) as db:
+            for query, table_name in make_create_queries(
+                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
+            ):
+                if drop_tables:
+                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
+                db.execute(query)
+
+
+def parse_config_file(ctx, path):
+    cfg = ConfigParser()
+    cfg.read(path)
+    ctx.default_map = {}
+    for sect in cfg.sections():
+        command_path = sect.split(".")
+        defaults = ctx.default_map
+        for cmdname in command_path[1:]:
+            defaults = defaults.setdefault(cmdname, {})
+        defaults.update(cfg[sect])
+    return ctx.default_map
+
+
 @click.group()
 @click.option(
     "-l",
@@ -303,28 +179,122 @@ parallelism_option = click.option(
     help="Set logging level",
     show_default=True,
 )
+@click.option(
+    "-c",
+    "--config",
+    type=click.Path(dir_okay=False),
+    default="config.ini",
+    help="Read option defaults from the specified INI file",
+    show_default=True,
+)
 @click.version_option(VERSION)
-def cli(log_level: int):
+@click.pass_context
+def cli(ctx, log_level: int, config: str):
     logging.basicConfig(level=log_level)
+    if os.path.exists(config):
+        ctx.default_map = parse_config_file(ctx, config)
+
+
+@cli.command()
+@start_at_option
+@end_at_option
+@clickhouse_option
+@clickhouse_buffer_min_time_option
+@clickhouse_buffer_max_time_option
+@telemetry_endpoint_option
+@temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
+@click.option("--schedule-id", type=str, required=True)
+@click.option(
+    "--create-tables",
+    is_flag=True,
+    help="should we attempt to create the required clickhouse tables",
+)
+@click.option(
+    "--drop-tables",
+    is_flag=True,
+    help="should we drop tables before creating them",
+)
+def backfill(
+    start_at: datetime,
+    end_at: datetime,
+    clickhouse: str,
+    clickhouse_buffer_min_time: int,
+    clickhouse_buffer_max_time: int,
+    create_tables: bool,
+    drop_tables: bool,
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+    schedule_id: str,
+):
+    """
+    Backfill for OONI measurements and write them into clickhouse
+    """
+    click.echo(f"Runnning backfill of schedule {schedule_id}")
+
+    maybe_create_delete_tables(
+        clickhouse_url=clickhouse,
+        create_tables=create_tables,
+        drop_tables=drop_tables,
+        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+    )
+
+    temporal_config = TemporalConfig(
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
+
+    run_backfill(
+        schedule_id=schedule_id,
+        temporal_config=temporal_config,
+        start_at=start_at,
+        end_at=end_at,
+    )
 
 
 @cli.command()
 @probe_cc_option
 @test_name_option
-@start_day_option
-@end_day_option
 @clickhouse_option
 @clickhouse_buffer_min_time_option
 @clickhouse_buffer_max_time_option
 @datadir_option
-@parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
-@start_workers_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
 @click.option(
     "--fast-fail",
     is_flag=True,
     help="should we fail immediately when we encounter an error?",
+)
+@click.option(
+    "--analysis/--no-analysis",
+    is_flag=True,
+    help="should we schedule an analysis",
+    default=False,
+)
+@click.option(
+    "--observations/--no-observations",
+    is_flag=True,
+    help="should we schedule observations",
+    default=True,
+)
+@click.option(
+    "--delete",
+    is_flag=True,
+    default=False,
+    help="if we should delete the schedule instead of creating it",
 )
 @click.option(
     "--create-tables",
@@ -336,133 +306,77 @@ def cli(log_level: int):
     is_flag=True,
     help="should we drop tables before creating them",
 )
-def mkobs(
+def schedule(
     probe_cc: List[str],
     test_name: List[str],
-    start_day: str,
-    end_day: str,
     clickhouse: str,
     clickhouse_buffer_min_time: int,
     clickhouse_buffer_max_time: int,
     data_dir: str,
-    parallelism: int,
     fast_fail: bool,
     create_tables: bool,
     drop_tables: bool,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
-    start_workers: bool,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+    analysis: bool,
+    observations: bool,
+    delete: bool,
 ):
     """
-    Make observations for OONI measurements and write them into clickhouse or a CSV file
+    Create schedules for the specified parameters
     """
-    if create_tables:
-        if drop_tables:
-            click.confirm(
-                "Are you sure you want to drop the tables before creation?", abort=True
-            )
+    if not observations and not analysis:
+        click.echo("either observations or analysis should be set")
+        return 1
 
-        with ClickhouseConnection(clickhouse) as db:
-            for query, table_name in make_create_queries(
-                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
-            ):
-                if drop_tables:
-                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
-                db.execute(query)
-
-    click.echo("Starting to process observations")
-    NetinfoDB(datadir=Path(data_dir), download=True)
-    click.echo("downloaded netinfodb")
-
-    params = BackfillWorkflowParams(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse=clickhouse,
-        data_dir=str(data_dir),
-        fast_fail=fast_fail,
-        start_day=start_day,
-        end_day=end_day,
+    maybe_create_delete_tables(
+        clickhouse_url=clickhouse,
+        create_tables=create_tables,
+        drop_tables=drop_tables,
+        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
     )
-    click.echo(f"starting to make observations with params={params}")
-    run_workflow(
-        ObservationsBackfillWorkflow.run,
-        params,
-        parallelism=parallelism,
-        workflow_id_prefix="oonipipeline-mkobs",
+    what_we_schedule = []
+    if analysis:
+        what_we_schedule.append("analysis")
+    if observations:
+        what_we_schedule.append("observations")
+
+    click.echo(f"Scheduling {' and'.join(what_we_schedule)}")
+
+    temporal_config = TemporalConfig(
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
-        start_workers=start_workers,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
     )
+    obs_params = None
+    if observations:
+        obs_params = ObservationsWorkflowParams(
+            probe_cc=probe_cc,
+            test_name=test_name,
+            clickhouse=clickhouse,
+            data_dir=str(data_dir),
+            fast_fail=fast_fail,
+        )
+    analysis_params = None
+    if analysis:
+        analysis_params = AnalysisWorkflowParams(
+            probe_cc=probe_cc,
+            test_name=test_name,
+            clickhouse=clickhouse,
+            data_dir=str(data_dir),
+        )
 
-
-@cli.command()
-@probe_cc_option
-@test_name_option
-@start_day_option
-@end_day_option
-@clickhouse_option
-@clickhouse_buffer_min_time_option
-@clickhouse_buffer_max_time_option
-@datadir_option
-@parallelism_option
-@telemetry_endpoint_option
-@temporal_address_option
-@start_workers_option
-@click.option(
-    "--fast-fail",
-    is_flag=True,
-    help="should we fail immediately when we encounter an error?",
-)
-@click.option(
-    "--create-tables",
-    is_flag=True,
-    help="should we attempt to create the required clickhouse tables",
-)
-def mkanalysis(
-    probe_cc: List[str],
-    test_name: List[str],
-    start_day: str,
-    end_day: str,
-    clickhouse: str,
-    clickhouse_buffer_min_time: int,
-    clickhouse_buffer_max_time: int,
-    data_dir: Path,
-    parallelism: int,
-    fast_fail: bool,
-    create_tables: bool,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    start_workers: bool,
-):
-    if create_tables:
-        with ClickhouseConnection(clickhouse) as db:
-            for query, table_name in make_create_queries(
-                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
-            ):
-                click.echo(f"Running create query for {table_name}")
-                db.execute(query)
-
-    click.echo("Starting to perform analysis")
-    NetinfoDB(datadir=Path(data_dir), download=True)
-    click.echo("downloaded netinfodb")
-
-    params = BackfillWorkflowParams(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        start_day=start_day,
-        end_day=end_day,
-        clickhouse=clickhouse,
-        data_dir=str(data_dir),
-        fast_fail=fast_fail,
-    )
-    run_workflow(
-        AnalysisBackfillWorkflow.run,
-        params,
-        parallelism=parallelism,
-        workflow_id_prefix="oonipipeline-mkanalysis",
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        start_workers=start_workers,
+    run_create_schedules(
+        obs_params=obs_params,
+        analysis_params=analysis_params,
+        temporal_config=temporal_config,
+        delete=delete,
     )
 
 
@@ -474,6 +388,9 @@ def mkanalysis(
 @parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
 @start_workers_option
 def mkgt(
     start_day: str,
@@ -483,12 +400,11 @@ def mkgt(
     parallelism: int,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
     start_workers: bool,
 ):
-    click.echo("Starting to build ground truths")
-    NetinfoDB(datadir=Path(data_dir), download=True)
-    click.echo("downloaded netinfodb")
-
     params = GroundTruthsWorkflowParams(
         start_day=start_day,
         end_day=end_day,
@@ -496,15 +412,45 @@ def mkgt(
         data_dir=str(data_dir),
     )
     click.echo(f"starting to make ground truths with arg={params}")
+    temporal_config = TemporalConfig(
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
     run_workflow(
         GroundTruthsWorkflow.run,
         params,
         parallelism=parallelism,
         workflow_id_prefix="oonipipeline-mkgt",
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
+        temporal_config=temporal_config,
         start_workers=start_workers,
     )
+
+
+@cli.command()
+@telemetry_endpoint_option
+@temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
+def status(
+    telemetry_endpoint: Optional[str],
+    temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
+):
+    click.echo(f"getting stattus")
+    temporal_config = TemporalConfig(
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
+    run_status(temporal_config=temporal_config)
 
 
 @cli.command()
@@ -512,21 +458,31 @@ def mkgt(
 @parallelism_option
 @telemetry_endpoint_option
 @temporal_address_option
+@temporal_namespace_option
+@temporal_tls_client_cert_path_option
+@temporal_tls_client_key_path_option
 def startworkers(
     data_dir: Path,
     parallelism: int,
     telemetry_endpoint: Optional[str],
     temporal_address: str,
+    temporal_namespace: Optional[str],
+    temporal_tls_client_cert_path: Optional[str],
+    temporal_tls_client_key_path: Optional[str],
 ):
     click.echo(f"starting {parallelism} workers")
     click.echo(f"downloading NetinfoDB to {data_dir}")
     NetinfoDB(datadir=Path(data_dir), download=True)
     click.echo("done downloading netinfodb")
+
     start_workers(
         params=WorkerParams(
             temporal_address=temporal_address,
             telemetry_endpoint=telemetry_endpoint,
             thread_count=parallelism,
+            temporal_namespace=temporal_namespace,
+            temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+            temporal_tls_client_key_path=temporal_tls_client_key_path,
         ),
         process_count=parallelism,
     )
@@ -592,6 +548,8 @@ def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
 
 
 @cli.command()
+@clickhouse_buffer_min_time_option
+@clickhouse_buffer_max_time_option
 @click.option("--clickhouse", type=str)
 @click.option(
     "--create-tables",
@@ -604,7 +562,9 @@ def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
     help="should we drop tables before creating them",
 )
 def checkdb(
-    clickhouse: Optional[str],
+    clickhouse: str,
+    clickhouse_buffer_min_time: int,
+    clickhouse_buffer_max_time: int,
     create_tables: bool,
     drop_tables: bool,
 ):
@@ -612,21 +572,13 @@ def checkdb(
     Check if the database tables require migrations. If the create-tables flag
     is not specified, it will not perform any operations.
     """
-
-    if create_tables:
-        if not clickhouse:
-            click.echo("--clickhouse needs to be specified when creating tables")
-            return 1
-        if drop_tables:
-            click.confirm(
-                "Are you sure you want to drop the tables before creation?", abort=True
-            )
-
-        with ClickhouseConnection(clickhouse) as db:
-            for query, table_name in create_queries:
-                if drop_tables:
-                    db.execute(f"DROP TABLE IF EXISTS {table_name};")
-                db.execute(query)
+    maybe_create_delete_tables(
+        clickhouse_url=clickhouse,
+        create_tables=create_tables,
+        drop_tables=drop_tables,
+        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+    )
 
     with ClickhouseConnection(clickhouse) as db:
         list_all_table_diffs(db)

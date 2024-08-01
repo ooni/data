@@ -3,7 +3,7 @@ import dataclasses
 from datetime import datetime
 from typing import List, Optional
 
-from oonidata.models.base import table_model, ProcessingMeta
+from .base import table_model, ProcessingMeta
 from oonidata.models.observations import MeasurementMeta, ProbeMeta
 
 

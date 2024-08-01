@@ -7,7 +7,9 @@ from datetime import datetime, timedelta, timezone
 
 
 from temporalio import workflow
-from temporalio.common import SearchAttributeKey
+from temporalio.common import (
+    SearchAttributeKey,
+)
 from temporalio.client import (
     Client as TemporalClient,
     Schedule,
@@ -15,13 +17,10 @@ from temporalio.client import (
     ScheduleIntervalSpec,
     ScheduleSpec,
     ScheduleState,
+    SchedulePolicy,
+    ScheduleOverlapPolicy,
 )
 
-from oonipipeline.temporal.activities.common import (
-    optimize_all_tables,
-    ClickhouseParams,
-)
-from oonipipeline.temporal.activities.ground_truths import get_ground_truth_db_path
 
 with workflow.unsafe.imports_passed_through():
     import clickhouse_driver
@@ -38,6 +37,8 @@ with workflow.unsafe.imports_passed_through():
     from oonipipeline.temporal.activities.common import (
         get_obs_count_by_cc,
         ObsCountParams,
+        update_assets,
+        UpdateAssetsParams,
     )
     from oonipipeline.temporal.activities.observations import (
         MakeObservationsParams,
@@ -48,16 +49,20 @@ with workflow.unsafe.imports_passed_through():
         MakeGroundTruthsParams,
         make_ground_truths_in_day,
     )
+    from oonipipeline.temporal.activities.common import (
+        optimize_all_tables,
+        ClickhouseParams,
+    )
+    from oonipipeline.temporal.activities.ground_truths import get_ground_truth_db_path
 
 # Handle temporal sandbox violations related to calls to self.processName =
 # mp.current_process().name in logger, see:
 # https://github.com/python/cpython/blob/1316692e8c7c1e1f3b6639e51804f9db5ed892ea/Lib/logging/__init__.py#L362
 logging.logMultiprocessing = False
 
-log = workflow.logger
+log = logging.getLogger("oonipipeline.workflows")
 
 TASK_QUEUE_NAME = "oonipipeline-task-queue"
-OBSERVATION_WORKFLOW_ID = "oonipipeline-observations"
 
 # TODO(art): come up with a nicer way to nest workflows so we don't need such a high global timeout
 MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT = timedelta(hours=48)
@@ -88,6 +93,12 @@ class ObservationsWorkflowParams:
 class ObservationsWorkflow:
     @workflow.run
     async def run(self, params: ObservationsWorkflowParams) -> dict:
+        await workflow.execute_activity(
+            update_assets,
+            UpdateAssetsParams(data_dir=params.data_dir),
+            start_to_close_timeout=timedelta(hours=1),
+        )
+
         if params.bucket_date is None:
             params.bucket_date = (
                 get_workflow_start_time() - timedelta(days=1)
@@ -99,13 +110,12 @@ class ObservationsWorkflow:
             start_to_close_timeout=timedelta(minutes=5),
         )
 
-        log.info(
+        workflow.logger.info(
             f"Starting observation making with probe_cc={params.probe_cc},test_name={params.test_name} bucket_date={params.bucket_date}"
         )
-
         res = await workflow.execute_activity(
-            make_observation_in_day,
-            MakeObservationsParams(
+            activity=make_observation_in_day,
+            arg=MakeObservationsParams(
                 probe_cc=params.probe_cc,
                 test_name=params.test_name,
                 clickhouse=params.clickhouse,
@@ -113,127 +123,11 @@ class ObservationsWorkflow:
                 fast_fail=params.fast_fail,
                 bucket_date=params.bucket_date,
             ),
+            task_queue=TASK_QUEUE_NAME,
             start_to_close_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
         )
         res["bucket_date"] = params.bucket_date
         return res
-
-
-@dataclass
-class BackfillWorkflowParams:
-    probe_cc: List[str]
-    test_name: List[str]
-    start_day: str
-    end_day: str
-    clickhouse: str
-    data_dir: str
-    fast_fail: bool
-    log_level: int = logging.INFO
-
-
-@workflow.defn
-class ObservationsBackfillWorkflow:
-    @workflow.run
-    async def run(self, params: BackfillWorkflowParams) -> dict:
-        start_day = datetime.strptime(params.start_day, "%Y-%m-%d")
-        end_day = datetime.strptime(params.end_day, "%Y-%m-%d")
-
-        t = PerfTimer(unstoppable=True)
-        task_list = []
-        workflow_id = workflow.info().workflow_id
-        for day in date_interval(start_day, end_day):
-            bucket_date = day.strftime("%Y-%m-%d")
-            task_list.append(
-                workflow.execute_child_workflow(
-                    ObservationsWorkflow.run,
-                    ObservationsWorkflowParams(
-                        bucket_date=bucket_date,
-                        probe_cc=params.probe_cc,
-                        test_name=params.test_name,
-                        clickhouse=params.clickhouse,
-                        data_dir=params.data_dir,
-                        fast_fail=params.fast_fail,
-                        log_level=params.log_level,
-                    ),
-                    id=f"{workflow_id}/{bucket_date}",
-                )
-            )
-
-        total_size = 0
-        total_measurement_count = 0
-
-        for task in asyncio.as_completed(task_list):
-            res = await task
-            bucket_date = res["bucket_date"]
-            total_size += res["size"]
-            total_measurement_count += res["measurement_count"]
-
-            mb_per_sec = round(total_size / t.s / 10**6, 1)
-            msmt_per_sec = round(total_measurement_count / t.s)
-            log.info(
-                f"finished processing {bucket_date} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
-            )
-
-        mb_per_sec = round(total_size / t.s / 10**6, 1)
-        msmt_per_sec = round(total_measurement_count / t.s)
-        log.info(
-            f"finished processing {params.start_day} - {params.end_day} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
-        )
-
-        return {
-            "size": total_size,
-            "measurement_count": total_measurement_count,
-            "runtime_ms": t.ms,
-            "mb_per_sec": mb_per_sec,
-            "msmt_per_sec": msmt_per_sec,
-            "start_day": params.start_day,
-            "end_day": params.start_day,
-        }
-
-
-OBSERVATIONS_SCHEDULE_ID = "oonipipeline-observations-schedule-id"
-
-
-def gen_observation_schedule_id(params: ObservationsWorkflowParams) -> str:
-    probe_cc_key = "ALLCCS"
-    if len(params.probe_cc) > 0:
-        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
-    test_name_key = "ALLTNS"
-    if len(params.test_name) > 0:
-        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
-
-    return f"oonipipeline-observations-{probe_cc_key}-{test_name_key}"
-
-
-async def schedule_observations(
-    client: TemporalClient, params: ObservationsWorkflowParams
-):
-    schedule_id = gen_observation_schedule_id(params)
-
-    await client.create_schedule(
-        schedule_id,
-        Schedule(
-            action=ScheduleActionStartWorkflow(
-                ObservationsWorkflow.run,
-                params,
-                id=OBSERVATION_WORKFLOW_ID,
-                task_queue=TASK_QUEUE_NAME,
-                execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
-                task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
-                run_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
-            ),
-            spec=ScheduleSpec(
-                intervals=[
-                    ScheduleIntervalSpec(
-                        every=timedelta(days=1), offset=timedelta(hours=2)
-                    )
-                ],
-            ),
-            state=ScheduleState(
-                note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
-            ),
-        ),
-    )
 
 
 @dataclass
@@ -251,6 +145,12 @@ class GroundTruthsWorkflow:
         self,
         params: GroundTruthsWorkflowParams,
     ):
+        await workflow.execute_activity(
+            update_assets,
+            UpdateAssetsParams(data_dir=params.data_dir),
+            start_to_close_timeout=timedelta(hours=1),
+        )
+
         start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
         end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
 
@@ -273,11 +173,11 @@ class GroundTruthsWorkflow:
 class AnalysisWorkflowParams:
     probe_cc: List[str]
     test_name: List[str]
-    day: str
     clickhouse: str
     data_dir: str
-    parallelism: int
-    fast_fail: bool
+    parallelism: int = 10
+    fast_fail: bool = False
+    day: Optional[str] = None
     force_rebuild_ground_truths: bool = False
     log_level: int = logging.INFO
 
@@ -286,13 +186,24 @@ class AnalysisWorkflowParams:
 class AnalysisWorkflow:
     @workflow.run
     async def run(self, params: AnalysisWorkflowParams) -> dict:
+        if params.day is None:
+            params.day = (get_workflow_start_time() - timedelta(days=1)).strftime(
+                "%Y-%m-%d"
+            )
+
+        await workflow.execute_activity(
+            update_assets,
+            UpdateAssetsParams(data_dir=params.data_dir),
+            start_to_close_timeout=timedelta(hours=1),
+        )
+
         await workflow.execute_activity(
             optimize_all_tables,
             ClickhouseParams(clickhouse_url=params.clickhouse),
             start_to_close_timeout=timedelta(minutes=5),
         )
 
-        log.info("building ground truth databases")
+        workflow.logger.info("building ground truth databases")
         t = PerfTimer()
         if (
             params.force_rebuild_ground_truths
@@ -309,7 +220,7 @@ class AnalysisWorkflow:
                 ),
                 start_to_close_timeout=timedelta(minutes=30),
             )
-            log.info(f"built ground truth db in {t.pretty}")
+            workflow.logger.info(f"built ground truth db in {t.pretty}")
 
         start_day = datetime.strptime(params.day, "%Y-%m-%d").date()
         cnt_by_cc = await workflow.execute_activity(
@@ -328,10 +239,10 @@ class AnalysisWorkflow:
             parallelism=params.parallelism,
         )
 
-        log.info(
+        workflow.logger.info(
             f"starting processing of {len(cc_batches)} batches for {params.day} days (parallelism = {params.parallelism})"
         )
-        log.info(f"({cc_batches})")
+        workflow.logger.info(f"({cc_batches})")
 
         task_list = []
         async with asyncio.TaskGroup() as tg:
@@ -356,56 +267,123 @@ class AnalysisWorkflow:
         return {"obs_count": total_obs_count, "day": params.day}
 
 
-@workflow.defn
-class AnalysisBackfillWorkflow:
-    @workflow.run
-    async def run(self, params: BackfillWorkflowParams) -> dict:
-        start_day = datetime.strptime(params.start_day, "%Y-%m-%d")
-        end_day = datetime.strptime(params.end_day, "%Y-%m-%d")
+def gen_observation_id(params: ObservationsWorkflowParams, name: str) -> str:
+    probe_cc_key = "ALLCCS"
+    if len(params.probe_cc) > 0:
+        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
+    test_name_key = "ALLTNS"
+    if len(params.test_name) > 0:
+        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
 
-        t = PerfTimer(unstoppable=True)
-        task_list = []
-        workflow_id = workflow.info().workflow_id
-        for day in date_interval(start_day, end_day):
-            day_str = day.strftime("%Y-%m-%d")
-            task_list.append(
-                workflow.execute_child_workflow(
-                    AnalysisWorkflow.run,
-                    AnalysisWorkflowParams(
-                        day=day_str,
-                        probe_cc=params.probe_cc,
-                        test_name=params.test_name,
-                        clickhouse=params.clickhouse,
-                        data_dir=params.data_dir,
-                        fast_fail=params.fast_fail,
-                        log_level=params.log_level,
-                        parallelism=10,
-                    ),
-                    id=f"{workflow_id}/{day_str}",
-                )
-            )
+    return f"oonipipeline-observations-{name}-{probe_cc_key}-{test_name_key}"
 
-        total_obs_count = 0
 
-        for task in asyncio.as_completed(task_list):
-            res = await task
-            day = res["day"]
-            total_obs_count += res["obs_count"]
+async def schedule_observations(
+    client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
+) -> str:
+    schedule_id = gen_observation_id(params, "schedule")
+    try:
+        schedule_handle = client.get_schedule_handle(schedule_id)
+        if delete is True:
+            await schedule_handle.delete()
+            return schedule_id
 
-            obs_per_sec = round(total_obs_count / t.s, 1)
+        schedule_desc = await schedule_handle.describe()
+        if schedule_desc.id:
             log.info(
-                f"finished processing {day} in {t.pretty} total_obs_count={total_obs_count} ({obs_per_sec}obs/s)"
+                f"schedule with ID {schedule_id} already scheduled, returning early"
             )
+            return schedule_id
+    except:
+        if delete is True:
+            log.info("schedule already missing. returning")
+            return schedule_id
+        log.info("schedule not found, setting up schedule for it")
 
-        obs_per_sec = round(total_obs_count / t.s, 1)
-        log.info(
-            f"finished processing {day} in {t.pretty} total_obse_count={total_obs_count} ({obs_per_sec}obs/s)"
-        )
+    await client.create_schedule(
+        id=schedule_id,
+        schedule=Schedule(
+            action=ScheduleActionStartWorkflow(
+                ObservationsWorkflow.run,
+                params,
+                id=gen_observation_id(params, "workflow"),
+                task_queue=TASK_QUEUE_NAME,
+                execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+                task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+                run_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
+            ),
+            spec=ScheduleSpec(
+                intervals=[
+                    ScheduleIntervalSpec(
+                        every=timedelta(days=1), offset=timedelta(hours=2)
+                    )
+                ],
+            ),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.TERMINATE_OTHER),
+            state=ScheduleState(
+                note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
+            ),
+        ),
+    )
+    return schedule_id
 
-        return {
-            "observation_count": total_obs_count,
-            "runtime_ms": t.ms,
-            "obs_per_sec": obs_per_sec,
-            "start_day": params.start_day,
-            "end_day": params.start_day,
-        }
+
+def gen_analysis_id(params: AnalysisWorkflowParams, name: str) -> str:
+    probe_cc_key = "ALLCCS"
+    if len(params.probe_cc) > 0:
+        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
+    test_name_key = "ALLTNS"
+    if len(params.test_name) > 0:
+        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
+
+    return f"oonipipeline-analysis-{name}-{probe_cc_key}-{test_name_key}"
+
+
+async def schedule_analysis(
+    client: TemporalClient, params: AnalysisWorkflowParams, delete: bool
+) -> str:
+    schedule_id = gen_analysis_id(params, "schedule")
+    try:
+        schedule_handle = client.get_schedule_handle(schedule_id)
+        if delete is True:
+            await schedule_handle.delete()
+            return schedule_id
+
+        schedule_desc = await schedule_handle.describe()
+        if schedule_desc.id:
+            log.info(
+                f"schedule with ID {schedule_id} already scheduled, returning early"
+            )
+            return schedule_id
+    except:
+        if delete is True:
+            log.info("schedule already missing. returning")
+            return schedule_id
+        log.info("schedule not found, setting up schedule for it")
+
+    await client.create_schedule(
+        id=schedule_id,
+        schedule=Schedule(
+            action=ScheduleActionStartWorkflow(
+                AnalysisWorkflow.run,
+                params,
+                id=gen_analysis_id(params, "workflow"),
+                task_queue=TASK_QUEUE_NAME,
+                execution_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+                task_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+                run_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+            ),
+            spec=ScheduleSpec(
+                intervals=[
+                    ScheduleIntervalSpec(
+                        every=timedelta(days=1), offset=timedelta(hours=2)
+                    )
+                ],
+            ),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.TERMINATE_OTHER),
+            state=ScheduleState(
+                note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
+            ),
+        ),
+    )
+    return schedule_id

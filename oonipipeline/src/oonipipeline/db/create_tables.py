@@ -93,7 +93,9 @@ def typing_to_clickhouse(t: Any) -> str:
         target_type = parent_type
     target_origin = typing.get_origin(target_type)
     target_args = typing.get_args(target_type)
-    assert target_origin == tuple
+    assert (
+        target_origin == tuple
+    ), f"{target_origin} is not tuple (target_args={target_args}, {target_type} {parent_type})"
     tuple_args = ", ".join([python_basic_type_to_clickhouse(a) for a in target_args])
     if is_nullable:
         return f"Nullable(Tuple({tuple_args}))"
@@ -108,12 +110,14 @@ def format_create_query(
 ) -> Tuple[str, str]:
     columns = []
     for f in fields(model):
-        if f.type == ProbeMeta:
+        if f.name in ("__table_index__", "__table_name__"):
+            continue
+        if f.name == "probe_meta":
             for f in fields(ProbeMeta):
                 type_str = typing_to_clickhouse(f.type)
                 columns.append(f"     {f.name} {type_str}")
             continue
-        if f.type == MeasurementMeta:
+        if f.name == "measurement_meta":
             for f in fields(MeasurementMeta):
                 type_str = typing_to_clickhouse(f.type)
                 columns.append(f"     {f.name} {type_str}")
@@ -123,7 +127,11 @@ def format_create_query(
                 type_str = typing_to_clickhouse(f.type)
                 columns.append(f"     {f.name} {type_str}")
             continue
-        type_str = typing_to_clickhouse(f.type)
+        try:
+            type_str = typing_to_clickhouse(f.type)
+        except:
+            print(f"failed to generate create table for {f} of {model}")
+            raise
         columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
