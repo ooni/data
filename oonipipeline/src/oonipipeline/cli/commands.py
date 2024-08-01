@@ -8,6 +8,7 @@ from datetime import date, timedelta, datetime, timezone, time
 from typing import List, Optional
 
 from oonipipeline.temporal.client_operations import (
+    TemporalConfig,
     WorkerParams,
     run_backfill,
     run_create_schedules,
@@ -254,6 +255,14 @@ def mkobs(
         clickhouse_buffer_max_time=clickhouse_buffer_max_time,
     )
 
+    temporal_config = TemporalConfig(
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
+
     obs_params = ObservationsWorkflowParams(
         probe_cc=probe_cc,
         test_name=test_name,
@@ -264,11 +273,7 @@ def mkobs(
     # TODO support start_workers option
     run_create_schedules_and_backfill(
         obs_params=obs_params,
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
+        temporal_config=temporal_config,
         start_at=datetime.strptime(start_day, "%Y-%m-%d").replace(tzinfo=timezone.utc),
         end_at=datetime.strptime(end_day, "%Y-%m-%d").replace(tzinfo=timezone.utc),
     )
@@ -324,13 +329,17 @@ def backfill(
         clickhouse_buffer_max_time=clickhouse_buffer_max_time,
     )
 
-    run_backfill(
-        schedule_id=schedule_id,
+    temporal_config = TemporalConfig(
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
         temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
+
+    run_backfill(
+        schedule_id=schedule_id,
+        temporal_config=temporal_config,
         start_at=start_at,
         end_at=end_at,
     )
@@ -411,15 +420,18 @@ def schedule(
         clickhouse=clickhouse,
         data_dir=str(data_dir),
     )
-
-    run_create_schedules(
-        obs_params=obs_params,
-        analysis_params=analysis_params,
+    temporal_config = TemporalConfig(
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
         temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
+
+    run_create_schedules(
+        obs_params=obs_params,
+        analysis_params=analysis_params,
+        temporal_config=temporal_config,
         delete=delete,
     )
 
@@ -562,16 +574,19 @@ def mkgt(
         data_dir=str(data_dir),
     )
     click.echo(f"starting to make ground truths with arg={params}")
-    run_workflow(
-        GroundTruthsWorkflow.run,
-        params,
-        parallelism=parallelism,
-        workflow_id_prefix="oonipipeline-mkgt",
+    temporal_config = TemporalConfig(
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
         temporal_tls_client_key_path=temporal_tls_client_key_path,
+    )
+    run_workflow(
+        GroundTruthsWorkflow.run,
+        params,
+        parallelism=parallelism,
+        workflow_id_prefix="oonipipeline-mkgt",
+        temporal_config=temporal_config,
         start_workers=start_workers,
     )
 
@@ -590,13 +605,14 @@ def status(
     temporal_tls_client_key_path: Optional[str],
 ):
     click.echo(f"getting stattus")
-    run_status(
+    temporal_config = TemporalConfig(
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
         temporal_tls_client_key_path=temporal_tls_client_key_path,
     )
+    run_status(temporal_config=temporal_config)
 
 
 @cli.command()

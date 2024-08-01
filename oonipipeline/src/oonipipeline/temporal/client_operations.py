@@ -44,11 +44,11 @@ log = logging.getLogger("oonidata.client_operations")
 
 @dataclass
 class TemporalConfig:
-    telemetry_endpoint: str
-    temporal_address: str
-    temporal_namespace: Optional[str]
-    temporal_tls_client_cert_path: Optional[str]
-    temporal_tls_client_key_path: Optional[str]
+    temporal_address: str = "localhost:7233"
+    telemetry_endpoint: Optional[str] = None
+    temporal_namespace: Optional[str] = None
+    temporal_tls_client_cert_path: Optional[str] = None
+    temporal_tls_client_key_path: Optional[str] = None
 
 
 def init_runtime_with_telemetry(endpoint: str) -> TemporalRuntime:
@@ -65,24 +65,42 @@ def init_runtime_with_telemetry(endpoint: str) -> TemporalRuntime:
 
 
 async def temporal_connect(
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str] = None,
-    tls_config: Optional[TLSConfig] = None,
+    temporal_config: TemporalConfig,
 ):
     runtime = None
-    if telemetry_endpoint:
-        runtime = init_runtime_with_telemetry(telemetry_endpoint)
+    if temporal_config.telemetry_endpoint:
+        runtime = init_runtime_with_telemetry(temporal_config.telemetry_endpoint)
 
     extra_kw = {}
-    if temporal_namespace is not None:
-        extra_kw["namespace"] = temporal_namespace
+    if temporal_config.temporal_namespace is not None:
+        extra_kw["namespace"] = temporal_config.temporal_namespace
+
+    try:
+        assert (
+            temporal_config.temporal_tls_client_cert_path
+        ), "missing tls_client_cert_path"
+        assert (
+            temporal_config.temporal_tls_client_key_path
+        ), "missing tls_client_key_path"
+        with open(temporal_config.temporal_tls_client_cert_path, "rb") as in_file:
+            client_cert = in_file.read()
+        with open(temporal_config.temporal_tls_client_key_path, "rb") as in_file:
+            client_private_key = in_file.read()
+        tls_config = TLSConfig(
+            client_cert=client_cert,
+            client_private_key=client_private_key,
+        )
+    except AssertionError:
+        tls_config = None
+
     if tls_config is not None:
         extra_kw["tls"] = tls_config
 
-    log.info(f"connecting to {temporal_address} with extra_kw={extra_kw.keys()}")
+    log.info(
+        f"connecting to {temporal_config.temporal_address} with extra_kw={extra_kw.keys()}"
+    )
     client = await TemporalClient.connect(
-        temporal_address,
+        temporal_config.temporal_address,
         interceptors=[TracingInterceptor()],
         runtime=runtime,
         **extra_kw,
@@ -101,64 +119,15 @@ class WorkerParams:
     process_idx: int = 0
 
 
-def contains_valid_tls_config(
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
-) -> bool:
-    if (
-        temporal_tls_client_cert_path is not None
-        or temporal_tls_client_key_path is not None
-    ):
-        assert (
-            temporal_tls_client_cert_path is not None
-            and temporal_tls_client_key_path is not None
-        ), "both client_cert and client_key must be set"
-        assert (
-            len(pathlib.Path(temporal_tls_client_cert_path).read_bytes()) > 10
-        ), "tls_client_cert seems corrupt"
-        assert (
-            len(pathlib.Path(temporal_tls_client_key_path).read_bytes()) > 10
-        ), "tls_client_key key seems corrupt"
-        return True
-    return False
-
-
-def make_tls_config(
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
-) -> Optional[TLSConfig]:
-    tls_config = None
-    if contains_valid_tls_config(
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-    ):
-        assert temporal_tls_client_cert_path
-        with open(temporal_tls_client_cert_path, "rb") as in_file:
-            client_cert = in_file.read()
-        assert temporal_tls_client_key_path
-        with open(temporal_tls_client_key_path, "rb") as in_file:
-            client_private_key = in_file.read()
-        tls_config = TLSConfig(
-            client_cert=client_cert,
-            client_private_key=client_private_key,
-        )
-
-    return tls_config
-
-
 async def start_threaded_worker(params: WorkerParams):
-    tls_config = make_tls_config(
+    temporal_config = TemporalConfig(
+        temporal_address=params.temporal_address,
+        temporal_namespace=params.temporal_namespace,
         temporal_tls_client_cert_path=params.temporal_tls_client_cert_path,
         temporal_tls_client_key_path=params.temporal_tls_client_key_path,
-    )
-    temporal_namespace = params.temporal_namespace
-
-    client = await temporal_connect(
         telemetry_endpoint=params.telemetry_endpoint,
-        temporal_address=params.temporal_address,
-        temporal_namespace=temporal_namespace,
-        tls_config=tls_config,
     )
+    client = await temporal_connect(temporal_config=temporal_config)
     worker = make_threaded_worker(client, parallelism=params.thread_count)
     await worker.run()
 
@@ -174,11 +143,6 @@ def start_workers(params: WorkerParams, process_count: int):
     def signal_handler(signal, frame):
         print("shutdown requested: Ctrl+C detected")
         sys.exit(0)
-
-    contains_valid_tls_config(
-        temporal_tls_client_cert_path=params.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=params.temporal_tls_client_cert_path,
-    )
 
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -207,27 +171,13 @@ async def execute_workflow_with_workers(
     arg: ParamType,
     parallelism,
     workflow_id_prefix: str,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
+    temporal_config: TemporalConfig,
 ):
-    log.info(
-        f"running workflow {workflow} temporal_address={temporal_address} telemetry_address={telemetry_endpoint} parallelism={parallelism}"
-    )
+    log.info(f"running workflow {workflow}")
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
-    tls_config = make_tls_config(
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-    )
-
     client = await temporal_connect(
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        tls_config=tls_config,
+        temporal_config=temporal_config,
     )
     async with make_threaded_worker(client, parallelism=parallelism):
         await client.execute_workflow(
@@ -241,29 +191,14 @@ async def execute_workflow_with_workers(
 async def execute_workflow(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
-    parallelism,
     workflow_id_prefix: str,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
+    temporal_config: TemporalConfig,
 ):
-    log.info(
-        f"running workflow {workflow} temporal_address={temporal_address} telemetry_address={telemetry_endpoint} parallelism={parallelism}"
-    )
+    log.info(f"running workflow {workflow}")
     ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
-    tls_config = make_tls_config(
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-    )
-
     client = await temporal_connect(
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        tls_config=tls_config,
+        temporal_config=temporal_config,
     )
     await client.execute_workflow(
         workflow,
@@ -275,30 +210,13 @@ async def execute_workflow(
 
 async def execute_backfill(
     schedule_id: str,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
+    temporal_config: TemporalConfig,
     start_at: datetime,
     end_at: datetime,
 ):
-    log.info(
-        f"running backfill for schedule_id={schedule_id} temporal_address={temporal_address}"
-        f" telemetry_address={telemetry_endpoint}"
-    )
+    log.info(f"running backfill for schedule_id={schedule_id}")
 
-    tls_config = make_tls_config(
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-    )
-
-    client = await temporal_connect(
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        tls_config=tls_config,
-    )
+    client = await temporal_connect(temporal_config=temporal_config)
     handle = client.get_schedule_handle(schedule_id)
 
     await handle.backfill(
@@ -313,29 +231,12 @@ async def execute_backfill(
 async def create_schedules(
     obs_params: Optional[ObservationsWorkflowParams],
     analysis_params: Optional[AnalysisWorkflowParams],
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
-    delete: bool,
+    temporal_config: TemporalConfig,
+    delete: bool = False,
 ) -> dict:
-    log.info(
-        f"creating all schedules temporal_address={temporal_address}"
-        f" telemetry_address={telemetry_endpoint}"
-    )
+    log.info(f"creating all schedules")
 
-    tls_config = make_tls_config(
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-    )
-
-    client = await temporal_connect(
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        tls_config=tls_config,
-    )
+    client = await temporal_connect(temporal_config=temporal_config)
 
     obs_schedule_id = None
     if obs_params is not None:
@@ -360,12 +261,7 @@ async def create_schedules(
 async def create_schedules_and_backfill(
     obs_params: Optional[ObservationsWorkflowParams],
     analysis_params: Optional[AnalysisWorkflowParams],
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
-    delete: bool,
+    temporal_config: TemporalConfig,
     start_at: datetime,
     end_at: datetime,
 ):
@@ -373,12 +269,7 @@ async def create_schedules_and_backfill(
     schedules_dict = await create_schedules(
         obs_params=obs_params,
         analysis_params=analysis_params,
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-        delete=delete,
+        temporal_config=temporal_config,
     )
     for name, schedule_id in schedules_dict.items():
         if schedule_id is None:
@@ -386,34 +277,17 @@ async def create_schedules_and_backfill(
         log.info(f"starting backfilll for {name}={schedule_id}")
         await execute_backfill(
             schedule_id=schedule_id,
-            telemetry_endpoint=telemetry_endpoint,
-            temporal_address=temporal_address,
-            temporal_namespace=temporal_namespace,
-            temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-            temporal_tls_client_key_path=temporal_tls_client_key_path,
+            temporal_config=temporal_config,
             start_at=start_at,
             end_at=end_at,
         )
 
 
 async def get_status(
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
+    temporal_config: TemporalConfig,
 ) -> Tuple[List[WorkflowExecution], List[WorkflowExecution]]:
-    tls_config = make_tls_config(
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-    )
 
-    client = await temporal_connect(
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        tls_config=tls_config,
-    )
+    client = await temporal_connect(temporal_config=temporal_config)
     active_observation_workflows = []
     async for workflow in client.list_workflows('WorkflowType="ObservationsWorkflow"'):
         if workflow.status == 1:
@@ -449,31 +323,25 @@ async def get_status(
 def run_workflow(
     workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
     arg: ParamType,
-    parallelism,
     start_workers: bool,
     workflow_id_prefix: str,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
+    temporal_config: TemporalConfig,
+    parallelism: Optional[int] = None,
 ):
     action = execute_workflow
+    kw_args = {}
     if start_workers:
         print("starting also workers")
         action = execute_workflow_with_workers
+        kw_args["parallelism"] = parallelism
     try:
         asyncio.run(
             action(
                 workflow=workflow,
                 arg=arg,
-                parallelism=parallelism,
                 workflow_id_prefix=workflow_id_prefix,
-                telemetry_endpoint=telemetry_endpoint,
-                temporal_address=temporal_address,
-                temporal_namespace=temporal_namespace,
-                temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-                temporal_tls_client_key_path=temporal_tls_client_key_path,
+                temporal_config=temporal_config,
+                **kw_args,
             )
         )
     except KeyboardInterrupt:
@@ -481,24 +349,16 @@ def run_workflow(
 
 
 def run_backfill(
+    temporal_config: TemporalConfig,
     schedule_id: str,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
     start_at: datetime,
     end_at: datetime,
 ):
     try:
         asyncio.run(
             execute_backfill(
+                temporal_config=temporal_config,
                 schedule_id=schedule_id,
-                telemetry_endpoint=telemetry_endpoint,
-                temporal_address=temporal_address,
-                temporal_namespace=temporal_namespace,
-                temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-                temporal_tls_client_key_path=temporal_tls_client_key_path,
                 start_at=start_at,
                 end_at=end_at,
             )
@@ -510,11 +370,7 @@ def run_backfill(
 def run_create_schedules(
     obs_params: ObservationsWorkflowParams,
     analysis_params: AnalysisWorkflowParams,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
+    temporal_config: TemporalConfig,
     delete: bool,
 ):
     try:
@@ -523,11 +379,7 @@ def run_create_schedules(
                 obs_params=obs_params,
                 # TODO(art): temporarily disabled
                 analysis_params=None,
-                telemetry_endpoint=telemetry_endpoint,
-                temporal_address=temporal_address,
-                temporal_namespace=temporal_namespace,
-                temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-                temporal_tls_client_key_path=temporal_tls_client_key_path,
+                temporal_config=temporal_config,
                 delete=delete,
             )
         )
@@ -542,28 +394,18 @@ def start_event_loop(async_task):
 
 
 def run_create_schedules_and_backfill(
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
+    temporal_config: TemporalConfig,
     start_at: datetime,
     end_at: datetime,
     obs_params: Optional[ObservationsWorkflowParams] = None,
     analysis_params: Optional[AnalysisWorkflowParams] = None,
-    delete: bool = False,
 ):
     try:
         asyncio.run(
             create_schedules_and_backfill(
                 obs_params=obs_params,
                 analysis_params=analysis_params,
-                telemetry_endpoint=telemetry_endpoint,
-                temporal_address=temporal_address,
-                temporal_namespace=temporal_namespace,
-                temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-                temporal_tls_client_key_path=temporal_tls_client_key_path,
-                delete=delete,
+                temporal_config=temporal_config,
                 start_at=start_at,
                 end_at=end_at,
             )
@@ -573,20 +415,12 @@ def run_create_schedules_and_backfill(
 
 
 def run_status(
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
+    temporal_config: TemporalConfig,
 ):
     try:
         asyncio.run(
             get_status(
-                telemetry_endpoint=telemetry_endpoint,
-                temporal_address=temporal_address,
-                temporal_namespace=temporal_namespace,
-                temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-                temporal_tls_client_key_path=temporal_tls_client_key_path,
+                temporal_config=temporal_config,
             )
         )
     except KeyboardInterrupt:

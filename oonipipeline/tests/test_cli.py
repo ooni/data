@@ -6,7 +6,7 @@ import textwrap
 
 from oonipipeline.cli.commands import cli
 from oonipipeline.cli.commands import parse_config_file
-from oonipipeline.temporal.client_operations import get_status
+from oonipipeline.temporal.client_operations import TemporalConfig, get_status
 
 
 def wait_for_mutations(db, table_name):
@@ -20,17 +20,12 @@ def wait_for_mutations(db, table_name):
 
 
 def wait_for_backfill(event_loop):
+    temporal_config = TemporalConfig(temporal_address="localhost:7233")
+
     time.sleep(1)
+
     while True:
-        res = event_loop.run_until_complete(
-            get_status(
-                temporal_address="localhost:7233",
-                temporal_namespace=None,
-                temporal_tls_client_cert_path=None,
-                temporal_tls_client_key_path=None,
-                telemetry_endpoint=None,
-            )
-        )
+        res = event_loop.run_until_complete(get_status(temporal_config))
         if len(res[0]) == 0 and len(res[1]) == 0:
             break
         time.sleep(3)
