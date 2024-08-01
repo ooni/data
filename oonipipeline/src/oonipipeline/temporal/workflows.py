@@ -376,7 +376,7 @@ async def schedule_analysis(
             spec=ScheduleSpec(
                 intervals=[
                     ScheduleIntervalSpec(
-                        every=timedelta(days=1), offset=timedelta(hours=2)
+                        every=timedelta(days=1), offset=timedelta(hours=6)
                     )
                 ],
             ),
