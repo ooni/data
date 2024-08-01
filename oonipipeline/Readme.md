@@ -93,11 +93,35 @@ To start the worker processes:
 hatch run oonipipeline startworkers
 ```
 
-Then you can trigger the workflow by passing the `--no-start-workers` flag:
+You should then schedule the observation generation, so that it will run every
+day.
+
+This can be accomplished by running:
 
 ```
-hatch run oonipipeline mkobs --probe-cc US --start-day 2024-01-01 --end-day 2024-01-20 --no-start-workers --create-tables
+hatch run oonipipeline schedule --create-tables
 ```
+
+If you would like to also schedule the analysis, you should do:
+```
+hatch run oonipipeline schedule --analysis --create-tables
+```
+
+These schedules can be further refined with the `--probe-cc` and `--test-name`
+options to limit the schedule to only certain countries or test names
+respectively.
+
+By navigating to the temporal web UI you will see in the schedules section these being created.
+
+You are then able to trigger a backfill (basically reprocessing the data), by
+running the following command:
+
+```
+hatch run oonipipeline backfill --schedule-id oonipipeline-observations-schedule-ALLCCS-ALLTNS --start-at 2024-01-01 --end-at 2024-02-01
+```
+
+Where the schedule-id should be taken from the output of the schedule command
+or from the temporal web UI.
 
 #### Superset
 
