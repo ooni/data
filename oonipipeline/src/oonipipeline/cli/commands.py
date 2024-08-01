@@ -279,10 +279,16 @@ def backfill(
     help="should we fail immediately when we encounter an error?",
 )
 @click.option(
-    "--analysis", is_flag=True, help="should we schedule an analysis", default=False
+    "--analysis/--no-analysis",
+    is_flag=True,
+    help="should we schedule an analysis",
+    default=False,
 )
 @click.option(
-    "--observations", is_flag=True, help="should we schedule observations", default=True
+    "--observations/--no-observations",
+    is_flag=True,
+    help="should we schedule observations",
+    default=True,
 )
 @click.option(
     "--delete",
