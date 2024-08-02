@@ -53,6 +53,8 @@ def test_parse_config(tmp_path):
     assert defaults["something"] == "other"
     assert defaults["subcommand"]["otherthing"] == "bar"
     assert defaults["subcommand2"]["spam"] == "ham"
+    assert defaults["schedule"]["something"] == "other"
+    assert defaults["backfill"]["something"] == "other"
 
 
 def test_full_workflow(
