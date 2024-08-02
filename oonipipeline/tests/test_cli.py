@@ -53,6 +53,8 @@ def test_parse_config(tmp_path):
     assert defaults["something"] == "other"
     assert defaults["subcommand"]["otherthing"] == "bar"
     assert defaults["subcommand2"]["spam"] == "ham"
+    assert defaults["schedule"]["something"] == "other"
+    assert defaults["backfill"]["something"] == "other"
 
 
 def test_full_workflow(
@@ -159,23 +161,6 @@ def test_full_workflow(
     assert "2022-10-20" in bucket_dict, bucket_dict
     # By re-running it against the same date, we should still get the same observation count
     assert bucket_dict["2022-10-20"] == obs_count, bucket_dict
-
-    print("running mkgt")
-    result = cli_runner.invoke(
-        cli,
-        [
-            "mkgt",
-            "--start-day",
-            "2022-10-20",
-            "--end-day",
-            "2022-10-21",
-            "--data-dir",
-            datadir,
-            "--clickhouse",
-            db.clickhouse_url,
-        ],
-    )
-    assert result.exit_code == 0
 
     # result = cli_runner.invoke(
     #    cli,

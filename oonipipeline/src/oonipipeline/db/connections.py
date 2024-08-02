@@ -74,6 +74,8 @@ class ClickhouseConnection(DatabaseConnection):
         # Exponentially backoff the retries
         for attempt in range(self._max_retries):
             try:
+                if attempt > 0:
+                    kwargs["types_check"] = True
                 return self._execute(query_str, rows, *args, **kwargs)
             except Exception as e:
                 exception_list.append(e)

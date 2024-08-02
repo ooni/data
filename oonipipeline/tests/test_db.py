@@ -7,9 +7,12 @@ from clickhouse_driver import Client
 
 from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.db.create_tables import (
+    format_create_query,
     get_table_column_diff,
     get_column_map_from_create_query,
     typing_to_clickhouse,
+    table_models,
+    make_create_queries,
 )
 from oonidata.models.base import table_model
 

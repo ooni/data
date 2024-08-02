@@ -7,6 +7,8 @@ from datetime import date
 import time
 
 
+from oonipipeline.temporal.client_operations import TemporalConfig
+from oonipipeline.temporal.workers import start_workers
 import pytest
 
 import orjson
@@ -21,7 +23,6 @@ from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.db.create_tables import make_create_queries
 from oonipipeline.fingerprintdb import FingerprintDB
 from oonipipeline.netinfo import NetinfoDB
-from oonipipeline.temporal.client_operations import WorkerParams, run_worker
 
 from ._fixtures import SAMPLE_MEASUREMENTS
 
@@ -52,18 +53,11 @@ def clickhouse_server(docker_ip, docker_services):
 @pytest.fixture(scope="session")
 def temporal_workers(request):
     print("Starting temporal workers")
-    params = WorkerParams(
-        thread_count=10,
-        temporal_address="localhost:7233",
-        temporal_namespace=None,
-        temporal_tls_client_cert_path=None,
-        temporal_tls_client_key_path=None,
-        telemetry_endpoint=None,
-    )
+    temporal_config = TemporalConfig()
 
-    p = Process(target=run_worker, args=(params,))
+    p = Process(target=start_workers, args=(temporal_config,))
     p.start()
-    print("started")
+    print("started workers")
     request.addfinalizer(p.kill)
     yield p
 
