@@ -401,7 +401,7 @@ def status(
     temporal_tls_client_cert_path: Optional[str],
     temporal_tls_client_key_path: Optional[str],
 ):
-    click.echo(f"getting stattus")
+    click.echo(f"getting status from {temporal_address}")
     temporal_config = TemporalConfig(
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,

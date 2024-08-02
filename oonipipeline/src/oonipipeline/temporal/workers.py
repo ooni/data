@@ -62,6 +62,7 @@ async def worker_main(temporal_config: TemporalConfig):
         activities=ACTIVTIES,
         activity_executor=ThreadPoolExecutor(max_workers=max_workers),
         max_concurrent_activities=max_workers,
+        max_concurrent_workflow_tasks=max_workers,
     ):
         log.info("Workers started, ctrl-c to exit")
         await interrupt_event.wait()
