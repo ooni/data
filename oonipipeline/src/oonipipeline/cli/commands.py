@@ -159,6 +159,15 @@ def parse_config_file(ctx, path):
     cfg = ConfigParser()
     cfg.read(path)
     ctx.default_map = {}
+
+    try:
+        default_options = cfg["options"]
+        for name, _ in cli.commands.items():
+            ctx.default_map[name].update(default_options)
+    except KeyError:
+        # No default section
+        pass
+
     for sect in cfg.sections():
         command_path = sect.split(".")
         defaults = ctx.default_map

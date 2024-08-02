@@ -376,7 +376,13 @@ async def schedule_analysis(
             spec=ScheduleSpec(
                 intervals=[
                     ScheduleIntervalSpec(
-                        every=timedelta(days=1), offset=timedelta(hours=6)
+                        # We offset the Analysis workflow by 4 hours assuming
+                        # that the observation generation will take less than 4
+                        # hours to complete.
+                        # TODO(art): it's probably better to refactor this into some
+                        # kind of DAG
+                        every=timedelta(days=1),
+                        offset=timedelta(hours=6),
                     )
                 ],
             ),
