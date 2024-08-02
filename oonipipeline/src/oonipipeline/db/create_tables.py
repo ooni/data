@@ -2,7 +2,7 @@ from datetime import datetime
 
 from types import NoneType
 from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict, Union
-from dataclasses import fields
+from dataclasses import Field, fields
 import typing
 
 from oonidata.models.base import TableModelProtocol, ProcessingMeta
@@ -102,6 +102,28 @@ def typing_to_clickhouse(t: Any) -> str:
     return f"Tuple({tuple_args})"
 
 
+def iter_table_fields(field_tuple: Tuple[Field[Any], ...]):
+    for f in field_tuple:
+        if f.name in ("__table_index__", "__table_name__"):
+            continue
+        if f.name == "probe_meta":
+            for f in fields(ProbeMeta):
+                type_str = typing_to_clickhouse(f.type)
+                yield f
+            continue
+        if f.name == "measurement_meta":
+            for f in fields(MeasurementMeta):
+                type_str = typing_to_clickhouse(f.type)
+                yield f
+            continue
+        if f.type == ProcessingMeta:
+            for f in fields(ProcessingMeta):
+                type_str = typing_to_clickhouse(f.type)
+                yield f
+            continue
+        yield f
+
+
 def format_create_query(
     table_name: str,
     model: Type[TableModelProtocol],
@@ -109,24 +131,7 @@ def format_create_query(
     extra: bool = True,
 ) -> Tuple[str, str]:
     columns = []
-    for f in fields(model):
-        if f.name in ("__table_index__", "__table_name__"):
-            continue
-        if f.name == "probe_meta":
-            for f in fields(ProbeMeta):
-                type_str = typing_to_clickhouse(f.type)
-                columns.append(f"     {f.name} {type_str}")
-            continue
-        if f.name == "measurement_meta":
-            for f in fields(MeasurementMeta):
-                type_str = typing_to_clickhouse(f.type)
-                columns.append(f"     {f.name} {type_str}")
-            continue
-        if f.type == ProcessingMeta:
-            for f in fields(ProcessingMeta):
-                type_str = typing_to_clickhouse(f.type)
-                columns.append(f"     {f.name} {type_str}")
-            continue
+    for f in iter_table_fields(fields(model)):
         try:
             type_str = typing_to_clickhouse(f.type)
         except:
@@ -261,7 +266,8 @@ def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDi
     assert isinstance(res, list)
     column_map = get_column_map_from_create_query(res[0][0])
     column_diff = []
-    for f in fields(base_class):
+
+    for f in iter_table_fields(fields(base_class)):
         expected_type = typing_to_clickhouse(f.type)
         try:
             actual_type = column_map.pop(f.name)
@@ -283,7 +289,6 @@ def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDi
                     actual_type=None,
                 )
             )
-
     for column_name, actual_type in column_map.items():
         column_diff.append(
             ColumnDiff(

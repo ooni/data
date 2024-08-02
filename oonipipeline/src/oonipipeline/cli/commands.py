@@ -9,13 +9,11 @@ from typing import List, Optional
 
 from oonipipeline.temporal.client_operations import (
     TemporalConfig,
-    WorkerParams,
     run_backfill,
     run_create_schedules,
     run_status,
 )
-from oonipipeline.temporal.client_operations import start_workers
-from oonipipeline.temporal.client_operations import run_workflow
+from oonipipeline.temporal.workers import start_workers
 
 import click
 from click_loglevel import LogLevel
@@ -381,55 +379,6 @@ def schedule(
 
 
 @cli.command()
-@start_day_option
-@end_day_option
-@clickhouse_option
-@datadir_option
-@parallelism_option
-@telemetry_endpoint_option
-@temporal_address_option
-@temporal_namespace_option
-@temporal_tls_client_cert_path_option
-@temporal_tls_client_key_path_option
-@start_workers_option
-def mkgt(
-    start_day: str,
-    end_day: str,
-    clickhouse: str,
-    data_dir: Path,
-    parallelism: int,
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
-    start_workers: bool,
-):
-    params = GroundTruthsWorkflowParams(
-        start_day=start_day,
-        end_day=end_day,
-        clickhouse=clickhouse,
-        data_dir=str(data_dir),
-    )
-    click.echo(f"starting to make ground truths with arg={params}")
-    temporal_config = TemporalConfig(
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
-    )
-    run_workflow(
-        GroundTruthsWorkflow.run,
-        params,
-        parallelism=parallelism,
-        workflow_id_prefix="oonipipeline-mkgt",
-        temporal_config=temporal_config,
-        start_workers=start_workers,
-    )
-
-
-@cli.command()
 @telemetry_endpoint_option
 @temporal_address_option
 @temporal_namespace_option
@@ -475,17 +424,15 @@ def startworkers(
     NetinfoDB(datadir=Path(data_dir), download=True)
     click.echo("done downloading netinfodb")
 
-    start_workers(
-        params=WorkerParams(
-            temporal_address=temporal_address,
-            telemetry_endpoint=telemetry_endpoint,
-            thread_count=parallelism,
-            temporal_namespace=temporal_namespace,
-            temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-            temporal_tls_client_key_path=temporal_tls_client_key_path,
-        ),
-        process_count=parallelism,
+    temporal_config = TemporalConfig(
+        telemetry_endpoint=telemetry_endpoint,
+        temporal_address=temporal_address,
+        temporal_namespace=temporal_namespace,
+        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=temporal_tls_client_key_path,
     )
+
+    start_workers(temporal_config=temporal_config)
 
 
 @cli.command()

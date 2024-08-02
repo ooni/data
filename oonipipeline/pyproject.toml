@@ -58,7 +58,7 @@ dependencies = [
   "memray",
   "viztracer",
   "pytest-docker",
-  "ipdb",
+  "ipdb"
 ]
 python = "3.11"
 path = ".venv/"
