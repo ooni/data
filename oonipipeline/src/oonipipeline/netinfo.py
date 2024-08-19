@@ -1,16 +1,13 @@
-import json
 import shutil
 import gzip
 import logging
-import hashlib
 
-from typing import List, Optional
+from typing import Iterable, Optional
 from pathlib import Path
 from datetime import datetime, date
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict
 from dataclasses import dataclass
 
-import xml.etree.ElementTree as ET
 import orjson
 
 import requests
@@ -19,9 +16,14 @@ from requests.adapters import HTTPAdapter, Retry
 import maxminddb
 
 from oonidata.datautils import is_ip_bogon
+import boto3
+from botocore import UNSIGNED as BOTO_UNSIGNED
+from botocore.config import Config as BotoConfig
+
 
 log = logging.getLogger("oonidata.processing")
 
+BotoUnsignedConfig = BotoConfig(signature_version=BOTO_UNSIGNED)
 
 retry_strategy = Retry(total=4, backoff_factor=0.1)
 
@@ -30,54 +32,13 @@ req_session.mount("http://", HTTPAdapter(max_retries=retry_strategy))
 req_session.mount("https://", HTTPAdapter(max_retries=retry_strategy))
 
 
-def file_sha1_hexdigest(filepath: Path):
-    h = hashlib.sha1()
-    with filepath.open("rb") as in_file:
-        while True:
-            b = in_file.read(2**16)
-            if not b:
-                break
-            h.update(b)
-    return h.hexdigest()
+def iter_ip2countryas() -> Iterable[tuple]:
+    s3 = boto3.resource("s3", config=BotoUnsignedConfig)
 
-
-IAItem = namedtuple("IAItem", ["identifier", "filename", "sha1"])
-
-
-def list_all_ia_items(identifier: str) -> List[IAItem]:
-    ia_items = []
-    resp = req_session.get(
-        f"https://archive.org/download/{identifier}/{identifier}_files.xml"
-    )
-    if resp.status_code == 404:
-        return []
-
-    resp.raise_for_status()
-    tree = ET.fromstring(resp.text)
-    for f in tree:
-        fname = f.get("name")
-        if not fname:
+    for obj in s3.Bucket("ooni-data-eu-fra").objects.filter(Prefix="ip2country-as/"):
+        if obj.size == 0:
             continue
-
-        sha1 = f.find("sha1")
-        if sha1 is not None:
-            sha1 = sha1.text
-        ia_items.append(IAItem(identifier=identifier, filename=fname, sha1=sha1))
-
-    return ia_items
-
-
-def download_ia_item(ia_item: IAItem, output_path: Path):
-    url = f"https://archive.org/download/{ia_item.identifier}/{ia_item.filename}"
-    with req_session.get(url, stream=True) as resp:
-        resp.raise_for_status()
-        with output_path.with_suffix(".tmp").open("wb") as out_file:
-            for b in resp.iter_content(chunk_size=2**16):
-                out_file.write(b)
-
-    output_path.with_suffix(".tmp").rename(output_path)
-    file_sha1 = file_sha1_hexdigest(output_path)
-    assert file_sha1 == ia_item.sha1, f"{file_sha1} != {ia_item.sha1}"
+        yield (obj.key, obj.size, obj.e_tag)
 
 
 @dataclass
@@ -107,6 +68,7 @@ class NetinfoDB:
         self.last_updated_file = self.ip2country_as_dir / "LAST_UPDATED.txt"
         self.max_age_seconds = max_age_seconds
         if download and self.should_update():
+            print("DOWNLOADING")
             self.refresh_netinfodb()
 
         try:
@@ -134,19 +96,20 @@ class NetinfoDB:
         print("refreshing netinfodb")
         self.ip2country_as_dir.mkdir(parents=True, exist_ok=True)
 
-        for item in list_all_ia_items("ip2country-as"):
-            if (
-                not item.filename.endswith(".mmdb.gz")
-                and not item.filename == "all_as_org_map.json"
-            ):
+        for key, size, _ in iter_ip2countryas():
+            if not key.endswith(".mmdb.gz") and not key == "all_as_org_map.json":
                 continue
 
-            output_path = self.ip2country_as_dir / item.filename
-            if output_path.exists() and file_sha1_hexdigest(output_path) == item.sha1:
+            filename = key.split("/")[-1]
+            output_path = self.ip2country_as_dir / filename
+            if output_path.exists() and output_path.stat().st_size == size:
                 continue
 
-            log.info(f"downloading {item.filename}")
-            download_ia_item(ia_item=item, output_path=output_path)
+            log.info(f"downloading {filename}")
+
+            s3_client = boto3.client("s3", config=BotoUnsignedConfig)
+            with output_path.open("wb") as out_file:
+                s3_client.download_fileobj("ooni-data-eu-fra", key, out_file)
 
             if output_path.name.endswith(".gz"):
                 dst_path = output_path.with_suffix("")
