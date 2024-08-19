@@ -50,7 +50,7 @@ jobs:
           echo "$HOME/.temporalio/bin" >> $GITHUB_PATH
 
       - name: Run all tests
-        run: hatch run cov
+        run: hatch run cov -v
         working-directory: ./oonipipeline/
 
       - name: Upload coverage to codecov
