@@ -97,9 +97,6 @@ class NetinfoDB:
         self.ip2country_as_dir.mkdir(parents=True, exist_ok=True)
 
         for key, size, _ in iter_ip2countryas():
-            if not key.endswith(".mmdb.gz") and not key == "all_as_org_map.json":
-                continue
-
             filename = key.split("/")[-1]
             output_path = self.ip2country_as_dir / filename
             if output_path.exists() and output_path.stat().st_size == size:
