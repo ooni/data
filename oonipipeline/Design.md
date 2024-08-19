@@ -1,3 +1,81 @@
+# OONI Pipeline v5 Design
+
+## Design goals and requirements
+
+The goal of the OONI Pipeline v5 is to overcome some of the limitation of the
+current data pipeline (v4 aka fastpath) empowering data analysts both internal
+to OONI, but also third-parties to perform in-depth analysis of measurement
+faster.
+
+Below we will outline each of the main design goals and explain why they are
+needed.
+
+### Expose a queriable low level view on measurements
+
+Currently it's only possible to query measurement at a granuliaty which is as
+fine a measurement.
+
+This means that it's only possible to answer questions which the original
+designer of the experiment had already throught of.
+
+On the other hand the new pipeline breaks down measurements into distinct
+observations (think 1 DNS query and answer or 1 TLS handshake towards a
+particular IP:port tuple). By doing this kind of decomposition it's possible
+to perform fast ad-hoc analysis (for example give me all the observations for a
+TLS handshake towards this particular IP) while doing research, but also be the
+starting point for building a more iterative approach to automatic analysis.
+
+This also lends itself nicely to a more explorative way of looking at OONI
+data, which is not so dependent on the specifics of OONI nettests.
+
+Finally, in doing so we are not so tied to the rigidity of existing OONI
+nettests, since several different nettests may end up having the same
+observation based layout, making it possible to analyse different nettests in
+the same way.
+
+### Reprocessing of data should be fast
+
+Since we are unlikely to get the analysis and observation generation right on
+the first go and will likely want to iterate quickly on it, the system should
+be designed in such a way where it's possible to reprocess all historical data
+fast.
+
+Currently an important limiting factor to this is the data format in which data
+is stored in the s3 buckets, however the architecture of the system should be
+designed in such a way where the reprocessing capabilities can scale
+horizontally, allowing us to reprocess the data quickly if we need to.
+
+This serves both the research efforts, since we don't have to wait long to
+improve our analysis as we work on research, but also serves as disaster
+recovery measure, since we can rebuild the database from scratch directly from
+the raw data.
+
+### Analysis should be performed in the pipeline
+
+Currently analysis is done in the probe and is trusted by the backend. This is
+problematic both because we have limited ability to redo analysis of all data
+once we have better methods, but it also leads to inconsistencies in analysis
+depending on probe version.
+
+### Once a new fingerprint is found we should be able to easily apply it to old data
+
+This goes hand in hand with the reprocessing speed, however, while it's
+relatively easy to reapply a DNS fingerprint to old data (we have the IP stored
+as a column), doing a full text search of the body, since we can't possibly
+store them all in the DB tables, is more tricky.
+
+For this reason we outline a method for doing this below that is specific to
+HTTP response bodies.
+
+### Third parties should be able to use it easily
+
+It should be possible for third parties to run an instance of the data pipeline
+with minimal effort. This means that ideally it should not be reliant on proprietary
+cloud solutions or when that is the case, there should be an accessible alternative
+that a third party can use.
+
+There should be clear instructions on how to set it up and get it running.
+
 ## Architecture overview
 
 The analysis engine is made up of several components:
