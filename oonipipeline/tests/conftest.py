@@ -74,6 +74,7 @@ def event_loop():
 
 @pytest.fixture(scope="session")
 def temporal_dev_server(request):
+    print("starting temporal dev server")
     proc = subprocess.Popen(["temporal", "server", "start-dev"])
     time.sleep(2)
     assert not proc.poll()
