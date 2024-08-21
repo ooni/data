@@ -60,7 +60,7 @@ async def worker_main(temporal_config: TemporalConfig):
         task_queue=TASK_QUEUE_NAME,
         workflows=WORKFLOWS,
         activities=ACTIVTIES,
-        activity_executor=ThreadPoolExecutor(max_workers=max_workers),
+        activity_executor=ThreadPoolExecutor(max_workers=max_workers+2),
         max_concurrent_activities=max_workers,
         max_concurrent_workflow_tasks=max_workers,
     ):

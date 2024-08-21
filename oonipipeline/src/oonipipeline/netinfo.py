@@ -68,7 +68,6 @@ class NetinfoDB:
         self.last_updated_file = self.ip2country_as_dir / "LAST_UPDATED.txt"
         self.max_age_seconds = max_age_seconds
         if download and self.should_update():
-            print("DOWNLOADING")
             self.refresh_netinfodb()
 
         try:
