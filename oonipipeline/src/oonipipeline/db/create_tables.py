@@ -253,11 +253,11 @@ class ColumnDiff(NamedTuple):
     def get_sql_migration(self):
         if self.expected_type == None:
             s = f"-- {self.actual_type} PRESENT\n"
-            s += f"ALTER TABLE {self.table_name} DROP COLUMN {self.column_name};\n"
+            s += f"ALTER TABLE {self.table_name} DROP IF EXISTS COLUMN {self.column_name};\n"
             return s
         if self.actual_type == None:
             s = f"-- MISSING {self.expected_type}\n"
-            s += f"ALTER TABLE {self.table_name} ADD COLUMN {self.column_name} {self.expected_type};\n"
+            s += f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS {self.column_name} {self.expected_type};\n"
             return s
         if self.actual_type != self.expected_type:
             s = f"-- {self.actual_type} != {self.expected_type}\n"
