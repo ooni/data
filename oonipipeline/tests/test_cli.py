@@ -253,13 +253,16 @@ def test_full_workflow(
             # tmp_path.absolute(),
         ],
     )
-    # We wait on the table buffers to be flushed
     assert result.exit_code == 0
 
+    # We wait on the table buffers to be flushed
     wait_for_backfill(event_loop=event_loop)
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
     db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
     wait_for_mutations(db, "measurement_experiment_result")
+
+    # TODO(art): find a better way than sleeping to get the tables to be flushed
+    time.sleep(10)
     res = db.execute(
         "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
     )
