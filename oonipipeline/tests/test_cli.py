@@ -111,12 +111,12 @@ def test_full_workflow(
             # tmp_path.absolute(),
         ],
     )
-    # We wait on the table buffers to be flushed
     assert result.exit_code == 0
 
     wait_for_backfill(event_loop=event_loop)
+    # We wait on the table buffers to be flushed
+    db.execute("OPTIMIZE TABLE buffer_obs_web")
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
-    time.sleep(3)
     res = db.execute(
         "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
     )
@@ -150,7 +150,7 @@ def test_full_workflow(
 
     wait_for_backfill(event_loop=event_loop)
     # We wait on the table buffers to be flushed
-    time.sleep(3)
+    db.execute("OPTIMIZE TABLE buffer_obs_web")
 
     # Wait for the mutation to finish running
     wait_for_mutations(db, "obs_web")
@@ -258,7 +258,7 @@ def test_full_workflow(
 
     wait_for_backfill(event_loop=event_loop)
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
-    time.sleep(3)
+    db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
     res = db.execute(
         "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
     )
