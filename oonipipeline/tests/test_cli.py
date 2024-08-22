@@ -258,7 +258,7 @@ def test_full_workflow(
 
     wait_for_backfill(event_loop=event_loop)
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
-    db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result FINAL")
+    db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
     wait_for_mutations(db, "measurement_experiment_result")
     res = db.execute(
         "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
