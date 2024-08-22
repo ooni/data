@@ -178,6 +178,7 @@ class AnalysisWorkflowParams:
     parallelism: int = 10
     fast_fail: bool = False
     day: Optional[str] = None
+    # TODO(art): drop this
     force_rebuild_ground_truths: bool = False
     log_level: int = logging.INFO
 
@@ -205,22 +206,17 @@ class AnalysisWorkflow:
 
         workflow.logger.info("building ground truth databases")
         t = PerfTimer()
-        if (
-            params.force_rebuild_ground_truths
-            or not get_ground_truth_db_path(
-                day=params.day, data_dir=params.data_dir
-            ).exists()
-        ):
-            await workflow.execute_activity(
-                make_ground_truths_in_day,
-                MakeGroundTruthsParams(
-                    clickhouse=params.clickhouse,
-                    data_dir=params.data_dir,
-                    day=params.day,
-                ),
-                start_to_close_timeout=timedelta(minutes=30),
-            )
-            workflow.logger.info(f"built ground truth db in {t.pretty}")
+
+        await workflow.execute_activity(
+            make_ground_truths_in_day,
+            MakeGroundTruthsParams(
+                clickhouse=params.clickhouse,
+                data_dir=params.data_dir,
+                day=params.day,
+            ),
+            start_to_close_timeout=timedelta(minutes=30),
+        )
+        workflow.logger.info(f"built ground truth db in {t.pretty}")
 
         start_day = datetime.strptime(params.day, "%Y-%m-%d").date()
         cnt_by_cc = await workflow.execute_activity(
