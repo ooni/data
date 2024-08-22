@@ -254,28 +254,26 @@ class ColumnDiff(NamedTuple):
         if self.expected_type == None:
             s = f"-- {self.actual_type} PRESENT\n"
             s += f"ALTER TABLE {self.table_name} DROP COLUMN {self.column_name};\n"
-            s += f"ALTER TABLE buffer_{self.table_name} DROP COLUMN {self.column_name};"
             return s
         if self.actual_type == None:
             s = f"-- MISSING {self.expected_type}\n"
             s += f"ALTER TABLE {self.table_name} ADD COLUMN {self.column_name} {self.expected_type};\n"
-            s += f"ALTER TABLE buffer_{self.table_name} ADD COLUMN {self.column_name} {self.expected_type};"
             return s
         if self.actual_type != self.expected_type:
             s = f"-- {self.actual_type} != {self.expected_type}\n"
             s += f"ALTER TABLE {self.table_name} MODIFY COLUMN {self.column_name} {self.expected_type};\n"
-            s += f"ALTER TABLE buffer_{self.table_name} MODIFY COLUMN {self.column_name} {self.expected_type};"
             return s
 
 
-def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDiff]:
+def get_table_column_diff(
+    db: ClickhouseConnection, base_class, table_name: str
+) -> List[ColumnDiff]:
     """
     returns the difference between the current database tables and what we would
     expect to see.
     If the list is empty, it means there is no difference, otherwise you will
     get a list of ColumnDiff which includes the differences in the columns.
     """
-    table_name = base_class.__table_name__
     try:
         res = db.execute(f"SHOW CREATE TABLE {table_name}")
     except:
@@ -322,14 +320,23 @@ def list_all_table_diffs(db: ClickhouseConnection):
     for base_class in table_models:
         table_name = base_class.__table_name__
         try:
-            diff = get_table_column_diff(db=db, base_class=base_class)
+            diff_orig = get_table_column_diff(
+                db=db, base_class=base_class, table_name=table_name
+            )
+            diff_buffer = get_table_column_diff(
+                db=db, base_class=base_class, table_name=f"buffer_{table_name}"
+            )
         except TableDoesNotExistError:
             print(f"# {table_name} does not exist")
             print("rerun with --create-tables")
             continue
-        if len(diff) > 0:
+        if len(diff_orig) > 0:
             print(f"# {table_name} diff")
-            for cd in diff:
+            for cd in diff_orig:
+                print(cd.get_sql_migration())
+        if len(diff_buffer) > 0:
+            print(f"# buffer_{table_name} diff")
+            for cd in diff_orig:
                 print(cd.get_sql_migration())
 
 
