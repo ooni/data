@@ -51,7 +51,7 @@ jobs:
 
       - name: Run all tests
         #run: hatch run cov -v
-        run: hatch run test -sv
+        run: hatch run test -sxv
         working-directory: ./oonipipeline/
 
       - name: Upload coverage to codecov
