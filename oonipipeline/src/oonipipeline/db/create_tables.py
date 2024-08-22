@@ -336,7 +336,7 @@ def list_all_table_diffs(db: ClickhouseConnection):
                 print(cd.get_sql_migration())
         if len(diff_buffer) > 0:
             print(f"# buffer_{table_name} diff")
-            for cd in diff_orig:
+            for cd in diff_buffer:
                 print(cd.get_sql_migration())
 
 
