@@ -1,7 +1,18 @@
 from datetime import datetime
 
 from types import NoneType
-from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict, Union
+from typing import (
+    Generator,
+    NamedTuple,
+    Optional,
+    Tuple,
+    List,
+    Any,
+    Type,
+    Mapping,
+    Dict,
+    Union,
+)
 from dataclasses import Field, fields
 import typing
 
@@ -102,26 +113,34 @@ def typing_to_clickhouse(t: Any) -> str:
     return f"Tuple({tuple_args})"
 
 
-def iter_table_fields(field_tuple: Tuple[Field[Any], ...]):
+def iter_table_fields(
+    field_tuple: Tuple[Field[Any], ...]
+) -> Generator[Tuple[Field, str], None, None]:
     for f in field_tuple:
         if f.name in ("__table_index__", "__table_name__"):
             continue
         if f.name == "probe_meta":
             for f in fields(ProbeMeta):
                 type_str = typing_to_clickhouse(f.type)
-                yield f
+                yield f, type_str
             continue
         if f.name == "measurement_meta":
             for f in fields(MeasurementMeta):
                 type_str = typing_to_clickhouse(f.type)
-                yield f
+                yield f, type_str
             continue
         if f.type == ProcessingMeta:
             for f in fields(ProcessingMeta):
                 type_str = typing_to_clickhouse(f.type)
-                yield f
+                yield f, type_str
             continue
-        yield f
+
+        try:
+            type_str = typing_to_clickhouse(f.type)
+        except:
+            print(f"failed to generate create table for {f} of {field_tuple}")
+            raise
+        yield f, type_str
 
 
 def format_create_query(
@@ -131,12 +150,7 @@ def format_create_query(
     extra: bool = True,
 ) -> Tuple[str, str]:
     columns = []
-    for f in iter_table_fields(fields(model)):
-        try:
-            type_str = typing_to_clickhouse(f.type)
-        except:
-            print(f"failed to generate create table for {f} of {model}")
-            raise
+    for f, type_str in iter_table_fields(fields(model)):
         columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
@@ -270,7 +284,7 @@ def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDi
     column_map = get_column_map_from_create_query(res[0][0])
     column_diff = []
 
-    for f in iter_table_fields(fields(base_class)):
+    for f, _ in iter_table_fields(fields(base_class)):
         expected_type = typing_to_clickhouse(f.type)
         try:
             actual_type = column_map.pop(f.name)
@@ -305,7 +319,7 @@ def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDi
 
 
 def list_all_table_diffs(db: ClickhouseConnection):
-    for base_class in [WebObservation, WebControlObservation, HTTPMiddleboxObservation]:
+    for base_class in table_models:
         table_name = base_class.__table_name__
         try:
             diff = get_table_column_diff(db=db, base_class=base_class)
