@@ -178,7 +178,6 @@ class AnalysisWorkflowParams:
     parallelism: int = 10
     fast_fail: bool = False
     day: Optional[str] = None
-    # TODO(art): drop this
     force_rebuild_ground_truths: bool = False
     log_level: int = logging.INFO
 
@@ -213,6 +212,7 @@ class AnalysisWorkflow:
                 clickhouse=params.clickhouse,
                 data_dir=params.data_dir,
                 day=params.day,
+                force_rebuild=params.force_rebuild_ground_truths,
             ),
             start_to_close_timeout=timedelta(minutes=30),
         )
