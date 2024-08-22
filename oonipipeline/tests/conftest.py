@@ -58,6 +58,9 @@ def temporal_workers(request):
     p = Process(target=start_workers, args=(temporal_config,))
     p.start()
     print("started workers")
+    time.sleep(2)
+    if p.is_alive() == False and p.exitcode != 0:
+        raise Exception("process died")
     request.addfinalizer(p.kill)
     yield p
 
