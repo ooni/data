@@ -253,7 +253,7 @@ class ColumnDiff(NamedTuple):
     def get_sql_migration(self):
         if self.expected_type == None:
             s = f"-- {self.actual_type} PRESENT\n"
-            s += f"ALTER TABLE {self.table_name} DROP IF EXISTS COLUMN {self.column_name};\n"
+            s += f"ALTER TABLE {self.table_name} DROP COLUMN IF EXISTS {self.column_name};\n"
             return s
         if self.actual_type == None:
             s = f"-- MISSING {self.expected_type}\n"
