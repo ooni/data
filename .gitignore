@@ -9,3 +9,5 @@ coverage.xml
 /output
 /attic
 /prof
+
+.DS_Store
