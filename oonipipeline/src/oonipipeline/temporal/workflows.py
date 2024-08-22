@@ -267,21 +267,23 @@ class AnalysisWorkflow:
         return {"obs_count": total_obs_count, "day": params.day}
 
 
-def gen_observation_id(params: ObservationsWorkflowParams, name: str) -> str:
+def gen_schedule_id(probe_cc: List[str], test_name: List[str], name: str):
     probe_cc_key = "ALLCCS"
-    if len(params.probe_cc) > 0:
-        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
+    if len(probe_cc) > 0:
+        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(probe_cc)))
     test_name_key = "ALLTNS"
-    if len(params.test_name) > 0:
-        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
+    if len(test_name) > 0:
+        test_name_key = ".".join(map(lambda x: x.lower(), sorted(test_name)))
 
-    return f"oonipipeline-observations-{name}-{probe_cc_key}-{test_name_key}"
+    return f"oonipipeline-{name}-schedule-{probe_cc_key}-{test_name_key}"
 
 
 async def schedule_observations(
     client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
 ) -> List[str]:
-    base_schedule_id = gen_observation_id(params, "schedule")
+    base_schedule_id = gen_schedule_id(
+        params.probe_cc, params.test_name, "observations"
+    )
 
     existing_schedules = []
     schedule_list = await client.list_schedules()
@@ -310,7 +312,7 @@ async def schedule_observations(
             action=ScheduleActionStartWorkflow(
                 ObservationsWorkflow.run,
                 params,
-                id=gen_observation_id(params, "workflow"),
+                id=schedule_id.replace("-schedule-", "-workflow-"),
                 task_queue=TASK_QUEUE_NAME,
                 execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
                 task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
@@ -332,21 +334,10 @@ async def schedule_observations(
     return [schedule_id]
 
 
-def gen_analysis_id(params: AnalysisWorkflowParams, name: str) -> str:
-    probe_cc_key = "ALLCCS"
-    if len(params.probe_cc) > 0:
-        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
-    test_name_key = "ALLTNS"
-    if len(params.test_name) > 0:
-        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
-
-    return f"oonipipeline-analysis-{name}-{probe_cc_key}-{test_name_key}"
-
-
 async def schedule_analysis(
     client: TemporalClient, params: AnalysisWorkflowParams, delete: bool
 ) -> List[str]:
-    base_schedule_id = gen_analysis_id(params, "schedule")
+    base_schedule_id = gen_schedule_id(params.probe_cc, params.test_name, "analysis")
 
     existing_schedules = []
     schedule_list = await client.list_schedules()
@@ -380,7 +371,7 @@ async def schedule_analysis(
             action=ScheduleActionStartWorkflow(
                 AnalysisWorkflow.run,
                 params,
-                id=gen_analysis_id(params, "workflow"),
+                id=schedule_id.replace("-schedule-", "-workflow-"),
                 task_queue=TASK_QUEUE_NAME,
                 execution_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
                 task_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
@@ -401,7 +392,7 @@ async def schedule_analysis(
             ),
             policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.TERMINATE_OTHER),
             state=ScheduleState(
-                note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
+                note="Run the analysis workflow every day with an offset of 6 hours to ensure the observation workflow has completed"
             ),
         ),
     )

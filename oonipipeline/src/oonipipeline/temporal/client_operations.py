@@ -110,18 +110,24 @@ async def execute_backfill(
 
     client = await temporal_connect(temporal_config=temporal_config)
 
+    found_schedule_id = None
     schedule_list = await client.list_schedules()
     async for sched in schedule_list:
         if sched.id.startswith(schedule_id):
-            handle = client.get_schedule_handle(sched.id)
-            print(f"backfilling {sched.id}")
-            await handle.backfill(
-                ScheduleBackfill(
-                    start_at=start_at + timedelta(hours=1),
-                    end_at=end_at + timedelta(hours=1),
-                    overlap=ScheduleOverlapPolicy.ALLOW_ALL,
-                ),
-            )
+            found_schedule_id = sched.id
+            break
+    if not found_schedule_id:
+        log.error(f"schedule ID not found for prefix {schedule_id}")
+        return
+
+    handle = client.get_schedule_handle(found_schedule_id)
+    await handle.backfill(
+        ScheduleBackfill(
+            start_at=start_at + timedelta(hours=1),
+            end_at=end_at + timedelta(hours=1),
+            overlap=ScheduleOverlapPolicy.ALLOW_ALL,
+        ),
+    )
 
 
 async def create_schedules(
