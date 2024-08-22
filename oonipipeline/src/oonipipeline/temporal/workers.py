@@ -1,14 +1,8 @@
 import os
 import asyncio
 import logging
-from typing import Optional
-from datetime import datetime, timezone
 
-
-from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
-from temporalio.client import Client as TemporalClient
-from temporalio.types import MethodAsyncSingleParam
-from temporalio.worker import SharedStateManager, Worker
+from temporalio.worker import Worker
 
 from oonipipeline.temporal.activities.analysis import make_analysis_in_a_day
 from oonipipeline.temporal.activities.common import (
@@ -55,12 +49,13 @@ ACTIVTIES = [
 async def worker_main(temporal_config: TemporalConfig):
     client = await temporal_connect(temporal_config=temporal_config)
     max_workers = max(os.cpu_count() or 4, 4)
+    log.info(f"starting workers with max_workers={max_workers}")
     async with Worker(
         client,
         task_queue=TASK_QUEUE_NAME,
         workflows=WORKFLOWS,
         activities=ACTIVTIES,
-        activity_executor=ThreadPoolExecutor(max_workers=max_workers+2),
+        activity_executor=ThreadPoolExecutor(max_workers=max_workers + 2),
         max_concurrent_activities=max_workers,
         max_concurrent_workflow_tasks=max_workers,
     ):
