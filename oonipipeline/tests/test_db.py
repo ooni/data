@@ -65,7 +65,7 @@ def test_create_tables():
     PRIMARY KEY (my_col_int)"""
         ]
     ]
-    diff = get_table_column_diff(db=db, base_class=SampleTable)
+    diff = get_table_column_diff(db=db, base_class=SampleTable, table_name="my_table")
     assert len(diff) == 1
     assert diff[0].table_name == "my_table"
     assert diff[0].column_name == "my_new_col_str"
