@@ -290,8 +290,8 @@ async def schedule_observations(
             existing_schedules.append(sched.id)
 
     if delete is True:
-        for sched in existing_schedules:
-            schedule_handle = client.get_schedule_handle(sched.id)
+        for sched_id in existing_schedules:
+            schedule_handle = client.get_schedule_handle(sched_id)
             await schedule_handle.delete()
         return existing_schedules
 
@@ -355,8 +355,8 @@ async def schedule_analysis(
             existing_schedules.append(sched.id)
 
     if delete is True:
-        for sched in existing_schedules:
-            schedule_handle = client.get_schedule_handle(sched.id)
+        for sched_id in existing_schedules:
+            schedule_handle = client.get_schedule_handle(sched_id)
             await schedule_handle.delete()
         return existing_schedules
 
