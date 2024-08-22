@@ -68,7 +68,7 @@ def test_full_workflow(
     temporal_workers,
     event_loop,
 ):
-    print("running schedule observations")
+    print(f"running schedule observations in {datadir}")
     result = cli_runner.invoke(
         cli,
         [

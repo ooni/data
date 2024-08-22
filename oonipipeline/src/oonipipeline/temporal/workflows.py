@@ -280,25 +280,29 @@ def gen_observation_id(params: ObservationsWorkflowParams, name: str) -> str:
 
 async def schedule_observations(
     client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
-) -> str:
-    schedule_id = gen_observation_id(params, "schedule")
-    try:
-        schedule_handle = client.get_schedule_handle(schedule_id)
-        if delete is True:
-            await schedule_handle.delete()
-            return schedule_id
+) -> List[str]:
+    base_schedule_id = gen_observation_id(params, "schedule")
 
-        schedule_desc = await schedule_handle.describe()
-        if schedule_desc.id:
-            log.info(
-                f"schedule with ID {schedule_id} already scheduled, returning early"
-            )
-            return schedule_id
-    except:
-        if delete is True:
-            log.info("schedule already missing. returning")
-            return schedule_id
-        log.info("schedule not found, setting up schedule for it")
+    existing_schedules = []
+    schedule_list = await client.list_schedules()
+    async for sched in schedule_list:
+        if sched.id.startswith(base_schedule_id):
+            existing_schedules.append(sched.id)
+
+    if delete is True:
+        for sched in existing_schedules:
+            schedule_handle = client.get_schedule_handle(sched.id)
+            await schedule_handle.delete()
+        return existing_schedules
+
+    if len(existing_schedules) == 1:
+        return existing_schedules
+    elif len(existing_schedules) > 0:
+        print("WARNING: multiple schedules detected")
+        return existing_schedules
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    schedule_id = f"{base_schedule_id}-{ts}"
 
     await client.create_schedule(
         id=schedule_id,
@@ -325,7 +329,7 @@ async def schedule_observations(
             ),
         ),
     )
-    return schedule_id
+    return [schedule_id]
 
 
 def gen_analysis_id(params: AnalysisWorkflowParams, name: str) -> str:
@@ -341,25 +345,34 @@ def gen_analysis_id(params: AnalysisWorkflowParams, name: str) -> str:
 
 async def schedule_analysis(
     client: TemporalClient, params: AnalysisWorkflowParams, delete: bool
-) -> str:
-    schedule_id = gen_analysis_id(params, "schedule")
-    try:
-        schedule_handle = client.get_schedule_handle(schedule_id)
-        if delete is True:
-            await schedule_handle.delete()
-            return schedule_id
+) -> List[str]:
+    base_schedule_id = gen_analysis_id(params, "schedule")
 
-        schedule_desc = await schedule_handle.describe()
-        if schedule_desc.id:
-            log.info(
-                f"schedule with ID {schedule_id} already scheduled, returning early"
-            )
-            return schedule_id
-    except:
-        if delete is True:
-            log.info("schedule already missing. returning")
-            return schedule_id
-        log.info("schedule not found, setting up schedule for it")
+    existing_schedules = []
+    schedule_list = await client.list_schedules()
+    async for sched in schedule_list:
+        if sched.id.startswith(base_schedule_id):
+            existing_schedules.append(sched.id)
+
+    if delete is True:
+        for sched in existing_schedules:
+            schedule_handle = client.get_schedule_handle(sched.id)
+            await schedule_handle.delete()
+        return existing_schedules
+
+    if len(existing_schedules) == 1:
+        return existing_schedules
+    elif len(existing_schedules) > 0:
+        print("WARNING: multiple schedules detected")
+        return existing_schedules
+
+    # We need to append a timestamp to the schedule so that we are able to rerun
+    # the backfill operations by deleting the existing schedule and
+    # re-scheduling it. Not doing so will mean that temporal will believe the
+    # workflow has already been execututed and will refuse to re-run it.
+    # TODO(art): check if there is a more idiomatic way of implementing this
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    schedule_id = f"{base_schedule_id}-{ts}"
 
     await client.create_schedule(
         id=schedule_id,
@@ -392,4 +405,4 @@ async def schedule_analysis(
             ),
         ),
     )
-    return schedule_id
+    return [schedule_id]

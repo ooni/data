@@ -5,7 +5,6 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Tuple
 
 from oonipipeline.temporal.workflows import (
-    TASK_QUEUE_NAME,
     AnalysisWorkflowParams,
     ObservationsWorkflowParams,
     schedule_analysis,
@@ -110,15 +109,19 @@ async def execute_backfill(
     log.info(f"running backfill for schedule_id={schedule_id}")
 
     client = await temporal_connect(temporal_config=temporal_config)
-    handle = client.get_schedule_handle(schedule_id)
 
-    await handle.backfill(
-        ScheduleBackfill(
-            start_at=start_at + timedelta(hours=1),
-            end_at=end_at + timedelta(hours=1),
-            overlap=ScheduleOverlapPolicy.ALLOW_ALL,
-        ),
-    )
+    schedule_list = await client.list_schedules()
+    async for sched in schedule_list:
+        if sched.id.startswith(schedule_id):
+            handle = client.get_schedule_handle(sched.id)
+
+            await handle.backfill(
+                ScheduleBackfill(
+                    start_at=start_at + timedelta(hours=1),
+                    end_at=end_at + timedelta(hours=1),
+                    overlap=ScheduleOverlapPolicy.ALLOW_ALL,
+                ),
+            )
 
 
 async def create_schedules(
