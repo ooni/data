@@ -507,7 +507,7 @@ def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
 @cli.command()
 @clickhouse_buffer_min_time_option
 @clickhouse_buffer_max_time_option
-@click.option("--clickhouse", type=str)
+@clickhouse_option
 @click.option(
     "--create-tables",
     is_flag=True,
