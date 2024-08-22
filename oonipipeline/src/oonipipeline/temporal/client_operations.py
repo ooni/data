@@ -114,7 +114,7 @@ async def execute_backfill(
     async for sched in schedule_list:
         if sched.id.startswith(schedule_id):
             handle = client.get_schedule_handle(sched.id)
-
+            print(f"backfilling {sched.id}")
             await handle.backfill(
                 ScheduleBackfill(
                     start_at=start_at + timedelta(hours=1),
