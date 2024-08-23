@@ -529,6 +529,7 @@ def make_web_observation(
             dns_ip = dns_o.answer
         except ValueError:
             pass
+
     web_obs.ip = (
         dns_ip or (tcp_o and tcp_o.ip) or (tls_o and tls_o.ip) or (http_o and http_o.ip)
     )
@@ -544,6 +545,13 @@ def make_web_observation(
             web_obs.ip_asn = ip_info.as_info.asn
             web_obs.ip_as_org_name = ip_info.as_info.as_org_name
             web_obs.ip_as_cc = ip_info.as_info.as_cc
+
+    if tcp_o and tcp_o.transaction_id:
+        web_obs.transaction_id = tcp_o.transaction_id
+    elif tls_o and tls_o.transaction_id:
+        web_obs.transaction_id = tls_o.transaction_id
+    elif http_o and http_o.transaction_id:
+        web_obs.transaction_id = http_o.transaction_id
 
     maybe_set_web_fields(
         src_obs=dns_o, prefix="dns_", web_obs=web_obs, field_names=WEB_OBS_FIELDS
