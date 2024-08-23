@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-import fasteners
+from threading import Lock
 
 from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.db.create_tables import make_create_queries
@@ -57,7 +57,7 @@ def update_assets(params: UpdateAssetsParams):
         last_updated_delta > timedelta(hours=params.refresh_hours)
         or params.force_update
     ):
-        lock = fasteners.InterProcessLock(datadir / "last_updated.lock")
+        lock = Lock()
         with lock:
             log.info("triggering update of netinfodb")
             NetinfoDB(datadir=datadir, download=True)

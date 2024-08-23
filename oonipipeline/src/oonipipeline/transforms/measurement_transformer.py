@@ -301,10 +301,9 @@ def network_events_until_connect(
 
 
 def find_tls_handshake_events_without_transaction_id(
-    msmt_uid: str,
     tls_handshake: TLSHandshake,
     src_idx: int,
-    network_events: Optional[List[NetworkEvent]],
+    network_events: List[NetworkEvent],
 ) -> Optional[List[NetworkEvent]]:
     all_event_windows = []
     matched_event_windows = []
@@ -363,7 +362,6 @@ def measurement_to_tls_observation(
     cert_store: Optional[TLSCertStore] = None,
     validate_domain: Callable[[str, str, List[str]], bool] = lambda x, y, z: True,
 ) -> TLSObservation:
-    msmt_uid = msmt_meta.measurement_uid
     tlso = TLSObservation(
         timestamp=make_timestamp(msmt_meta.measurement_start_time, tls_h.t),
         server_name=tls_h.server_name if tls_h.server_name else "",
@@ -387,7 +385,7 @@ def measurement_to_tls_observation(
         # somewhat sketchy
         if network_events[0] and network_events[0].transaction_id is None:
             tls_network_events = find_tls_handshake_events_without_transaction_id(
-                msmt_uid, tls_h, idx, network_events
+                tls_h, idx, network_events
             )
         else:
             tls_network_events = find_tls_handshake_network_events_with_transaction_id(
@@ -423,14 +421,14 @@ def measurement_to_tls_observation(
                 map(lambda c: b64decode(c.data), tls_h.peer_certificates)
             )
         except Exception:
-            log.error("failed to decode peer_certificates")
+            log.warning("failed to decode peer_certificates")
 
         try:
             tlso.certificate_chain_fingerprints = list(
                 map(lambda d: hashlib.sha256(d).hexdigest(), tlso.peer_certificates)
             )
         except Exception:
-            log.error("failed to decode peer_certificates")
+            log.warning("failed to decode peer_certificates")
 
         tlso.certificate_chain_length = len(tls_h.peer_certificates)
         try:
@@ -449,8 +447,8 @@ def measurement_to_tls_observation(
             tlso.end_entity_certificate_not_valid_before = cert_meta.not_valid_before
             tlso.end_entity_certificate_san_list = cert_meta.san_list
         except Exception as exc:
-            log.error(exc)
-            log.error(
+            log.warning(exc)
+            log.warning(
                 f"Failed to extract certificate meta for {msmt_meta.measurement_uid}"
             )
 
@@ -531,6 +529,7 @@ def make_web_observation(
             dns_ip = dns_o.answer
         except ValueError:
             pass
+
     web_obs.ip = (
         dns_ip or (tcp_o and tcp_o.ip) or (tls_o and tls_o.ip) or (http_o and http_o.ip)
     )
@@ -546,6 +545,13 @@ def make_web_observation(
             web_obs.ip_asn = ip_info.as_info.asn
             web_obs.ip_as_org_name = ip_info.as_info.as_org_name
             web_obs.ip_as_cc = ip_info.as_info.as_cc
+
+    if tcp_o and tcp_o.transaction_id:
+        web_obs.transaction_id = tcp_o.transaction_id
+    elif tls_o and tls_o.transaction_id:
+        web_obs.transaction_id = tls_o.transaction_id
+    elif http_o and http_o.transaction_id:
+        web_obs.transaction_id = http_o.transaction_id
 
     maybe_set_web_fields(
         src_obs=dns_o, prefix="dns_", web_obs=web_obs, field_names=WEB_OBS_FIELDS

@@ -1,8 +1,19 @@
 from datetime import datetime
 
 from types import NoneType
-from typing import NamedTuple, Optional, Tuple, List, Any, Type, Mapping, Dict, Union
-from dataclasses import fields
+from typing import (
+    Generator,
+    NamedTuple,
+    Optional,
+    Tuple,
+    List,
+    Any,
+    Type,
+    Mapping,
+    Dict,
+    Union,
+)
+from dataclasses import Field, fields
 import typing
 
 from oonidata.models.base import TableModelProtocol, ProcessingMeta
@@ -102,6 +113,36 @@ def typing_to_clickhouse(t: Any) -> str:
     return f"Tuple({tuple_args})"
 
 
+def iter_table_fields(
+    field_tuple: Tuple[Field[Any], ...]
+) -> Generator[Tuple[Field, str], None, None]:
+    for f in field_tuple:
+        if f.name in ("__table_index__", "__table_name__"):
+            continue
+        if f.name == "probe_meta":
+            for f in fields(ProbeMeta):
+                type_str = typing_to_clickhouse(f.type)
+                yield f, type_str
+            continue
+        if f.name == "measurement_meta":
+            for f in fields(MeasurementMeta):
+                type_str = typing_to_clickhouse(f.type)
+                yield f, type_str
+            continue
+        if f.type == ProcessingMeta:
+            for f in fields(ProcessingMeta):
+                type_str = typing_to_clickhouse(f.type)
+                yield f, type_str
+            continue
+
+        try:
+            type_str = typing_to_clickhouse(f.type)
+        except:
+            print(f"failed to generate create table for {f} of {field_tuple}")
+            raise
+        yield f, type_str
+
+
 def format_create_query(
     table_name: str,
     model: Type[TableModelProtocol],
@@ -109,29 +150,7 @@ def format_create_query(
     extra: bool = True,
 ) -> Tuple[str, str]:
     columns = []
-    for f in fields(model):
-        if f.name in ("__table_index__", "__table_name__"):
-            continue
-        if f.name == "probe_meta":
-            for f in fields(ProbeMeta):
-                type_str = typing_to_clickhouse(f.type)
-                columns.append(f"     {f.name} {type_str}")
-            continue
-        if f.name == "measurement_meta":
-            for f in fields(MeasurementMeta):
-                type_str = typing_to_clickhouse(f.type)
-                columns.append(f"     {f.name} {type_str}")
-            continue
-        if f.type == ProcessingMeta:
-            for f in fields(ProcessingMeta):
-                type_str = typing_to_clickhouse(f.type)
-                columns.append(f"     {f.name} {type_str}")
-            continue
-        try:
-            type_str = typing_to_clickhouse(f.type)
-        except:
-            print(f"failed to generate create table for {f} of {model}")
-            raise
+    for f, type_str in iter_table_fields(fields(model)):
         columns.append(f"     {f.name} {type_str}")
 
     columns_str = ",\n".join(columns)
@@ -234,26 +253,27 @@ class ColumnDiff(NamedTuple):
     def get_sql_migration(self):
         if self.expected_type == None:
             s = f"-- {self.actual_type} PRESENT\n"
-            s += f"ALTER TABLE {self.table_name} DROP COLUMN {self.column_name};"
+            s += f"ALTER TABLE {self.table_name} DROP COLUMN IF EXISTS {self.column_name};\n"
             return s
         if self.actual_type == None:
             s = f"-- MISSING {self.expected_type}\n"
-            s += f"ALTER TABLE {self.table_name} ADD COLUMN {self.column_name} {self.expected_type};"
+            s += f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS {self.column_name} {self.expected_type};\n"
             return s
         if self.actual_type != self.expected_type:
             s = f"-- {self.actual_type} != {self.expected_type}\n"
-            s += f"ALTER TABLE {self.table_name} MODIFY COLUMN {self.column_name} {self.expected_type};"
+            s += f"ALTER TABLE {self.table_name} MODIFY COLUMN {self.column_name} {self.expected_type};\n"
             return s
 
 
-def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDiff]:
+def get_table_column_diff(
+    db: ClickhouseConnection, base_class, table_name: str
+) -> List[ColumnDiff]:
     """
     returns the difference between the current database tables and what we would
     expect to see.
     If the list is empty, it means there is no difference, otherwise you will
     get a list of ColumnDiff which includes the differences in the columns.
     """
-    table_name = base_class.__table_name__
     try:
         res = db.execute(f"SHOW CREATE TABLE {table_name}")
     except:
@@ -261,7 +281,8 @@ def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDi
     assert isinstance(res, list)
     column_map = get_column_map_from_create_query(res[0][0])
     column_diff = []
-    for f in fields(base_class):
+
+    for f, _ in iter_table_fields(fields(base_class)):
         expected_type = typing_to_clickhouse(f.type)
         try:
             actual_type = column_map.pop(f.name)
@@ -283,7 +304,6 @@ def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDi
                     actual_type=None,
                 )
             )
-
     for column_name, actual_type in column_map.items():
         column_diff.append(
             ColumnDiff(
@@ -297,17 +317,26 @@ def get_table_column_diff(db: ClickhouseConnection, base_class) -> List[ColumnDi
 
 
 def list_all_table_diffs(db: ClickhouseConnection):
-    for base_class in [WebObservation, WebControlObservation, HTTPMiddleboxObservation]:
+    for base_class in table_models:
         table_name = base_class.__table_name__
         try:
-            diff = get_table_column_diff(db=db, base_class=base_class)
+            diff_orig = get_table_column_diff(
+                db=db, base_class=base_class, table_name=table_name
+            )
+            diff_buffer = get_table_column_diff(
+                db=db, base_class=base_class, table_name=f"buffer_{table_name}"
+            )
         except TableDoesNotExistError:
             print(f"# {table_name} does not exist")
             print("rerun with --create-tables")
             continue
-        if len(diff) > 0:
+        if len(diff_orig) > 0:
             print(f"# {table_name} diff")
-            for cd in diff:
+            for cd in diff_orig:
+                print(cd.get_sql_migration())
+        if len(diff_buffer) > 0:
+            print(f"# buffer_{table_name} diff")
+            for cd in diff_buffer:
                 print(cd.get_sql_migration())
 
 

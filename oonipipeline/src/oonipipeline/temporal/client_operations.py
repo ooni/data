@@ -1,17 +1,10 @@
 import asyncio
-import pathlib
-import signal
-import sys
 import logging
-import dataclasses
 from dataclasses import dataclass
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Tuple
 
-from oonipipeline.temporal.workers import make_threaded_worker
 from oonipipeline.temporal.workflows import (
-    TASK_QUEUE_NAME,
     AnalysisWorkflowParams,
     ObservationsWorkflowParams,
     schedule_analysis,
@@ -37,7 +30,6 @@ from temporalio.runtime import (
     Runtime as TemporalRuntime,
     TelemetryConfig,
 )
-from temporalio.types import MethodAsyncSingleParam, SelfType, ParamType, ReturnType
 
 log = logging.getLogger("oonidata.client_operations")
 
@@ -108,106 +100,6 @@ async def temporal_connect(
     return client
 
 
-@dataclass
-class WorkerParams:
-    temporal_address: str
-    temporal_namespace: Optional[str]
-    temporal_tls_client_cert_path: Optional[str]
-    temporal_tls_client_key_path: Optional[str]
-    telemetry_endpoint: Optional[str]
-    thread_count: int
-    process_idx: int = 0
-
-
-async def start_threaded_worker(params: WorkerParams):
-    temporal_config = TemporalConfig(
-        temporal_address=params.temporal_address,
-        temporal_namespace=params.temporal_namespace,
-        temporal_tls_client_cert_path=params.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=params.temporal_tls_client_key_path,
-        telemetry_endpoint=params.telemetry_endpoint,
-    )
-    client = await temporal_connect(temporal_config=temporal_config)
-    worker = make_threaded_worker(client, parallelism=params.thread_count)
-    await worker.run()
-
-
-def run_worker(params: WorkerParams):
-    try:
-        asyncio.run(start_threaded_worker(params))
-    except KeyboardInterrupt:
-        print("shutting down")
-
-
-def start_workers(params: WorkerParams, process_count: int):
-    def signal_handler(signal, frame):
-        print("shutdown requested: Ctrl+C detected")
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-
-    process_params = [
-        dataclasses.replace(params, process_idx=idx) for idx in range(process_count)
-    ]
-    executor = ProcessPoolExecutor(max_workers=process_count)
-    try:
-        futures = [executor.submit(run_worker, param) for param in process_params]
-        for future in as_completed(futures):
-            future.result()
-    except KeyboardInterrupt:
-        print("ctrl+C detected, cancelling tasks...")
-        for future in futures:
-            future.cancel()
-        executor.shutdown(wait=True)
-        print("all tasks have been cancelled and cleaned up")
-    except Exception as e:
-        print(f"an error occurred: {e}")
-        executor.shutdown(wait=False)
-        raise
-
-
-async def execute_workflow_with_workers(
-    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
-    arg: ParamType,
-    parallelism,
-    workflow_id_prefix: str,
-    temporal_config: TemporalConfig,
-):
-    log.info(f"running workflow {workflow}")
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-
-    client = await temporal_connect(
-        temporal_config=temporal_config,
-    )
-    async with make_threaded_worker(client, parallelism=parallelism):
-        await client.execute_workflow(
-            workflow,
-            arg,
-            id=f"{workflow_id_prefix}-{ts}",
-            task_queue=TASK_QUEUE_NAME,
-        )
-
-
-async def execute_workflow(
-    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
-    arg: ParamType,
-    workflow_id_prefix: str,
-    temporal_config: TemporalConfig,
-):
-    log.info(f"running workflow {workflow}")
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-
-    client = await temporal_connect(
-        temporal_config=temporal_config,
-    )
-    await client.execute_workflow(
-        workflow,
-        arg,
-        id=f"{workflow_id_prefix}-{ts}",
-        task_queue=TASK_QUEUE_NAME,
-    )
-
-
 async def execute_backfill(
     schedule_id: str,
     temporal_config: TemporalConfig,
@@ -217,8 +109,18 @@ async def execute_backfill(
     log.info(f"running backfill for schedule_id={schedule_id}")
 
     client = await temporal_connect(temporal_config=temporal_config)
-    handle = client.get_schedule_handle(schedule_id)
 
+    found_schedule_id = None
+    schedule_list = await client.list_schedules()
+    async for sched in schedule_list:
+        if sched.id.startswith(schedule_id):
+            found_schedule_id = sched.id
+            break
+    if not found_schedule_id:
+        log.error(f"schedule ID not found for prefix {schedule_id}")
+        return
+
+    handle = client.get_schedule_handle(found_schedule_id)
     await handle.backfill(
         ScheduleBackfill(
             start_at=start_at + timedelta(hours=1),
@@ -293,34 +195,6 @@ async def get_status(
             print(f"  execution_time={workflow.execution_time}")
             print(f"  execution_time={workflow.execution_time}")
     return active_observation_workflows, active_observation_workflows
-
-
-def run_workflow(
-    workflow: MethodAsyncSingleParam[SelfType, ParamType, ReturnType],
-    arg: ParamType,
-    start_workers: bool,
-    workflow_id_prefix: str,
-    temporal_config: TemporalConfig,
-    parallelism: Optional[int] = None,
-):
-    action = execute_workflow
-    kw_args = {}
-    if start_workers:
-        print("starting also workers")
-        action = execute_workflow_with_workers
-        kw_args["parallelism"] = parallelism
-    try:
-        asyncio.run(
-            action(
-                workflow=workflow,
-                arg=arg,
-                workflow_id_prefix=workflow_id_prefix,
-                temporal_config=temporal_config,
-                **kw_args,
-            )
-        )
-    except KeyboardInterrupt:
-        print("shutting down")
 
 
 def run_backfill(

@@ -7,6 +7,7 @@ import textwrap
 from oonipipeline.cli.commands import cli
 from oonipipeline.cli.commands import parse_config_file
 from oonipipeline.temporal.client_operations import TemporalConfig, get_status
+import pytest
 
 
 def wait_for_mutations(db, table_name):
@@ -19,16 +20,17 @@ def wait_for_mutations(db, table_name):
         time.sleep(1)
 
 
-def wait_for_backfill(event_loop):
+def wait_for_backfill():
     temporal_config = TemporalConfig(temporal_address="localhost:7233")
-
+    loop = asyncio.new_event_loop()
     time.sleep(1)
 
     while True:
-        res = event_loop.run_until_complete(get_status(temporal_config))
+        res = loop.run_until_complete(get_status(temporal_config))
         if len(res[0]) == 0 and len(res[1]) == 0:
             break
         time.sleep(3)
+    loop.close()
 
 
 class MockContext:
@@ -53,6 +55,8 @@ def test_parse_config(tmp_path):
     assert defaults["something"] == "other"
     assert defaults["subcommand"]["otherthing"] == "bar"
     assert defaults["subcommand2"]["spam"] == "ham"
+    assert defaults["schedule"]["something"] == "other"
+    assert defaults["backfill"]["something"] == "other"
 
 
 def test_full_workflow(
@@ -64,9 +68,8 @@ def test_full_workflow(
     tmp_path: Path,
     temporal_dev_server,
     temporal_workers,
-    event_loop,
 ):
-    print("running schedule observations")
+    print(f"running schedule observations")
     result = cli_runner.invoke(
         cli,
         [
@@ -109,12 +112,12 @@ def test_full_workflow(
             # tmp_path.absolute(),
         ],
     )
-    # We wait on the table buffers to be flushed
     assert result.exit_code == 0
 
-    wait_for_backfill(event_loop=event_loop)
+    wait_for_backfill()
+    # We wait on the table buffers to be flushed
+    db.execute("OPTIMIZE TABLE buffer_obs_web")
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
-    time.sleep(3)
     res = db.execute(
         "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
     )
@@ -146,9 +149,9 @@ def test_full_workflow(
     )
     assert result.exit_code == 0
 
-    wait_for_backfill(event_loop=event_loop)
+    wait_for_backfill()
     # We wait on the table buffers to be flushed
-    time.sleep(3)
+    db.execute("OPTIMIZE TABLE buffer_obs_web")
 
     # Wait for the mutation to finish running
     wait_for_mutations(db, "obs_web")
@@ -159,23 +162,6 @@ def test_full_workflow(
     assert "2022-10-20" in bucket_dict, bucket_dict
     # By re-running it against the same date, we should still get the same observation count
     assert bucket_dict["2022-10-20"] == obs_count, bucket_dict
-
-    print("running mkgt")
-    result = cli_runner.invoke(
-        cli,
-        [
-            "mkgt",
-            "--start-day",
-            "2022-10-20",
-            "--end-day",
-            "2022-10-21",
-            "--data-dir",
-            datadir,
-            "--clickhouse",
-            db.clickhouse_url,
-        ],
-    )
-    assert result.exit_code == 0
 
     # result = cli_runner.invoke(
     #    cli,
@@ -268,12 +254,16 @@ def test_full_workflow(
             # tmp_path.absolute(),
         ],
     )
-    # We wait on the table buffers to be flushed
     assert result.exit_code == 0
 
-    wait_for_backfill(event_loop=event_loop)
+    # We wait on the table buffers to be flushed
+    wait_for_backfill()
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
-    time.sleep(3)
+    db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
+    wait_for_mutations(db, "measurement_experiment_result")
+
+    # TODO(art): find a better way than sleeping to get the tables to be flushed
+    time.sleep(10)
     res = db.execute(
         "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
     )

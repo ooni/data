@@ -6,6 +6,10 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 import time
 
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
+from temporalio import activity
+
 import pytest
 
 from oonidata.dataclient import stream_jsonl, load_measurement
@@ -14,8 +18,14 @@ from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
 
-from oonipipeline.temporal.activities.common import get_obs_count_by_cc, ObsCountParams
+from oonipipeline.temporal.activities.common import (
+    ClickhouseParams,
+    UpdateAssetsParams,
+    get_obs_count_by_cc,
+    ObsCountParams,
+)
 from oonipipeline.temporal.activities.observations import (
+    MakeObservationsParams,
     make_observations_for_file_entry_batch,
 )
 from oonipipeline.transforms.measurement_transformer import MeasurementTransformer
@@ -32,6 +42,13 @@ from oonipipeline.temporal.common import (
 from oonipipeline.temporal.activities.ground_truths import (
     MakeGroundTruthsParams,
     make_ground_truths_in_day,
+)
+from oonipipeline.temporal.workflows import (
+    AnalysisWorkflowParams,
+    ObservationsWorkflow,
+    AnalysisWorkflow,
+    ObservationsWorkflowParams,
+    TASK_QUEUE_NAME,
 )
 
 # from oonipipeline.workflows.response_archiver import ResponseArchiver
@@ -215,9 +232,11 @@ def test_hirl_observations(measurements, netinfodb):
         ]
     )
     assert isinstance(msmt, HTTPInvalidRequestLine)
-    middlebox_obs: List[HTTPMiddleboxObservation] = measurement_to_observations(
+    middlebox_obs_tuple = measurement_to_observations(
         msmt, netinfodb=netinfodb, bucket_date="2023-09-07"
-    )[0]
+    )
+    assert len(middlebox_obs_tuple) == 1
+    middlebox_obs = middlebox_obs_tuple[0]
     assert isinstance(middlebox_obs[0], HTTPMiddleboxObservation)
     assert middlebox_obs[0].hirl_success == True
     assert middlebox_obs[0].hirl_sent_0 != middlebox_obs[0].hirl_received_0
@@ -250,9 +269,9 @@ def test_web_connectivity_processor(netinfodb, measurements):
     )
     assert isinstance(msmt, WebConnectivity)
 
-    web_obs_list, web_ctrl_list = measurement_to_observations(
-        msmt, netinfodb=netinfodb, bucket_date="2022-06-27"
-    )
+    p = measurement_to_observations(msmt, netinfodb=netinfodb, bucket_date="2022-06-27")
+    assert len(p) == 2
+    web_obs_list, web_ctrl_list = p
     assert len(web_obs_list) == 3
     assert len(web_ctrl_list) == 3
 
@@ -265,7 +284,9 @@ def test_dnscheck_processor(measurements, netinfodb):
         msmt_path=measurements["20221013000000.517636_US_dnscheck_bfd6d991e70afa0e"]
     )
     assert isinstance(msmt, DNSCheck)
-    obs_list = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)[0]
+    obs_tuple = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)
+    assert len(obs_tuple) == 1
+    obs_list = obs_tuple[0]
     assert len(obs_list) == 20
 
 
@@ -278,6 +299,88 @@ def test_full_processing(raw_measurements, netinfodb):
                     msmt=msmt,
                     netinfodb=netinfodb,
                 )
+
+
+@activity.defn(name="update_assets")
+async def update_assets_mocked(params: UpdateAssetsParams):
+    return
+
+
+@activity.defn(name="optimize_all_tables")
+async def optimize_all_tables_mocked(params: ClickhouseParams):
+    return
+
+
+@activity.defn(name="make_observation_in_day")
+async def make_observation_in_day_mocked(params: MakeObservationsParams):
+    return {"size": 1000, "measurement_count": 42}
+
+
+@activity.defn(name="make_ground_truths_in_day")
+async def make_ground_truths_in_day_mocked(params: MakeGroundTruthsParams):
+    return
+
+
+@activity.defn(name="get_obs_count_by_cc")
+async def get_obs_count_by_cc_mocked(params: ObsCountParams):
+    return {
+        "AU": 90,
+        "IT": 1000,
+        "IR": 200,
+        "NZ": 42,
+    }
+
+
+@activity.defn(name="make_analysis_in_a_day")
+async def make_analysis_in_a_day_mocked(params: MakeAnalysisParams):
+    return {"count": 100}
+
+
+@pytest.mark.asyncio
+async def test_temporal_workflows():
+    obs_params = ObservationsWorkflowParams(
+        probe_cc=[],
+        test_name=[],
+        clickhouse="",
+        data_dir="",
+        fast_fail=False,
+        bucket_date="2024-01-02",
+    )
+    analysis_params = AnalysisWorkflowParams(
+        probe_cc=[], test_name=[], clickhouse="", data_dir="", day="2024-01-01"
+    )
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=TASK_QUEUE_NAME,
+            workflows=[ObservationsWorkflow, AnalysisWorkflow],
+            activities=[
+                update_assets_mocked,
+                optimize_all_tables_mocked,
+                make_observation_in_day_mocked,
+                make_ground_truths_in_day_mocked,
+                get_obs_count_by_cc_mocked,
+                make_analysis_in_a_day_mocked,
+            ],
+        ):
+            res = await env.client.execute_workflow(
+                ObservationsWorkflow.run,
+                obs_params,
+                id="obs-wf",
+                task_queue=TASK_QUEUE_NAME,
+            )
+            assert res["size"] > 0
+            assert res["measurement_count"] > 0
+            assert res["bucket_date"] == "2024-01-02"
+
+            res = await env.client.execute_workflow(
+                AnalysisWorkflow.run,
+                analysis_params,
+                id="analysis-wf",
+                task_queue=TASK_QUEUE_NAME,
+            )
+            assert res["obs_count"] == 300
+            assert res["day"] == "2024-01-01"
 
 
 def test_archive_http_transaction(measurements, tmpdir):

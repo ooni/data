@@ -205,22 +205,18 @@ class AnalysisWorkflow:
 
         workflow.logger.info("building ground truth databases")
         t = PerfTimer()
-        if (
-            params.force_rebuild_ground_truths
-            or not get_ground_truth_db_path(
-                day=params.day, data_dir=params.data_dir
-            ).exists()
-        ):
-            await workflow.execute_activity(
-                make_ground_truths_in_day,
-                MakeGroundTruthsParams(
-                    clickhouse=params.clickhouse,
-                    data_dir=params.data_dir,
-                    day=params.day,
-                ),
-                start_to_close_timeout=timedelta(minutes=30),
-            )
-            workflow.logger.info(f"built ground truth db in {t.pretty}")
+
+        await workflow.execute_activity(
+            make_ground_truths_in_day,
+            MakeGroundTruthsParams(
+                clickhouse=params.clickhouse,
+                data_dir=params.data_dir,
+                day=params.day,
+                force_rebuild=params.force_rebuild_ground_truths,
+            ),
+            start_to_close_timeout=timedelta(minutes=30),
+        )
+        workflow.logger.info(f"built ground truth db in {t.pretty}")
 
         start_day = datetime.strptime(params.day, "%Y-%m-%d").date()
         cnt_by_cc = await workflow.execute_activity(
@@ -267,38 +263,44 @@ class AnalysisWorkflow:
         return {"obs_count": total_obs_count, "day": params.day}
 
 
-def gen_observation_id(params: ObservationsWorkflowParams, name: str) -> str:
+def gen_schedule_id(probe_cc: List[str], test_name: List[str], name: str):
     probe_cc_key = "ALLCCS"
-    if len(params.probe_cc) > 0:
-        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
+    if len(probe_cc) > 0:
+        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(probe_cc)))
     test_name_key = "ALLTNS"
-    if len(params.test_name) > 0:
-        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
+    if len(test_name) > 0:
+        test_name_key = ".".join(map(lambda x: x.lower(), sorted(test_name)))
 
-    return f"oonipipeline-observations-{name}-{probe_cc_key}-{test_name_key}"
+    return f"oonipipeline-{name}-schedule-{probe_cc_key}-{test_name_key}"
 
 
 async def schedule_observations(
     client: TemporalClient, params: ObservationsWorkflowParams, delete: bool
-) -> str:
-    schedule_id = gen_observation_id(params, "schedule")
-    try:
-        schedule_handle = client.get_schedule_handle(schedule_id)
-        if delete is True:
-            await schedule_handle.delete()
-            return schedule_id
+) -> List[str]:
+    base_schedule_id = gen_schedule_id(
+        params.probe_cc, params.test_name, "observations"
+    )
 
-        schedule_desc = await schedule_handle.describe()
-        if schedule_desc.id:
-            log.info(
-                f"schedule with ID {schedule_id} already scheduled, returning early"
-            )
-            return schedule_id
-    except:
-        if delete is True:
-            log.info("schedule already missing. returning")
-            return schedule_id
-        log.info("schedule not found, setting up schedule for it")
+    existing_schedules = []
+    schedule_list = await client.list_schedules()
+    async for sched in schedule_list:
+        if sched.id.startswith(base_schedule_id):
+            existing_schedules.append(sched.id)
+
+    if delete is True:
+        for sched_id in existing_schedules:
+            schedule_handle = client.get_schedule_handle(sched_id)
+            await schedule_handle.delete()
+        return existing_schedules
+
+    if len(existing_schedules) == 1:
+        return existing_schedules
+    elif len(existing_schedules) > 0:
+        print("WARNING: multiple schedules detected")
+        return existing_schedules
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    schedule_id = f"{base_schedule_id}-{ts}"
 
     await client.create_schedule(
         id=schedule_id,
@@ -306,7 +308,7 @@ async def schedule_observations(
             action=ScheduleActionStartWorkflow(
                 ObservationsWorkflow.run,
                 params,
-                id=gen_observation_id(params, "workflow"),
+                id=schedule_id.replace("-schedule-", "-workflow-"),
                 task_queue=TASK_QUEUE_NAME,
                 execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
                 task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
@@ -325,41 +327,39 @@ async def schedule_observations(
             ),
         ),
     )
-    return schedule_id
-
-
-def gen_analysis_id(params: AnalysisWorkflowParams, name: str) -> str:
-    probe_cc_key = "ALLCCS"
-    if len(params.probe_cc) > 0:
-        probe_cc_key = ".".join(map(lambda x: x.lower(), sorted(params.probe_cc)))
-    test_name_key = "ALLTNS"
-    if len(params.test_name) > 0:
-        test_name_key = ".".join(map(lambda x: x.lower(), sorted(params.test_name)))
-
-    return f"oonipipeline-analysis-{name}-{probe_cc_key}-{test_name_key}"
+    return [schedule_id]
 
 
 async def schedule_analysis(
     client: TemporalClient, params: AnalysisWorkflowParams, delete: bool
-) -> str:
-    schedule_id = gen_analysis_id(params, "schedule")
-    try:
-        schedule_handle = client.get_schedule_handle(schedule_id)
-        if delete is True:
-            await schedule_handle.delete()
-            return schedule_id
+) -> List[str]:
+    base_schedule_id = gen_schedule_id(params.probe_cc, params.test_name, "analysis")
 
-        schedule_desc = await schedule_handle.describe()
-        if schedule_desc.id:
-            log.info(
-                f"schedule with ID {schedule_id} already scheduled, returning early"
-            )
-            return schedule_id
-    except:
-        if delete is True:
-            log.info("schedule already missing. returning")
-            return schedule_id
-        log.info("schedule not found, setting up schedule for it")
+    existing_schedules = []
+    schedule_list = await client.list_schedules()
+    async for sched in schedule_list:
+        if sched.id.startswith(base_schedule_id):
+            existing_schedules.append(sched.id)
+
+    if delete is True:
+        for sched_id in existing_schedules:
+            schedule_handle = client.get_schedule_handle(sched_id)
+            await schedule_handle.delete()
+        return existing_schedules
+
+    if len(existing_schedules) == 1:
+        return existing_schedules
+    elif len(existing_schedules) > 0:
+        print("WARNING: multiple schedules detected")
+        return existing_schedules
+
+    # We need to append a timestamp to the schedule so that we are able to rerun
+    # the backfill operations by deleting the existing schedule and
+    # re-scheduling it. Not doing so will mean that temporal will believe the
+    # workflow has already been execututed and will refuse to re-run it.
+    # TODO(art): check if there is a more idiomatic way of implementing this
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    schedule_id = f"{base_schedule_id}-{ts}"
 
     await client.create_schedule(
         id=schedule_id,
@@ -367,7 +367,7 @@ async def schedule_analysis(
             action=ScheduleActionStartWorkflow(
                 AnalysisWorkflow.run,
                 params,
-                id=gen_analysis_id(params, "workflow"),
+                id=schedule_id.replace("-schedule-", "-workflow-"),
                 task_queue=TASK_QUEUE_NAME,
                 execution_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
                 task_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
@@ -376,14 +376,20 @@ async def schedule_analysis(
             spec=ScheduleSpec(
                 intervals=[
                     ScheduleIntervalSpec(
-                        every=timedelta(days=1), offset=timedelta(hours=6)
+                        # We offset the Analysis workflow by 4 hours assuming
+                        # that the observation generation will take less than 4
+                        # hours to complete.
+                        # TODO(art): it's probably better to refactor this into some
+                        # kind of DAG
+                        every=timedelta(days=1),
+                        offset=timedelta(hours=6),
                     )
                 ],
             ),
             policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.TERMINATE_OTHER),
             state=ScheduleState(
-                note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
+                note="Run the analysis workflow every day with an offset of 6 hours to ensure the observation workflow has completed"
             ),
         ),
     )
-    return schedule_id
+    return [schedule_id]

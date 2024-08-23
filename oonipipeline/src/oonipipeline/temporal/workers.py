@@ -1,4 +1,9 @@
-import multiprocessing
+import os
+import asyncio
+import logging
+
+from temporalio.worker import Worker
+
 from oonipipeline.temporal.activities.analysis import make_analysis_in_a_day
 from oonipipeline.temporal.activities.common import (
     get_obs_count_by_cc,
@@ -7,6 +12,11 @@ from oonipipeline.temporal.activities.common import (
 )
 from oonipipeline.temporal.activities.ground_truths import make_ground_truths_in_day
 from oonipipeline.temporal.activities.observations import make_observation_in_day
+from oonipipeline.temporal.client_operations import (
+    TemporalConfig,
+    log,
+    temporal_connect,
+)
 from oonipipeline.temporal.workflows import (
     TASK_QUEUE_NAME,
     AnalysisWorkflow,
@@ -14,12 +24,11 @@ from oonipipeline.temporal.workflows import (
     ObservationsWorkflow,
 )
 
+log = logging.getLogger("oonipipeline.workers")
 
-from temporalio.client import Client as TemporalClient
-from temporalio.worker import SharedStateManager, Worker
+from concurrent.futures import ThreadPoolExecutor
 
-
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+interrupt_event = asyncio.Event()
 
 WORKFLOWS = [
     ObservationsWorkflow,
@@ -37,26 +46,31 @@ ACTIVTIES = [
 ]
 
 
-def make_threaded_worker(client: TemporalClient, parallelism: int) -> Worker:
-    return Worker(
+async def worker_main(temporal_config: TemporalConfig):
+    client = await temporal_connect(temporal_config=temporal_config)
+    max_workers = max(os.cpu_count() or 4, 4)
+    log.info(f"starting workers with max_workers={max_workers}")
+    async with Worker(
         client,
         task_queue=TASK_QUEUE_NAME,
         workflows=WORKFLOWS,
         activities=ACTIVTIES,
-        activity_executor=ThreadPoolExecutor(parallelism + 2),
-        max_concurrent_activities=parallelism,
-    )
+        activity_executor=ThreadPoolExecutor(max_workers=max_workers + 2),
+        max_concurrent_activities=max_workers,
+        max_concurrent_workflow_tasks=max_workers,
+    ):
+        log.info("Workers started, ctrl-c to exit")
+        await interrupt_event.wait()
+        log.info("Shutting down")
 
 
-def make_multiprocess_worker(client: TemporalClient, parallelism: int) -> Worker:
-    return Worker(
-        client,
-        task_queue=TASK_QUEUE_NAME,
-        workflows=WORKFLOWS,
-        activities=ACTIVTIES,
-        activity_executor=ProcessPoolExecutor(parallelism + 2),
-        max_concurrent_activities=parallelism,
-        shared_state_manager=SharedStateManager.create_from_multiprocessing(
-            multiprocessing.Manager()
-        ),
-    )
+def start_workers(temporal_config: TemporalConfig):
+    loop = asyncio.new_event_loop()
+    # TODO(art): Investigate if we want to upgrade to python 3.12 and use this
+    # instead
+    # loop.set_task_factory(asyncio.eager_task_factory)
+    try:
+        loop.run_until_complete(worker_main(temporal_config=temporal_config))
+    except KeyboardInterrupt:
+        interrupt_event.set()
+        loop.run_until_complete(loop.shutdown_asyncgens())

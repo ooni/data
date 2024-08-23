@@ -7,9 +7,12 @@ from clickhouse_driver import Client
 
 from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.db.create_tables import (
+    format_create_query,
     get_table_column_diff,
     get_column_map_from_create_query,
     typing_to_clickhouse,
+    table_models,
+    make_create_queries,
 )
 from oonidata.models.base import table_model
 
@@ -62,7 +65,7 @@ def test_create_tables():
     PRIMARY KEY (my_col_int)"""
         ]
     ]
-    diff = get_table_column_diff(db=db, base_class=SampleTable)
+    diff = get_table_column_diff(db=db, base_class=SampleTable, table_name="my_table")
     assert len(diff) == 1
     assert diff[0].table_name == "my_table"
     assert diff[0].column_name == "my_new_col_str"
