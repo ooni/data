@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     clickhouse_url: str = "clickhouse://localhost"
-    data_dir = "tests/data/datadir"
+    data_dir: str = "tests/data/datadir"
 
 
 @lru_cache

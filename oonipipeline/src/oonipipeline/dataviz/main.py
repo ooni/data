@@ -98,3 +98,50 @@ def analysis_by_msmt(
             loni_ok_value=wer.loni_ok_value,
         ),
     )
+
+
+@app.get("/observations/m/{measurement_uid}")
+def observations_by_msmt(
+    request: Request,
+    measurement_uid: str,
+    settings=Depends(get_settings),
+):
+    data_dir = Path(settings.data_dir)
+
+    netinfodb = NetinfoDB(datadir=data_dir, download=False)
+    raw_msmt = get_measurement_dict_by_uid(measurement_uid)
+    msmt = load_measurement(msmt=raw_msmt)
+    web_observations, web_control_observations = measurement_to_observations(
+        msmt, netinfodb=netinfodb
+    )
+
+    def extract_meta(orig_obs_list):
+        obs_list = []
+
+        measurement_meta = {}
+        probe_meta = {}
+        processing_meta = {}
+        for obs in orig_obs_list:
+            wo_dict = asdict(obs)
+            measurement_meta = wo_dict.pop("probe_meta", None)
+            probe_meta = wo_dict.pop("measurement_meta", None)
+            processing_meta = wo_dict.pop("processing_meta", None)
+            obs_list.append(wo_dict)
+        return obs_list, measurement_meta, probe_meta, processing_meta
+
+    web_observations_list, probe_meta, measurement_meta, processing_meta = extract_meta(
+        web_observations
+    )
+    web_control_observations, _, _, _ = extract_meta(web_control_observations)
+    return templates.TemplateResponse(
+        request=request,
+        name="observations.html",
+        context=dict(
+            measurement_uid=measurement_uid,
+            web_observations=web_observations_list,
+            web_control_observations=web_control_observations,
+            probe_meta=probe_meta,
+            measurement_meta=measurement_meta,
+            processing_meta=processing_meta,
+        ),
+    )
