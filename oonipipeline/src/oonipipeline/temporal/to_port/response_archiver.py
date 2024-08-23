@@ -25,7 +25,7 @@ from warcio.statusandheaders import StatusAndHeaders
 from oonidata.dataclient import date_interval, iter_measurements, load_measurement
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 
-from ..fingerprintdb import FingerprintDB, Fingerprint
+from ...fingerprintdb import FingerprintDB, Fingerprint
 
 log = logging.getLogger("oonidata.processing")
 
