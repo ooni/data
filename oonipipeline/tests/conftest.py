@@ -66,16 +66,6 @@ def temporal_workers(request):
 
 
 @pytest.fixture(scope="session")
-def event_loop():
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session")
 def temporal_dev_server(request):
     print("starting temporal dev server")
     proc = subprocess.Popen(["temporal", "server", "start-dev"])

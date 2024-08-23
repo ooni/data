@@ -7,6 +7,7 @@ import textwrap
 from oonipipeline.cli.commands import cli
 from oonipipeline.cli.commands import parse_config_file
 from oonipipeline.temporal.client_operations import TemporalConfig, get_status
+import pytest
 
 
 def wait_for_mutations(db, table_name):
@@ -19,13 +20,13 @@ def wait_for_mutations(db, table_name):
         time.sleep(1)
 
 
-def wait_for_backfill(event_loop):
+async def wait_for_backfill():
     temporal_config = TemporalConfig(temporal_address="localhost:7233")
 
     time.sleep(1)
 
     while True:
-        res = event_loop.run_until_complete(get_status(temporal_config))
+        res = await get_status(temporal_config)
         if len(res[0]) == 0 and len(res[1]) == 0:
             break
         time.sleep(3)
@@ -57,7 +58,8 @@ def test_parse_config(tmp_path):
     assert defaults["backfill"]["something"] == "other"
 
 
-def test_full_workflow(
+@pytest.mark.asyncio
+async def test_full_workflow(
     db,
     cli_runner,
     fingerprintdb,
@@ -66,7 +68,6 @@ def test_full_workflow(
     tmp_path: Path,
     temporal_dev_server,
     temporal_workers,
-    event_loop,
 ):
     print(f"running schedule observations")
     result = cli_runner.invoke(
@@ -113,7 +114,7 @@ def test_full_workflow(
     )
     assert result.exit_code == 0
 
-    wait_for_backfill(event_loop=event_loop)
+    await wait_for_backfill()
     # We wait on the table buffers to be flushed
     db.execute("OPTIMIZE TABLE buffer_obs_web")
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
@@ -148,7 +149,7 @@ def test_full_workflow(
     )
     assert result.exit_code == 0
 
-    wait_for_backfill(event_loop=event_loop)
+    await wait_for_backfill()
     # We wait on the table buffers to be flushed
     db.execute("OPTIMIZE TABLE buffer_obs_web")
 
@@ -256,7 +257,7 @@ def test_full_workflow(
     assert result.exit_code == 0
 
     # We wait on the table buffers to be flushed
-    wait_for_backfill(event_loop=event_loop)
+    await wait_for_backfill()
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
     db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
     wait_for_mutations(db, "measurement_experiment_result")
