@@ -20,16 +20,17 @@ def wait_for_mutations(db, table_name):
         time.sleep(1)
 
 
-async def wait_for_backfill():
+def wait_for_backfill():
     temporal_config = TemporalConfig(temporal_address="localhost:7233")
-
+    loop = asyncio.new_event_loop()
     time.sleep(1)
 
     while True:
-        res = await get_status(temporal_config)
+        res = loop.run_until_complete(get_status(temporal_config))
         if len(res[0]) == 0 and len(res[1]) == 0:
             break
         time.sleep(3)
+    loop.close()
 
 
 class MockContext:
@@ -58,8 +59,7 @@ def test_parse_config(tmp_path):
     assert defaults["backfill"]["something"] == "other"
 
 
-@pytest.mark.asyncio
-async def test_full_workflow(
+def test_full_workflow(
     db,
     cli_runner,
     fingerprintdb,
@@ -114,7 +114,7 @@ async def test_full_workflow(
     )
     assert result.exit_code == 0
 
-    await wait_for_backfill()
+    wait_for_backfill()
     # We wait on the table buffers to be flushed
     db.execute("OPTIMIZE TABLE buffer_obs_web")
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
@@ -149,7 +149,7 @@ async def test_full_workflow(
     )
     assert result.exit_code == 0
 
-    await wait_for_backfill()
+    wait_for_backfill()
     # We wait on the table buffers to be flushed
     db.execute("OPTIMIZE TABLE buffer_obs_web")
 
@@ -257,7 +257,7 @@ async def test_full_workflow(
     assert result.exit_code == 0
 
     # We wait on the table buffers to be flushed
-    await wait_for_backfill()
+    wait_for_backfill()
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
     db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
     wait_for_mutations(db, "measurement_experiment_result")
