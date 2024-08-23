@@ -2,6 +2,7 @@ from dataclasses import asdict
 import json
 import os
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.templating import Jinja2Templates
@@ -27,6 +28,21 @@ app = FastAPI()
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=f"{current_dir}/templates")
+
+
+def extract_meta(orig_obs_list) -> Tuple[List, Dict, Dict, Dict]:
+    obs_list = []
+
+    measurement_meta = {}
+    probe_meta = {}
+    processing_meta = {}
+    for obs in orig_obs_list:
+        wo_dict = asdict(obs)
+        measurement_meta = wo_dict.pop("probe_meta", None)
+        probe_meta = wo_dict.pop("measurement_meta", None)
+        processing_meta = wo_dict.pop("processing_meta", None)
+        obs_list.append(wo_dict)
+    return obs_list, measurement_meta, probe_meta, processing_meta
 
 
 @app.get("/analysis/m/{measurement_uid}")
@@ -80,6 +96,10 @@ def analysis_by_msmt(
     #    pprint(loni.to_dict())
     # print(analysis_transcript_list)
 
+    web_analysis_list, _, _, _ = extract_meta(web_analysis)
+    web_observations_list, measurement_meta, probe_meta, processing_meta = extract_meta(
+        web_observations
+    )
     return templates.TemplateResponse(
         request=request,
         name="analysis.html",
@@ -89,8 +109,11 @@ def analysis_by_msmt(
             loni_list=wer.loni_list,
             raw_msmt=raw_msmt,
             measurement_uid=measurement_uid,
-            web_analysis=list(map(lambda x: asdict(x), web_analysis)),
-            web_observations=list(map(lambda x: asdict(x), web_observations)),
+            web_analysis=web_analysis_list,
+            web_observations=web_observations_list,
+            measurement_meta=measurement_meta,
+            probe_meta=probe_meta,
+            processing_meta=processing_meta,
             loni_blocked_dict=dict(zip(wer.loni_blocked_keys, wer.loni_blocked_values)),
             loni_blocked_value=sum(wer.loni_blocked_values),
             loni_down_dict=dict(zip(wer.loni_down_keys, wer.loni_down_values)),
@@ -114,20 +137,6 @@ def observations_by_msmt(
     web_observations, web_control_observations = measurement_to_observations(
         msmt, netinfodb=netinfodb
     )
-
-    def extract_meta(orig_obs_list):
-        obs_list = []
-
-        measurement_meta = {}
-        probe_meta = {}
-        processing_meta = {}
-        for obs in orig_obs_list:
-            wo_dict = asdict(obs)
-            measurement_meta = wo_dict.pop("probe_meta", None)
-            probe_meta = wo_dict.pop("measurement_meta", None)
-            processing_meta = wo_dict.pop("processing_meta", None)
-            obs_list.append(wo_dict)
-        return obs_list, measurement_meta, probe_meta, processing_meta
 
     web_observations_list, probe_meta, measurement_meta, processing_meta = extract_meta(
         web_observations
