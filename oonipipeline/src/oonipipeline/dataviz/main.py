@@ -2,7 +2,7 @@ from dataclasses import asdict
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.templating import Jinja2Templates
@@ -45,12 +45,31 @@ def extract_meta(orig_obs_list) -> Tuple[List, Dict, Dict, Dict]:
     return obs_list, measurement_meta, probe_meta, processing_meta
 
 
+@app.get("/analysis/")
+def analysis_index(
+    request: Request,
+):
+    return templates.TemplateResponse(
+        request=request, name="redirect.html", context={"scope": "analysis"}
+    )
+
+
+@app.get("/observations/")
+def observations(
+    request: Request,
+):
+    return templates.TemplateResponse(
+        request=request, name="redirect.html", context={"scope": "observations"}
+    )
+
+
 @app.get("/analysis/m/{measurement_uid}")
 def analysis_by_msmt(
     request: Request,
-    measurement_uid: str,
+    measurement_uid: Optional[str],
     settings=Depends(get_settings),
 ):
+
     data_dir = Path(settings.data_dir)
 
     fingerprintdb = FingerprintDB(datadir=data_dir, download=False)
