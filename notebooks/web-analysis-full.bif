@@ -1,0 +1,151 @@
+network unknown {
+}
+variable DNS Answer {
+    type discrete [ 5 ] { answer_is_bogon, answer_matches_probe_asn, answer_matches_probe_cc, answer_is_cloud_provider, answer_other };
+}
+variable DNS Answer Consistency {
+    type discrete [ 2 ] { consistent, inconsistent };
+}
+variable DNS Answer TLS Consistency {
+    type discrete [ 3 ] { tls_consistent, tls_inconsistent, unknown };
+}
+variable DNS Ctrl Failure {
+    type discrete [ 3 ] { none, nxdomain, server_failure };
+}
+variable DNS Failure Consistency {
+    type discrete [ 3 ] { ok, expected_not_ok, unexpected_not_ok };
+}
+variable DNS Outcome {
+    type discrete [ 3 ] { blocked, ok, down };
+}
+variable DNS VP Failure {
+    type discrete [ 3 ] { none, nxdomain, server_failure };
+}
+variable TCP Ctrl Failure {
+    type discrete [ 4 ] { none, connection_reset, timeout, other };
+}
+variable TCP Outcome {
+    type discrete [ 4 ] { blocked, ok, down, unknown };
+}
+variable TCP VP Result {
+    type discrete [ 5 ] { none, connection_reset, timeout, other, down };
+}
+variable TLS Ctrl Failure {
+    type discrete [ 3 ] { none, bad_certificate, other };
+}
+variable TLS Outcome {
+    type discrete [ 4 ] { blocked, ok, down, unknown };
+}
+variable TLS VP Result {
+    type discrete [ 8 ] { none, bad_certificate, connection_reset_after_ch, timeout_after_ch, timeout, connection_reset, other, down };
+}
+probability ( DNS Answer ) {
+    table 0.004, 0.006, 0.06, 0.73, 0.2 ;
+}
+probability ( DNS Answer Consistency | DNS Answer, DNS Answer TLS Consistency ) {
+    ( answer_is_bogon, tls_consistent ) 0.99, 0.01;
+    ( answer_is_bogon, tls_inconsistent ) 0.001, 0.999;
+    ( answer_is_bogon, unknown ) 0.001, 0.999;
+    ( answer_matches_probe_asn, tls_consistent ) 0.999, 0.001;
+    ( answer_matches_probe_asn, tls_inconsistent ) 0.01, 0.99;
+    ( answer_matches_probe_asn, unknown ) 0.3, 0.7;
+    ( answer_matches_probe_cc, tls_consistent ) 0.999, 0.001;
+    ( answer_matches_probe_cc, tls_inconsistent ) 0.001, 0.999;
+    ( answer_matches_probe_cc, unknown ) 0.3, 0.7;
+    ( answer_is_cloud_provider, tls_consistent ) 0.999, 0.001;
+    ( answer_is_cloud_provider, tls_inconsistent ) 0.01, 0.99;
+    ( answer_is_cloud_provider, unknown ) 0.8, 0.2;
+    ( answer_other, tls_consistent ) 0.999, 0.001;
+    ( answer_other, tls_inconsistent ) 0.001, 0.999;
+    ( answer_other, unknown ) 0.2, 0.8;
+
+}
+probability ( DNS Answer TLS Consistency | DNS Answer ) {
+    ( answer_is_bogon ) 0.01, 0.05, 0.94;
+    ( answer_matches_probe_asn ) 0.8, 0.15, 0.05;
+    ( answer_matches_probe_cc ) 0.75, 0.2, 0.05;
+    ( answer_is_cloud_provider ) 0.9, 0.08, 0.02;
+    ( answer_other ) 0.94, 0.04, 0.02;
+
+}
+probability ( DNS Ctrl Failure ) {
+    table 0.994, 0.004, 0.002 ;
+}
+probability ( DNS Failure Consistency | DNS Ctrl Failure, DNS VP Failure ) {
+    ( none, none ) 0.99, 0.01, 0.01;
+    ( none, nxdomain ) 0.01, 0.05, 0.94;
+    ( none, server_failure ) 0.01, 0.05, 0.94;
+    ( nxdomain, none ) 0.94, 0.01, 0.05;
+    ( nxdomain, nxdomain ) 0.01, 0.98, 0.01;
+    ( nxdomain, server_failure ) 0.01, 0.92, 0.07;
+    ( server_failure, none ) 0.94, 0.01, 0.05;
+    ( server_failure, nxdomain ) 0.01, 0.92, 0.07;
+    ( server_failure, server_failure ) 0.01, 0.98, 0.01;
+
+}
+probability ( DNS Outcome | DNS Answer Consistency, DNS Failure Consistency ) {
+    ( consistent, ok ) 0.01, 0.99, 0.0;
+    ( consistent, expected_not_ok ) 0.01, 0.01, 0.98;
+    ( consistent, unexpected_not_ok ) 0.4, 0.4, 0.2;
+    ( inconsistent, ok ) 0.8, 0.2, 0.0;
+    ( inconsistent, expected_not_ok ) 0.2, 0.05, 0.75;
+    ( inconsistent, unexpected_not_ok ) 0.9, 0.01, 0.09;
+
+}
+probability ( DNS VP Failure | DNS Ctrl Failure ) {
+    ( none ) 0.994, 0.004, 0.002;
+    ( nxdomain ) 0.02, 0.98, 0.01;
+    ( server_failure ) 0.02, 0.01, 0.98;
+
+}
+probability ( TCP Ctrl Failure ) {
+    table 0.98, 0.001, 0.014, 0.005 ;
+}
+probability ( TCP Outcome | DNS Answer Consistency, TCP VP Result ) {
+    ( consistent, none ) 0.02, 0.95, 0.02, 0.01;
+    ( consistent, connection_reset ) 0.95, 0.01, 0.03, 0.01;
+    ( consistent, timeout ) 0.9, 0.01, 0.08, 0.01;
+    ( consistent, other ) 0.85, 0.01, 0.09, 0.05;
+    ( consistent, down ) 0.01, 0.08, 0.01, 0.9;
+    ( inconsistent, none ) 0.07, 0.01, 0.07, 0.85;
+    ( inconsistent, connection_reset ) 0.07, 0.01, 0.07, 0.85;
+    ( inconsistent, timeout ) 0.07, 0.01, 0.07, 0.85;
+    ( inconsistent, other ) 0.07, 0.01, 0.07, 0.85;
+    ( inconsistent, down ) 0.05, 0.01, 0.09, 0.85;
+
+}
+probability ( TCP VP Result | TCP Ctrl Failure ) {
+    ( none ) 0.98, 0.001, 0.01, 0.009, 0.009;
+    ( connection_reset ) 0.02, 0.14, 0.05, 0.07, 0.72;
+    ( timeout ) 0.01, 0.02, 0.1, 0.02, 0.85;
+    ( other ) 0.01, 0.06, 0.06, 0.12, 0.75;
+
+}
+probability ( TLS Ctrl Failure ) {
+    table 0.98, 0.005, 0.015 ;
+}
+probability ( TLS Outcome | DNS Answer Consistency, TLS VP Result ) {
+    ( consistent, none ) 0.02, 0.95, 0.02, 0.01;
+    ( consistent, bad_certificate ) 0.95, 0.01, 0.03, 0.01;
+    ( consistent, connection_reset_after_ch ) 0.9, 0.01, 0.07, 0.02;
+    ( consistent, timeout_after_ch ) 0.85, 0.01, 0.09, 0.05;
+    ( consistent, timeout ) 0.01, 0.08, 0.01, 0.9;
+    ( consistent, connection_reset ) 0.07, 0.01, 0.07, 0.85;
+    ( consistent, other ) 0.07, 0.01, 0.07, 0.85;
+    ( consistent, down ) 0.07, 0.01, 0.07, 0.85;
+    ( inconsistent, none ) 0.02, 0.01, 0.05, 0.92;
+    ( inconsistent, bad_certificate ) 0.02, 0.01, 0.05, 0.92;
+    ( inconsistent, connection_reset_after_ch ) 0.02, 0.01, 0.05, 0.92;
+    ( inconsistent, timeout_after_ch ) 0.02, 0.01, 0.05, 0.92;
+    ( inconsistent, timeout ) 0.02, 0.01, 0.05, 0.92;
+    ( inconsistent, connection_reset ) 0.02, 0.01, 0.05, 0.92;
+    ( inconsistent, other ) 0.02, 0.01, 0.05, 0.92;
+    ( inconsistent, down ) 0.02, 0.01, 0.05, 0.92;
+
+}
+probability ( TLS VP Result | TLS Ctrl Failure ) {
+    ( none ) 0.97, 0.005, 0.005, 0.005, 0.005, 0.005, 0.004, 0.001;
+    ( bad_certificate ) 0.02, 0.1, 0.01, 0.01, 0.01, 0.01, 0.02, 0.82;
+    ( other ) 0.01, 0.01, 0.05, 0.05, 0.05, 0.05, 0.12, 0.66;
+
+}

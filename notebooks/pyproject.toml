@@ -30,7 +30,9 @@ dependencies = [
     "numpy",
     "bnlearn",
     "d3blocks",
-    "pygraphviz"
+    "pygraphviz",
+    "bokeh",
+    "ipywidgets"
 ]
 
 [tool.hatch.envs.types]
