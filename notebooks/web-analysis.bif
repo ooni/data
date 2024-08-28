@@ -1,98 +1,69 @@
-dns_ground_truth_nxdomain_count
-dns_ground_truth_failure_count
-dns_ground_truth_ok_count
-dns_ground_truth_ok_cc_asn_count
-dns_ground_truth_failure_cc_asn_count
-dns_ground_truth_nxdomain_cc_asn_count
+network unknown {
+}
+variable DNS Answer Meta {
+    type discrete [ 7 ] { answer_failure_nxdomain, answer_failure_other, answer_is_bogon, answer_matches_probe_asn, answer_matches_probe_cc, answer_is_cloud_provider, answer_ok };
+}
+variable DNS Consistency {
+    type discrete [ 2 ] { consistent, inconsistent };
+}
+variable DNS Ctrl Failure {
+    type discrete [ 3 ] { none, nxdomain, server_failure };
+}
+variable DNS Outcome {
+    type discrete [ 3 ] { blocked, ok, down };
+}
+variable DNS TLS Consistency {
+    type discrete [ 3 ] { tls_consistent, tls_inconsistent, tls_connection_failed };
+}
+probability ( DNS Answer Meta | DNS Ctrl Failure ) {
+    ( none ) 0.0238, 0.01, 0.003745, 0.004537, 0.060217, 0.19626, 0.700935;
+    ( nxdomain ) 0.9, 0.03, 0.014, 0.014, 0.014, 0.014, 0.014;
+    ( server_failure ) 0.015, 0.91, 0.015, 0.015, 0.015, 0.015, 0.015;
 
-dns_consistency_system_answers
-dns_consistency_system_success
-dns_consistency_system_failure
-dns_consistency_system_answer_count
-dns_consistency_system_is_answer_tls_consistent
-dns_consistency_system_is_answer_tls_inconsistent
-dns_consistency_system_is_answer_ip_in_trusted_answers
-dns_consistency_system_is_answer_asn_in_trusted_answers
-dns_consistency_system_is_answer_asorg_in_trusted_answers
-dns_consistency_system_is_answer_cloud_provider
-dns_consistency_system_is_answer_probe_asn_match
-dns_consistency_system_is_answer_probe_cc_match
-dns_consistency_system_is_answer_bogon
-dns_consistency_system_answer_fp_name
-dns_consistency_system_answer_fp_scope
-dns_consistency_system_is_answer_fp_match
-dns_consistency_system_is_answer_fp_country_consistent
-dns_consistency_system_is_answer_fp_false_positive
-dns_consistency_system_is_resolver_probe_asn_match
-dns_consistency_system_is_resolver_probe_cc_match
-dns_consistency_system_answer_ip_ground_truth_asn_count
-dns_consistency_system_answer_asn_ground_truth_asn_count
-dns_consistency_other_answers
-dns_consistency_other_success
-dns_consistency_other_failure
-dns_consistency_other_answer_count
-dns_consistency_other_is_answer_tls_consistent
-dns_consistency_other_is_answer_tls_inconsistent
-dns_consistency_other_is_answer_ip_in_trusted_answers
-dns_consistency_other_is_answer_asn_in_trusted_answers
-dns_consistency_other_is_answer_asorg_in_trusted_answers
-dns_consistency_other_is_answer_cloud_provider
-dns_consistency_other_is_answer_probe_asn_match
-dns_consistency_other_is_answer_probe_cc_match
-dns_consistency_other_is_answer_bogon
-dns_consistency_other_answer_fp_name
-dns_consistency_other_answer_fp_scope
-dns_consistency_other_is_answer_fp_match
-dns_consistency_other_is_answer_fp_country_consistent
-dns_consistency_other_is_answer_fp_false_positive
-dns_consistency_other_is_resolver_probe_asn_match
-dns_consistency_other_is_resolver_probe_cc_match
-dns_consistency_other_answer_ip_ground_truth_asn_count
-dns_consistency_other_answer_asn_ground_truth_asn_count
+}
+probability ( DNS Consistency | DNS Answer Meta, DNS TLS Consistency ) {
+    ( answer_failure_nxdomain, tls_consistent ) 0.01, 0.99;
+    ( answer_failure_nxdomain, tls_inconsistent ) 0.001, 0.999;
+    ( answer_failure_nxdomain, tls_connection_failed ) 0.001, 0.999;
+    ( answer_failure_other, tls_consistent ) 0.01, 0.99;
+    ( answer_failure_other, tls_inconsistent ) 0.001, 0.999;
+    ( answer_failure_other, tls_connection_failed ) 0.001, 0.999;
+    ( answer_is_bogon, tls_consistent ) 0.03, 0.97;
+    ( answer_is_bogon, tls_inconsistent ) 0.01, 0.99;
+    ( answer_is_bogon, tls_connection_failed ) 0.01, 0.99;
+    ( answer_matches_probe_asn, tls_consistent ) 0.999, 0.001;
+    ( answer_matches_probe_asn, tls_inconsistent ) 0.001, 0.999;
+    ( answer_matches_probe_asn, tls_connection_failed ) 0.3, 0.7;
+    ( answer_matches_probe_cc, tls_consistent ) 0.999, 0.001;
+    ( answer_matches_probe_cc, tls_inconsistent ) 0.001, 0.999;
+    ( answer_matches_probe_cc, tls_connection_failed ) 0.2, 0.8;
+    ( answer_is_cloud_provider, tls_consistent ) 0.98, 0.02;
+    ( answer_is_cloud_provider, tls_inconsistent ) 0.001, 0.999;
+    ( answer_is_cloud_provider, tls_connection_failed ) 0.1, 0.9;
+    ( answer_ok, tls_consistent ) 0.9999, 0.0001;
+    ( answer_ok, tls_inconsistent ) 0.01, 0.99;
+    ( answer_ok, tls_connection_failed ) 0.2, 0.8;
 
-tls_success
-tls_failure
-tls_is_tls_certificate_valid
-tls_is_tls_certificate_invalid
-tls_handshake_read_count
-tls_handshake_write_count
-tls_handshake_read_bytes
-tls_handshake_write_bytes
-tls_handshake_time
-tls_ground_truth_failure_count
-tls_ground_truth_failure_asn_cc_count
-tls_ground_truth_ok_count
-tls_ground_truth_ok_asn_cc_count
-tls_ground_truth_trusted_failure_count
-tls_ground_truth_trusted_ok_count
+}
+probability ( DNS Ctrl Failure ) {
+    table 0.994, 0.004, 0.002 ;
+}
+probability ( DNS Outcome | DNS Ctrl Failure, DNS Consistency ) {
+    ( none, consistent ) 0.1, 0.9, 0.0;
+    ( none, inconsistent ) 0.9, 0.1, 0.0;
+    ( nxdomain, consistent ) 0.2, 0.0, 0.8;
+    ( nxdomain, inconsistent ) 0.8, 0.0, 0.2;
+    ( server_failure, consistent ) 0.1, 0.8, 0.1;
+    ( server_failure, inconsistent ) 0.7, 0.1, 0.2;
 
-tcp_address
-tcp_success	tcp_failure
-tcp_ground_truth_failure_count
-tcp_ground_truth_failure_asn_cc_count
-tcp_ground_truth_ok_count
-tcp_ground_truth_ok_asn_cc_count
-tcp_ground_truth_trusted_failure_count
-tcp_ground_truth_trusted_ok_count
+}
+probability ( DNS TLS Consistency | DNS Answer Meta ) {
+    ( answer_failure_nxdomain ) 0.96, 0.02, 0.02;
+    ( answer_failure_other ) 0.96, 0.02, 0.02;
+    ( answer_is_bogon ) 0.0, 0.02, 0.98;
+    ( answer_matches_probe_asn ) 0.05, 0.8, 0.15;
+    ( answer_matches_probe_cc ) 0.05, 0.8, 0.15;
+    ( answer_is_cloud_provider ) 0.9, 0.08, 0.02;
+    ( answer_ok ) 0.94, 0.04, 0.02;
 
-http_success
-http_failure
-http_is_http_request_encrypted
-
-http_response_body_proportion
-http_response_body_length
-http_response_status_code
-
-http_ground_truth_failure_count
-http_ground_truth_failure_asn_cc_count
-http_ground_truth_ok_count
-http_ground_truth_ok_asn_cc_count
-http_ground_truth_trusted_ok_count
-http_ground_truth_trusted_failure_count
-http_ground_truth_body_length
-
-http_fp_name
-http_fp_scope
-http_is_http_fp_match
-http_is_http_fp_country_consistent
-http_is_http_fp_false_positive
+}

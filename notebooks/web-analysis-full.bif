@@ -129,8 +129,8 @@ probability ( TLS Outcome | DNS Answer Consistency, TLS VP Result ) {
     ( consistent, bad_certificate ) 0.95, 0.01, 0.03, 0.01;
     ( consistent, connection_reset_after_ch ) 0.9, 0.01, 0.07, 0.02;
     ( consistent, timeout_after_ch ) 0.85, 0.01, 0.09, 0.05;
-    ( consistent, timeout ) 0.01, 0.08, 0.01, 0.9;
-    ( consistent, connection_reset ) 0.07, 0.01, 0.07, 0.85;
+    ( consistent, timeout ) 0.55, 0.02, 0.4, 0.03;
+    ( consistent, connection_reset ) 0.65, 0.01, 0.25, 0.09;
     ( consistent, other ) 0.07, 0.01, 0.07, 0.85;
     ( consistent, down ) 0.07, 0.01, 0.07, 0.85;
     ( inconsistent, none ) 0.02, 0.01, 0.05, 0.92;
