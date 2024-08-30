@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+</head>
+<body>
+
+    <div class="hero min-h-[200px] kraken-loon">
+        <div class="hero-overlay bg-black"></div>
+        <div class="hero-content text-center text-neutral-content">
+          <div class="max-w-md">
+            <h1 class="mb-5 text-5xl font-bold">Observations viewer</h1>
+          </div>
+        </div>
+    </div>
+      
+    <div class="container mx-auto pt-5">
+
+<h2 class="font-bold text-2xl py-6">Web Observations</h2>
+<div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-300">
+        <thead>
+            <tr>
+            {% for key in web_observations[0].keys() %}
+            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{{ key }}</th>
+            {% endfor %}
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for wo in web_observations %}
+            <tr class="hover:bg-gray-200 even:bg-gray-50 divide-x divide-gray-200">
+              {% for value in wo.values() %}
+              <td class="truncate max-w-[200px] hover:max-w-max whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{value}}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2 class="font-bold text-2xl py-6">Web Control Observations</h2>
+<div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-300">
+        <thead>
+            <tr>
+            {% for key in web_control_observations[0].keys() %}
+            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{{ key }}</th>
+            {% endfor %}
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for wo in web_control_observations %}
+            <tr class="hover:bg-gray-200 even:bg-gray-50 divide-x divide-gray-200">
+              {% for value in wo.values() %}
+              <td class="truncate max-w-[200px] hover:max-w-max whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{value}}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2 class="font-bold text-2xl py-6">Measurement Meta</h2>
+<dl class="grid grid-cols-1 sm:grid-cols-3">
+  {% for key, value in measurement_meta.items() %}
+  <div class="px-4 py-6 sm:grid-cols-3 sm:col-span-1 sm:px-0">
+    <dt class="text-sm font-medium leading-6 text-gray-900">{{ key }}</dt>
+    <dd class="mt-1 text-sm leading-6 text-gray-700 sm:col-span-2 sm:mt-0">{{ value }}</dd>
+  </div>
+  {% endfor %}
+</dl>
+
+<h2 class="font-bold text-2xl py-6">Probe Meta</h2>
+<dl class="grid grid-cols-1 sm:grid-cols-3">
+  {% for key, value in probe_meta.items() %}
+  <div class="px-4 py-6 sm:grid-cols-3 sm:col-span-1 sm:px-0">
+    <dt class="text-sm font-medium leading-6 text-gray-900">{{ key }}</dt>
+    <dd class="mt-1 text-sm leading-6 text-gray-700 sm:col-span-2 sm:mt-0">{{ value }}</dd>
+  </div>
+  {% endfor %}
+</dl>
+
+</div>
+
+</body>
+</html>

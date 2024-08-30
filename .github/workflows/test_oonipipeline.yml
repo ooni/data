@@ -1,0 +1,62 @@
+name: test oonipipeline
+on: push
+jobs:
+  run_tests:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+
+      # Contrary to oonidata, which is a tool for end users, oonipipeline
+      # targets a single python version to minimize the likelyhood of breakage
+      # in production.
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Set up datadir cache
+        uses: actions/cache@v3
+        with:
+          path: oonipipeline/tests/data/datadir/
+          key: oonipipeline-tests-data-datadir
+
+      - name: Set up measurements cache
+        uses: actions/cache@v3
+        with:
+          path: oonipipeline/tests/data/measurements/
+          key: oonipipeline-tests-data-measurements
+
+      - name: Set up raw_measurements cache
+        uses: actions/cache@v3
+        with:
+          path: oonipipeline/tests/data/raw_measurements/
+          key: oonipipeline-tests-data-raw_measurements-${{ hashFiles('tests/conftest.py') }}
+
+      - name: Install clickhouse
+        run: |
+          sudo apt-get install -y apt-transport-https ca-certificates dirmngr
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 8919F6BD2B48D754
+          echo "deb https://packages.clickhouse.com/deb stable main" | sudo tee \
+              /etc/apt/sources.list.d/clickhouse.list
+          sudo apt-get update
+          sudo apt-get install -y clickhouse-server clickhouse-client
+
+      - name: Install temporal
+        run: |
+          curl -sSf https://temporal.download/cli.sh | sh
+          echo "$HOME/.temporalio/bin" >> $GITHUB_PATH
+
+      - name: Run all tests
+        run: hatch run cov -v
+        working-directory: ./oonipipeline/
+
+      - name: Upload coverage to codecov
+        uses: codecov/codecov-action@v3
+        with:
+          flags: oonipipeline
+          working-directory: ./oonipipeline/
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

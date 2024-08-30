@@ -1,0 +1,6 @@
+/datadir/*
+/raw_measurements/*
+/measurements/*
+/s3-dump/*
+/postcans/*
+/jsonlgzs/*

@@ -1,0 +1,251 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+  <style type="text/css">
+    .kraken-loon {
+        background-image:  url(https://images.unsplash.com/photo-1627955353583-5ed9f3ff1dc7), url(https://images.unsplash.com/photo-1547716752-9a0331effbef);
+        background-position:  850px -1040px, -272px -240px;
+        background-repeat: no-repeat, no-repeat;
+        background-size: 1860px 3032px, 1453px 880px;
+    }
+  </style>
+</head>
+<body>
+
+    <div class="hero min-h-[200px] kraken-loon">
+        <div class="hero-overlay bg-opacity-60"></div>
+        <div class="hero-content text-center text-neutral-content">
+          <div class="max-w-md">
+            <h1 class="mb-5 text-5xl font-bold">Analysis viewer</h1>
+          </div>
+        </div>
+    </div>
+      
+    <div class="container mx-auto pt-5">
+
+  <h2 class="font-bold text-2xl">Experiment result output</h2>
+
+  <div class="card bg-base-100 shadow-xl">
+    <div class="card-body">
+      <h2 class="card-title">{{website_experiment_result["measurement_uid"]}}</h2>
+        <a href="https://explorer.ooni.org/m/{{measurement_uid}}" class="link">open in explorer</a>
+        <div>
+    <span class="badge">Time Of Day</span> {{website_experiment_result["timeofday"]}}
+        </div>
+
+    <h3 class="text-l font-bold pt-3">Target</h3>
+      <div class="grid grid-cols-4 gap-4">
+        <div>
+    <span class="badge">Target nettest_group</span> {{website_experiment_result["target_nettest_group"]}}
+        </div>
+        <div>
+    <span class="badge">Target category</span> {{website_experiment_result["target_category"]}}
+        </div>
+        <div>
+    <span class="badge">Target name</span> {{website_experiment_result["target_name"]}}
+        </div>
+        <div>
+    <span class="badge">Target domain_name</span> {{website_experiment_result["target_domain_name"]}}
+        </div>
+        <div>
+    <span class="badge">Target detail</span> {{website_experiment_result["target_detail"]}}
+        </div>
+        </div>
+
+    <h3 class="text-l font-bold pt-3">Location</h3>
+      <div class="grid grid-cols-4 gap-4">
+
+        <div>
+    <span class="badge">ASN</span> {{website_experiment_result["location_network_asn"]}} ({{website_experiment_result["location_network_as_org_name"]}})
+        </div>
+        <div>
+    <span class="badge">Network type</span> {{website_experiment_result["location_network_type"]}}
+        </div>
+        <div>
+    <span class="badge">Country</span> {{website_experiment_result["location_network_cc"]}}
+        </div>
+        <div>
+    <span class="badge">Resolver ASN</span> {{website_experiment_result["location_resolver_asn"]}} ({{website_experiment_result["location_resolver_as_org_name"]}})
+        </div>
+        <div>
+    <span class="badge">Blocking scope</span> {{website_experiment_result["location_blocking_scope"]}}
+        </div>
+        </div>
+
+    <h3 class="text-l font-bold pt-5">Experiment result</h3>
+      <div class="grid grid-cols-4 gap-4">
+        <div>
+    <span class="badge">anomaly</span>{{website_experiment_result["anomaly"]}}
+        </div>
+        <div>
+    <span class="badge">confirmed</span>{{website_experiment_result["confirmed"]}}
+        </div>
+        </div>
+
+
+      <div class="stats shadow pt-3">
+        <div class="stat place-items-center">
+          <div class="stat-title">OK</div>
+          <div class="stat-value">{{loni_ok_value}}</div>
+        </div>
+        <div class="stat place-items-center">
+          <div class="stat-title">blocked</div>
+          <div class="stat-value">{{loni_blocked_value}}</div>
+          <div class="stat-desc">{{loni_blocked_dict}}</div>
+        </div>
+        <div class="stat place-items-center">
+          <div class="stat-title">down</div>
+          <div class="stat-value">{{loni_down_value}}</div>
+          <div class="stat-desc">{{loni_down_dict}}</div>
+        </div>
+      </div>
+
+      <div class="stats shadow pt-3">
+        <div class="stat place-items-center">
+          <div class="stat-value">{{website_experiment_result["measurement_count"]}}</div>
+          <div class="stat-desc">measurement count</div>
+        </div>
+        <div class="stat place-items-center">
+          <div class="stat-value">{{website_experiment_result["observation_count"]}}</div>
+          <div class="stat-desc">observation count</div>
+        </div>
+        <div class="stat place-items-center">
+          <div class="stat-value">{{website_experiment_result["vp_count"]}}</div>
+          <div class="stat-desc">vantage point count</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <h2 class="font-bold text-2xl mt-8">Individual LoNIs</h2>
+
+
+<dl class="grid grid-cols-1 sm:grid-cols-2">
+{% for loni in loni_list %}
+<div class="px-4">
+    <div class="card bg-base-100 shadow-xl my-3 px-4 py-6 sm:grid-cols-2 sm:col-span-1 sm:px-0">
+        <div class="card-body">
+            <h2 class="card-title">Loni #{{loop.index}}</h2>
+            <div class="badge badge-outline">ok_final: {{loni["ok_final"]}}</div>
+            <div class="overflow-x-auto w-96">
+                <table class="table">
+                    <thead>
+                        <tr>
+                        <th>OutcomeSpace</th>
+                        <th>OutcomeStatus</th>
+                        <th>Likelyhood</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for status, value in loni["blocked"].items() %}
+                        <tr>
+                        <th>blocked</th>
+                        <td>{{status}}</td>
+                        <td>{{value}}</td>
+                        </tr>
+                        {% endfor %}
+                        {% for status, value in loni["down"].items() %}
+                        <tr>
+                        <th>down</th>
+                        <td>{{status}}</td>
+                        <td>{{value}}</td>
+                        </tr>
+                        {% endfor %}
+                        {% for status, value in loni["ok"].items() %}
+                        <tr>
+                        <th>ok</th>
+                        <td>{{status}}</td>
+                        <td>{{value}}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <h2 class="font-bold">Analysis transcript</h2>
+            <ul role="list" class="space-y-3">
+            {% for analysis_line in analysis_transcript_list[loop.index0] %}
+              <li class="px-4">{{ analysis_line }}</li>
+            {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endfor %}
+</dl>
+
+<h2 class="font-bold text-2xl py-6">Analysis output</h2>
+<div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-300">
+        <thead>
+            <tr>
+            {% for key in web_analysis[0].keys() %}
+            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{{ key }}</th>
+            {% endfor %}
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for wa in web_analysis %}
+            <tr class="hover:bg-gray-200 even:bg-gray-50 divide-x divide-gray-200">
+              {% for value in wa.values() %}
+              <td class="truncate max-w-[200px] hover:max-w-max whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{value}}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2 class="font-bold text-2xl py-6">Web Observations</h2>
+<div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-300">
+        <thead>
+            <tr>
+            {% for key in web_observations[0].keys() %}
+            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{{ key }}</th>
+            {% endfor %}
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for wo in web_observations %}
+            <tr class="hover:bg-gray-200 even:bg-gray-50 divide-x divide-gray-200">
+              {% for value in wo.values() %}
+              <td class="truncate max-w-[200px] hover:max-w-max whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{value}}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+  </div>
+
+<h2 class="py-6 text-l font-bold">Experiment results raw</h2>
+<div class="overflow-x-auto">
+    <table class="table table-xs">
+        <thead>
+            <tr>
+            <th>key</th>
+            <th>value</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for key, value in website_experiment_result.items() %}
+            <tr class="hover">
+            <td>{{key}}</td>
+            <td>{{value}}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+
+
+</div>
+
+</body>
+</html>
