@@ -69,6 +69,7 @@ path = "src/oonipipeline/__about__.py"
 [tool.hatch.envs.default.scripts]
 oonipipeline = "python -m oonipipeline.main {args}"
 dataviz = "uvicorn oonipipeline.dataviz.main:app {args}"
+api = "uvicorn oonipipeline.api.main:app {args}"
 test = "pytest {args:tests}"
 # --full-trace --log-level=INFO  --log-cli-level=INFO -v --setup-show -s
 test-cov = "pytest --cov=./ --cov-report=xml --cov-report=html --cov-report=term {args:tests}"
