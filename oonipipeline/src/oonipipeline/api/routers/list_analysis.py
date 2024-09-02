@@ -9,6 +9,7 @@ from typing_extensions import Annotated
 
 from oonidata.datautils import PerfTimer
 
+from .utils import SinceUntil, test_name_to_group, utc_30_days_ago, utc_today
 from ..config import settings
 from ..dependencies import ClickhouseClient, get_clickhouse_client
 
@@ -102,36 +103,6 @@ class MeasurementEntry(BaseModel):
 class ListMeasurementsResponse(BaseModel):
     metadata: ResponseMetadata
     results: List[MeasurementEntry]
-
-
-def parse_date(d: Union[datetime, str]) -> datetime:
-    from dateutil.parser import parse as parse_date
-
-    if isinstance(d, str):
-        return parse_date(d)
-    return d
-
-
-SinceUntil = Annotated[Union[str, datetime, None], AfterValidator(parse_date), Query()]
-
-
-def utc_30_days_ago():
-    return datetime.combine(
-        datetime.now(timezone.utc) - timedelta(days=30), datetime.min.time()
-    ).replace(tzinfo=None)
-
-
-def utc_today():
-    return datetime.combine(datetime.now(timezone.utc), datetime.min.time()).replace(
-        tzinfo=None
-    )
-
-
-def test_name_to_group(tn):
-    if tn in ("web_connectivity", "http_requests"):
-        return "websites"
-    # TODO(arturo): currently we only support websites
-    return ""
 
 
 @router.get("/measurements", tags=["measurements"])

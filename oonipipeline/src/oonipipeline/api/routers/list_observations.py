@@ -112,7 +112,7 @@ async def list_observations(
         q_args["until"] = until
 
     cols = [x.name for x in dataclasses.fields(WebObservation)]
-    q = f"SELECT {','.join(cols)} FROM web_observations"
+    q = f"SELECT {','.join(cols)} FROM obs_web"
     if len(and_clauses) > 0:
         q += " WHERE "
         q += " AND ".join(and_clauses)

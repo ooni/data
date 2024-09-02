@@ -6,8 +6,9 @@ from pydantic import BaseModel
 
 from oonidata.datautils import PerfTimer
 
+from .utils import get_measurement_start_day_agg, TimeGrains
 from ..dependencies import ClickhouseClient, get_clickhouse_client
-from .measurements import (
+from .list_analysis import (
     OONI_DATA_COLS_REMAP,
     OONI_DATA_COLS_REMAP_INV,
     SinceUntil,
@@ -29,8 +30,6 @@ AggregationKeys = Literal[
     "probe_asn",
     "test_name",
 ]
-
-TimeGrains = Literal["hour", "day", "week", "month", "year", "auto"]
 
 
 class DBStats(BaseModel):
@@ -70,19 +69,6 @@ class AggregationResponse(BaseModel):
     result: List[AggregationEntry]
 
 
-def get_measurement_start_day_agg(time_grain: TimeGrains):
-    if time_grain == "hour":
-        return "toStartOfHour(timeofday)"
-    if time_grain == "day":
-        return "toStartOfDay(timeofday)"
-    if time_grain == "week":
-        return "toStartOfWeek(timeofday)"
-    if time_grain == "month":
-        return "toStartOfMonth(timeofday)"
-    # TODO(arturo): do we care to keep the auto option?
-    return "toStartOfDay(timeofday)"
-
-
 @router.get("/aggregation", tags=["aggregation"])
 async def get_aggregation(
     db: Annotated[ClickhouseClient, Depends(get_clickhouse_client)],
@@ -110,9 +96,9 @@ async def get_aggregation(
         # TODO(arturo): wouldn't it be nicer if we dropped the time_grain
         # argument and instead used axis_x IN (measurement_start_day,
         # measurement_start_hour, ..)?
-        extra_cols[
-            "measurement_start_day"
-        ] = f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
+        extra_cols["measurement_start_day"] = (
+            f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
+        )
     elif axis_x:
         col = OONI_DATA_COLS_REMAP.get(axis_x)
         extra_cols[axis_x] = f"{col} as {axis_x}"
@@ -149,9 +135,9 @@ async def get_aggregation(
             # TODO(arturo): wouldn't it be nicer if we dropped the time_grain
             # argument and instead used axis_x IN (measurement_start_day,
             # measurement_start_hour, ..)?
-            extra_cols[
-                "measurement_start_day"
-            ] = f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
+            extra_cols["measurement_start_day"] = (
+                f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
+            )
         else:
             col = OONI_DATA_COLS_REMAP_INV.get(axis_y)
             extra_cols[axis_y] = f"{col} as {axis_y}"
@@ -309,8 +295,8 @@ async def get_aggregation(
             bytes=-1,
             elapsed_seconds=t.s,
             row_count=len(results),
-            total_row_count=len(results)
+            total_row_count=len(results),
         ),
         dimension_count=dimension_count,
-        result=results
+        result=results,
     )
