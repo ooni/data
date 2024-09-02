@@ -102,7 +102,7 @@ clickhouse_buffer_max_time_option = click.option(
     help="max_time for the Buffer tables in clickhouse. only applied during create. see: https://clickhouse.com/docs/en/engines/table-engines/special/buffer",
 )
 telemetry_endpoint_option = click.option(
-    "--telemetry-endpoint", type=Optional[str], required=False, default=None
+    "--telemetry-endpoint", type=str, required=False, default=None
 )
 temporal_address_option = click.option(
     "--temporal-address", type=str, required=True, default="localhost:7233"
