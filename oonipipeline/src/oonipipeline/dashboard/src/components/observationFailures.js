@@ -23,6 +23,8 @@ const colorPalette = makeColorPalette(
 export async function getObservationData({
   countryFilter,
   hostnameFilter,
+  sinceFilter,
+  untilFilter,
   breakDownByIP,
 }) {
   let group_by = ["timestamp", "failure"];
@@ -33,6 +35,8 @@ export async function getObservationData({
     await getObservationsAggregate({
       group_by: group_by,
       probe_cc: countryFilter,
+      since: sinceFilter,
+      until: untilFilter,
       hostname: hostnameFilter,
       test_name: "web_connectivity",
     })

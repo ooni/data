@@ -6,6 +6,7 @@
     "build": "rimraf dist && observable build",
     "dev": "observable preview",
     "deploy": "observable deploy",
+    "scp": "npm run build && scp -r dist/* data.ooni.org:/var/www/dashboard/",
     "observable": "observable"
   },
   "dependencies": {

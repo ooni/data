@@ -14,5 +14,5 @@ export async function getObservationsAggregate(params) {
     })
     .join("&");
   console.log(`running query ${query}`);
-  return json(`http://localhost:8000/api/v2/observations-aggregate?${query}`);
+  return json(`https://data.ooni.org/api/v2/observations-aggregate?${query}`);
 }

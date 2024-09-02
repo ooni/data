@@ -38,9 +38,12 @@ const form = view(
 );
 ```
 
+
 ```js
 const hostnameFilter = form.hostname
 const countryFilter = form.country
+const sinceFilter = form.since.toISOString().slice(0, 10)
+const untilFilter = form.until.toISOString().slice(0, 10)
 const breakDownByIP = view(Inputs.toggle({label: "By IP", value: false}));
 ```
 
@@ -50,6 +53,8 @@ if (hostnameFilter && countryFilter) {
   data = await getObservationData({
     countryFilter,
     hostnameFilter,
+    sinceFilter,
+    untilFilter,
     breakDownByIP,
   })
 }
