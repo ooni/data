@@ -150,7 +150,7 @@ def make_observation_in_day(params: MakeObservationsParams) -> dict:
     # TODO(art): this previous range search and deletion makes the idempotence
     # of the activity not 100% accurate.
     # We should look into fixing it.
-    with ClickhouseConnection(params.clickhouse, write_batch_size=10_000) as db:
+    with ClickhouseConnection(params.clickhouse) as db:
         prev_ranges = []
         for table_name in ["obs_web"]:
             prev_ranges.append(
@@ -182,7 +182,7 @@ def make_observation_in_day(params: MakeObservationsParams) -> dict:
         msmt_cnt = make_observations_for_file_entry_batch(
             batch,
             params.clickhouse,
-            10_000,
+            500_000,
             pathlib.Path(params.data_dir),
             params.bucket_date,
             params.probe_cc,
@@ -197,7 +197,7 @@ def make_observation_in_day(params: MakeObservationsParams) -> dict:
     )
 
     if len(prev_ranges) > 0:
-        with ClickhouseConnection(params.clickhouse, write_batch_size=10_000) as db:
+        with ClickhouseConnection(params.clickhouse) as db:
             for table_name, pr in prev_ranges:
                 log.info("deleting previous range of {pr}")
                 maybe_delete_prev_range(db=db, prev_range=pr)
