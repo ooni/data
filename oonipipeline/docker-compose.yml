@@ -123,8 +123,7 @@ services:
       COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
       COLLECTOR_OTLP_GRPC_HOST_PORT: "0.0.0.0:4317"
       COLLECTOR_OTLP_HTTP_HOST_PORT: "0.0.0.0:4318"
-
-
+      COLLECTOR_OTLP_ENABLED: "true"
 
 ### TODO(art): currently jaeger setup with elastic is not working, so we 
 ## are temporarily just using the all-in-one container that's not meant for production use

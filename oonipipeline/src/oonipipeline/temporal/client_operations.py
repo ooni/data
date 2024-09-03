@@ -29,6 +29,7 @@ from temporalio.runtime import (
     OpenTelemetryConfig,
     Runtime as TemporalRuntime,
     TelemetryConfig,
+    PrometheusConfig,
 )
 
 log = logging.getLogger("oonidata.client_operations")
@@ -38,6 +39,7 @@ log = logging.getLogger("oonidata.client_operations")
 class TemporalConfig:
     temporal_address: str = "localhost:7233"
     telemetry_endpoint: Optional[str] = None
+    prometheus_bind_address: Optional[str] = None
     temporal_namespace: Optional[str] = None
     temporal_tls_client_cert_path: Optional[str] = None
     temporal_tls_client_key_path: Optional[str] = None
@@ -56,10 +58,22 @@ def init_runtime_with_telemetry(endpoint: str) -> TemporalRuntime:
     )
 
 
+def init_runtime_with_prometheus(bind_address: str) -> TemporalRuntime:
+    # Create runtime for use with Prometheus metrics
+    return TemporalRuntime(
+        telemetry=TelemetryConfig(metrics=PrometheusConfig(bind_address=bind_address))
+    )
+
+
 async def temporal_connect(
     temporal_config: TemporalConfig,
 ):
     runtime = None
+    if temporal_config.prometheus_bind_address and temporal_config.telemetry_endpoint:
+        raise RuntimeError("cannot use both prometheus and otel")
+
+    if temporal_config.prometheus_bind_address:
+        runtime = init_runtime_with_prometheus(temporal_config.prometheus_bind_address)
     if temporal_config.telemetry_endpoint:
         runtime = init_runtime_with_telemetry(temporal_config.telemetry_endpoint)
 
