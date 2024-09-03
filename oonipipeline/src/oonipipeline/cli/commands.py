@@ -104,6 +104,9 @@ clickhouse_buffer_max_time_option = click.option(
 telemetry_endpoint_option = click.option(
     "--telemetry-endpoint", type=str, required=False, default=None
 )
+prometheus_bind_address_option = click.option(
+    "--prometheus-bind-address", type=str, required=False, default=None
+)
 temporal_address_option = click.option(
     "--temporal-address", type=str, required=True, default="localhost:7233"
 )
@@ -210,6 +213,7 @@ def cli(ctx, log_level: int, config: str):
 @clickhouse_buffer_min_time_option
 @clickhouse_buffer_max_time_option
 @telemetry_endpoint_option
+@prometheus_bind_address_option
 @temporal_address_option
 @temporal_namespace_option
 @temporal_tls_client_cert_path_option
@@ -234,6 +238,7 @@ def backfill(
     create_tables: bool,
     drop_tables: bool,
     telemetry_endpoint: Optional[str],
+    prometheus_bind_address: Optional[str],
     temporal_address: str,
     temporal_namespace: Optional[str],
     temporal_tls_client_cert_path: Optional[str],
@@ -254,6 +259,7 @@ def backfill(
     )
 
     temporal_config = TemporalConfig(
+        prometheus_bind_address=prometheus_bind_address,
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
@@ -277,6 +283,7 @@ def backfill(
 @clickhouse_buffer_max_time_option
 @datadir_option
 @telemetry_endpoint_option
+@prometheus_bind_address_option
 @temporal_address_option
 @temporal_namespace_option
 @temporal_tls_client_cert_path_option
@@ -325,6 +332,7 @@ def schedule(
     create_tables: bool,
     drop_tables: bool,
     telemetry_endpoint: Optional[str],
+    prometheus_bind_address: Optional[str],
     temporal_address: str,
     temporal_namespace: Optional[str],
     temporal_tls_client_cert_path: Optional[str],
@@ -357,6 +365,7 @@ def schedule(
 
     temporal_config = TemporalConfig(
         telemetry_endpoint=telemetry_endpoint,
+        prometheus_bind_address=prometheus_bind_address,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
         temporal_tls_client_cert_path=temporal_tls_client_cert_path,
@@ -389,6 +398,7 @@ def schedule(
 
 
 @cli.command()
+@prometheus_bind_address_option
 @telemetry_endpoint_option
 @temporal_address_option
 @temporal_namespace_option
@@ -396,6 +406,7 @@ def schedule(
 @temporal_tls_client_key_path_option
 def status(
     telemetry_endpoint: Optional[str],
+    prometheus_bind_address: Optional[str],
     temporal_address: str,
     temporal_namespace: Optional[str],
     temporal_tls_client_cert_path: Optional[str],
@@ -403,6 +414,7 @@ def status(
 ):
     click.echo(f"getting status from {temporal_address}")
     temporal_config = TemporalConfig(
+        prometheus_bind_address=prometheus_bind_address,
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
@@ -415,6 +427,7 @@ def status(
 @cli.command()
 @datadir_option
 @parallelism_option
+@prometheus_bind_address_option
 @telemetry_endpoint_option
 @temporal_address_option
 @temporal_namespace_option
@@ -423,6 +436,7 @@ def status(
 def startworkers(
     data_dir: Path,
     parallelism: int,
+    prometheus_bind_address: Optional[str],
     telemetry_endpoint: Optional[str],
     temporal_address: str,
     temporal_namespace: Optional[str],
@@ -435,6 +449,7 @@ def startworkers(
     click.echo("done downloading netinfodb")
 
     temporal_config = TemporalConfig(
+        prometheus_bind_address=prometheus_bind_address,
         telemetry_endpoint=telemetry_endpoint,
         temporal_address=temporal_address,
         temporal_namespace=temporal_namespace,
