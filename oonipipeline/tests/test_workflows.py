@@ -104,8 +104,13 @@ def test_get_prev_range(db):
         probe_cc=[probe_cc],
     )
     assert prev_range.min_created_at and prev_range.max_created_at
-    assert prev_range.min_created_at == (min_time - timedelta(seconds=1))
-    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1))
+    assert prev_range.min_created_at == (min_time - timedelta(seconds=1)).strftime(
+        TS_FORMAT
+    )
+    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1)).strftime(
+        TS_FORMAT
+    )
+
     db.execute("TRUNCATE TABLE test_range")
 
     bucket_date = "2000-03-01"
@@ -133,8 +138,12 @@ def test_get_prev_range(db):
         probe_cc=[probe_cc],
     )
     assert prev_range.min_created_at and prev_range.max_created_at
-    assert prev_range.min_created_at == (min_time - timedelta(seconds=1))
-    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1))
+    assert prev_range.min_created_at == (min_time - timedelta(seconds=1)).strftime(
+        TS_FORMAT
+    )
+    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1)).strftime(
+        TS_FORMAT
+    )
 
     maybe_delete_prev_range(
         db=db,
