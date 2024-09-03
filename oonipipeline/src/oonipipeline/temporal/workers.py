@@ -11,7 +11,12 @@ from oonipipeline.temporal.activities.common import (
     update_assets,
 )
 from oonipipeline.temporal.activities.ground_truths import make_ground_truths_in_day
-from oonipipeline.temporal.activities.observations import make_observation_in_day
+from oonipipeline.temporal.activities.observations import (
+    delete_previous_range,
+    get_previous_range,
+    make_observation_batches,
+    make_observations_for_file_entry_batch,
+)
 from oonipipeline.temporal.client_operations import (
     TemporalConfig,
     log,
@@ -37,7 +42,10 @@ WORKFLOWS = [
 ]
 
 ACTIVTIES = [
-    make_observation_in_day,
+    delete_previous_range,
+    get_previous_range,
+    make_observation_batches,
+    make_observations_for_file_entry_batch,
     make_ground_truths_in_day,
     make_analysis_in_a_day,
     optimize_all_tables,

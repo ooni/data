@@ -16,13 +16,14 @@ from ..db.connections import ClickhouseConnection
 
 log = logging.getLogger("oonidata.processing")
 
+TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 @dataclass
 class BatchParameters:
     test_name: List[str]
     probe_cc: List[str]
     bucket_date: Optional[str]
-    timestamp: Optional[datetime]
+    timestamp: Optional[str]
 
 
 @dataclass
@@ -31,8 +32,8 @@ class PrevRange:
     batch_parameters: BatchParameters
     timestamp_column: Optional[str]
     probe_cc_column: Optional[str]
-    max_created_at: Optional[datetime] = None
-    min_created_at: Optional[datetime] = None
+    max_created_at: Optional[str] = None
+    min_created_at: Optional[str] = None
 
     def format_query(self):
         start_timestamp = None
@@ -46,7 +47,9 @@ class PrevRange:
             q_args["bucket_date"] = self.batch_parameters.bucket_date
 
         elif self.batch_parameters.timestamp:
-            start_timestamp = self.batch_parameters.timestamp
+            start_timestamp = datetime.strptime(
+                self.batch_parameters.timestamp, TS_FORMAT
+            )
             end_timestamp = start_timestamp + timedelta(days=1)
             q_args["start_timestamp"] = start_timestamp
             q_args["end_timestamp"] = end_timestamp
@@ -93,7 +96,7 @@ def get_prev_range(
     test_name: List[str],
     probe_cc: List[str],
     bucket_date: Optional[str] = None,
-    timestamp: Optional[datetime] = None,
+    timestamp: Optional[str] = None,
     timestamp_column: str = "timestamp",
     probe_cc_column: str = "probe_cc",
 ) -> PrevRange:
@@ -146,11 +149,15 @@ def get_prev_range(
     # We pad it by 1 second to take into account the time resolution downgrade
     # happening when going from clickhouse to python data types
     if max_created_at and min_created_at:
-        prev_range.max_created_at = (max_created_at + timedelta(seconds=1)).replace(
-            tzinfo=None
+        prev_range.max_created_at = (
+            (max_created_at + timedelta(seconds=1))
+            .replace(tzinfo=None)
+            .strftime(TS_FORMAT)
         )
-        prev_range.min_created_at = (min_created_at - timedelta(seconds=1)).replace(
-            tzinfo=None
+        prev_range.min_created_at = (
+            (min_created_at - timedelta(seconds=1))
+            .replace(tzinfo=None)
+            .strftime(TS_FORMAT)
         )
 
     return prev_range

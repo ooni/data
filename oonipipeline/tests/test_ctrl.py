@@ -11,6 +11,7 @@ from oonipipeline.analysis.control import (
     iter_web_ground_truths,
 )
 from oonipipeline.temporal.activities.observations import (
+    MakeObservationsFileEntryBatch,
     make_observations_for_file_entry_batch,
 )
 
@@ -59,7 +60,15 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
         )
     ]
     obs_msmt_count = make_observations_for_file_entry_batch(
-        file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", ["US"], False
+        MakeObservationsFileEntryBatch(
+            file_entry_batch=file_entry_batch,
+            clickhouse=db.clickhouse_url,
+            write_batch_size=1,
+            data_dir=datadir,
+            bucket_date="2023-10-31",
+            probe_cc=["US"],
+            fast_fail=False,
+        )
     )
     assert obs_msmt_count == 299
     # Wait for buffers to flush

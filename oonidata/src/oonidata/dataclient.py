@@ -577,7 +577,7 @@ def list_file_entries_batches(
     probe_cc: CSVList = None,
     test_name: CSVList = None,
     from_cans: bool = True,
-) -> Tuple[List[Tuple], int]:
+) -> Tuple[List[List[Tuple]], int]:
     if isinstance(start_day, str):
         start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
     if isinstance(end_day, str):
