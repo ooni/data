@@ -182,7 +182,9 @@ def make_observation_batches(
         start_day=day,
         end_day=day + timedelta(days=1),
     )
-    log.info(f"listing {len(file_entry_batches)} batches took {t.pretty}")
+    log.info(
+        f"listing bucket_date={bucket_date} {len(file_entry_batches)} batches took {t.pretty}"
+    )
     return {"batches": file_entry_batches, "total_size": total_size}
 
 
@@ -212,19 +214,22 @@ async def make_observations(params: MakeObservationsParams) -> MakeObservationsR
             bucket_date=params.bucket_date,
         ),
     )
-    measurement_count = 0
+    awaitables = []
     with concurrent.futures.ProcessPoolExecutor() as process_pool:
         for file_entry_batch in batches["batches"]:
-            measurement_count += await make_observations_for_file_entry_batch(
-                file_entry_batch=file_entry_batch,
-                bucket_date=params.bucket_date,
-                probe_cc=params.probe_cc,
-                data_dir=pathlib.Path(params.data_dir),
-                clickhouse=params.clickhouse,
-                write_batch_size=1_000_000,
-                fast_fail=False,
-                executor=process_pool,
+            awaitables.append(
+                make_observations_for_file_entry_batch(
+                    file_entry_batch=file_entry_batch,
+                    bucket_date=params.bucket_date,
+                    probe_cc=params.probe_cc,
+                    data_dir=pathlib.Path(params.data_dir),
+                    clickhouse=params.clickhouse,
+                    write_batch_size=1_000_000,
+                    fast_fail=False,
+                    executor=process_pool,
+                )
             )
+    measurement_count = sum(await asyncio.gather(*awaitables))
 
     current_span.set_attribute("total_runtime_ms", tbatch.ms)
     # current_span.set_attribute("total_failure_count", total_failure_count)
