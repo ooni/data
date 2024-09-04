@@ -158,9 +158,11 @@ async def make_observations_for_file_entry_batch(
         total_failure_count += failure_count
 
     log.info(
-        f"finished batch ({len(file_entry_batch)} entries) in {tbatch.s:.3f} seconds"
+        f"finished batch for bucket_date={bucket_date}\n"
+        f"    {len(file_entry_batch)} entries \n"
+        f"    in {tbatch.s:.3f} seconds \n"
+        f"    msmt/s: {total_measurement_count / tbatch.s}"
     )
-    log.info(f"msmt/s: {total_measurement_count / tbatch.s}")
     return total_measurement_count
 
 
