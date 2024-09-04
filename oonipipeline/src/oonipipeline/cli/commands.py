@@ -18,10 +18,10 @@ from oonipipeline.temporal.workers import start_workers
 import click
 from click_loglevel import LogLevel
 
-from ..temporal.workflows import (
-    GroundTruthsWorkflow,
-    GroundTruthsWorkflowParams,
+from ..temporal.workflows.observations import (
     ObservationsWorkflowParams,
+)
+from ..temporal.workflows.analysis import (
     AnalysisWorkflowParams,
 )
 

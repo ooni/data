@@ -5,8 +5,9 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 from temporalio import activity
 
-from oonipipeline.temporal.workflows import (
-    TASK_QUEUE_NAME,
+from oonipipeline.temporal.workflows.common import TASK_QUEUE_NAME
+
+from oonipipeline.temporal.workflows.observations import (
     ObservationsWorkflow,
     ObservationsWorkflowParams,
 )

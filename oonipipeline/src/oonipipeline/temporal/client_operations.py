@@ -1,12 +1,13 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
-from oonipipeline.temporal.workflows import (
-    AnalysisWorkflowParams,
-    ObservationsWorkflowParams,
+from oonipipeline.temporal.workflows.analysis import AnalysisWorkflowParams
+from oonipipeline.temporal.workflows.observations import ObservationsWorkflowParams
+
+from oonipipeline.temporal.schedules import (
     schedule_analysis,
     schedule_observations,
 )

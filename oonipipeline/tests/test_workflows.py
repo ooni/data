@@ -50,13 +50,15 @@ from oonipipeline.temporal.activities.ground_truths import (
     MakeGroundTruthsParams,
     make_ground_truths_in_day,
 )
-from oonipipeline.temporal.workflows import (
+from oonipipeline.temporal.workflows.analysis import (
     AnalysisWorkflowParams,
-    ObservationsWorkflow,
     AnalysisWorkflow,
-    ObservationsWorkflowParams,
-    TASK_QUEUE_NAME,
 )
+from oonipipeline.temporal.workflows.observations import (
+    ObservationsWorkflowParams,
+    ObservationsWorkflow,
+)
+from oonipipeline.temporal.workflows.common import TASK_QUEUE_NAME
 
 # from oonipipeline.workflows.response_archiver import ResponseArchiver
 # from oonipipeline.workflows.fingerprint_hunter import fingerprint_hunter
