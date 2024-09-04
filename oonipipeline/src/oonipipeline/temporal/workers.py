@@ -56,18 +56,21 @@ async def worker_main(temporal_config: TemporalConfig):
     client = await temporal_connect(temporal_config=temporal_config)
     max_workers = max(os.cpu_count() or 4, 4)
     log.info(f"starting workers with max_workers={max_workers}")
+    thread_pool = ThreadPoolExecutor(max_workers=max_workers + 2)
     async with Worker(
         client,
         task_queue=TASK_QUEUE_NAME,
         workflows=WORKFLOWS,
         activities=ACTIVTIES,
-        activity_executor=ThreadPoolExecutor(max_workers=max_workers + 2),
+        activity_executor=thread_pool,
         max_concurrent_activities=max_workers,
         max_concurrent_workflow_tasks=max_workers,
     ):
         log.info("Workers started, ctrl-c to exit")
         await interrupt_event.wait()
         log.info("Shutting down")
+        thread_pool.shutdown(wait=True, cancel_futures=True)
+        log.info("Thread pool stopped")
 
 
 def start_workers(temporal_config: TemporalConfig):
