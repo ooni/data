@@ -231,7 +231,7 @@ async def make_observations(params: MakeObservationsParams) -> MakeObservationsR
                     executor=process_pool,
                 )
             )
-    measurement_count = sum(await asyncio.gather(*awaitables))
+        measurement_count = sum(await asyncio.gather(*awaitables))
 
     current_span.set_attribute("total_runtime_ms", tbatch.ms)
     # current_span.set_attribute("total_failure_count", total_failure_count)
