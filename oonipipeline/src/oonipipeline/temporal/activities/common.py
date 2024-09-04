@@ -24,9 +24,12 @@ class ClickhouseParams:
 @activity.defn
 def optimize_all_tables(params: ClickhouseParams):
     with ClickhouseConnection(params.clickhouse_url) as db:
-        for _, table_name in make_create_queries():
+        table_names = [table_name for _, table_name in make_create_queries()]
+        # We first flush the buffer_ tables and then the non-buffer tables
+        for table_name in filter(lambda x: x.startswith("buffer_"), table_names):
             db.execute(f"OPTIMIZE TABLE {table_name}")
-
+        for table_name in filter(lambda x: not x.startswith("buffer_"), table_names):
+            db.execute(f"OPTIMIZE TABLE {table_name}")
 
 @dataclass
 class UpdateAssetsParams:

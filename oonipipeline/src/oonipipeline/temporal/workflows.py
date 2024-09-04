@@ -181,6 +181,13 @@ class ObservationsWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=10),
         )
 
+        await workflow.execute_activity(
+            optimize_all_tables,
+            ClickhouseParams(clickhouse_url=params.clickhouse),
+            start_to_close_timeout=timedelta(minutes=5),
+            retry_policy=RetryPolicy(maximum_attempts=10),
+        )
+
         return {
             "measurement_count": total_msmt_count,
             "size": obs_batches["total_size"],
