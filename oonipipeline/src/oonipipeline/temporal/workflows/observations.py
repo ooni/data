@@ -18,12 +18,10 @@ with workflow.unsafe.imports_passed_through():
     from oonipipeline.temporal.activities.observations import (
         DeletePreviousRangeParams,
         GetPreviousRangeParams,
-        MakeObservationsFileEntryBatch,
         MakeObservationsParams,
         delete_previous_range,
         get_previous_range,
-        make_observation_batches,
-        make_observations_for_file_entry_batch,
+        make_observations,
     )
     from oonipipeline.temporal.workflows.common import (
         TASK_QUEUE_NAME,
@@ -87,40 +85,15 @@ class ObservationsWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=10),
         )
 
-        batch_res = await workflow.execute_activity(
-            make_observation_batches,
+        obs_res = await workflow.execute_activity(
+            make_observations,
             params_make_observations,
-            start_to_close_timeout=timedelta(minutes=30),
+            start_to_close_timeout=timedelta(hours=48),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
-        coroutine_list = []
-        for batch_idx in range(batch_res["batch_count"]):
-            batch_params = MakeObservationsFileEntryBatch(
-                batch_idx=batch_idx,
-                clickhouse=params.clickhouse,
-                write_batch_size=1_000_000,
-                data_dir=params.data_dir,
-                bucket_date=params.bucket_date,
-                probe_cc=params.probe_cc,
-                test_name=params.test_name,
-                fast_fail=params.fast_fail,
-            )
-            coroutine_list.append(
-                workflow.execute_activity(
-                    make_observations_for_file_entry_batch,
-                    batch_params,
-                    task_queue=TASK_QUEUE_NAME,
-                    start_to_close_timeout=timedelta(hours=10),
-                    retry_policy=RetryPolicy(maximum_attempts=10),
-                )
-            )
-        total_msmt_count = sum(await asyncio.gather(*coroutine_list))
-
-        mb_per_sec = round(batch_res["total_size"] / total_t.s / 10**6, 1)
-        msmt_per_sec = round(total_msmt_count / total_t.s)
         workflow.logger.info(
-            f"finished processing all batches in {total_t.pretty} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
+            f"finished processing all batches in {total_t.pretty} speed: {obs_res['mb_per_sec']}MB/s ({obs_res['measurement_per_sec']}msmt/s)"
         )
 
         await workflow.execute_activity(
@@ -141,9 +114,9 @@ class ObservationsWorkflow:
         )
 
         return {
-            "measurement_count": total_msmt_count,
-            "size": batch_res["total_size"],
-            "mb_per_sec": mb_per_sec,
+            "measurement_count": obs_res["measurement_count"],
+            "size": obs_res["total_size"],
+            "mb_per_sec": obs_res["mb_per_sec"],
             "bucket_date": params.bucket_date,
-            "msmt_per_sec": msmt_per_sec,
+            "measurement_per_sec": obs_res["measurement_per_sec"],
         }

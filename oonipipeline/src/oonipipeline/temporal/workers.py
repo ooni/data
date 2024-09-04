@@ -14,8 +14,7 @@ from oonipipeline.temporal.activities.ground_truths import make_ground_truths_in
 from oonipipeline.temporal.activities.observations import (
     delete_previous_range,
     get_previous_range,
-    make_observation_batches,
-    make_observations_for_file_entry_batch,
+    make_observations,
 )
 from oonipipeline.temporal.client_operations import (
     TemporalConfig,
@@ -42,8 +41,7 @@ WORKFLOWS = [
 ACTIVTIES = [
     delete_previous_range,
     get_previous_range,
-    make_observation_batches,
-    make_observations_for_file_entry_batch,
+    make_observations,
     make_ground_truths_in_day,
     make_analysis_in_a_day,
     optimize_all_tables,
@@ -75,6 +73,7 @@ def start_workers(temporal_config: TemporalConfig):
     log.info(f"starting workers with max_workers={max_workers}")
     thread_pool = ThreadPoolExecutor(max_workers=max_workers + 2)
     loop = asyncio.new_event_loop()
+    loop.set_default_executor(thread_pool)
     # TODO(art): Investigate if we want to upgrade to python 3.12 and use this
     # instead
     # loop.set_task_factory(asyncio.eager_task_factory)

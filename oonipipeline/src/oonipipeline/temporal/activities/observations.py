@@ -1,5 +1,7 @@
+import asyncio
 from dataclasses import dataclass
 import dataclasses
+import functools
 from typing import Any, Dict, List, Sequence, Tuple, TypedDict
 from oonidata.dataclient import (
     ccs_set,
@@ -78,33 +80,22 @@ class MakeObservationsFileEntryBatch:
     fast_fail: bool
 
 
-@activity.defn
 def make_observations_for_file_entry_batch(
-    params: MakeObservationsFileEntryBatch,
+    file_entry_batch: List[FileEntryBatchType],
+    bucket_date: str,
+    probe_cc: List[str],
+    data_dir: pathlib.Path,
+    clickhouse: str,
+    write_batch_size: int,
+    fast_fail: bool = False,
 ) -> int:
-    day = datetime.strptime(params.bucket_date, "%Y-%m-%d").date()
-    data_dir = pathlib.Path(params.data_dir)
-
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
-    tbatch = PerfTimer()
 
     tracer = trace.get_tracer(__name__)
 
-    file_entry_batches, _ = list_file_entries_batches(
-        probe_cc=params.probe_cc,
-        test_name=params.test_name,
-        start_day=day,
-        end_day=day + timedelta(days=1),
-    )
-    file_entry_batch = file_entry_batches[params.batch_idx]
-
-    activity.heartbeat(f"running idx {params.batch_idx}")
     total_failure_count = 0
-    current_span = trace.get_current_span()
-    with ClickhouseConnection(
-        params.clickhouse, write_batch_size=params.write_batch_size
-    ) as db:
-        ccs = ccs_set(params.probe_cc)
+    with ClickhouseConnection(clickhouse, write_batch_size=write_batch_size) as db:
+        ccs = ccs_set(probe_cc)
         idx = 0
         for bucket_name, s3path, ext, fe_size in file_entry_batch:
             failure_count = 0
@@ -133,13 +124,11 @@ def make_observations_for_file_entry_batch(
                             obs_tuple = measurement_to_observations(
                                 msmt=msmt,
                                 netinfodb=netinfodb,
-                                bucket_date=params.bucket_date,
+                                bucket_date=bucket_date,
                             )
                             for obs_list in obs_tuple:
                                 db.write_table_model_rows(obs_list)
                             idx += 1
-                            if idx % 10_000 == 0:
-                                activity.heartbeat(f"processing idx: {idx}")
                         except Exception as exc:
                             msmt_str = msmt_dict.get("report_id", None)
                             if msmt:
@@ -149,7 +138,7 @@ def make_observations_for_file_entry_batch(
                             )
                             failure_count += 1
 
-                            if params.fast_fail:
+                            if fast_fail:
                                 db.close()
                                 raise exc
                     log.debug(f"done processing file s3://{bucket_name}/{s3path}")
@@ -166,30 +155,86 @@ def make_observations_for_file_entry_batch(
                 span.add_event(f"s3_path: s3://{bucket_name}/{s3path}")
                 total_failure_count += failure_count
 
-        current_span.set_attribute("total_runtime_ms", tbatch.ms)
-        current_span.set_attribute("total_failure_count", total_failure_count)
     return idx
 
 
 ObservationBatches = TypedDict(
     "ObservationBatches",
-    {"batch_count": int, "total_size": int},
+    {"batches": List[List[FileEntryBatchType]], "total_size": int},
 )
 
 
-@activity.defn
-def make_observation_batches(params: MakeObservationsParams) -> ObservationBatches:
-    day = datetime.strptime(params.bucket_date, "%Y-%m-%d").date()
+def make_observation_batches(
+    bucket_date: str, probe_cc: List[str], test_name: List[str]
+) -> ObservationBatches:
+    day = datetime.strptime(bucket_date, "%Y-%m-%d").date()
 
     t = PerfTimer()
     file_entry_batches, total_size = list_file_entries_batches(
-        probe_cc=params.probe_cc,
-        test_name=params.test_name,
+        probe_cc=probe_cc,
+        test_name=test_name,
         start_day=day,
         end_day=day + timedelta(days=1),
     )
     log.info(f"listing {len(file_entry_batches)} batches took {t.pretty}")
-    return {"batch_count": len(file_entry_batches), "total_size": total_size}
+    return {"batches": file_entry_batches, "total_size": total_size}
+
+
+MakeObservationsResult = TypedDict(
+    "MakeObservationsResult",
+    {
+        "measurement_count": int,
+        "measurement_per_sec": float,
+        "mb_per_sec": float,
+        "total_size": int,
+    },
+)
+
+
+@activity.defn
+async def make_observations(params: MakeObservationsParams) -> MakeObservationsResult:
+    loop = asyncio.get_running_loop()
+
+    tbatch = PerfTimer()
+    current_span = trace.get_current_span()
+    batches = await loop.run_in_executor(
+        None,
+        functools.partial(
+            make_observation_batches,
+            probe_cc=params.probe_cc,
+            test_name=params.test_name,
+            bucket_date=params.bucket_date,
+        ),
+    )
+    awaitables = []
+    for file_entry_batch in batches["batches"]:
+        awaitables.append(
+            loop.run_in_executor(
+                None,
+                functools.partial(
+                    make_observations_for_file_entry_batch,
+                    file_entry_batch=file_entry_batch,
+                    bucket_date=params.bucket_date,
+                    probe_cc=params.probe_cc,
+                    data_dir=pathlib.Path(params.data_dir),
+                    clickhouse=params.clickhouse,
+                    write_batch_size=1_000_000,
+                    fast_fail=False,
+                ),
+            )
+        )
+
+    measurement_count = sum(await asyncio.gather(*awaitables))
+
+    current_span.set_attribute("total_runtime_ms", tbatch.ms)
+    # current_span.set_attribute("total_failure_count", total_failure_count)
+
+    return {
+        "measurement_count": measurement_count,
+        "mb_per_sec": float(batches["total_size"]) / 1024 / 1024 / tbatch.s,
+        "measurement_per_sec": measurement_count / tbatch.s,
+        "total_size": batches["total_size"],
+    }
 
 
 @dataclass

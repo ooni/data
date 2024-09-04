@@ -29,6 +29,7 @@ from oonipipeline.temporal.activities.observations import (
     GetPreviousRangeParams,
     MakeObservationsFileEntryBatch,
     MakeObservationsParams,
+    MakeObservationsResult,
     ObservationBatches,
     make_observations_for_file_entry_batch,
 )
@@ -178,15 +179,13 @@ def test_make_file_entry_batch(datadir, db):
         )
     ]
     obs_msmt_count = make_observations_for_file_entry_batch(
-        params=MakeObservationsFileEntryBatch(
-            file_entry_batch=file_entry_batch,
-            clickhouse=db.clickhouse_url,
-            write_batch_size=1,
-            data_dir=datadir,
-            bucket_date="2023-10-31",
-            probe_cc=["IR"],
-            fast_fail=False,
-        )
+        file_entry_batch=file_entry_batch,
+        clickhouse=db.clickhouse_url,
+        write_batch_size=1,
+        data_dir=datadir,
+        bucket_date="2023-10-31",
+        probe_cc=["IR"],
+        fast_fail=False,
     )
     assert obs_msmt_count == 453
     # Flush buffer table
@@ -377,34 +376,16 @@ async def get_obs_count_by_cc_mocked(params: ObsCountParams):
     }
 
 
-@activity.defn(name="make_observations_for_file_entry_batch")
-async def make_observations_for_file_entry_batch_mocked(
-    params: MakeObservationsFileEntryBatch,
-) -> int:
-    return 100
-
-
-@activity.defn(name="make_observation_batches")
-async def make_observation_batches_mocked(
+@activity.defn(name="make_observations")
+async def make_observations_mocked(
     params: MakeObservationsParams,
-) -> ObservationBatches:
-    return ObservationBatches(
-        batches=[
-            [
-                # FileEntryBatchType = Tuple[str, str, str, int]
-                # ((fe.bucket_name, fe.s3path, fe.ext, fe.size))
-                ("ooni-data-eu-fra", "/dummy", ".tar.gz", 200),
-                ("ooni-data-eu-fra", "/dummy-2", ".tar.gz", 1000),
-            ],
-            [
-                # FileEntryBatchType = Tuple[str, str, str, int]
-                # ((fe.bucket_name, fe.s3path, fe.ext, fe.size))
-                ("ooni-data-eu-fra", "/dummy", ".tar.gz", 200),
-                ("ooni-data-eu-fra", "/dummy-2", ".tar.gz", 1000),
-            ],
-        ],
-        total_size=1200 * 2,
-    )
+) -> MakeObservationsResult:
+    return {
+        "measurement_count": 100,
+        "measurement_per_sec": 3.0,
+        "mb_per_sec": 1.0,
+        "total_size": 2000,
+    }
 
 
 @activity.defn(name="make_analysis_in_a_day")
@@ -436,8 +417,7 @@ async def test_temporal_workflows():
                 make_ground_truths_in_day_mocked,
                 get_obs_count_by_cc_mocked,
                 make_analysis_in_a_day_mocked,
-                make_observation_batches_mocked,
-                make_observations_for_file_entry_batch_mocked,
+                make_observations_mocked,
                 get_previous_range_mocked,
                 delete_previous_range_mocked,
             ],
@@ -448,8 +428,8 @@ async def test_temporal_workflows():
                 id="obs-wf",
                 task_queue=TASK_QUEUE_NAME,
             )
-            assert res["size"] == 1200 * 2
-            assert res["measurement_count"] == 100 * 2
+            assert res["size"] == 2000
+            assert res["measurement_count"] == 100
             assert res["bucket_date"] == "2024-01-02"
 
             res = await env.client.execute_workflow(
