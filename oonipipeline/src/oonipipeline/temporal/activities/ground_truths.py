@@ -42,9 +42,9 @@ def make_ground_truths_in_day(params: MakeGroundTruthsParams):
 
     dst_path = get_ground_truth_db_path(data_dir=params.data_dir, day=params.day)
 
-    if dst_path.exists() or params.force_rebuild:
+    if dst_path.exists() and params.force_rebuild:
         dst_path.unlink()
-    else:
+    elif dst_path.exists():
         return
 
     t = PerfTimer()
