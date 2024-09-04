@@ -172,19 +172,19 @@ class ObservationsWorkflow:
         )
 
         await workflow.execute_activity(
+            optimize_all_tables,
+            ClickhouseParams(clickhouse_url=params.clickhouse),
+            start_to_close_timeout=timedelta(minutes=5),
+            retry_policy=RetryPolicy(maximum_attempts=10),
+        )
+
+        await workflow.execute_activity(
             delete_previous_range,
             DeletePreviousRangeParams(
                 clickhouse=params.clickhouse,
                 previous_ranges=previous_ranges,
             ),
             start_to_close_timeout=timedelta(minutes=10),
-            retry_policy=RetryPolicy(maximum_attempts=10),
-        )
-
-        await workflow.execute_activity(
-            optimize_all_tables,
-            ClickhouseParams(clickhouse_url=params.clickhouse),
-            start_to_close_timeout=timedelta(minutes=5),
             retry_policy=RetryPolicy(maximum_attempts=10),
         )
 
