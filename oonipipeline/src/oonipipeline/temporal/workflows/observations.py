@@ -1,31 +1,33 @@
 from dataclasses import dataclass
 from typing import List, Optional
-from oonidata.datautils import PerfTimer
-from oonipipeline.temporal.activities.common import (
-    ClickhouseParams,
-    UpdateAssetsParams,
-    optimize_all_tables,
-    update_assets,
-)
-from oonipipeline.temporal.activities.observations import (
-    DeletePreviousRangeParams,
-    GetPreviousRangeParams,
-    MakeObservationsFileEntryBatch,
-    MakeObservationsParams,
-    delete_previous_range,
-    get_previous_range,
-    make_observation_batches,
-    make_observations_for_file_entry_batch,
-)
-from oonipipeline.temporal.workflows.common import (
-    TASK_QUEUE_NAME,
-    get_workflow_start_time,
-)
+
+from datetime import timedelta
+
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-
-from datetime import timedelta
+with workflow.unsafe.imports_passed_through():
+    from oonidata.datautils import PerfTimer
+    from oonipipeline.temporal.activities.common import (
+        ClickhouseParams,
+        UpdateAssetsParams,
+        optimize_all_tables,
+        update_assets,
+    )
+    from oonipipeline.temporal.activities.observations import (
+        DeletePreviousRangeParams,
+        GetPreviousRangeParams,
+        MakeObservationsFileEntryBatch,
+        MakeObservationsParams,
+        delete_previous_range,
+        get_previous_range,
+        make_observation_batches,
+        make_observations_for_file_entry_batch,
+    )
+    from oonipipeline.temporal.workflows.common import (
+        TASK_QUEUE_NAME,
+        get_workflow_start_time,
+    )
 
 
 @dataclass

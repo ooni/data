@@ -1,17 +1,23 @@
 import asyncio
 from dataclasses import dataclass
 
-from oonidata.dataclient import date_interval
-from oonipipeline.temporal.activities.common import UpdateAssetsParams, update_assets
-from oonipipeline.temporal.activities.ground_truths import (
-    MakeGroundTruthsParams,
-    make_ground_truths_in_day,
-)
-from oonipipeline.temporal.workflows.common import (
-    MAKE_GROUND_TRUTHS_START_TO_CLOSE_TIMEOUT,
-)
-from temporalio import workflow
 from datetime import datetime, timedelta
+
+from temporalio import workflow
+
+with workflow.unsafe.imports_passed_through():
+    from oonidata.dataclient import date_interval
+    from oonipipeline.temporal.activities.common import (
+        UpdateAssetsParams,
+        update_assets,
+    )
+    from oonipipeline.temporal.activities.ground_truths import (
+        MakeGroundTruthsParams,
+        make_ground_truths_in_day,
+    )
+    from oonipipeline.temporal.workflows.common import (
+        MAKE_GROUND_TRUTHS_START_TO_CLOSE_TIMEOUT,
+    )
 
 
 @dataclass

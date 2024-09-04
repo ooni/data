@@ -4,29 +4,32 @@ import logging
 from dataclasses import dataclass
 from typing import List, Optional
 
-from oonidata.datautils import PerfTimer
-from oonipipeline.temporal.activities.analysis import (
-    MakeAnalysisParams,
-    make_analysis_in_a_day,
-    make_cc_batches,
-)
-from oonipipeline.temporal.activities.common import (
-    ClickhouseParams,
-    ObsCountParams,
-    UpdateAssetsParams,
-    get_obs_count_by_cc,
-    optimize_all_tables,
-    update_assets,
-)
-from oonipipeline.temporal.activities.ground_truths import (
-    MakeGroundTruthsParams,
-    make_ground_truths_in_day,
-)
-from oonipipeline.temporal.workflows.common import (
-    MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
-    get_workflow_start_time,
-)
+
 from temporalio import workflow
+
+with workflow.unsafe.imports_passed_through():
+    from oonidata.datautils import PerfTimer
+    from oonipipeline.temporal.activities.analysis import (
+        MakeAnalysisParams,
+        make_analysis_in_a_day,
+        make_cc_batches,
+    )
+    from oonipipeline.temporal.activities.common import (
+        ClickhouseParams,
+        ObsCountParams,
+        UpdateAssetsParams,
+        get_obs_count_by_cc,
+        optimize_all_tables,
+        update_assets,
+    )
+    from oonipipeline.temporal.activities.ground_truths import (
+        MakeGroundTruthsParams,
+        make_ground_truths_in_day,
+    )
+    from oonipipeline.temporal.workflows.common import (
+        MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+        get_workflow_start_time,
+    )
 
 
 @dataclass

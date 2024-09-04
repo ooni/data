@@ -1,8 +1,7 @@
+from datetime import datetime, timedelta
+
 from temporalio import workflow
 from temporalio.common import SearchAttributeKey
-
-
-from datetime import datetime, timedelta
 
 
 def get_workflow_start_time() -> datetime:
