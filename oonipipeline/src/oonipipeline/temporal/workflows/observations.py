@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -93,7 +94,7 @@ class ObservationsWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
-        total_msmt_count = 0
+        coroutine_list = []
         for batch in obs_batches["batches"]:
             batch_params = MakeObservationsFileEntryBatch(
                 file_entry_batch=batch,
@@ -104,14 +105,16 @@ class ObservationsWorkflow:
                 probe_cc=params.probe_cc,
                 fast_fail=params.fast_fail,
             )
-            msmt_cnt = await workflow.execute_activity(
-                make_observations_for_file_entry_batch,
-                batch_params,
-                task_queue=TASK_QUEUE_NAME,
-                start_to_close_timeout=timedelta(hours=10),
-                retry_policy=RetryPolicy(maximum_attempts=10),
+            coroutine_list.append(
+                workflow.execute_activity(
+                    make_observations_for_file_entry_batch,
+                    batch_params,
+                    task_queue=TASK_QUEUE_NAME,
+                    start_to_close_timeout=timedelta(hours=10),
+                    retry_policy=RetryPolicy(maximum_attempts=10),
+                )
             )
-            total_msmt_count += msmt_cnt
+        total_msmt_count = sum(await asyncio.gather(*coroutine_list))
 
         mb_per_sec = round(obs_batches["total_size"] / total_t.s / 10**6, 1)
         msmt_per_sec = round(total_msmt_count / total_t.s)
