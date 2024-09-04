@@ -113,7 +113,6 @@ def make_observations_for_file_entry_batch(
                             continue
                         msmt = None
                         try:
-                            t = PerfTimer()
                             msmt = load_measurement(msmt_dict)
                             if not msmt.test_keys:
                                 log.error(
