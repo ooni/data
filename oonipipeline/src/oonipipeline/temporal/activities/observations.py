@@ -98,6 +98,7 @@ def make_observations_for_file_entry_batch(
     )
     file_entry_batch = file_entry_batches[params.batch_idx]
 
+    activity.heartbeat(f"running idx {params.batch_idx}")
     total_failure_count = 0
     current_span = trace.get_current_span()
     with ClickhouseConnection(
@@ -137,6 +138,8 @@ def make_observations_for_file_entry_batch(
                             for obs_list in obs_tuple:
                                 db.write_table_model_rows(obs_list)
                             idx += 1
+                            if idx % 10_000 == 0:
+                                activity.heartbeat(f"processing idx: {idx}")
                         except Exception as exc:
                             msmt_str = msmt_dict.get("report_id", None)
                             if msmt:
