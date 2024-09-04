@@ -59,6 +59,7 @@ def test_parse_config(tmp_path):
     assert defaults["backfill"]["something"] == "other"
 
 
+@pytest.mark.skip("TODO(art): moved into temporal_e2e")
 def test_full_workflow(
     db,
     cli_runner,

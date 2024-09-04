@@ -25,8 +25,6 @@ class ClickhouseParams:
 def optimize_all_tables(params: ClickhouseParams):
     with ClickhouseConnection(params.clickhouse_url) as db:
         for _, table_name in make_create_queries():
-            if table_name.startswith("buffer_"):
-                continue
             db.execute(f"OPTIMIZE TABLE {table_name}")
 
 
