@@ -96,6 +96,7 @@ def make_observations_for_file_entry_batch(
         start_day=day,
         end_day=day + timedelta(days=1),
     )
+    file_entry_batch = file_entry_batches[params.batch_idx]
 
     total_failure_count = 0
     current_span = trace.get_current_span()
@@ -104,7 +105,7 @@ def make_observations_for_file_entry_batch(
     ) as db:
         ccs = ccs_set(params.probe_cc)
         idx = 0
-        for bucket_name, s3path, ext, fe_size in file_entry_batches:
+        for bucket_name, s3path, ext, fe_size in file_entry_batch:
             failure_count = 0
             # Nest the traced span within the current span
             with tracer.start_span("MakeObservations:stream_file_entry") as span:
