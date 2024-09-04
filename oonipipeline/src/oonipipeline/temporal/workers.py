@@ -28,7 +28,7 @@ from oonipipeline.temporal.workflows.observations import ObservationsWorkflow
 
 log = logging.getLogger("oonipipeline.workers")
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, Executor
 
 interrupt_event = asyncio.Event()
 
@@ -51,7 +51,7 @@ ACTIVTIES = [
 
 
 async def worker_main(
-    temporal_config: TemporalConfig, max_workers: int, thread_pool: ThreadPoolExecutor
+    temporal_config: TemporalConfig, max_workers: int, executor: Executor
 ):
     client = await temporal_connect(temporal_config=temporal_config)
     async with Worker(
@@ -59,7 +59,7 @@ async def worker_main(
         task_queue=TASK_QUEUE_NAME,
         workflows=WORKFLOWS,
         activities=ACTIVTIES,
-        activity_executor=thread_pool,
+        activity_executor=executor,
         max_concurrent_activities=max_workers,
         max_concurrent_workflow_tasks=max_workers,
     ):
@@ -71,9 +71,10 @@ async def worker_main(
 def start_workers(temporal_config: TemporalConfig):
     max_workers = max(os.cpu_count() or 4, 4)
     log.info(f"starting workers with max_workers={max_workers}")
-    thread_pool = ThreadPoolExecutor(max_workers=max_workers + 2)
+    executor = ProcessPoolExecutor(max_workers=max_workers + 2)
+
     loop = asyncio.new_event_loop()
-    loop.set_default_executor(thread_pool)
+    loop.set_default_executor(executor)
     # TODO(art): Investigate if we want to upgrade to python 3.12 and use this
     # instead
     # loop.set_task_factory(asyncio.eager_task_factory)
@@ -82,11 +83,11 @@ def start_workers(temporal_config: TemporalConfig):
             worker_main(
                 temporal_config=temporal_config,
                 max_workers=max_workers,
-                thread_pool=thread_pool,
+                executor=executor,
             )
         )
     except KeyboardInterrupt:
         interrupt_event.set()
         loop.run_until_complete(loop.shutdown_asyncgens())
-        thread_pool.shutdown(wait=True, cancel_futures=True)
+        executor.shutdown(wait=True, cancel_futures=True)
         log.info("shut down thread pool")
