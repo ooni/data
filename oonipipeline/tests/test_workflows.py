@@ -31,7 +31,7 @@ from oonipipeline.temporal.activities.observations import (
     MakeObservationsParams,
     MakeObservationsResult,
     ObservationBatches,
-    make_observations_for_file_entry_batch,
+    make_observations_for_file_entry,
 )
 from oonipipeline.transforms.measurement_transformer import MeasurementTransformer
 from oonipipeline.transforms.observations import measurement_to_observations
@@ -178,15 +178,19 @@ def test_make_file_entry_batch(datadir, db):
             4074306,
         )
     ]
-    obs_msmt_count = make_observations_for_file_entry_batch(
-        file_entry_batch=file_entry_batch,
+    bucket_name, s3path, ext, _ = file_entry_batch[0]
+    obs_msmt_count = make_observations_for_file_entry(
+        bucket_name=bucket_name,
+        s3path=s3path,
+        ext=ext,
         clickhouse=db.clickhouse_url,
         write_batch_size=1,
         data_dir=datadir,
         bucket_date="2023-10-31",
-        probe_cc=["IR"],
+        ccs=set(["IR"]),
         fast_fail=False,
     )
+
     assert obs_msmt_count == 453
     # Flush buffer table
     db.execute("OPTIMIZE TABLE buffer_obs_web")

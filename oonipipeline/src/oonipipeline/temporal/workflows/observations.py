@@ -64,12 +64,18 @@ class ObservationsWorkflow:
             start_to_close_timeout=timedelta(hours=1),
             retry_policy=RetryPolicy(maximum_attempts=10),
         )
+        workflow.logger.info(
+            f"finished update_assets for bucket_date={params.bucket_date}"
+        )
 
         await workflow.execute_activity(
             optimize_all_tables,
             ClickhouseParams(clickhouse_url=params.clickhouse),
             start_to_close_timeout=timedelta(minutes=20),
             retry_policy=RetryPolicy(maximum_attempts=10),
+        )
+        workflow.logger.info(
+            f"finished optimize_all_tables for bucket_date={params.bucket_date}"
         )
 
         previous_ranges = await workflow.execute_activity(
@@ -84,6 +90,9 @@ class ObservationsWorkflow:
             start_to_close_timeout=timedelta(minutes=20),
             retry_policy=RetryPolicy(maximum_attempts=10),
         )
+        workflow.logger.info(
+            f"finished get_previous_range for bucket_date={params.bucket_date}"
+        )
 
         obs_res = await workflow.execute_activity(
             make_observations,
@@ -93,7 +102,8 @@ class ObservationsWorkflow:
         )
 
         workflow.logger.info(
-            f"finished processing all batches in {total_t.pretty} speed: {obs_res['mb_per_sec']}MB/s ({obs_res['measurement_per_sec']}msmt/s)"
+            f"finished make_observations for bucket_date={params.bucket_date} in "
+            f"{total_t.pretty} speed: {obs_res['mb_per_sec']}MB/s ({obs_res['measurement_per_sec']}msmt/s)"
         )
 
         await workflow.execute_activity(
