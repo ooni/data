@@ -1,6 +1,6 @@
 import asyncio
+import concurrent.futures
 from dataclasses import dataclass
-import dataclasses
 import functools
 from typing import Any, Dict, List, Sequence, Tuple, TypedDict
 from oonidata.dataclient import (
@@ -130,26 +130,27 @@ async def make_observations_for_file_entry_batch(
     ccs = ccs_set(probe_cc)
     total_measurement_count = 0
     awaitables = []
-    for bucket_name, s3path, ext, fe_size in file_entry_batch:
-        failure_count = 0
-        log.debug(f"processing file s3://{bucket_name}/{s3path}")
-        awaitables.append(
-            loop.run_in_executor(
-                None,
-                functools.partial(
-                    make_observations_for_file_entry,
-                    clickhouse=clickhouse,
-                    data_dir=data_dir,
-                    bucket_date=bucket_date,
-                    bucket_name=bucket_name,
-                    s3path=s3path,
-                    ext=ext,
-                    fast_fail=fast_fail,
-                    write_batch_size=write_batch_size,
-                    ccs=ccs,
-                ),
+    with concurrent.futures.ProcessPoolExecutor() as pool:
+        for bucket_name, s3path, ext, fe_size in file_entry_batch:
+            failure_count = 0
+            log.debug(f"processing file s3://{bucket_name}/{s3path}")
+            awaitables.append(
+                loop.run_in_executor(
+                    pool,
+                    functools.partial(
+                        make_observations_for_file_entry,
+                        clickhouse=clickhouse,
+                        data_dir=data_dir,
+                        bucket_date=bucket_date,
+                        bucket_name=bucket_name,
+                        s3path=s3path,
+                        ext=ext,
+                        fast_fail=fast_fail,
+                        write_batch_size=write_batch_size,
+                        ccs=ccs,
+                    ),
+                )
             )
-        )
 
     results = await asyncio.gather(*awaitables)
     for measurement_count, failure_count in results:
