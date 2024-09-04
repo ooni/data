@@ -22,12 +22,10 @@ from oonipipeline.temporal.client_operations import (
     log,
     temporal_connect,
 )
-from oonipipeline.temporal.workflows import (
-    TASK_QUEUE_NAME,
-    AnalysisWorkflow,
-    GroundTruthsWorkflow,
-    ObservationsWorkflow,
-)
+from oonipipeline.temporal.workflows.common import TASK_QUEUE_NAME
+from oonipipeline.temporal.workflows.analysis import AnalysisWorkflow
+from oonipipeline.temporal.workflows.ctrl import GroundTruthsWorkflow
+from oonipipeline.temporal.workflows.observations import ObservationsWorkflow
 
 log = logging.getLogger("oonipipeline.workers")
 
