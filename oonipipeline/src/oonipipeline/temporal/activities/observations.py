@@ -2,7 +2,7 @@ import asyncio
 import concurrent.futures
 from dataclasses import dataclass
 import functools
-from typing import Any, Dict, List, Sequence, Tuple, TypedDict
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
 from oonidata.dataclient import (
     ccs_set,
     list_file_entries_batches,
@@ -121,6 +121,7 @@ async def make_observations_for_file_entry_batch(
     data_dir: pathlib.Path,
     clickhouse: str,
     write_batch_size: int,
+    executor: Optional[concurrent.futures.Executor] = None,
     fast_fail: bool = False,
 ) -> int:
     loop = asyncio.get_running_loop()
@@ -135,7 +136,7 @@ async def make_observations_for_file_entry_batch(
         log.debug(f"processing file s3://{bucket_name}/{s3path}")
         awaitables.append(
             loop.run_in_executor(
-                None,
+                executor,
                 functools.partial(
                     make_observations_for_file_entry,
                     clickhouse=clickhouse,
@@ -212,16 +213,18 @@ async def make_observations(params: MakeObservationsParams) -> MakeObservationsR
         ),
     )
     measurement_count = 0
-    for file_entry_batch in batches["batches"]:
-        measurement_count += await make_observations_for_file_entry_batch(
-            file_entry_batch=file_entry_batch,
-            bucket_date=params.bucket_date,
-            probe_cc=params.probe_cc,
-            data_dir=pathlib.Path(params.data_dir),
-            clickhouse=params.clickhouse,
-            write_batch_size=1_000_000,
-            fast_fail=False,
-        )
+    with concurrent.futures.ProcessPoolExecutor() as process_pool:
+        for file_entry_batch in batches["batches"]:
+            measurement_count += await make_observations_for_file_entry_batch(
+                file_entry_batch=file_entry_batch,
+                bucket_date=params.bucket_date,
+                probe_cc=params.probe_cc,
+                data_dir=pathlib.Path(params.data_dir),
+                clickhouse=params.clickhouse,
+                write_batch_size=1_000_000,
+                fast_fail=False,
+                executor=process_pool,
+            )
 
     current_span.set_attribute("total_runtime_ms", tbatch.ms)
     # current_span.set_attribute("total_failure_count", total_failure_count)

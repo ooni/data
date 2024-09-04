@@ -71,7 +71,7 @@ async def worker_main(
 def start_workers(temporal_config: TemporalConfig):
     max_workers = max(os.cpu_count() or 4, 4)
     log.info(f"starting workers with max_workers={max_workers}")
-    executor = ProcessPoolExecutor(max_workers=max_workers + 2)
+    executor = ThreadPoolExecutor(max_workers=max_workers + 2)
 
     loop = asyncio.new_event_loop()
     loop.set_default_executor(executor)
