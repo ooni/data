@@ -54,4 +54,5 @@ def make_ground_truths_in_day(params: MakeGroundTruthsParams):
     web_ground_truth_db.build_from_rows(
         rows=iter_web_ground_truths(db=db, measurement_day=day, netinfodb=netinfodb)
     )
+    web_ground_truth_db.close()
     log.info(f"built ground truth DB {day} in {t.pretty}")
