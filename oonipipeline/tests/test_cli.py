@@ -259,6 +259,7 @@ def test_full_workflow(
     # We wait on the table buffers to be flushed
     wait_for_backfill()
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    db.execute("OPTIMIZE TABLE measurement_experiment_result")
     db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
     wait_for_mutations(db, "measurement_experiment_result")
 
