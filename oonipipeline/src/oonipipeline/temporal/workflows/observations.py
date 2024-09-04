@@ -70,7 +70,7 @@ class ObservationsWorkflow:
         await workflow.execute_activity(
             optimize_all_tables,
             ClickhouseParams(clickhouse_url=params.clickhouse),
-            start_to_close_timeout=timedelta(minutes=5),
+            start_to_close_timeout=timedelta(minutes=20),
             retry_policy=RetryPolicy(maximum_attempts=10),
         )
 
@@ -87,7 +87,7 @@ class ObservationsWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=10),
         )
 
-        obs_batches = await workflow.execute_activity(
+        batch_res = await workflow.execute_activity(
             make_observation_batches,
             params_make_observations,
             start_to_close_timeout=timedelta(minutes=30),
@@ -95,14 +95,15 @@ class ObservationsWorkflow:
         )
 
         coroutine_list = []
-        for batch in obs_batches["batches"]:
+        for batch_idx in range(batch_res["batch_count"]):
             batch_params = MakeObservationsFileEntryBatch(
-                file_entry_batch=batch,
+                batch_idx=batch_idx,
                 clickhouse=params.clickhouse,
                 write_batch_size=1_000_000,
                 data_dir=params.data_dir,
                 bucket_date=params.bucket_date,
                 probe_cc=params.probe_cc,
+                test_name=params.test_name,
                 fast_fail=params.fast_fail,
             )
             coroutine_list.append(
@@ -116,7 +117,7 @@ class ObservationsWorkflow:
             )
         total_msmt_count = sum(await asyncio.gather(*coroutine_list))
 
-        mb_per_sec = round(obs_batches["total_size"] / total_t.s / 10**6, 1)
+        mb_per_sec = round(batch_res["total_size"] / total_t.s / 10**6, 1)
         msmt_per_sec = round(total_msmt_count / total_t.s)
         workflow.logger.info(
             f"finished processing all batches in {total_t.pretty} speed: {mb_per_sec}MB/s ({msmt_per_sec}msmt/s)"
@@ -125,7 +126,7 @@ class ObservationsWorkflow:
         await workflow.execute_activity(
             optimize_all_tables,
             ClickhouseParams(clickhouse_url=params.clickhouse),
-            start_to_close_timeout=timedelta(minutes=5),
+            start_to_close_timeout=timedelta(minutes=30),
             retry_policy=RetryPolicy(maximum_attempts=10),
         )
 
@@ -141,7 +142,7 @@ class ObservationsWorkflow:
 
         return {
             "measurement_count": total_msmt_count,
-            "size": obs_batches["total_size"],
+            "size": batch_res["total_size"],
             "mb_per_sec": mb_per_sec,
             "bucket_date": params.bucket_date,
             "msmt_per_sec": msmt_per_sec,

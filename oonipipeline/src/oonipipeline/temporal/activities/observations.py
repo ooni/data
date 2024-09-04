@@ -67,12 +67,14 @@ FileEntryBatchType = Tuple[str, str, str, int]
 
 @dataclass
 class MakeObservationsFileEntryBatch:
-    file_entry_batch: List[FileEntryBatchType]
+    batch_idx: int
     clickhouse: str
     write_batch_size: int
     data_dir: str
     bucket_date: str
     probe_cc: List[str]
+    test_name: List[str]
+    bucket_date: str
     fast_fail: bool
 
 
@@ -80,12 +82,20 @@ class MakeObservationsFileEntryBatch:
 def make_observations_for_file_entry_batch(
     params: MakeObservationsFileEntryBatch,
 ) -> int:
+    day = datetime.strptime(params.bucket_date, "%Y-%m-%d").date()
     data_dir = pathlib.Path(params.data_dir)
 
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
     tbatch = PerfTimer()
 
     tracer = trace.get_tracer(__name__)
+
+    file_entry_batches, _ = list_file_entries_batches(
+        probe_cc=params.probe_cc,
+        test_name=params.test_name,
+        start_day=day,
+        end_day=day + timedelta(days=1),
+    )
 
     total_failure_count = 0
     current_span = trace.get_current_span()
@@ -94,7 +104,7 @@ def make_observations_for_file_entry_batch(
     ) as db:
         ccs = ccs_set(params.probe_cc)
         idx = 0
-        for bucket_name, s3path, ext, fe_size in params.file_entry_batch:
+        for bucket_name, s3path, ext, fe_size in file_entry_batches:
             failure_count = 0
             # Nest the traced span within the current span
             with tracer.start_span("MakeObservations:stream_file_entry") as span:
@@ -158,7 +168,8 @@ def make_observations_for_file_entry_batch(
 
 
 ObservationBatches = TypedDict(
-    "ObservationBatches", {"batches": List[List[FileEntryBatchType]], "total_size": int}
+    "ObservationBatches",
+    {"batch_count": int, "total_size": int},
 )
 
 
@@ -174,7 +185,7 @@ def make_observation_batches(params: MakeObservationsParams) -> ObservationBatch
         end_day=day + timedelta(days=1),
     )
     log.info(f"listing {len(file_entry_batches)} batches took {t.pretty}")
-    return {"batches": file_entry_batches, "total_size": total_size}
+    return {"batch_count": len(file_entry_batches), "total_size": total_size}
 
 
 @dataclass
