@@ -99,7 +99,7 @@ class ObservationsWorkflow:
             batch_params = MakeObservationsFileEntryBatch(
                 file_entry_batch=batch,
                 clickhouse=params.clickhouse,
-                write_batch_size=500_000,
+                write_batch_size=1_000_000,
                 data_dir=params.data_dir,
                 bucket_date=params.bucket_date,
                 probe_cc=params.probe_cc,
