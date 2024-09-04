@@ -70,10 +70,11 @@ def make_observations_for_file_entry(
     fast_fail: bool,
     write_batch_size: int,
 ):
+    failure_count = 0
     with ClickhouseConnection(clickhouse, write_batch_size=write_batch_size) as db:
         netinfodb = NetinfoDB(datadir=data_dir, download=False)
-        for msmt_dict in stream_measurements(
-            bucket_name=bucket_name, s3path=s3path, ext=ext
+        for idx, msmt_dict in enumerate(
+            stream_measurements(bucket_name=bucket_name, s3path=s3path, ext=ext)
         ):
             # Legacy cans don't allow us to pre-filter on the probe_cc, so
             # we need to check for probe_cc consistency in here.
@@ -95,7 +96,6 @@ def make_observations_for_file_entry(
                 )
                 for obs_list in obs_tuple:
                     db.write_table_model_rows(obs_list)
-                idx += 1
             except Exception as exc:
                 msmt_str = msmt_dict.get("report_id", None)
                 if msmt:
