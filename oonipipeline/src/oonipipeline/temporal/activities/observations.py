@@ -61,61 +61,56 @@ class MakeObservationsFileEntryBatch:
 
 
 def make_observations_for_file_entry(
-    clickhouse: str,
-    data_dir: pathlib.Path,
+    db: ClickhouseConnection,
+    netinfodb: NetinfoDB,
     bucket_date: str,
     bucket_name: str,
     s3path: str,
     ext: str,
     ccs: set,
     fast_fail: bool,
-    write_batch_size: int,
 ):
     failure_count = 0
     measurement_count = 0
-    with ClickhouseConnection(clickhouse, write_batch_size=write_batch_size) as db:
-        netinfodb = NetinfoDB(datadir=data_dir, download=False)
-        for msmt_dict in stream_measurements(
-            bucket_name=bucket_name, s3path=s3path, ext=ext
-        ):
-            # Legacy cans don't allow us to pre-filter on the probe_cc, so
-            # we need to check for probe_cc consistency in here.
-            if ccs and msmt_dict["probe_cc"] not in ccs:
-                continue
-            msmt = None
-            try:
-                msmt = load_measurement(msmt_dict)
-                if not msmt.test_keys:
-                    log.error(
-                        f"measurement with empty test_keys: ({msmt.measurement_uid})",
-                        exc_info=True,
-                    )
-                    continue
-                obs_tuple = measurement_to_observations(
-                    msmt=msmt,
-                    netinfodb=netinfodb,
-                    bucket_date=bucket_date,
-                )
-                for obs_list in obs_tuple:
-                    db.write_table_model_rows(obs_list)
-                measurement_count += 1
-            except Exception as exc:
-                msmt_str = msmt_dict.get("report_id", None)
-                if msmt:
-                    msmt_str = msmt.measurement_uid
+    for msmt_dict in stream_measurements(
+        bucket_name=bucket_name, s3path=s3path, ext=ext
+    ):
+        # Legacy cans don't allow us to pre-filter on the probe_cc, so
+        # we need to check for probe_cc consistency in here.
+        if ccs and msmt_dict["probe_cc"] not in ccs:
+            continue
+        msmt = None
+        try:
+            msmt = load_measurement(msmt_dict)
+            if not msmt.test_keys:
                 log.error(
-                    f"failed at idx: {measurement_count} ({msmt_str})", exc_info=True
+                    f"measurement with empty test_keys: ({msmt.measurement_uid})",
+                    exc_info=True,
                 )
-                failure_count += 1
+                continue
+            obs_tuple = measurement_to_observations(
+                msmt=msmt,
+                netinfodb=netinfodb,
+                bucket_date=bucket_date,
+            )
+            for obs_list in obs_tuple:
+                db.write_table_model_rows(obs_list)
+            measurement_count += 1
+        except Exception as exc:
+            msmt_str = msmt_dict.get("report_id", None)
+            if msmt:
+                msmt_str = msmt.measurement_uid
+            log.error(f"failed at idx: {measurement_count} ({msmt_str})", exc_info=True)
+            failure_count += 1
 
-                if fast_fail:
-                    db.close()
-                    raise exc
+            if fast_fail:
+                db.close()
+                raise exc
     log.debug(f"done processing file s3://{bucket_name}/{s3path}")
     return measurement_count, failure_count
 
 
-async def make_observations_for_file_entry_batch(
+def make_observations_for_file_entry_batch(
     file_entry_batch: List[FileEntryBatchType],
     bucket_date: str,
     probe_cc: List[str],
@@ -124,37 +119,26 @@ async def make_observations_for_file_entry_batch(
     write_batch_size: int,
     fast_fail: bool = False,
 ) -> int:
-    loop = asyncio.get_running_loop()
-
     tbatch = PerfTimer()
     total_failure_count = 0
     ccs = ccs_set(probe_cc)
     total_measurement_count = 0
-    awaitables = []
-    for bucket_name, s3path, ext, fe_size in file_entry_batch:
-        failure_count = 0
-        log.debug(f"processing file s3://{bucket_name}/{s3path}")
-        awaitables.append(
-            loop.run_in_executor(
-                process_pool_executor,
-                functools.partial(
-                    make_observations_for_file_entry,
-                    clickhouse=clickhouse,
-                    data_dir=data_dir,
-                    bucket_date=bucket_date,
-                    bucket_name=bucket_name,
-                    s3path=s3path,
-                    ext=ext,
-                    fast_fail=fast_fail,
-                    write_batch_size=write_batch_size,
-                    ccs=ccs,
-                ),
+    netinfodb = NetinfoDB(datadir=data_dir, download=False)
+    with ClickhouseConnection(clickhouse, write_batch_size=write_batch_size) as db:
+        for bucket_name, s3path, ext, fe_size in file_entry_batch:
+            failure_count = 0
+            log.debug(f"processing file s3://{bucket_name}/{s3path}")
+            measurement_count, failure_count = make_observations_for_file_entry(
+                db=db,
+                netinfodb=netinfodb,
+                bucket_date=bucket_date,
+                bucket_name=bucket_name,
+                s3path=s3path,
+                ext=ext,
+                fast_fail=fast_fail,
+                ccs=ccs,
             )
-        )
-
-    results = await asyncio.gather(*awaitables)
-    for measurement_count, failure_count in results:
-        total_measurement_count += measurement_count
+            total_measurement_count += measurement_count
         total_failure_count += failure_count
 
     log.info(
@@ -219,15 +203,19 @@ async def make_observations(params: MakeObservationsParams) -> MakeObservationsR
     awaitables = []
     for file_entry_batch in batches["batches"]:
         awaitables.append(
-            make_observations_for_file_entry_batch(
-                file_entry_batch=file_entry_batch,
-                bucket_date=params.bucket_date,
-                probe_cc=params.probe_cc,
-                data_dir=pathlib.Path(params.data_dir),
-                clickhouse=params.clickhouse,
-                write_batch_size=1_000_000,
-                fast_fail=False,
-            )
+            loop.run_in_executor(
+                process_pool_executor,
+                functools.partial(
+                    make_observations_for_file_entry_batch,
+                    file_entry_batch=file_entry_batch,
+                    bucket_date=params.bucket_date,
+                    probe_cc=params.probe_cc,
+                    data_dir=pathlib.Path(params.data_dir),
+                    clickhouse=params.clickhouse,
+                    write_batch_size=1_000_000,
+                    fast_fail=False,
+                ),
+            ),
         )
     measurement_count = sum(await asyncio.gather(*awaitables))
 

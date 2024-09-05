@@ -12,7 +12,7 @@ from oonipipeline.analysis.control import (
 )
 from oonipipeline.temporal.activities.observations import (
     MakeObservationsFileEntryBatch,
-    make_observations_for_file_entry,
+    make_observations_for_file_entry_batch,
 )
 
 DUMMY_PROBE_META = ProbeMeta(
@@ -59,16 +59,13 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
             5798373,
         )
     ]
-    bucket_name, s3path, ext, _ = file_entry_batch[0]
-    obs_msmt_count = make_observations_for_file_entry(
-        bucket_name=bucket_name,
-        s3path=s3path,
-        ext=ext,
+    obs_msmt_count = make_observations_for_file_entry_batch(
+        file_entry_batch=file_entry_batch,
         clickhouse=db.clickhouse_url,
         write_batch_size=1,
         data_dir=datadir,
         bucket_date="2023-10-31",
-        ccs=set(["US"]),
+        probe_cc=["US"],
         fast_fail=False,
     )
     assert obs_msmt_count == 299
