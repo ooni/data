@@ -19,7 +19,7 @@ from oonipipeline.temporal.common import (
     maybe_delete_prev_range,
 )
 from oonipipeline.temporal.activities.common import process_pool_executor
-
+from oonipipeline.settings import config
 from opentelemetry import trace
 
 from temporalio import activity
@@ -211,7 +211,7 @@ async def make_observations(params: MakeObservationsParams) -> MakeObservationsR
                     probe_cc=params.probe_cc,
                     data_dir=pathlib.Path(params.data_dir),
                     clickhouse=params.clickhouse,
-                    write_batch_size=1_000_000,
+                    write_batch_size=config.clickhouse_write_batch_size,
                     fast_fail=False,
                 ),
             ),

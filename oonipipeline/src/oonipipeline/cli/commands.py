@@ -1,10 +1,7 @@
-from configparser import ConfigParser
 import logging
-import multiprocessing
-import os
 from pathlib import Path
 from typing import List, Optional
-from datetime import date, timedelta, datetime, timezone, time
+from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
 
 from oonipipeline.temporal.client_operations import (
@@ -29,7 +26,7 @@ from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
 from ..db.create_tables import make_create_queries, list_all_table_diffs
 from ..netinfo import NetinfoDB
-
+from ..settings import config
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
     if s:
@@ -64,7 +61,6 @@ end_day_option = click.option(
     Note: this is the upload date, which doesn't necessarily match the measurement date.
     """,
 )
-
 start_at_option = click.option(
     "--start-at",
     type=click.DateTime(),
@@ -83,58 +79,7 @@ end_at_option = click.option(
     Note: this is the upload date, which doesn't necessarily match the measurement date.
     """,
 )
-
-clickhouse_option = click.option(
-    "--clickhouse", type=str, required=True, default="clickhouse://localhost"
-)
-clickhouse_buffer_min_time_option = click.option(
-    "--clickhouse-buffer-min-time",
-    type=int,
-    required=True,
-    default=10,
-    help="min_time for the Buffer tables in clickhouse. only applied during create. see: https://clickhouse.com/docs/en/engines/table-engines/special/buffer",
-)
-clickhouse_buffer_max_time_option = click.option(
-    "--clickhouse-buffer-max-time",
-    type=int,
-    required=True,
-    default=60,
-    help="max_time for the Buffer tables in clickhouse. only applied during create. see: https://clickhouse.com/docs/en/engines/table-engines/special/buffer",
-)
-telemetry_endpoint_option = click.option(
-    "--telemetry-endpoint", type=str, required=False, default=None
-)
-prometheus_bind_address_option = click.option(
-    "--prometheus-bind-address", type=str, required=False, default=None
-)
-temporal_address_option = click.option(
-    "--temporal-address", type=str, required=True, default="localhost:7233"
-)
-temporal_namespace_option = click.option(
-    "--temporal-namespace", type=str, required=False, default=None
-)
-temporal_tls_client_cert_path_option = click.option(
-    "--temporal-tls-client-cert-path", type=str, required=False, default=None
-)
-temporal_tls_client_key_path_option = click.option(
-    "--temporal-tls-client-key-path", type=str, required=False, default=None
-)
 start_workers_option = click.option("--start-workers/--no-start-workers", default=True)
-
-datadir_option = click.option(
-    "--data-dir",
-    type=str,
-    required=True,
-    default="tests/data/datadir",
-    help="data directory to store fingerprint and geoip databases",
-)
-parallelism_option = click.option(
-    "--parallelism",
-    type=int,
-    default=multiprocessing.cpu_count() + 2,
-    help="number of processes to use. Only works when writing to a database",
-)
-
 
 def maybe_create_delete_tables(
     clickhouse_url: str,
@@ -158,29 +103,6 @@ def maybe_create_delete_tables(
                 db.execute(query)
 
 
-def parse_config_file(ctx, path):
-    cfg = ConfigParser()
-    cfg.read(path)
-    ctx.default_map = {}
-
-    try:
-        default_options = cfg["options"]
-        for name, _ in cli.commands.items():
-            ctx.default_map.setdefault(name, {})
-            ctx.default_map[name].update(default_options)
-    except KeyError:
-        # No default section
-        pass
-
-    for sect in cfg.sections():
-        command_path = sect.split(".")
-        defaults = ctx.default_map
-        for cmdname in command_path[1:]:
-            defaults = defaults.setdefault(cmdname, {})
-        defaults.update(cfg[sect])
-    return ctx.default_map
-
-
 @click.group()
 @click.option(
     "-l",
@@ -190,34 +112,14 @@ def parse_config_file(ctx, path):
     help="Set logging level",
     show_default=True,
 )
-@click.option(
-    "-c",
-    "--config",
-    type=click.Path(dir_okay=False),
-    default="config.ini",
-    help="Read option defaults from the specified INI file",
-    show_default=True,
-)
 @click.version_option(VERSION)
-@click.pass_context
-def cli(ctx, log_level: int, config: str):
+def cli(log_level: int):
     logging.basicConfig(level=log_level)
-    if os.path.exists(config):
-        ctx.default_map = parse_config_file(ctx, config)
 
 
 @cli.command()
 @start_at_option
 @end_at_option
-@clickhouse_option
-@clickhouse_buffer_min_time_option
-@clickhouse_buffer_max_time_option
-@telemetry_endpoint_option
-@prometheus_bind_address_option
-@temporal_address_option
-@temporal_namespace_option
-@temporal_tls_client_cert_path_option
-@temporal_tls_client_key_path_option
 @click.option("--schedule-id", type=str, required=True)
 @click.option(
     "--create-tables",
@@ -232,17 +134,8 @@ def cli(ctx, log_level: int, config: str):
 def backfill(
     start_at: datetime,
     end_at: datetime,
-    clickhouse: str,
-    clickhouse_buffer_min_time: int,
-    clickhouse_buffer_max_time: int,
     create_tables: bool,
     drop_tables: bool,
-    telemetry_endpoint: Optional[str],
-    prometheus_bind_address: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
     schedule_id: str,
 ):
     """
@@ -251,20 +144,20 @@ def backfill(
     click.echo(f"Runnning backfill of schedule {schedule_id}")
 
     maybe_create_delete_tables(
-        clickhouse_url=clickhouse,
+        clickhouse_url=config.clickhouse_url,
         create_tables=create_tables,
         drop_tables=drop_tables,
-        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
     )
 
     temporal_config = TemporalConfig(
-        prometheus_bind_address=prometheus_bind_address,
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
+        prometheus_bind_address=config.prometheus_bind_address,
+        telemetry_endpoint=config.telemetry_endpoint,
+        temporal_address=config.temporal_address,
+        temporal_namespace=config.temporal_namespace,
+        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
     run_backfill(
@@ -278,16 +171,6 @@ def backfill(
 @cli.command()
 @probe_cc_option
 @test_name_option
-@clickhouse_option
-@clickhouse_buffer_min_time_option
-@clickhouse_buffer_max_time_option
-@datadir_option
-@telemetry_endpoint_option
-@prometheus_bind_address_option
-@temporal_address_option
-@temporal_namespace_option
-@temporal_tls_client_cert_path_option
-@temporal_tls_client_key_path_option
 @click.option(
     "--fast-fail",
     is_flag=True,
@@ -325,18 +208,9 @@ def schedule(
     probe_cc: List[str],
     test_name: List[str],
     clickhouse: str,
-    clickhouse_buffer_min_time: int,
-    clickhouse_buffer_max_time: int,
-    data_dir: str,
     fast_fail: bool,
     create_tables: bool,
     drop_tables: bool,
-    telemetry_endpoint: Optional[str],
-    prometheus_bind_address: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
     analysis: bool,
     observations: bool,
     delete: bool,
@@ -349,11 +223,11 @@ def schedule(
         return 1
 
     maybe_create_delete_tables(
-        clickhouse_url=clickhouse,
+        clickhouse_url=config.clickhouse_url,
         create_tables=create_tables,
         drop_tables=drop_tables,
-        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
     )
     what_we_schedule = []
     if analysis:
@@ -364,20 +238,20 @@ def schedule(
     click.echo(f"Scheduling {' and'.join(what_we_schedule)}")
 
     temporal_config = TemporalConfig(
-        telemetry_endpoint=telemetry_endpoint,
-        prometheus_bind_address=prometheus_bind_address,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
+        telemetry_endpoint=config.telemetry_endpoint,
+        prometheus_bind_address=config.prometheus_bind_address,
+        temporal_address=config.temporal_address,
+        temporal_namespace=config.temporal_namespace,
+        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
     obs_params = None
     if observations:
         obs_params = ObservationsWorkflowParams(
             probe_cc=probe_cc,
             test_name=test_name,
-            clickhouse=clickhouse,
-            data_dir=str(data_dir),
+            clickhouse=config.clickhouse_url,
+            data_dir=config.data_dir,
             fast_fail=fast_fail,
         )
     analysis_params = None
@@ -386,7 +260,7 @@ def schedule(
             probe_cc=probe_cc,
             test_name=test_name,
             clickhouse=clickhouse,
-            data_dir=str(data_dir),
+            data_dir=config.data_dir,
         )
 
     run_create_schedules(
@@ -398,131 +272,39 @@ def schedule(
 
 
 @cli.command()
-@prometheus_bind_address_option
-@telemetry_endpoint_option
-@temporal_address_option
-@temporal_namespace_option
-@temporal_tls_client_cert_path_option
-@temporal_tls_client_key_path_option
-def status(
-    telemetry_endpoint: Optional[str],
-    prometheus_bind_address: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
-):
-    click.echo(f"getting status from {temporal_address}")
+def status():
+    click.echo(f"getting status from {config.temporal_address}")
     temporal_config = TemporalConfig(
-        prometheus_bind_address=prometheus_bind_address,
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
+        prometheus_bind_address=config.prometheus_bind_address,
+        telemetry_endpoint=config.telemetry_endpoint,
+        temporal_address=config.temporal_address,
+        temporal_namespace=config.temporal_namespace,
+        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
     run_status(temporal_config=temporal_config)
 
 
 @cli.command()
-@datadir_option
-@parallelism_option
-@prometheus_bind_address_option
-@telemetry_endpoint_option
-@temporal_address_option
-@temporal_namespace_option
-@temporal_tls_client_cert_path_option
-@temporal_tls_client_key_path_option
-def startworkers(
-    data_dir: Path,
-    parallelism: int,
-    prometheus_bind_address: Optional[str],
-    telemetry_endpoint: Optional[str],
-    temporal_address: str,
-    temporal_namespace: Optional[str],
-    temporal_tls_client_cert_path: Optional[str],
-    temporal_tls_client_key_path: Optional[str],
-):
-    click.echo(f"starting {parallelism} workers")
-    click.echo(f"downloading NetinfoDB to {data_dir}")
-    NetinfoDB(datadir=Path(data_dir), download=True)
+def startworkers():
+    click.echo(f"starting workers")
+    click.echo(f"downloading NetinfoDB to {config.data_dir}")
+    NetinfoDB(datadir=Path(config.data_dir), download=True)
     click.echo("done downloading netinfodb")
 
     temporal_config = TemporalConfig(
-        prometheus_bind_address=prometheus_bind_address,
-        telemetry_endpoint=telemetry_endpoint,
-        temporal_address=temporal_address,
-        temporal_namespace=temporal_namespace,
-        temporal_tls_client_cert_path=temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=temporal_tls_client_key_path,
+        prometheus_bind_address=config.prometheus_bind_address,
+        telemetry_endpoint=config.telemetry_endpoint,
+        temporal_address=config.temporal_address,
+        temporal_namespace=config.temporal_namespace,
+        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
     start_workers(temporal_config=temporal_config)
 
 
 @cli.command()
-@probe_cc_option
-@test_name_option
-@start_day_option
-@end_day_option
-@clickhouse_option
-@datadir_option
-@click.option("--archives-dir", type=Path, required=True)
-@click.option(
-    "--parallelism",
-    type=int,
-    default=multiprocessing.cpu_count() + 2,
-    help="number of processes to use. Only works when writing to a database",
-)
-def mkbodies(
-    probe_cc: List[str],
-    test_name: List[str],
-    start_day: date,
-    end_day: date,
-    clickhouse: str,
-    data_dir: Path,
-    archives_dir: Path,
-    parallelism: int,
-):
-    """
-    Make response body archives
-    """
-    # start_response_archiver(
-    #     probe_cc=probe_cc,
-    #     test_name=test_name,
-    #     start_day=start_day,
-    #     end_day=end_day,
-    #     data_dir=data_dir,
-    #     archives_dir=archives_dir,
-    #     clickhouse=clickhouse,
-    #     parallelism=parallelism,
-    # )
-    raise NotImplemented("TODO(art)")
-
-
-@cli.command()
-@datadir_option
-@click.option("--archives-dir", type=Path, required=True)
-@click.option(
-    "--parallelism",
-    type=int,
-    default=multiprocessing.cpu_count() + 2,
-    help="number of processes to use",
-)
-def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
-    click.echo("🏹 starting the hunt for blockpage fingerprints!")
-    # start_fingerprint_hunter(
-    #     archives_dir=archives_dir,
-    #     data_dir=data_dir,
-    #     parallelism=parallelism,
-    # )
-    raise NotImplemented("TODO(art)")
-
-
-@cli.command()
-@clickhouse_buffer_min_time_option
-@clickhouse_buffer_max_time_option
-@clickhouse_option
 @click.option(
     "--create-tables",
     is_flag=True,
@@ -534,9 +316,6 @@ def fphunt(data_dir: Path, archives_dir: Path, parallelism: int):
     help="should we drop tables before creating them",
 )
 def checkdb(
-    clickhouse: str,
-    clickhouse_buffer_min_time: int,
-    clickhouse_buffer_max_time: int,
     create_tables: bool,
     drop_tables: bool,
 ):
@@ -545,12 +324,12 @@ def checkdb(
     is not specified, it will not perform any operations.
     """
     maybe_create_delete_tables(
-        clickhouse_url=clickhouse,
+        clickhouse_url=config.clickhouse_url,
         create_tables=create_tables,
         drop_tables=drop_tables,
-        clickhouse_buffer_min_time=clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=clickhouse_buffer_max_time,
+        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
+        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
     )
 
-    with ClickhouseConnection(clickhouse) as db:
+    with ClickhouseConnection(config.clickhouse_url) as db:
         list_all_table_diffs(db)
