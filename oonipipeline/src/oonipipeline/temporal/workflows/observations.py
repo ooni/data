@@ -70,14 +70,9 @@ class ObservationsWorkflow:
 
         await workflow.execute_activity(
             optimize_tables,
-            OptimizeTablesParams(
-                clickhouse=params.clickhouse, table_names=["buffer_obs_web"]
-            ),
+            OptimizeTablesParams(clickhouse=params.clickhouse, table_names=["obs_web"]),
             start_to_close_timeout=timedelta(minutes=20),
             retry_policy=RetryPolicy(maximum_attempts=10),
-        )
-        workflow.logger.info(
-            f"finished optimize_tables for bucket_date={params.bucket_date}"
         )
 
         previous_ranges = await workflow.execute_activity(
@@ -89,8 +84,8 @@ class ObservationsWorkflow:
                 probe_cc=params.probe_cc,
                 tables=["obs_web"],
             ),
-            start_to_close_timeout=timedelta(minutes=20),
-            retry_policy=RetryPolicy(maximum_attempts=10),
+            start_to_close_timeout=timedelta(minutes=2),
+            retry_policy=RetryPolicy(maximum_attempts=4),
         )
         workflow.logger.info(
             f"finished get_previous_range for bucket_date={params.bucket_date}"
@@ -108,14 +103,6 @@ class ObservationsWorkflow:
             f"{total_t.pretty} speed: {obs_res['mb_per_sec']}MB/s ({obs_res['measurement_per_sec']}msmt/s)"
         )
 
-        await workflow.execute_activity(
-            optimize_tables,
-            OptimizeTablesParams(
-                clickhouse=params.clickhouse, table_names=["buffer_obs_web"]
-            ),
-            start_to_close_timeout=timedelta(minutes=20),
-            retry_policy=RetryPolicy(maximum_attempts=10),
-        )
         workflow.logger.info(
             f"finished optimize_tables for bucket_date={params.bucket_date}"
         )
