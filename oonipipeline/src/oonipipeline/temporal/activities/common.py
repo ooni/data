@@ -2,6 +2,7 @@ import pathlib
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
+from concurrent.futures import ProcessPoolExecutor
 
 from threading import Lock
 
@@ -15,6 +16,8 @@ DATETIME_UTC_FORMAT = "%Y-%m-%dT%H:%M%SZ"
 
 log = activity.logger
 
+
+process_pool_executor = ProcessPoolExecutor()
 
 @dataclass
 class ClickhouseParams:
