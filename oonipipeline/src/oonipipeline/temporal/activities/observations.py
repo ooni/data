@@ -262,8 +262,10 @@ class DeletePreviousRangeParams:
 
 
 @activity.defn
-def delete_previous_range(params: DeletePreviousRangeParams) -> None:
+def delete_previous_range(params: DeletePreviousRangeParams) -> List[str]:
+    delete_queries = []
     with ClickhouseConnection(params.clickhouse) as db:
         for pr in params.previous_ranges:
             log.info("deleting previous range of {pr}")
-            maybe_delete_prev_range(db=db, prev_range=pr)
+            delete_queries.append(maybe_delete_prev_range(db=db, prev_range=pr))
+    return delete_queries

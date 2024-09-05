@@ -67,13 +67,13 @@ class PrevRange:
         return where, q_args
 
 
-def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange):
+def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange) -> str:
     """
     We perform a lightweight delete of all the rows which have been
     regenerated, so we don't have any duplicates in the table
     """
     if not prev_range.max_created_at or not prev_range.min_created_at:
-        return
+        return ""
 
     # Disabled due to: https://github.com/ClickHouse/ClickHouse/issues/40651
     # db.execute("SET allow_experimental_lightweight_delete = true;")
@@ -87,7 +87,8 @@ def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange):
 
     q = f"ALTER TABLE {prev_range.table_name} DELETE "
     final_query = q + where
-    return db.execute(final_query, q_args)
+    db.execute(final_query, q_args)
+    return final_query
 
 
 def get_prev_range(
