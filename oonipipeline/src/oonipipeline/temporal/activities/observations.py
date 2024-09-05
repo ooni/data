@@ -78,15 +78,19 @@ def make_observations_for_file_entry(
         # we need to check for probe_cc consistency in here.
         if ccs and msmt_dict["probe_cc"] not in ccs:
             continue
-        msmt = None
+
+        measurement_uid = msmt_dict.get("measurement_uid", None)
+        report_id = msmt_dict.get("report_id", None)
+        msmt_str = f"muid={measurement_uid} (rid={report_id})"
+
+        if not msmt_dict.get("test_keys", None):
+            log.error(
+                f"measurement with empty test_keys: ({msmt_str})",
+                exc_info=True,
+            )
+            continue
         try:
             msmt = load_measurement(msmt_dict)
-            if not msmt.test_keys:
-                log.error(
-                    f"measurement with empty test_keys: ({msmt.measurement_uid})",
-                    exc_info=True,
-                )
-                continue
             obs_tuple = measurement_to_observations(
                 msmt=msmt,
                 netinfodb=netinfodb,
@@ -96,12 +100,8 @@ def make_observations_for_file_entry(
                 db.write_table_model_rows(obs_list, use_buffer_table=False)
             measurement_count += 1
         except Exception as exc:
-            msmt_str = msmt_dict.get("report_id", None)
-            if msmt:
-                msmt_str = msmt.measurement_uid
             log.error(f"failed at idx: {measurement_count} ({msmt_str})", exc_info=True)
             failure_count += 1
-
             if fast_fail:
                 db.close()
                 raise exc
