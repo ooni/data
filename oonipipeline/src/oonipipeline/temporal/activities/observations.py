@@ -93,7 +93,7 @@ def make_observations_for_file_entry(
                 bucket_date=bucket_date,
             )
             for obs_list in obs_tuple:
-                db.write_table_model_rows(obs_list)
+                db.write_table_model_rows(obs_list, use_buffer_table=False)
             measurement_count += 1
         except Exception as exc:
             msmt_str = msmt_dict.get("report_id", None)
