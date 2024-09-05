@@ -3,6 +3,7 @@ import logging
 
 from datetime import datetime, timedelta
 
+import time
 from typing import (
     Any,
     Callable,
@@ -67,6 +68,16 @@ class PrevRange:
         return where, q_args
 
 
+def wait_for_mutations(db, table_name):
+    while True:
+        res = db.execute(
+            f"SELECT * FROM system.mutations WHERE is_done=0 AND table='{table_name}';"
+        )
+        if len(res) == 0:  # type: ignore
+            break
+        time.sleep(1)
+
+
 def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange) -> str:
     """
     We perform a lightweight delete of all the rows which have been
@@ -88,6 +99,7 @@ def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange) -> 
     q = f"ALTER TABLE {prev_range.table_name} DELETE "
     final_query = q + where
     db.execute(final_query, q_args)
+    wait_for_mutations(db, prev_range.table_name)
     return final_query
 
 
