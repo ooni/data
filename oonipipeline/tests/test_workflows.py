@@ -20,6 +20,7 @@ from oonidata.models.observations import HTTPMiddleboxObservation
 
 from oonipipeline.temporal.activities.common import (
     ClickhouseParams,
+    OptimizeTablesParams,
     UpdateAssetsParams,
     get_obs_count_by_cc,
     ObsCountParams,
@@ -339,6 +340,11 @@ async def optimize_all_tables_mocked(params: ClickhouseParams):
     return
 
 
+@activity.defn(name="optimize_tables")
+async def optimize_tables_mocked(params: OptimizeTablesParams):
+    return
+
+
 @activity.defn(name="make_ground_truths_in_day")
 async def make_ground_truths_in_day_mocked(params: MakeGroundTruthsParams):
     return
@@ -415,6 +421,7 @@ async def test_temporal_workflows():
             workflows=[ObservationsWorkflow, AnalysisWorkflow],
             activities=[
                 update_assets_mocked,
+                optimize_tables_mocked,
                 optimize_all_tables_mocked,
                 make_ground_truths_in_day_mocked,
                 get_obs_count_by_cc_mocked,

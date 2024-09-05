@@ -10,9 +10,9 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from oonidata.datautils import PerfTimer
     from oonipipeline.temporal.activities.common import (
-        ClickhouseParams,
+        OptimizeTablesParams,
         UpdateAssetsParams,
-        optimize_all_tables,
+        optimize_tables,
         update_assets,
     )
     from oonipipeline.temporal.activities.observations import (
@@ -69,13 +69,15 @@ class ObservationsWorkflow:
         )
 
         await workflow.execute_activity(
-            optimize_all_tables,
-            ClickhouseParams(clickhouse_url=params.clickhouse),
+            optimize_tables,
+            OptimizeTablesParams(
+                clickhouse=params.clickhouse, table_names=["buffer_obs_web"]
+            ),
             start_to_close_timeout=timedelta(minutes=20),
             retry_policy=RetryPolicy(maximum_attempts=10),
         )
         workflow.logger.info(
-            f"finished optimize_all_tables for bucket_date={params.bucket_date}"
+            f"finished optimize_tables for bucket_date={params.bucket_date}"
         )
 
         previous_ranges = await workflow.execute_activity(
@@ -107,10 +109,15 @@ class ObservationsWorkflow:
         )
 
         await workflow.execute_activity(
-            optimize_all_tables,
-            ClickhouseParams(clickhouse_url=params.clickhouse),
-            start_to_close_timeout=timedelta(minutes=30),
+            optimize_tables,
+            OptimizeTablesParams(
+                clickhouse=params.clickhouse, table_names=["buffer_obs_web"]
+            ),
+            start_to_close_timeout=timedelta(minutes=20),
             retry_policy=RetryPolicy(maximum_attempts=10),
+        )
+        workflow.logger.info(
+            f"finished optimize_tables for bucket_date={params.bucket_date}"
         )
 
         await workflow.execute_activity(

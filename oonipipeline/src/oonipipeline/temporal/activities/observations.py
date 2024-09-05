@@ -16,7 +16,6 @@ from oonipipeline.netinfo import NetinfoDB
 from oonipipeline.temporal.common import (
     PrevRange,
     get_prev_range,
-    make_db_rows,
     maybe_delete_prev_range,
 )
 from oonipipeline.temporal.activities.common import process_pool_executor

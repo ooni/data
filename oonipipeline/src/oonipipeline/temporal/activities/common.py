@@ -34,6 +34,20 @@ def optimize_all_tables(params: ClickhouseParams):
         for table_name in filter(lambda x: not x.startswith("buffer_"), table_names):
             db.execute(f"OPTIMIZE TABLE {table_name}")
 
+
+@dataclass
+class OptimizeTablesParams:
+    clickhouse: str
+    table_names: List[str]
+
+
+@activity.defn
+def optimize_tables(params: OptimizeTablesParams):
+    with ClickhouseConnection(params.clickhouse) as db:
+        for table_name in params.table_names:
+            db.execute(f"OPTIMIZE TABLE {table_name}")
+
+
 @dataclass
 class UpdateAssetsParams:
     data_dir: str
