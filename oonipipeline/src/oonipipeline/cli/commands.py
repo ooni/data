@@ -207,7 +207,6 @@ def backfill(
 def schedule(
     probe_cc: List[str],
     test_name: List[str],
-    clickhouse: str,
     fast_fail: bool,
     create_tables: bool,
     drop_tables: bool,
@@ -259,7 +258,7 @@ def schedule(
         analysis_params = AnalysisWorkflowParams(
             probe_cc=probe_cc,
             test_name=test_name,
-            clickhouse=clickhouse,
+            clickhouse=config.clickhouse_url,
             data_dir=config.data_dir,
         )
 
