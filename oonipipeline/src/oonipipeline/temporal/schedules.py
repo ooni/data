@@ -64,7 +64,7 @@ async def schedule_observations(
         print("WARNING: multiple schedules detected")
         return existing_schedules
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%y.%m.%d_%H%M%S")
     schedule_id = f"{base_schedule_id}-{ts}"
 
     await client.create_schedule(
@@ -86,7 +86,7 @@ async def schedule_observations(
                     )
                 ],
             ),
-            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.TERMINATE_OTHER),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.BUFFER_ALL),
             state=ScheduleState(
                 note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
             ),
@@ -123,7 +123,7 @@ async def schedule_analysis(
     # re-scheduling it. Not doing so will mean that temporal will believe the
     # workflow has already been execututed and will refuse to re-run it.
     # TODO(art): check if there is a more idiomatic way of implementing this
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%y.%m.%d_%H%M%S")
     schedule_id = f"{base_schedule_id}-{ts}"
 
     await client.create_schedule(
