@@ -151,7 +151,7 @@ async def schedule_analysis(
                     )
                 ],
             ),
-            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.TERMINATE_OTHER),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.BUFFER_ALL),
             state=ScheduleState(
                 note="Run the analysis workflow every day with an offset of 6 hours to ensure the observation workflow has completed"
             ),
