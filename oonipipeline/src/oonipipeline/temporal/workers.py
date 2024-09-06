@@ -9,7 +9,6 @@ from oonipipeline.temporal.activities.common import (
     get_obs_count_by_cc,
     optimize_all_tables,
     optimize_tables,
-    update_assets,
 )
 from oonipipeline.temporal.activities.ground_truths import make_ground_truths_in_day
 from oonipipeline.temporal.activities.observations import (
@@ -47,7 +46,6 @@ ACTIVTIES = [
     make_analysis_in_a_day,
     optimize_all_tables,
     get_obs_count_by_cc,
-    update_assets,
     optimize_tables,
 ]
 
