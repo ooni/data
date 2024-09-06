@@ -9,18 +9,13 @@ from oonipipeline.temporal.client_operations import (
     run_backfill,
     run_create_schedules,
     run_status,
+    run_reschedule,
 )
 from oonipipeline.temporal.workers import start_workers
 
 import click
 from click_loglevel import LogLevel
 
-from ..temporal.workflows.observations import (
-    ObservationsWorkflowParams,
-)
-from ..temporal.workflows.analysis import (
-    AnalysisWorkflowParams,
-)
 
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
@@ -120,7 +115,9 @@ def cli(log_level: int):
 @cli.command()
 @start_at_option
 @end_at_option
-@click.option("--schedule-id", type=str, required=True)
+@probe_cc_option
+@test_name_option
+@click.option("--workflow-name", type=str, required=True)
 @click.option(
     "--create-tables",
     is_flag=True,
@@ -132,16 +129,18 @@ def cli(log_level: int):
     help="should we drop tables before creating them",
 )
 def backfill(
+    probe_cc: List[str],
+    test_name: List[str],
+    workflow_name: str,
     start_at: datetime,
     end_at: datetime,
     create_tables: bool,
     drop_tables: bool,
-    schedule_id: str,
 ):
     """
     Backfill for OONI measurements and write them into clickhouse
     """
-    click.echo(f"Runnning backfill of schedule {schedule_id}")
+    click.echo(f"Runnning backfill of worfklow {workflow_name}")
 
     maybe_create_delete_tables(
         clickhouse_url=config.clickhouse_url,
@@ -161,8 +160,10 @@ def backfill(
     )
 
     run_backfill(
-        schedule_id=schedule_id,
+        workflow_name=workflow_name,
         temporal_config=temporal_config,
+        probe_cc=probe_cc,
+        test_name=test_name,
         start_at=start_at,
         end_at=end_at,
     )
@@ -176,66 +177,14 @@ def backfill(
     is_flag=True,
     help="should we fail immediately when we encounter an error?",
 )
-@click.option(
-    "--analysis/--no-analysis",
-    is_flag=True,
-    help="should we schedule an analysis",
-    default=False,
-)
-@click.option(
-    "--observations/--no-observations",
-    is_flag=True,
-    help="should we schedule observations",
-    default=True,
-)
-@click.option(
-    "--delete",
-    is_flag=True,
-    default=False,
-    help="if we should delete the schedule instead of creating it",
-)
-@click.option(
-    "--create-tables",
-    is_flag=True,
-    help="should we attempt to create the required clickhouse tables",
-)
-@click.option(
-    "--drop-tables",
-    is_flag=True,
-    help="should we drop tables before creating them",
-)
 def schedule(
     probe_cc: List[str],
     test_name: List[str],
     fast_fail: bool,
-    create_tables: bool,
-    drop_tables: bool,
-    analysis: bool,
-    observations: bool,
-    delete: bool,
 ):
     """
     Create schedules for the specified parameters
     """
-    if not observations and not analysis:
-        click.echo("either observations or analysis should be set")
-        return 1
-
-    maybe_create_delete_tables(
-        clickhouse_url=config.clickhouse_url,
-        create_tables=create_tables,
-        drop_tables=drop_tables,
-        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
-    )
-    what_we_schedule = []
-    if analysis:
-        what_we_schedule.append("analysis")
-    if observations:
-        what_we_schedule.append("observations")
-
-    click.echo(f"Scheduling {' and'.join(what_we_schedule)}")
-
     temporal_config = TemporalConfig(
         telemetry_endpoint=config.telemetry_endpoint,
         prometheus_bind_address=config.prometheus_bind_address,
@@ -244,29 +193,46 @@ def schedule(
         temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
-    obs_params = None
-    if observations:
-        obs_params = ObservationsWorkflowParams(
-            probe_cc=probe_cc,
-            test_name=test_name,
-            clickhouse=config.clickhouse_url,
-            data_dir=config.data_dir,
-            fast_fail=fast_fail,
-        )
-    analysis_params = None
-    if analysis:
-        analysis_params = AnalysisWorkflowParams(
-            probe_cc=probe_cc,
-            test_name=test_name,
-            clickhouse=config.clickhouse_url,
-            data_dir=config.data_dir,
-        )
 
     run_create_schedules(
-        obs_params=obs_params,
-        analysis_params=analysis_params,
+        probe_cc=probe_cc,
+        test_name=test_name,
+        clickhouse_url=config.clickhouse_url,
+        data_dir=config.data_dir,
         temporal_config=temporal_config,
-        delete=delete,
+    )
+
+
+@cli.command()
+@probe_cc_option
+@test_name_option
+@click.option(
+    "--fast-fail",
+    is_flag=True,
+    help="should we fail immediately when we encounter an error?",
+)
+def reschedule(
+    probe_cc: List[str],
+    test_name: List[str],
+):
+    """
+    Create schedules for the specified parameters
+    """
+    temporal_config = TemporalConfig(
+        telemetry_endpoint=config.telemetry_endpoint,
+        prometheus_bind_address=config.prometheus_bind_address,
+        temporal_address=config.temporal_address,
+        temporal_namespace=config.temporal_namespace,
+        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
+        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
+    )
+
+    run_reschedule(
+        probe_cc=probe_cc,
+        test_name=test_name,
+        clickhouse_url=config.clickhouse_url,
+        data_dir=config.data_dir,
+        temporal_config=temporal_config,
     )
 
 

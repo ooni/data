@@ -1,15 +1,13 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional, Tuple
 
-from oonipipeline.temporal.workflows.analysis import AnalysisWorkflowParams
-from oonipipeline.temporal.workflows.observations import ObservationsWorkflowParams
-
 from oonipipeline.temporal.schedules import (
-    schedule_analysis,
-    schedule_observations,
+    ScheduleIdMap,
+    schedule_all,
+    schedule_backfill,
 )
 
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -20,8 +18,6 @@ from opentelemetry import trace
 
 from temporalio.client import (
     Client as TemporalClient,
-    ScheduleBackfill,
-    ScheduleOverlapPolicy,
     WorkflowExecution,
 )
 from temporalio.service import TLSConfig
@@ -116,63 +112,45 @@ async def temporal_connect(
 
 
 async def execute_backfill(
-    schedule_id: str,
-    temporal_config: TemporalConfig,
+    probe_cc: List[str],
+    test_name: List[str],
     start_at: datetime,
     end_at: datetime,
-):
-    log.info(f"running backfill for schedule_id={schedule_id}")
-
-    client = await temporal_connect(temporal_config=temporal_config)
-
-    found_schedule_id = None
-    schedule_list = await client.list_schedules()
-    async for sched in schedule_list:
-        if sched.id.startswith(schedule_id):
-            found_schedule_id = sched.id
-            break
-    if not found_schedule_id:
-        log.error(f"schedule ID not found for prefix {schedule_id}")
-        return
-
-    handle = client.get_schedule_handle(found_schedule_id)
-    await handle.backfill(
-        ScheduleBackfill(
-            start_at=start_at + timedelta(hours=1),
-            end_at=end_at + timedelta(hours=1),
-            overlap=ScheduleOverlapPolicy.ALLOW_ALL,
-        ),
-    )
-
-
-async def create_schedules(
-    obs_params: Optional[ObservationsWorkflowParams],
-    analysis_params: Optional[AnalysisWorkflowParams],
+    workflow_name: str,
     temporal_config: TemporalConfig,
-    delete: bool = False,
-) -> dict:
+):
     log.info(f"creating all schedules")
 
     client = await temporal_connect(temporal_config=temporal_config)
 
-    obs_schedule_id = None
-    if obs_params is not None:
-        obs_schedule_id = await schedule_observations(
-            client=client, params=obs_params, delete=delete
-        )
-        log.info(f"created schedule observations schedule with ID={obs_schedule_id}")
+    return await schedule_backfill(
+        client=client,
+        probe_cc=probe_cc,
+        test_name=test_name,
+        start_at=start_at,
+        end_at=end_at,
+        workflow_name=workflow_name,
+    )
 
-    analysis_schedule_id = None
-    if analysis_params is not None:
-        analysis_schedule_id = await schedule_analysis(
-            client=client, params=analysis_params, delete=delete
-        )
-        log.info(f"created schedule analysis schedule with ID={analysis_schedule_id}")
 
-    return {
-        "analysis_schedule_id": analysis_schedule_id,
-        "observations_schedule_id": obs_schedule_id,
-    }
+async def create_schedules(
+    probe_cc: List[str],
+    test_name: List[str],
+    clickhouse_url: str,
+    data_dir: str,
+    temporal_config: TemporalConfig,
+) -> ScheduleIdMap:
+    log.info(f"creating all schedules")
+
+    client = await temporal_connect(temporal_config=temporal_config)
+
+    return await schedule_all(
+        client=client,
+        probe_cc=probe_cc,
+        test_name=test_name,
+        clickhouse_url=clickhouse_url,
+        data_dir=data_dir,
+    )
 
 
 async def get_status(
@@ -214,7 +192,9 @@ async def get_status(
 
 def run_backfill(
     temporal_config: TemporalConfig,
-    schedule_id: str,
+    probe_cc: List[str],
+    test_name: List[str],
+    workflow_name: str,
     start_at: datetime,
     end_at: datetime,
 ):
@@ -222,7 +202,9 @@ def run_backfill(
         asyncio.run(
             execute_backfill(
                 temporal_config=temporal_config,
-                schedule_id=schedule_id,
+                workflow_name=workflow_name,
+                probe_cc=probe_cc,
+                test_name=test_name,
                 start_at=start_at,
                 end_at=end_at,
             )
@@ -232,18 +214,41 @@ def run_backfill(
 
 
 def run_create_schedules(
-    obs_params: Optional[ObservationsWorkflowParams],
-    analysis_params: Optional[AnalysisWorkflowParams],
+    probe_cc: List[str],
+    test_name: List[str],
+    clickhouse_url: str,
+    data_dir: str,
     temporal_config: TemporalConfig,
-    delete: bool,
 ):
     try:
         asyncio.run(
             create_schedules(
-                obs_params=obs_params,
-                analysis_params=analysis_params,
+                probe_cc=probe_cc,
+                test_name=test_name,
+                clickhouse_url=clickhouse_url,
+                data_dir=data_dir,
                 temporal_config=temporal_config,
-                delete=delete,
+            )
+        )
+    except KeyboardInterrupt:
+        print("shutting down")
+
+
+def run_reschedule(
+    probe_cc: List[str],
+    test_name: List[str],
+    clickhouse_url: str,
+    data_dir: str,
+    temporal_config: TemporalConfig,
+):
+    try:
+        asyncio.run(
+            create_schedules(
+                probe_cc=probe_cc,
+                test_name=test_name,
+                clickhouse_url=clickhouse_url,
+                data_dir=data_dir,
+                temporal_config=temporal_config,
             )
         )
     except KeyboardInterrupt:
