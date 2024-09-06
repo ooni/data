@@ -151,8 +151,6 @@ def backfill(
     )
 
     temporal_config = TemporalConfig(
-        prometheus_bind_address=config.prometheus_bind_address,
-        telemetry_endpoint=config.telemetry_endpoint,
         temporal_address=config.temporal_address,
         temporal_namespace=config.temporal_namespace,
         temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
@@ -172,22 +170,14 @@ def backfill(
 @cli.command()
 @probe_cc_option
 @test_name_option
-@click.option(
-    "--fast-fail",
-    is_flag=True,
-    help="should we fail immediately when we encounter an error?",
-)
 def schedule(
     probe_cc: List[str],
     test_name: List[str],
-    fast_fail: bool,
 ):
     """
     Create schedules for the specified parameters
     """
     temporal_config = TemporalConfig(
-        telemetry_endpoint=config.telemetry_endpoint,
-        prometheus_bind_address=config.prometheus_bind_address,
         temporal_address=config.temporal_address,
         temporal_namespace=config.temporal_namespace,
         temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
@@ -214,8 +204,6 @@ def reschedule(
     Create schedules for the specified parameters
     """
     temporal_config = TemporalConfig(
-        telemetry_endpoint=config.telemetry_endpoint,
-        prometheus_bind_address=config.prometheus_bind_address,
         temporal_address=config.temporal_address,
         temporal_namespace=config.temporal_namespace,
         temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
