@@ -94,8 +94,7 @@ def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange) -> 
     where = f"{where} AND created_at <= %(max_created_at)s AND created_at >= %(min_created_at)s"
     log.debug(f"runing {where} with {q_args}")
 
-    q = f"DELETE FROM {prev_range.table_name}"
-    final_query = q + where
+    final_query = f"DELETE FROM {prev_range.table_name} {where}"
     db.execute(final_query, q_args)
     return final_query
 
