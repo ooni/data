@@ -9,7 +9,7 @@ from oonipipeline.temporal.client_operations import (
     run_backfill,
     run_create_schedules,
     run_status,
-    run_reschedule,
+    run_clear_schedules,
 )
 from oonipipeline.temporal.workers import start_workers
 
@@ -196,7 +196,7 @@ def schedule(
 @cli.command()
 @probe_cc_option
 @test_name_option
-def reschedule(
+def clear_schedules(
     probe_cc: List[str],
     test_name: List[str],
 ):
@@ -210,11 +210,9 @@ def reschedule(
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
-    run_reschedule(
+    run_clear_schedules(
         probe_cc=probe_cc,
         test_name=test_name,
-        clickhouse_url=config.clickhouse_url,
-        data_dir=config.data_dir,
         temporal_config=temporal_config,
     )
 

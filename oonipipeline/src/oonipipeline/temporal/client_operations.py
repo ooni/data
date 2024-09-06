@@ -8,7 +8,7 @@ from oonipipeline.temporal.schedules import (
     ScheduleIdMap,
     schedule_all,
     schedule_backfill,
-    reschedule_all,
+    clear_schedules,
 )
 
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -154,23 +154,19 @@ async def create_schedules(
     )
 
 
-async def reschedule(
+async def execute_clear_schedules(
     probe_cc: List[str],
     test_name: List[str],
-    clickhouse_url: str,
-    data_dir: str,
     temporal_config: TemporalConfig,
-) -> ScheduleIdMap:
+) -> List[str]:
     log.info(f"rescheduling everything")
 
     client = await temporal_connect(temporal_config=temporal_config)
 
-    return await reschedule_all(
+    return await clear_schedules(
         client=client,
         probe_cc=probe_cc,
         test_name=test_name,
-        clickhouse_url=clickhouse_url,
-        data_dir=data_dir,
     )
 
 
@@ -255,20 +251,16 @@ def run_create_schedules(
         print("shutting down")
 
 
-def run_reschedule(
+def run_clear_schedules(
     probe_cc: List[str],
     test_name: List[str],
-    clickhouse_url: str,
-    data_dir: str,
     temporal_config: TemporalConfig,
 ):
     try:
         asyncio.run(
-            reschedule(
+            execute_clear_schedules(
                 probe_cc=probe_cc,
                 test_name=test_name,
-                clickhouse_url=clickhouse_url,
-                data_dir=data_dir,
                 temporal_config=temporal_config,
             )
         )

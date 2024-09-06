@@ -189,26 +189,19 @@ async def schedule_all(
     return schedule_id_map
 
 
-async def reschedule_all(
+async def clear_schedules(
     client: TemporalClient,
     probe_cc: List[str],
     test_name: List[str],
-    clickhouse_url: str,
-    data_dir: str,
-) -> ScheduleIdMap:
+) -> List[str]:
+    schedule_ids = []
     existing_schedules = await list_existing_schedules(
         client=client, probe_cc=probe_cc, test_name=test_name
     )
-    for schedule_id in existing_schedules.observations + existing_schedules.analysis:
-        await client.get_schedule_handle(schedule_id).delete()
-
-    return await schedule_all(
-        client=client,
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse_url=clickhouse_url,
-        data_dir=data_dir,
-    )
+    for sid in existing_schedules.observations + existing_schedules.analysis:
+        log.info(f"deleting schedule {sid}")
+        schedule_ids.append(await client.get_schedule_handle(sid).delete())
+    return schedule_ids
 
 
 async def schedule_backfill(
