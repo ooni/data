@@ -42,9 +42,6 @@ def create_s3_client():
     return boto3.client("s3", config=botoConfig(signature_version=botoSigUNSIGNED))
 
 
-s3 = create_s3_client()
-
-
 def date_interval(start_day: date, end_day: date):
     """
     A generator for a date_interval.
@@ -243,6 +240,7 @@ def stream_oldcan(body: io.BytesIO, s3path: str) -> Generator[dict, None, None]:
 
 
 def stream_measurements(bucket_name, s3path, ext):
+    s3 = create_s3_client()
     body = s3.get_object(Bucket=bucket_name, Key=s3path)["Body"]
     log.debug(f"streaming file s3://{bucket_name}/{s3path}")
     if ext == "jsonl.gz":
@@ -334,6 +332,7 @@ class FileEntry:
 
 
 def list_all_testnames() -> Set[str]:
+    s3 = create_s3_client()
     testnames = set()
     paginator = s3.get_paginator("list_objects_v2")
     for r in paginator.paginate(Bucket=MC_BUCKET_NAME, Prefix="jsonl/", Delimiter="/"):
@@ -354,6 +353,7 @@ def get_v2_search_prefixes(testnames: Set[str], ccs: Set[str]) -> List[Prefix]:
     If the ccs list is empty we will return prefixes for all countries for
     which that particular testname as measurements.
     """
+    s3 = create_s3_client()
     prefixes = []
     paginator = s3.get_paginator("list_objects_v2")
     for tn in testnames:
@@ -577,7 +577,7 @@ def list_file_entries_batches(
     probe_cc: CSVList = None,
     test_name: CSVList = None,
     from_cans: bool = True,
-) -> Tuple[List[Tuple], int]:
+) -> Tuple[List[List[Tuple]], int]:
     if isinstance(start_day, str):
         start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
     if isinstance(end_day, str):

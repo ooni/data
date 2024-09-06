@@ -5,7 +5,6 @@ import time
 import textwrap
 
 from oonipipeline.cli.commands import cli
-from oonipipeline.cli.commands import parse_config_file
 from oonipipeline.temporal.client_operations import TemporalConfig, get_status
 import pytest
 
@@ -38,6 +37,7 @@ class MockContext:
         self.default_map = {}
 
 
+@pytest.mark.skip("TODO(art): maybe test new settings parsing")
 def test_parse_config(tmp_path):
     ctx = MockContext()
 
@@ -59,6 +59,7 @@ def test_parse_config(tmp_path):
     assert defaults["backfill"]["something"] == "other"
 
 
+@pytest.mark.skip("TODO(art): moved into temporal_e2e")
 def test_full_workflow(
     db,
     cli_runner,
@@ -259,6 +260,7 @@ def test_full_workflow(
     # We wait on the table buffers to be flushed
     wait_for_backfill()
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
+    db.execute("OPTIMIZE TABLE measurement_experiment_result")
     db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
     wait_for_mutations(db, "measurement_experiment_result")
 

@@ -5,6 +5,7 @@ import pathlib
 from datetime import datetime
 from typing import Dict, List
 
+from oonipipeline.temporal.common import TS_FORMAT
 import opentelemetry.trace
 from temporalio import workflow, activity
 
@@ -121,7 +122,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
         get_prev_range(
             db=db_lookup,
             table_name=WebAnalysis.__table_name__,
-            timestamp=datetime.combine(day, datetime.min.time()),
+            timestamp=datetime.combine(day, datetime.min.time()).strftime(TS_FORMAT),
             test_name=[],
             probe_cc=probe_cc,
             timestamp_column="measurement_start_time",
@@ -129,7 +130,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
         get_prev_range(
             db=db_lookup,
             table_name=MeasurementExperimentResult.__table_name__,
-            timestamp=datetime.combine(day, datetime.min.time()),
+            timestamp=datetime.combine(day, datetime.min.time()).strftime(TS_FORMAT),
             test_name=[],
             probe_cc=probe_cc,
             timestamp_column="timeofday",

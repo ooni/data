@@ -36,7 +36,7 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-grpc ~= 1.18.0",
   "bokeh ~= 3.5.2",
   "uvicorn ~= 0.25.0",
-  "pydantic-settings ~= 2.1.0",
+  "pydantic-settings ~= 2.4.0",
 ]
 
 [tool.hatch.build.targets.sdist]
