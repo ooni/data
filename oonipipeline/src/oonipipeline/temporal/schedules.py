@@ -136,7 +136,7 @@ async def schedule_all(
                         )
                     ],
                 ),
-                policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.BUFFER_ALL),
+                policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.ALLOW_ALL),
                 state=ScheduleState(
                     note="Run the observations workflow every day with an offset of 2 hours to ensure the files have been written to s3"
                 ),
@@ -177,7 +177,7 @@ async def schedule_all(
                         )
                     ],
                 ),
-                policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.BUFFER_ALL),
+                policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.ALLOW_ALL),
                 state=ScheduleState(
                     note="Run the analysis workflow every day with an offset of 6 hours to ensure the observation workflow has completed"
                 ),
