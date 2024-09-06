@@ -39,26 +39,23 @@ cd _clickhouse-data
 clickhouse server
 ```
 
-You can then start the desired workflow, for example to create signal observations for the US:
+Workflows are started by first scheduling them and then triggering a backfill operation on them. When they are scheduled they will also run on a daily basis.
 
 ```
-hatch run oonipipeline mkobs --probe-cc US --test-name signal --start-day 2024-01-01 --end-day 2024-01-02 --create-tables
+hatch run oonipipeline schedule --probe-cc US --test-name signal --create-tables
+```
+
+You can then trigger the backfill operation like so:
+```
+hatch run oonipipeline backfill --probe-cc US --test-name signal --workflow-name observations --start-at 2024-01-01 --end-at 2024-02-01
+```
+
+You will then need some workers to actually perform the task you backfilled, these can be started like so:
+```
+hatch run oonipipeline startworkers
 ```
 
 Monitor the workflow executing by accessing: http://localhost:8233/
-
-If you would like to also collect OpenTelemetry traces, you can set it up like so:
-
-```
-docker run -d --name jaeger \
-  -e COLLECTOR_OTLP_ENABLED=true \
-  -p 16686:16686 \
-  -p 4317:4317 \
-  -p 4318:4318 \
-  jaegertracing/all-in-one:latest
-```
-
-They are then visible at the following address: http://localhost:16686/search
 
 ### Production usage
 
@@ -87,6 +84,10 @@ We don't include a clickhouse instance inside of the docker-compose file by
 design. The reason for that is that it's recommended you set that up separately
 and not inside of docker.
 
+It's possible to change the behaviour of the pipeline by passing an optional `CONFIG_FILE` environment variable that contains a TOML config file.
+
+For all the supported options check `src/oonipipeline/settings.py`.
+
 To start the worker processes:
 
 ```
@@ -99,12 +100,12 @@ day.
 This can be accomplished by running:
 
 ```
-hatch run oonipipeline schedule --create-tables
+hatch run oonipipeline schedule
 ```
 
 If you would like to also schedule the analysis, you should do:
 ```
-hatch run oonipipeline schedule --analysis --create-tables
+hatch run oonipipeline schedule
 ```
 
 These schedules can be further refined with the `--probe-cc` and `--test-name`
@@ -117,11 +118,8 @@ You are then able to trigger a backfill (basically reprocessing the data), by
 running the following command:
 
 ```
-hatch run oonipipeline backfill --schedule-id oonipipeline-observations-schedule-ALLCCS-ALLTNS --start-at 2024-01-01 --end-at 2024-02-01
+hatch run oonipipeline backfill --workflow-name observations --start-at 2024-01-01 --end-at 2024-02-01
 ```
-
-Where the schedule-id should be taken from the output of the schedule command
-or from the temporal web UI.
 
 #### Superset
 
