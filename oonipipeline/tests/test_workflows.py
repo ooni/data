@@ -4,7 +4,6 @@ from pathlib import Path
 import sqlite3
 from typing import List, Tuple
 from unittest.mock import MagicMock
-import time
 
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
@@ -21,18 +20,14 @@ from oonidata.models.observations import HTTPMiddleboxObservation
 from oonipipeline.temporal.activities.common import (
     ClickhouseParams,
     OptimizeTablesParams,
-    UpdateAssetsParams,
     get_obs_count_by_cc,
     ObsCountParams,
 )
 from oonipipeline.temporal.activities.observations import (
     DeletePreviousRangeParams,
     GetPreviousRangeParams,
-    MakeObservationsFileEntryBatch,
     MakeObservationsParams,
     MakeObservationsResult,
-    ObservationBatches,
-    make_observations_for_file_entry,
     make_observations_for_file_entry_batch,
 )
 from oonipipeline.transforms.measurement_transformer import MeasurementTransformer
@@ -63,19 +58,7 @@ from oonipipeline.temporal.workflows.observations import (
 )
 from oonipipeline.temporal.workflows.common import TASK_QUEUE_NAME
 
-# from oonipipeline.workflows.response_archiver import ResponseArchiver
-# from oonipipeline.workflows.fingerprint_hunter import fingerprint_hunter
-
-
-def wait_for_mutations(db, table_name):
-    while True:
-        res = db.execute(
-            f"SELECT * FROM system.mutations WHERE is_done=0 AND table='{table_name}';"
-        )
-        if len(res) == 0:  # type: ignore
-            break
-        time.sleep(1)
-
+from .utils import wait_for_mutations
 
 def test_get_prev_range(db):
     db.execute("DROP TABLE IF EXISTS test_range")

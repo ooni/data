@@ -13,6 +13,7 @@ from oonipipeline.temporal.workflows.observations import (
 )
 from oonipipeline.temporal.workers import ACTIVTIES
 
+from .utils import wait_for_mutations
 
 @pytest.mark.asyncio
 async def test_observation_workflow(datadir, db):
@@ -71,8 +72,8 @@ async def test_observation_workflow(datadir, db):
                 id="obs-wf-2",
                 task_queue=TASK_QUEUE_NAME,
             )
-            db.execute("OPTIMIZE TABLE buffer_obs_web")
             db.execute("OPTIMIZE TABLE obs_web")
+            wait_for_mutations(db, "obs_web")
             res = db.execute(
                 """
                 SELECT bucket_date,
