@@ -87,9 +87,6 @@ def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange) -> 
         return ""
 
     wait_for_mutations(db, prev_range.table_name)
-    # Disabled due to: https://github.com/ClickHouse/ClickHouse/issues/40651
-    # db.execute("SET allow_experimental_lightweight_delete = true;")
-
     where, q_args = prev_range.format_query()
 
     q_args["max_created_at"] = prev_range.max_created_at
@@ -97,7 +94,7 @@ def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange) -> 
     where = f"{where} AND created_at <= %(max_created_at)s AND created_at >= %(min_created_at)s"
     log.debug(f"runing {where} with {q_args}")
 
-    q = f"ALTER TABLE {prev_range.table_name} DELETE "
+    q = f"DELETE FROM {prev_range.table_name}"
     final_query = q + where
     db.execute(final_query, q_args)
     return final_query
