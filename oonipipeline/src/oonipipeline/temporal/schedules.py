@@ -200,7 +200,8 @@ async def clear_schedules(
     )
     for sid in existing_schedules.observations + existing_schedules.analysis:
         log.info(f"deleting schedule {sid}")
-        schedule_ids.append(await client.get_schedule_handle(sid).delete())
+        await client.get_schedule_handle(sid).delete()
+        schedule_ids.append(sid)
     return schedule_ids
 
 

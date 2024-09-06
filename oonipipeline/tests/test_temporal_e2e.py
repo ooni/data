@@ -1,6 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from oonipipeline.temporal.schedules import schedule_all, reschedule_all
+from oonipipeline.temporal.schedules import schedule_all, clear_schedules
 import pytest
 
 from temporalio.testing import WorkflowEnvironment
@@ -30,18 +30,26 @@ async def test_scheduling(datadir, db):
         assert sched_res.analysis
         assert sched_res.observations
 
+        deleted_schedules = await clear_schedules(
+            client=env.client,
+            probe_cc=[],
+            test_name=[],
+        )
+        assert sched_res.observations in deleted_schedules
+        assert sched_res.analysis in deleted_schedules
+
         # Wait 1 second for the ID to change
         await asyncio.sleep(1)
 
-        reschedule_res = await reschedule_all(
+        sched_res2 = await schedule_all(
             client=env.client,
             probe_cc=[],
             test_name=[],
             clickhouse_url=db.clickhouse_url,
             data_dir=str(datadir),
         )
-        assert reschedule_res.observations != sched_res.observations
-        assert reschedule_res.analysis != sched_res.analysis
+        assert sched_res.analysis != sched_res2.analysis
+        assert sched_res.observations != sched_res2.observations
 
 
 @pytest.mark.asyncio
