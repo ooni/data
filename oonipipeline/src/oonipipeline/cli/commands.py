@@ -206,11 +206,6 @@ def schedule(
 @cli.command()
 @probe_cc_option
 @test_name_option
-@click.option(
-    "--fast-fail",
-    is_flag=True,
-    help="should we fail immediately when we encounter an error?",
-)
 def reschedule(
     probe_cc: List[str],
     test_name: List[str],
