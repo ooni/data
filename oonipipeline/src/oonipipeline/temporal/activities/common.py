@@ -10,6 +10,7 @@ from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.db.create_tables import make_create_queries
 
 from oonipipeline.netinfo import NetinfoDB
+from oonipipeline.temporal.common import wait_for_mutations
 from temporalio import activity
 
 DATETIME_UTC_FORMAT = "%Y-%m-%dT%H:%M%SZ"
@@ -45,6 +46,8 @@ class OptimizeTablesParams:
 def optimize_tables(params: OptimizeTablesParams):
     with ClickhouseConnection(params.clickhouse) as db:
         for table_name in params.table_names:
+            wait_for_mutations(db, params.table_names)
+            log.info(f"waiting for mutations to finish on {table_name}")
             db.execute(f"OPTIMIZE TABLE {table_name}")
 
 
