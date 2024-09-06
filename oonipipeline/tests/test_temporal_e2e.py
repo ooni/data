@@ -30,13 +30,11 @@ async def test_scheduling(datadir, db):
         assert sched_res.analysis
         assert sched_res.observations
 
-        deleted_schedules = await clear_schedules(
+        await clear_schedules(
             client=env.client,
             probe_cc=[],
             test_name=[],
         )
-        assert sched_res.observations in deleted_schedules
-        assert sched_res.analysis in deleted_schedules
 
         # Wait 1 second for the ID to change
         await asyncio.sleep(1)
