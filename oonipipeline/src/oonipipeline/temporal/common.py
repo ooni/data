@@ -86,6 +86,7 @@ def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange) -> 
     if not prev_range.max_created_at or not prev_range.min_created_at:
         return ""
 
+    # Before deleting, we need to wait for all the mutations to be done
     wait_for_mutations(db, prev_range.table_name)
     where, q_args = prev_range.format_query()
 
