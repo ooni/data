@@ -73,8 +73,9 @@ async def list_existing_schedules(
     async for sched in schedule_list:
         if sched.id.startswith(f"{OBSERVATIONS_SCHED_PREFIX}-{filter_id}"):
             schedule_id_map_list.observations.append(sched.id)
-        elif sched.id.startswith(f"{ANALYSIS_WF_PREFIX}-{filter_id}"):
+        elif sched.id.startswith(f"{ANALYSIS_SCHED_PREFIX}-{filter_id}"):
             schedule_id_map_list.analysis.append(sched.id)
+
     return schedule_id_map_list
 
 
