@@ -36,8 +36,8 @@ async def test_scheduling(datadir, db):
             test_name=[],
         )
 
-        # Wait 1 second for the ID to change
-        await asyncio.sleep(1)
+        # Wait 2 second for the ID to change
+        await asyncio.sleep(2)
 
         sched_res2 = await schedule_all(
             client=env.client,
