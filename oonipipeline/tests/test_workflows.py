@@ -330,11 +330,6 @@ def test_full_processing(raw_measurements, netinfodb):
                 )
 
 
-@activity.defn(name="update_assets")
-async def update_assets_mocked(params: UpdateAssetsParams):
-    return
-
-
 @activity.defn(name="optimize_all_tables")
 async def optimize_all_tables_mocked(params: ClickhouseParams):
     return
@@ -420,7 +415,6 @@ async def test_temporal_workflows():
             task_queue=TASK_QUEUE_NAME,
             workflows=[ObservationsWorkflow, AnalysisWorkflow],
             activities=[
-                update_assets_mocked,
                 optimize_tables_mocked,
                 optimize_all_tables_mocked,
                 make_ground_truths_in_day_mocked,

@@ -7,10 +7,6 @@ from temporalio import workflow
 
 with workflow.unsafe.imports_passed_through():
     from oonidata.dataclient import date_interval
-    from oonipipeline.temporal.activities.common import (
-        UpdateAssetsParams,
-        update_assets,
-    )
     from oonipipeline.temporal.activities.ground_truths import (
         MakeGroundTruthsParams,
         make_ground_truths_in_day,
@@ -35,12 +31,6 @@ class GroundTruthsWorkflow:
         self,
         params: GroundTruthsWorkflowParams,
     ):
-        await workflow.execute_activity(
-            update_assets,
-            UpdateAssetsParams(data_dir=params.data_dir),
-            start_to_close_timeout=timedelta(hours=1),
-        )
-
         start_day = datetime.strptime(params.start_day, "%Y-%m-%d").date()
         end_day = datetime.strptime(params.end_day, "%Y-%m-%d").date()
 

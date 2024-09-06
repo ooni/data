@@ -17,10 +17,8 @@ with workflow.unsafe.imports_passed_through():
     from oonipipeline.temporal.activities.common import (
         ClickhouseParams,
         ObsCountParams,
-        UpdateAssetsParams,
         get_obs_count_by_cc,
         optimize_all_tables,
-        update_assets,
     )
     from oonipipeline.temporal.activities.ground_truths import (
         MakeGroundTruthsParams,
@@ -53,12 +51,6 @@ class AnalysisWorkflow:
             params.day = (get_workflow_start_time() - timedelta(days=1)).strftime(
                 "%Y-%m-%d"
             )
-
-        await workflow.execute_activity(
-            update_assets,
-            UpdateAssetsParams(data_dir=params.data_dir),
-            start_to_close_timeout=timedelta(hours=1),
-        )
 
         await workflow.execute_activity(
             optimize_all_tables,

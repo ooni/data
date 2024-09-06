@@ -48,17 +48,13 @@ def optimize_tables(params: OptimizeTablesParams):
             db.execute(f"OPTIMIZE TABLE {table_name}")
 
 
-@dataclass
-class UpdateAssetsParams:
-    data_dir: str
-    refresh_hours: int = 10
-    force_update: bool = False
-
-
-@activity.defn
-def update_assets(params: UpdateAssetsParams):
+def update_assets(
+    data_dir: str,
+    refresh_hours: int = 10,
+    force_update: bool = False,
+):
     last_updated_at = datetime(1984, 1, 1).replace(tzinfo=timezone.utc)
-    datadir = pathlib.Path(params.data_dir)
+    datadir = pathlib.Path(data_dir)
 
     last_updated_path = datadir / "last_updated.txt"
 
@@ -71,10 +67,7 @@ def update_assets(params: UpdateAssetsParams):
     now = datetime.now(timezone.utc)
 
     last_updated_delta = now - last_updated_at
-    if (
-        last_updated_delta > timedelta(hours=params.refresh_hours)
-        or params.force_update
-    ):
+    if last_updated_delta > timedelta(hours=refresh_hours) or force_update:
         lock = Lock()
         with lock:
             log.info("triggering update of netinfodb")
@@ -82,7 +75,7 @@ def update_assets(params: UpdateAssetsParams):
             last_updated_path.write_text(now.strftime(DATETIME_UTC_FORMAT))
     else:
         log.info(
-            f"skipping updating netinfodb because {last_updated_delta} < {params.refresh_hours}h"
+            f"skipping updating netinfodb because {last_updated_delta} < {refresh_hours}h"
         )
 
 

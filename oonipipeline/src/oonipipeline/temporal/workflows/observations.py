@@ -11,9 +11,7 @@ with workflow.unsafe.imports_passed_through():
     from oonidata.datautils import PerfTimer
     from oonipipeline.temporal.activities.common import (
         OptimizeTablesParams,
-        UpdateAssetsParams,
         optimize_tables,
-        update_assets,
     )
     from oonipipeline.temporal.activities.observations import (
         DeletePreviousRangeParams,
@@ -56,16 +54,6 @@ class ObservationsWorkflow:
             data_dir=params.data_dir,
             fast_fail=params.fast_fail,
             bucket_date=params.bucket_date,
-        )
-
-        await workflow.execute_activity(
-            update_assets,
-            UpdateAssetsParams(data_dir=params.data_dir),
-            start_to_close_timeout=timedelta(hours=1),
-            retry_policy=RetryPolicy(maximum_attempts=10),
-        )
-        workflow.logger.info(
-            f"finished update_assets for bucket_date={params.bucket_date}"
         )
 
         await workflow.execute_activity(

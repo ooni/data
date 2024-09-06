@@ -18,7 +18,7 @@ from oonipipeline.temporal.common import (
     get_prev_range,
     maybe_delete_prev_range,
 )
-from oonipipeline.temporal.activities.common import process_pool_executor
+from oonipipeline.temporal.activities.common import process_pool_executor, update_assets
 from oonipipeline.settings import config
 from opentelemetry import trace
 
@@ -190,6 +190,16 @@ async def make_observations(params: MakeObservationsParams) -> MakeObservationsR
 
     tbatch = PerfTimer()
     current_span = trace.get_current_span()
+    activity.logger.info(f"starting update_assets for {params.bucket_date}")
+    await loop.run_in_executor(
+        None,
+        functools.partial(
+            update_assets,
+            data_dir=params.data_dir,
+            refresh_hours=10,
+            force_update=False,
+        ),
+    )
     batches = await loop.run_in_executor(
         None,
         functools.partial(
