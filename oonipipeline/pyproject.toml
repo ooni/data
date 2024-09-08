@@ -59,6 +59,8 @@ dependencies = [
   "pytest-docker",
   "pytest-asyncio",
   "ipdb",
+  "pgmpy",
+  "pygraphviz"
 ]
 python = "3.11"
 path = ".venv/"
