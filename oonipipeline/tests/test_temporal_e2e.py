@@ -1,6 +1,10 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from oonipipeline.temporal.schedules import schedule_all, clear_schedules
+from oonipipeline.temporal.schedules import (
+    list_existing_schedules,
+    schedule_all,
+    clear_schedules,
+)
 import pytest
 
 from temporalio.testing import WorkflowEnvironment
@@ -36,8 +40,15 @@ async def test_scheduling(datadir, db):
             test_name=[],
         )
 
-        # Wait 2 second for the ID to change
-        await asyncio.sleep(2)
+        while True:
+            await asyncio.sleep(1)
+            existing = await list_existing_schedules(
+                client=env.client,
+                probe_cc=[],
+                test_name=[],
+            )
+            if len(existing.observations) == 0 and len(existing.analysis) == 0:
+                break
 
         sched_res2 = await schedule_all(
             client=env.client,
