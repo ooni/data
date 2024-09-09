@@ -34,11 +34,17 @@ async def test_scheduling(datadir, db):
         assert sched_res.analysis
         assert sched_res.observations
 
-        await clear_schedules(
-            client=env.client,
-            probe_cc=[],
-            test_name=[],
-        )
+        scheduled_ids = [sched_res.analysis, sched_res.observations]
+        while len(scheduled_ids) > 0:
+            cleared_schedule_ids = await clear_schedules(
+                client=env.client,
+                probe_cc=[],
+                test_name=[],
+            )
+            scheduled_ids = [
+                sid for sid in scheduled_ids if sid not in cleared_schedule_ids
+            ]
+            await asyncio.sleep(1)
 
         while True:
             await asyncio.sleep(1)
