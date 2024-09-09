@@ -127,16 +127,21 @@ def make_observations_for_file_entry_batch(
         for bucket_name, s3path, ext, fe_size in file_entry_batch:
             failure_count = 0
             log.debug(f"processing file s3://{bucket_name}/{s3path}")
-            measurement_count, failure_count = make_observations_for_file_entry(
-                db=db,
-                netinfodb=netinfodb,
-                bucket_date=bucket_date,
-                bucket_name=bucket_name,
-                s3path=s3path,
-                ext=ext,
-                fast_fail=fast_fail,
-                ccs=ccs,
-            )
+            try:
+                measurement_count, failure_count = make_observations_for_file_entry(
+                    db=db,
+                    netinfodb=netinfodb,
+                    bucket_date=bucket_date,
+                    bucket_name=bucket_name,
+                    s3path=s3path,
+                    ext=ext,
+                    fast_fail=fast_fail,
+                    ccs=ccs,
+                )
+            except Exception:
+                log.error(
+                    f"corrupt file entry s3://{bucket_name}/{s3path}", exc_info=True
+                )
             total_measurement_count += measurement_count
         total_failure_count += failure_count
 
