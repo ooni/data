@@ -208,6 +208,7 @@ class WebGroundTruthDB:
         with sqlite3.connect(db_str) as src_db:
             self.db = sqlite3.connect(":memory:")
             src_db.backup(self.db)
+            self.db.commit()
 
     def close(self):
         self.db.close()

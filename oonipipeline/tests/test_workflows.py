@@ -4,7 +4,6 @@ from pathlib import Path
 import sqlite3
 from typing import List, Tuple
 from unittest.mock import MagicMock
-import time
 
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
@@ -20,12 +19,15 @@ from oonidata.models.observations import HTTPMiddleboxObservation
 
 from oonipipeline.temporal.activities.common import (
     ClickhouseParams,
-    UpdateAssetsParams,
+    OptimizeTablesParams,
     get_obs_count_by_cc,
     ObsCountParams,
 )
 from oonipipeline.temporal.activities.observations import (
+    DeletePreviousRangeParams,
+    GetPreviousRangeParams,
     MakeObservationsParams,
+    MakeObservationsResult,
     make_observations_for_file_entry_batch,
 )
 from oonipipeline.transforms.measurement_transformer import MeasurementTransformer
@@ -36,6 +38,9 @@ from oonipipeline.temporal.activities.analysis import (
     make_cc_batches,
 )
 from oonipipeline.temporal.common import (
+    TS_FORMAT,
+    BatchParameters,
+    PrevRange,
     get_prev_range,
     maybe_delete_prev_range,
 )
@@ -43,27 +48,17 @@ from oonipipeline.temporal.activities.ground_truths import (
     MakeGroundTruthsParams,
     make_ground_truths_in_day,
 )
-from oonipipeline.temporal.workflows import (
+from oonipipeline.temporal.workflows.analysis import (
     AnalysisWorkflowParams,
-    ObservationsWorkflow,
     AnalysisWorkflow,
-    ObservationsWorkflowParams,
-    TASK_QUEUE_NAME,
 )
+from oonipipeline.temporal.workflows.observations import (
+    ObservationsWorkflowParams,
+    ObservationsWorkflow,
+)
+from oonipipeline.temporal.workflows.common import TASK_QUEUE_NAME
 
-# from oonipipeline.workflows.response_archiver import ResponseArchiver
-# from oonipipeline.workflows.fingerprint_hunter import fingerprint_hunter
-
-
-def wait_for_mutations(db, table_name):
-    while True:
-        res = db.execute(
-            f"SELECT * FROM system.mutations WHERE is_done=0 AND table='{table_name}';"
-        )
-        if len(res) == 0:  # type: ignore
-            break
-        time.sleep(1)
-
+from .utils import wait_for_mutations
 
 def test_get_prev_range(db):
     db.execute("DROP TABLE IF EXISTS test_range")
@@ -97,8 +92,13 @@ def test_get_prev_range(db):
         probe_cc=[probe_cc],
     )
     assert prev_range.min_created_at and prev_range.max_created_at
-    assert prev_range.min_created_at == (min_time - timedelta(seconds=1))
-    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1))
+    assert prev_range.min_created_at == (min_time - timedelta(seconds=1)).strftime(
+        TS_FORMAT
+    )
+    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1)).strftime(
+        TS_FORMAT
+    )
+
     db.execute("TRUNCATE TABLE test_range")
 
     bucket_date = "2000-03-01"
@@ -126,8 +126,12 @@ def test_get_prev_range(db):
         probe_cc=[probe_cc],
     )
     assert prev_range.min_created_at and prev_range.max_created_at
-    assert prev_range.min_created_at == (min_time - timedelta(seconds=1))
-    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1))
+    assert prev_range.min_created_at == (min_time - timedelta(seconds=1)).strftime(
+        TS_FORMAT
+    )
+    assert prev_range.max_created_at == (rows[-1][0] + timedelta(seconds=1)).strftime(
+        TS_FORMAT
+    )
 
     maybe_delete_prev_range(
         db=db,
@@ -160,9 +164,18 @@ def test_make_file_entry_batch(datadir, db):
         )
     ]
     obs_msmt_count = make_observations_for_file_entry_batch(
-        file_entry_batch, db.clickhouse_url, 100, datadir, "2023-10-31", ["IR"], False
+        file_entry_batch=file_entry_batch,
+        clickhouse=db.clickhouse_url,
+        write_batch_size=1,
+        data_dir=datadir,
+        bucket_date="2023-10-31",
+        probe_cc=["IR"],
+        fast_fail=False,
     )
+
     assert obs_msmt_count == 453
+    # Flush buffer table
+    db.execute("OPTIMIZE TABLE buffer_obs_web")
     make_ground_truths_in_day(
         MakeGroundTruthsParams(
             day=date(2023, 10, 31).strftime("%Y-%m-%d"),
@@ -170,7 +183,6 @@ def test_make_file_entry_batch(datadir, db):
             data_dir=datadir,
         ),
     )
-    time.sleep(3)
     analysis_res = make_analysis_in_a_day(
         MakeAnalysisParams(
             probe_cc=["IR"],
@@ -210,8 +222,8 @@ def test_write_observations(measurements, netinfodb, db):
         ):
             db.write_table_model_rows(obs_list)
     db.close()
-    # Wait for buffer tables to flush
-    time.sleep(3)
+    # Flush buffer table
+    db.execute("OPTIMIZE TABLE buffer_obs_web")
     cnt_by_cc = get_obs_count_by_cc(
         ObsCountParams(
             clickhouse_url=db.clickhouse_url,
@@ -301,23 +313,42 @@ def test_full_processing(raw_measurements, netinfodb):
                 )
 
 
-@activity.defn(name="update_assets")
-async def update_assets_mocked(params: UpdateAssetsParams):
-    return
-
-
 @activity.defn(name="optimize_all_tables")
 async def optimize_all_tables_mocked(params: ClickhouseParams):
     return
 
 
-@activity.defn(name="make_observation_in_day")
-async def make_observation_in_day_mocked(params: MakeObservationsParams):
-    return {"size": 1000, "measurement_count": 42}
+@activity.defn(name="optimize_tables")
+async def optimize_tables_mocked(params: OptimizeTablesParams):
+    return
 
 
 @activity.defn(name="make_ground_truths_in_day")
 async def make_ground_truths_in_day_mocked(params: MakeGroundTruthsParams):
+    return
+
+
+@activity.defn(name="get_previous_range")
+async def get_previous_range_mocked(params: GetPreviousRangeParams) -> List[PrevRange]:
+    return [
+        PrevRange(
+            table_name="obs_web",
+            batch_parameters=BatchParameters(
+                test_name=[],
+                probe_cc=[],
+                bucket_date="2024-01-01",
+                timestamp=datetime(2024, 1, 1).strftime(TS_FORMAT),
+            ),
+            timestamp_column="timestamp",
+            probe_cc_column="probe_cc",
+            max_created_at=datetime(2024, 9, 1, 12, 34, 56).strftime(TS_FORMAT),
+            min_created_at=datetime(2024, 9, 1, 1, 23, 45).strftime(TS_FORMAT),
+        )
+    ]
+
+
+@activity.defn(name="delete_previous_range")
+async def delete_previous_range_mocked(params: DeletePreviousRangeParams) -> None:
     return
 
 
@@ -331,8 +362,20 @@ async def get_obs_count_by_cc_mocked(params: ObsCountParams):
     }
 
 
+@activity.defn(name="make_observations")
+async def make_observations_mocked(
+    params: MakeObservationsParams,
+) -> MakeObservationsResult:
+    return {
+        "measurement_count": 100,
+        "measurement_per_sec": 3.0,
+        "mb_per_sec": 1.0,
+        "total_size": 2000,
+    }
+
+
 @activity.defn(name="make_analysis_in_a_day")
-async def make_analysis_in_a_day_mocked(params: MakeAnalysisParams):
+async def make_analysis_in_a_day_mocked(params: MakeAnalysisParams) -> dict:
     return {"count": 100}
 
 
@@ -355,12 +398,14 @@ async def test_temporal_workflows():
             task_queue=TASK_QUEUE_NAME,
             workflows=[ObservationsWorkflow, AnalysisWorkflow],
             activities=[
-                update_assets_mocked,
+                optimize_tables_mocked,
                 optimize_all_tables_mocked,
-                make_observation_in_day_mocked,
                 make_ground_truths_in_day_mocked,
                 get_obs_count_by_cc_mocked,
                 make_analysis_in_a_day_mocked,
+                make_observations_mocked,
+                get_previous_range_mocked,
+                delete_previous_range_mocked,
             ],
         ):
             res = await env.client.execute_workflow(
@@ -369,8 +414,8 @@ async def test_temporal_workflows():
                 id="obs-wf",
                 task_queue=TASK_QUEUE_NAME,
             )
-            assert res["size"] > 0
-            assert res["measurement_count"] > 0
+            assert res["size"] == 2000
+            assert res["measurement_count"] == 100
             assert res["bucket_date"] == "2024-01-02"
 
             res = await env.client.execute_workflow(
@@ -383,8 +428,8 @@ async def test_temporal_workflows():
             assert res["day"] == "2024-01-01"
 
 
+@pytest.mark.skip(reason="TODO(art): fixme")
 def test_archive_http_transaction(measurements, tmpdir):
-    pytest.skip("TODO(art): fixme")
     db = MagicMock()
     db.write_row = MagicMock()
 
@@ -423,8 +468,8 @@ def test_archive_http_transaction(measurements, tmpdir):
     assert res.fetchone()[0] == 1
 
 
+@pytest.mark.skip(reason="TODO(art): fixme")
 def test_fingerprint_hunter(fingerprintdb, measurements, tmpdir):
-    pytest.skip("TODO(art): fixme")
     db = MagicMock()
     db.write_rows = MagicMock()
 

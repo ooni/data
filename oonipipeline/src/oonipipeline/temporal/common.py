@@ -3,6 +3,7 @@ import logging
 
 from datetime import datetime, timedelta
 
+import time
 from typing import (
     Any,
     Callable,
@@ -16,13 +17,14 @@ from ..db.connections import ClickhouseConnection
 
 log = logging.getLogger("oonidata.processing")
 
+TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 @dataclass
 class BatchParameters:
     test_name: List[str]
     probe_cc: List[str]
     bucket_date: Optional[str]
-    timestamp: Optional[datetime]
+    timestamp: Optional[str]
 
 
 @dataclass
@@ -31,8 +33,8 @@ class PrevRange:
     batch_parameters: BatchParameters
     timestamp_column: Optional[str]
     probe_cc_column: Optional[str]
-    max_created_at: Optional[datetime] = None
-    min_created_at: Optional[datetime] = None
+    max_created_at: Optional[str] = None
+    min_created_at: Optional[str] = None
 
     def format_query(self):
         start_timestamp = None
@@ -46,7 +48,9 @@ class PrevRange:
             q_args["bucket_date"] = self.batch_parameters.bucket_date
 
         elif self.batch_parameters.timestamp:
-            start_timestamp = self.batch_parameters.timestamp
+            start_timestamp = datetime.strptime(
+                self.batch_parameters.timestamp, TS_FORMAT
+            )
             end_timestamp = start_timestamp + timedelta(days=1)
             q_args["start_timestamp"] = start_timestamp
             q_args["end_timestamp"] = end_timestamp
@@ -64,17 +68,26 @@ class PrevRange:
         return where, q_args
 
 
-def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange):
+def wait_for_mutations(db, table_name):
+    while True:
+        res = db.execute(
+            f"SELECT * FROM system.mutations WHERE is_done=0 AND table='{table_name}';"
+        )
+        if len(res) == 0:  # type: ignore
+            break
+        time.sleep(1)
+
+
+def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange) -> str:
     """
     We perform a lightweight delete of all the rows which have been
     regenerated, so we don't have any duplicates in the table
     """
     if not prev_range.max_created_at or not prev_range.min_created_at:
-        return
+        return ""
 
-    # Disabled due to: https://github.com/ClickHouse/ClickHouse/issues/40651
-    # db.execute("SET allow_experimental_lightweight_delete = true;")
-
+    # Before deleting, we need to wait for all the mutations to be done
+    wait_for_mutations(db, prev_range.table_name)
     where, q_args = prev_range.format_query()
 
     q_args["max_created_at"] = prev_range.max_created_at
@@ -82,9 +95,9 @@ def maybe_delete_prev_range(db: ClickhouseConnection, prev_range: PrevRange):
     where = f"{where} AND created_at <= %(max_created_at)s AND created_at >= %(min_created_at)s"
     log.debug(f"runing {where} with {q_args}")
 
-    q = f"ALTER TABLE {prev_range.table_name} DELETE "
-    final_query = q + where
-    return db.execute(final_query, q_args)
+    final_query = f"ALTER TABLE {prev_range.table_name} DELETE {where}"
+    db.execute(final_query, q_args)
+    return final_query
 
 
 def get_prev_range(
@@ -93,7 +106,7 @@ def get_prev_range(
     test_name: List[str],
     probe_cc: List[str],
     bucket_date: Optional[str] = None,
-    timestamp: Optional[datetime] = None,
+    timestamp: Optional[str] = None,
     timestamp_column: str = "timestamp",
     probe_cc_column: str = "probe_cc",
 ) -> PrevRange:
@@ -146,11 +159,15 @@ def get_prev_range(
     # We pad it by 1 second to take into account the time resolution downgrade
     # happening when going from clickhouse to python data types
     if max_created_at and min_created_at:
-        prev_range.max_created_at = (max_created_at + timedelta(seconds=1)).replace(
-            tzinfo=None
+        prev_range.max_created_at = (
+            (max_created_at + timedelta(seconds=1))
+            .replace(tzinfo=None)
+            .strftime(TS_FORMAT)
         )
-        prev_range.min_created_at = (min_created_at - timedelta(seconds=1)).replace(
-            tzinfo=None
+        prev_range.min_created_at = (
+            (min_created_at - timedelta(seconds=1))
+            .replace(tzinfo=None)
+            .strftime(TS_FORMAT)
         )
 
     return prev_range

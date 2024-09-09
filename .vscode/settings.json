@@ -6,5 +6,6 @@
   "python.defaultInterpreterPath": "${workspaceFolder}/oonipipeline/.venv",
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter"
-  }
+  },
+  "editor.formatOnSaveMode": "modifications"
 }

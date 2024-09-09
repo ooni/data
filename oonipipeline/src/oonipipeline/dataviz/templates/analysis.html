@@ -20,8 +20,7 @@
         <div class="hero-overlay bg-opacity-60"></div>
         <div class="hero-content text-center text-neutral-content">
           <div class="max-w-md">
-            <h1 class="mb-5 text-5xl font-bold">OONI Data Kraken Analysis</h1>
-            <p class="mb-5">When data krakens and LoNIs join forces!</p>
+            <h1 class="mb-5 text-5xl font-bold">Analysis viewer</h1>
           </div>
         </div>
     </div>
@@ -126,8 +125,11 @@
 
   <h2 class="font-bold text-2xl mt-8">Individual LoNIs</h2>
 
+
+<dl class="grid grid-cols-1 sm:grid-cols-2">
 {% for loni in loni_list %}
-    <div class="card bg-base-100 shadow-xl my-3">
+<div class="px-4">
+    <div class="card bg-base-100 shadow-xl my-3 px-4 py-6 sm:grid-cols-2 sm:col-span-1 sm:px-0">
         <div class="card-body">
             <h2 class="card-title">Loni #{{loop.index}}</h2>
             <div class="badge badge-outline">ok_final: {{loni["ok_final"]}}</div>
@@ -166,71 +168,60 @@
                 </table>
             </div>
             <h2 class="font-bold">Analysis transcript</h2>
-            <pre>
+            <ul role="list" class="space-y-3">
             {% for analysis_line in analysis_transcript_list[loop.index0] %}
-{{ analysis_line }}
+              <li class="px-4">{{ analysis_line }}</li>
             {% endfor %}
-            </pre>
+            </ul>
         </div>
     </div>
+</div>
 {% endfor %}
-
+</dl>
 
 <h2 class="font-bold text-2xl py-6">Analysis output</h2>
-
-{% for wa in web_analysis %}
-   <div class="card bg-base-100 shadow-xl my-3">
-        <div class="card-body">
-            <h2 class="card-title">Analysis #{{loop.index}}</h2>
-
 <div class="overflow-x-auto">
-    <table class="table table-xs">
+    <table class="min-w-full divide-y divide-gray-300">
         <thead>
             <tr>
-            <th>key</th>
-            <th>value</th>
+            {% for key in web_analysis[0].keys() %}
+            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{{ key }}</th>
+            {% endfor %}
             </tr>
         </thead>
-        <tbody>
-            {% for key, value in wa.items() %}
-            <tr class="hover">
-            <td>{{key}}</td>
-            <td>{{value}}</td>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for wa in web_analysis %}
+            <tr class="hover:bg-gray-200 even:bg-gray-50 divide-x divide-gray-200">
+              {% for value in wa.values() %}
+              <td class="truncate max-w-[200px] hover:max-w-max whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{value}}</td>
+              {% endfor %}
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
-</div>
-</div>
-{% endfor %}
 
 <h2 class="font-bold text-2xl py-6">Web Observations</h2>
-{% for wo in web_observations %}
-   <div class="card bg-base-100 shadow-xl my-3">
-        <div class="card-body">
-            <h2 class="card-title">Observation #{{loop.index}}</h2>
 <div class="overflow-x-auto">
-    <table class="table table-xs">
+    <table class="min-w-full divide-y divide-gray-300">
         <thead>
             <tr>
-            <th>key</th>
-            <th>value</th>
+            {% for key in web_observations[0].keys() %}
+            <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">{{ key }}</th>
+            {% endfor %}
             </tr>
         </thead>
-        <tbody>
-            {% for key, value in wo.items() %}
-            <tr class="hover">
-            <td>{{key}}</td>
-            <td>{{value}}</td>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for wo in web_observations %}
+            <tr class="hover:bg-gray-200 even:bg-gray-50 divide-x divide-gray-200">
+              {% for value in wo.values() %}
+              <td class="truncate max-w-[200px] hover:max-w-max whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{value}}</td>
+              {% endfor %}
             </tr>
             {% endfor %}
         </tbody>
     </table>
-</div>
-</div>
-</div>
-{% endfor %}
+  </div>
 
 <h2 class="py-6 text-l font-bold">Experiment results raw</h2>
 <div class="overflow-x-auto">

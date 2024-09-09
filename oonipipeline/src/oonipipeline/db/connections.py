@@ -81,7 +81,7 @@ class ClickhouseConnection(DatabaseConnection):
                 exception_list.append(e)
                 sleep_time = min(self._max_backoff, self._backoff_factor * (2**attempt))
                 row_len = 0
-                if rows:
+                if rows and len(rows) > 0:
                     row_len = len(rows)
                     log.info(f"{query_str} {rows[0]}")
                 log.error(
