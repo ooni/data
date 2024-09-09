@@ -138,10 +138,12 @@ def make_observations_for_file_entry_batch(
                     fast_fail=fast_fail,
                     ccs=ccs,
                 )
-            except Exception:
+            except Exception as exc:
                 log.error(
                     f"corrupt file entry s3://{bucket_name}/{s3path}", exc_info=True
                 )
+                if fast_fail:
+                    raise exc
             total_measurement_count += measurement_count
         total_failure_count += failure_count
 
