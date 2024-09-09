@@ -620,7 +620,7 @@ def make_web_analysis(
     body_db: BodyDB,
     fingerprintdb: FingerprintDB,
 ) -> Generator[WebAnalysis, None, None]:
-    domain_name = web_observations[0].hostname or ""
+    domain_name = web_observations[0].fqdn or ""
 
     dns_observations_by_hostname = defaultdict(list)
     dns_analysis_by_hostname = {}
@@ -629,12 +629,12 @@ def make_web_analysis(
         if web_o.dns_query_type:
             # assert web_o.hostname is not None, web_o
             # TODO(arturo): this is a workaround for: https://github.com/ooni/probe/issues/2628
-            if web_o.hostname is None:
+            if web_o.fqdn is None:
                 log.error(
                     f"missing hostname for DNS query {web_o}. Skipping DNS observation."
                 )
                 continue
-            dns_observations_by_hostname[web_o.hostname].append(web_o)
+            dns_observations_by_hostname[web_o.fqdn].append(web_o)
         else:
             other_observations.append(web_o)
 
@@ -660,7 +660,7 @@ def make_web_analysis(
             except:
                 log.error(f"Invalid IP in {web_o.ip}")
 
-        dns_analysis = dns_analysis_by_hostname.get(web_o.hostname, None)
+        dns_analysis = dns_analysis_by_hostname.get(web_o.fqdn, None)
 
         tcp_analysis = None
         tls_analysis = None
@@ -686,10 +686,8 @@ def make_web_analysis(
         website_analysis = WebAnalysis(
             measurement_meta=web_o.measurement_meta,
             probe_meta=web_o.probe_meta,
-            processing_meta=ProcessingMeta(
-                processing_start_time=datetime.now(timezone.utc)
-            ),
-            observation_id=web_o.observation_id,
+            processing_meta=ProcessingMeta(created_at=datetime.now(timezone.utc)),
+            observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
             created_at=created_at,
             analysis_id=f"{web_o.measurement_meta.measurement_uid}_{idx}",
             target_domain_name=domain_name,
@@ -980,7 +978,4 @@ def make_web_analysis(
                 http_analysis.is_http_fp_false_positive
             )
 
-        website_analysis.processing_meta.processing_start_time = datetime.now(
-            timezone.utc
-        )
         yield website_analysis

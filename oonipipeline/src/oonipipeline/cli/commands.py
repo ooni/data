@@ -261,21 +261,30 @@ def startworkers():
     is_flag=True,
     help="should we drop tables before creating them",
 )
-def checkdb(
-    create_tables: bool,
-    drop_tables: bool,
-):
+@click.option(
+    "--list-diff",
+    is_flag=True,
+    help="should we list the table diff?",
+)
+def checkdb(create_tables: bool, drop_tables: bool, list_diff: bool):
     """
     Check if the database tables require migrations. If the create-tables flag
     is not specified, it will not perform any operations.
     """
-    maybe_create_delete_tables(
-        clickhouse_url=config.clickhouse_url,
-        create_tables=create_tables,
-        drop_tables=drop_tables,
-        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
-    )
+    click.echo("Listing create table queries")
+    for query, table_name in make_create_queries(with_buffer_table=False):
+        print(f"-- ## CREATE FOR {table_name}")
+        print(query)
 
-    with ClickhouseConnection(config.clickhouse_url) as db:
-        list_all_table_diffs(db)
+    if create_tables or drop_tables:
+        maybe_create_delete_tables(
+            clickhouse_url=config.clickhouse_url,
+            create_tables=create_tables,
+            drop_tables=drop_tables,
+            clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
+            clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
+        )
+
+    if list_diff:
+        with ClickhouseConnection(config.clickhouse_url) as db:
+            list_all_table_diffs(db)

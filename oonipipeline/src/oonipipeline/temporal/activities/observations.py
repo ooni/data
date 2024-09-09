@@ -94,7 +94,7 @@ def make_observations_for_file_entry(
             obs_tuple = measurement_to_observations(
                 msmt=msmt,
                 netinfodb=netinfodb,
-                bucket_date=bucket_date,
+                bucket_datetime=datetime.strptime("%Y-%m-%d", bucket_date),
             )
             for obs_list in obs_tuple:
                 db.write_table_model_rows(obs_list, use_buffer_table=False)

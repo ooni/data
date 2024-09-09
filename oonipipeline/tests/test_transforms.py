@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List
 
 
@@ -29,9 +30,8 @@ def test_wc_v5_observations(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    bucket_date = "2022-09-24"
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2022, 9, 24)
     )
     assert len(obs_tup) == 2
     web_obs, web_ctrl_obs = obs_tup
@@ -47,7 +47,7 @@ def test_http_observations(measurements, netinfodb):
         ]
     )
     mt = MeasurementTransformer(
-        measurement=msmt, netinfodb=netinfodb, bucket_date="2022-06-08"
+        measurement=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2022, 6, 8)
     )
     assert isinstance(msmt, WebConnectivity)
     all_http_obs = [
@@ -65,7 +65,7 @@ def test_http_observations(measurements, netinfodb):
         ]
     )
     mt = MeasurementTransformer(
-        measurement=msmt, netinfodb=netinfodb, bucket_date="2022-06-08"
+        measurement=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2022, 6, 8)
     )
     assert isinstance(msmt, WebConnectivity)
     all_dns_obs = [
@@ -110,7 +110,9 @@ def test_http_observations(measurements, netinfodb):
         ]
     )
     mt = MeasurementTransformer(
-        measurement=http_blocked, netinfodb=netinfodb, bucket_date="2022-06-08"
+        measurement=http_blocked,
+        netinfodb=netinfodb,
+        bucket_datetime=datetime(2022, 6, 8),
     )
     assert isinstance(http_blocked, WebConnectivity)
     all_http_obs = [
@@ -129,9 +131,9 @@ def test_wc_v5_observations_chained(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    bucket_date = "2022-09-24"
+    bucket_datetime = datetime(2022, 9, 24)
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=bucket_datetime
     )
     assert len(obs_tup) == 2
     web_obs: List[WebObservation] = obs_tup[0]
@@ -159,9 +161,9 @@ def test_wc_observations_chained(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, WebConnectivity)
-    bucket_date = "2022-06-08"
+    bucket_datetime = datetime(2022, 6, 8)
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=bucket_datetime
     )
     assert len(obs_tup) == 2
     web_obs = obs_tup[0]
@@ -175,10 +177,10 @@ def test_wc_observations_chained(netinfodb, measurements):
             "20221114002335.786418_BR_webconnectivity_6b203219ec4ded0e"
         ]
     )
-    bucket_date = "2022-11-14"
+    bucket_datetime = datetime(2022, 11, 14)
     assert isinstance(msmt, WebConnectivity)
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=bucket_datetime
     )
     assert len(obs_tup) == 2
     web_obs: List[WebObservation] = obs_tup[0]
@@ -193,7 +195,7 @@ def test_dnscheck_obs(netinfodb, measurements):
     )
     assert isinstance(msmt, DNSCheck)
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date="2022-10-13"
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2022, 10, 13)
     )
     assert len(obs_tup) == 1
     web_obs = obs_tup[0]
@@ -206,7 +208,7 @@ def test_telegram_obs(netinfodb, measurements):
     )
     assert isinstance(msmt, Telegram)
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date="2023-04-27"
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2023, 4, 27)
     )
     assert len(obs_tup) == 1
     web_obs = obs_tup[0]
@@ -231,9 +233,8 @@ def test_stunreachability_obs(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, StunReachability)
-    bucket_date = "2022-11-24"
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2022, 11, 24)
     )
     assert len(obs_tup) == 1
     web_obs: List[WebObservation] = obs_tup[0]
@@ -249,9 +250,8 @@ def test_signal_obs(netinfodb, measurements):
         msmt_path=measurements["20221016235944.266268_GB_signal_1265ff650ee17b44"]
     )
     assert isinstance(msmt, Signal)
-    bucket_date = "2021-10-16"
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2021, 10, 16)
     )
     assert len(obs_tup) == 1
     web_obs: List[WebObservation] = obs_tup[0]
@@ -273,9 +273,8 @@ def test_urlgetter_obs(netinfodb, measurements):
         msmt_path=measurements["20211224011542.635260_IR_urlgetter_38d73cdfee442409"]
     )
     assert isinstance(msmt, UrlGetter)
-    bucket_date = "2021-11-24"
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2021, 11, 24)
     )
     assert len(obs_tup) == 1
     web_obs: List[WebObservation] = obs_tup[0]
@@ -295,9 +294,8 @@ def test_urlgetter_obs(netinfodb, measurements):
         msmt_path=measurements["20221224180301.892770_VE_urlgetter_0a02e27d0c651b8f"]
     )
     assert isinstance(msmt, UrlGetter)
-    bucket_date = "2021-11-24"
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2021, 11, 24)
     )
     assert len(obs_tup) == 1
     web_obs: List[WebObservation] = obs_tup[0]
@@ -319,9 +317,8 @@ def test_whatsapp_obs(netinfodb, measurements):
         msmt_path=measurements["20211018232506.972850_IN_whatsapp_44970a56806dbfb3"]
     )
     assert isinstance(msmt, Whatsapp)
-    bucket_date = "2021-10-18"
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2021, 10, 18)
     )
     assert len(obs_tup) == 1
     web_obs: List[WebObservation] = obs_tup[0]
@@ -343,9 +340,8 @@ def test_browserweb_obs(netinfodb, measurements):
         msmt_path=measurements["20231222154141.824397_US_browserweb_615428b4802b5297"]
     )
     assert isinstance(msmt, BrowserWeb)
-    bucket_date = "2023-12-22"
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2023, 12, 22)
     )
     assert len(obs_tup) == 1
     web_obs: List[WebObservation] = obs_tup[0]
@@ -362,9 +358,8 @@ def test_facebook_messenger_obs(netinfodb, measurements):
         ]
     )
     assert isinstance(msmt, FacebookMessenger)
-    bucket_date = "2022-01-24"
     obs_tup = measurement_to_observations(
-        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+        msmt=msmt, netinfodb=netinfodb, bucket_datetime=datetime(2022, 1, 24)
     )
     assert len(obs_tup) == 1
     web_obs: List[WebObservation] = obs_tup[0]
@@ -388,6 +383,6 @@ def test_facebook_messenger_obs(netinfodb, measurements):
             assert wo.dns_t
         if wo.tcp_success is not None:
             assert wo.tcp_t
-        hostname_set.add(wo.hostname)
+        hostname_set.add(wo.fqdn)
     assert hostname_set == spec_hostname_set
     assert len(web_obs) == 14

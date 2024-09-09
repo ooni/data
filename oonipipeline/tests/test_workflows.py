@@ -218,7 +218,9 @@ def test_write_observations(measurements, netinfodb, db):
     for msmt_uid, bucket_date in msmt_uids:
         msmt = load_measurement(msmt_path=measurements[msmt_uid])
         for obs_list in measurement_to_observations(
-            msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+            msmt=msmt,
+            netinfodb=netinfodb,
+            bucket_datetime=datetime.strptime(bucket_date, "%Y-%m-%d"),
         ):
             db.write_table_model_rows(obs_list)
     db.close()
@@ -245,7 +247,9 @@ def test_hirl_observations(measurements, netinfodb):
     )
     assert isinstance(msmt, HTTPInvalidRequestLine)
     middlebox_obs_tuple = measurement_to_observations(
-        msmt, netinfodb=netinfodb, bucket_date="2023-09-07"
+        msmt,
+        netinfodb=netinfodb,
+        bucket_datetime=datetime(2023, 9, 7),
     )
     assert len(middlebox_obs_tuple) == 1
     middlebox_obs = middlebox_obs_tuple[0]
@@ -262,7 +266,9 @@ def test_insert_query_for_observation(measurements, netinfodb):
     )
     assert isinstance(http_blocked, WebConnectivity)
     mt = MeasurementTransformer(
-        measurement=http_blocked, netinfodb=netinfodb, bucket_date="2022-06-08"
+        measurement=http_blocked,
+        netinfodb=netinfodb,
+        bucket_datetime=datetime(2022, 6, 8),
     )
     all_web_obs = [
         obs
@@ -281,7 +287,9 @@ def test_web_connectivity_processor(netinfodb, measurements):
     )
     assert isinstance(msmt, WebConnectivity)
 
-    p = measurement_to_observations(msmt, netinfodb=netinfodb, bucket_date="2022-06-27")
+    p = measurement_to_observations(
+        msmt, netinfodb=netinfodb, bucket_datetime=datetime(2023, 6, 27)
+    )
     assert len(p) == 2
     web_obs_list, web_ctrl_list = p
     assert len(web_obs_list) == 3

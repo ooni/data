@@ -66,7 +66,7 @@ def iter_ground_truths_from_web_control(
             vp_cc="ZZ",
             timestamp=obs.measurement_meta.measurement_start_time,
             is_trusted_vp=True,
-            hostname=obs.hostname,
+            hostname=obs.fqdn,
             ip=obs.ip,
             ip_asn=ip_asn,
             ip_as_org_name=ip_as_org_name,
@@ -394,8 +394,8 @@ class WebGroundTruthDB:
             # same probe
             assert web_o.probe_meta.probe_cc == probe_cc
             assert web_o.probe_meta.probe_asn == probe_asn
-            if web_o.hostname is not None:
-                to_lookup_hostnames.add(web_o.hostname)
+            if web_o.fqdn is not None:
+                to_lookup_hostnames.add(web_o.fqdn)
             if web_o.ip is not None:
                 to_lookup_ip_ports.add((web_o.ip, web_o.port))
             if web_o.http_request_url is not None:

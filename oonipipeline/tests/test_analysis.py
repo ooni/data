@@ -74,12 +74,14 @@ def test_signal(fingerprintdb, netinfodb, measurements):
     web_observations = measurement_to_observations(signal_new_ca, netinfodb=netinfodb)[
         0
     ]
+    assert web_observations and len(web_observations) > 0
     er = list(
         make_signal_experiment_result(
             web_observations=web_observations,
             fingerprintdb=fingerprintdb,
         )
     )
+    print(list(filter(lambda x: x.blocked_score > 0.5, er)))
     assert er[0].anomaly == False
     assert er[0].confirmed == False
 

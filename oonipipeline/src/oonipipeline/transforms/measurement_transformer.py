@@ -14,7 +14,6 @@ from typing import (
     Union,
     Dict,
 )
-from collections import defaultdict
 
 from oonidata.models.base import ProcessingMeta
 from oonidata.models.dataformats import (
@@ -138,10 +137,10 @@ unknown_failure_map = (
 )
 
 
-def normalize_failure(failure: Union[Failure, bool]) -> Failure:
+def normalize_failure(failure: Union[Failure, bool]) -> str:
     if not failure:
         # This will set it to None even when it's false
-        return None
+        return ""
 
     if failure is True:
         return "true"
@@ -180,9 +179,9 @@ def measurement_to_http_observation(
     parsed_url = urlparse(http_transaction.request.url)
     hrro = HTTPObservation(
         request_url=http_transaction.request.url,
-        hostname=parsed_url.hostname or "",
-        request_body_is_truncated=http_transaction.request.body_is_truncated,
-        request_headers_list=http_transaction.request.headers_list_bytes,
+        fqdn=parsed_url.hostname or "",
+        request_body_is_truncated=http_transaction.request.body_is_truncated or False,
+        request_headers_list=http_transaction.request.headers_list_bytes or [],
         request_method=http_transaction.request.method or "",
         request_body_length=(
             len(http_transaction.request.body_bytes)
@@ -190,17 +189,17 @@ def measurement_to_http_observation(
             else 0
         ),
         network=network,
-        alpn=http_transaction.alpn,
+        alpn=http_transaction.alpn or "",
         failure=normalize_failure(http_transaction.failure),
         timestamp=make_timestamp(msmt_meta.measurement_start_time, http_transaction.t),
-        transaction_id=http_transaction.transaction_id,
-        t=http_transaction.t,
+        transaction_id=http_transaction.transaction_id or 0,
+        t=http_transaction.t or 0,
     )
 
     if http_transaction.address:
         p = urlsplit("//" + http_transaction.address)
-        hrro.ip = p.hostname
-        hrro.port = p.port
+        hrro.ip = p.hostname or ""
+        hrro.port = p.port or 0
 
     if http_transaction.t is not None and http_transaction.t0 is not None:
         hrro.runtime = http_transaction.t - http_transaction.t0
@@ -208,7 +207,9 @@ def measurement_to_http_observation(
     if not http_transaction.response:
         return hrro
 
-    hrro.response_body_is_truncated = http_transaction.response.body_is_truncated
+    hrro.response_body_is_truncated = (
+        http_transaction.response.body_is_truncated or False
+    )
 
     if http_transaction.response.body_bytes:
         hrro.response_body_length = len(http_transaction.response.body_bytes)
@@ -217,14 +218,14 @@ def measurement_to_http_observation(
         ).hexdigest()
         hrro.response_body_bytes = http_transaction.response.body_bytes
 
-    hrro.response_status_code = http_transaction.response.code
-    hrro.response_headers_list = http_transaction.response.headers_list_bytes
+    hrro.response_status_code = http_transaction.response.code or 0
+    hrro.response_headers_list = http_transaction.response.headers_list_bytes or []
 
-    hrro.response_header_location = http_transaction.response.get_first_http_header_str(
-        "location"
+    hrro.response_header_location = (
+        http_transaction.response.get_first_http_header_str("location") or ""
     )
-    hrro.response_header_server = http_transaction.response.get_first_http_header_str(
-        "server"
+    hrro.response_header_server = (
+        http_transaction.response.get_first_http_header_str("server") or ""
     )
 
     try:
@@ -245,14 +246,14 @@ def measurement_to_dns_observation(
     answer: Optional[DNSAnswer],
 ) -> DNSObservation:
     dnso = DNSObservation(
-        engine=query.engine,
-        engine_resolver_address=query.resolver_address,
+        engine=query.engine or "",
+        engine_resolver_address=query.resolver_address or "",
         query_type=query.query_type,
-        hostname=query.hostname,
+        fqdn=query.hostname,
         failure=normalize_failure(query.failure),
         timestamp=make_timestamp(msmt_meta.measurement_start_time, query.t),
-        transaction_id=query.transaction_id,
-        t=query.t,
+        transaction_id=query.transaction_id or 0,
+        t=query.t or 0,
     )
 
     if not answer:
@@ -282,8 +283,8 @@ def measurement_to_tcp_observation(
         port=res.port,
         failure=normalize_failure(res.status.failure),
         success=res.status.success,
-        transaction_id=res.transaction_id,
-        t=res.t,
+        transaction_id=res.transaction_id or 0,
+        t=res.t or 0,
     )
 
     return tcpo
@@ -502,12 +503,12 @@ def make_web_observation(
     msmt_meta: MeasurementMeta,
     probe_meta: ProbeMeta,
     netinfodb: NetinfoDB,
+    target_id: str = "",
+    probe_analysis: str = "",
     dns_o: Optional[DNSObservation] = None,
     tcp_o: Optional[TCPObservation] = None,
     tls_o: Optional[TLSObservation] = None,
     http_o: Optional[HTTPObservation] = None,
-    target_id: Optional[str] = None,
-    probe_analysis: Optional[str] = None,
 ) -> WebObservation:
     assert (
         dns_o or tcp_o or tls_o or http_o
@@ -519,7 +520,7 @@ def make_web_observation(
         measurement_meta=msmt_meta,
         probe_meta=probe_meta,
         processing_meta=ProcessingMeta(
-            processing_start_time=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         ),
     )
     dns_ip = None
@@ -531,12 +532,19 @@ def make_web_observation(
             pass
 
     web_obs.ip = (
-        dns_ip or (tcp_o and tcp_o.ip) or (tls_o and tls_o.ip) or (http_o and http_o.ip)
+        dns_ip
+        or (tcp_o and tcp_o.ip)
+        or (tls_o and tls_o.ip)
+        or (http_o and http_o.ip)
+        or ""
     )
     web_obs.port = (
-        (tcp_o and tcp_o.port) or (tls_o and tls_o.port) or (http_o and http_o.port)
+        (tcp_o and tcp_o.port)
+        or (tls_o and tls_o.port)
+        or (http_o and http_o.port)
+        or 0
     )
-    web_obs.hostname = (dns_o and dns_o.hostname) or (http_o and http_o.hostname)
+    web_obs.fqdn = (dns_o and dns_o.fqdn) or (http_o and http_o.fqdn) or ""
     if web_obs.ip:
         web_obs.ip_is_bogon = is_ip_bogon(web_obs.ip)
         ip_info = netinfodb.lookup_ip(msmt_meta.measurement_start_time, web_obs.ip)
@@ -565,7 +573,6 @@ def make_web_observation(
     maybe_set_web_fields(
         src_obs=http_o, prefix="http_", web_obs=web_obs, field_names=WEB_OBS_FIELDS
     )
-    web_obs.processing_meta.processing_end_time = datetime.now(timezone.utc)
     return web_obs
 
 
@@ -706,13 +713,15 @@ def make_probe_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> ProbeMeta:
     )
 
 
-def make_measurement_meta(msmt: BaseMeasurement, bucket_date: str) -> MeasurementMeta:
+def make_measurement_meta(
+    msmt: BaseMeasurement, bucket_datetime: datetime
+) -> MeasurementMeta:
     assert msmt.measurement_uid is not None
     measurement_start_time = datetime.strptime(
         msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S"
     )
 
-    input_ = msmt.input
+    input_ = msmt.input or ""
     if isinstance(input_, list):
         input_ = ":".join(input_)
 
@@ -724,7 +733,7 @@ def make_measurement_meta(msmt: BaseMeasurement, bucket_date: str) -> Measuremen
         software_version=msmt.software_version,
         test_name=msmt.test_name,
         test_version=msmt.test_version,
-        bucket_date=bucket_date,
+        bucket_datetime=bucket_datetime,
         measurement_start_time=measurement_start_time,
     )
 
@@ -745,12 +754,12 @@ class MeasurementTransformer:
     def __init__(
         self,
         measurement: BaseMeasurement,
-        bucket_date: str,
         netinfodb: NetinfoDB,
+        bucket_datetime: datetime,
     ):
         self.netinfodb = netinfodb
         self.measurement_meta = make_measurement_meta(
-            msmt=measurement, bucket_date=bucket_date
+            msmt=measurement, bucket_datetime=bucket_datetime
         )
         self.probe_meta = make_probe_meta(msmt=measurement, netinfodb=netinfodb)
 
@@ -866,8 +875,8 @@ class MeasurementTransformer:
         tcp_observations: List[TCPObservation] = [],
         tls_observations: List[TLSObservation] = [],
         http_observations: List[HTTPObservation] = [],
-        target_id: Optional[str] = None,
-        probe_analysis: Optional[str] = None,
+        target_id: str = "",
+        probe_analysis: str = "",
     ) -> List[WebObservation]:
         """
         Returns a list of WebObservations by mapping all related
@@ -969,10 +978,7 @@ class MeasurementTransformer:
             )
 
         for idx, obs in enumerate(web_obs_list):
-            obs.observation_id = f"{obs.measurement_meta.measurement_uid}_{idx}"
-            obs.created_at = datetime.now(timezone.utc).replace(
-                microsecond=0, tzinfo=None
-            )
+            obs.observation_idx = idx
 
         return web_obs_list
 
