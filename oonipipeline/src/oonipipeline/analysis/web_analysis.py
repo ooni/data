@@ -119,9 +119,7 @@ def make_tcp_analysis(
             ground_truth_trusted_ok_count=None,
         )
 
-    assert (
-        web_o.tcp_failure is not None
-    ), "inconsistency between tcp_success and tcp_failure"
+    assert web_o.tcp_failure != "", "inconsistency between tcp_success and tcp_failure"
 
     ground_truths = filter(
         lambda gt: gt.ip == web_o.ip and gt.port == web_o.port, web_ground_truths
@@ -202,7 +200,7 @@ def make_dns_ground_truth(ground_truths: Iterable[WebGroundTruth]):
     failure_count = 0
     nxdomain_count = 0
     for gt in ground_truths:
-        if gt.dns_success is None and gt.dns_failure is None:
+        if not gt.dns_success and not gt.dns_failure:
             continue
 
         if gt.dns_failure == "dns_nxdomain_error":
@@ -210,7 +208,7 @@ def make_dns_ground_truth(ground_truths: Iterable[WebGroundTruth]):
             nxdomain_cc_asn.add((gt.vp_cc, gt.vp_asn))
             continue
 
-        if gt.dns_failure is not None:
+        if gt.dns_failure != "":
             failure_count += gt.count
             failure_cc_asn.add((gt.vp_cc, gt.vp_asn))
             continue
@@ -308,7 +306,7 @@ def check_dns_consistency(
         ground_truth_as_org_names.add(gt.ip_as_org_name.lower())
 
     for web_o in dns_observations:
-        if web_o.dns_failure == None and web_o.dns_answer:
+        if web_o.dns_failure == "" and web_o.dns_answer:
             consistency_results.success = True
             consistency_results.answers.append(web_o.dns_answer)
             consistency_results.answer_count += 1
@@ -396,7 +394,7 @@ def make_dns_analysis(
 ) -> DNSAnalysis:
     dns_ground_truth = make_dns_ground_truth(
         ground_truths=filter(
-            lambda gt: gt.hostname == hostname,
+            lambda gt: gt.fqdn == hostname,
             web_ground_truths,
         )
     )
@@ -537,7 +535,7 @@ def make_http_analysis(
     assert web_o.http_request_url
 
     http_analysis = HTTPAnalysis(
-        success=web_o.http_failure == None,
+        success=web_o.http_failure == "",
         failure=web_o.http_failure,
         is_http_request_encrypted=web_o.http_request_url.startswith("https://"),
     )
@@ -665,11 +663,11 @@ def make_web_analysis(
         tcp_analysis = None
         tls_analysis = None
         http_analysis = None
-        if web_o.tcp_success is not None:
+        if web_o.tcp_success or web_o.tcp_failure:
             tcp_analysis = make_tcp_analysis(
                 web_o=web_o, web_ground_truths=web_ground_truths
             )
-        if web_o.tls_failure or web_o.tls_cipher_suite is not None:
+        if web_o.tls_failure or web_o.tls_cipher_suite != "":
             tls_analysis = make_tls_analysis(
                 web_o=web_o, web_ground_truths=web_ground_truths
             )
@@ -682,13 +680,11 @@ def make_web_analysis(
                 fingerprintdb=fingerprintdb,
             )
 
-        created_at = datetime.now(timezone.utc).replace(tzinfo=None)
         website_analysis = WebAnalysis(
             measurement_meta=web_o.measurement_meta,
             probe_meta=web_o.probe_meta,
             processing_meta=ProcessingMeta(created_at=datetime.now(timezone.utc)),
             observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
-            created_at=created_at,
             analysis_id=f"{web_o.measurement_meta.measurement_uid}_{idx}",
             target_domain_name=domain_name,
             target_detail=target_detail,

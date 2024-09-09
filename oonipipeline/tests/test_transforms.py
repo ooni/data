@@ -217,7 +217,7 @@ def test_telegram_obs(netinfodb, measurements):
         assert isinstance(wo, WebObservation)
         if wo.dns_engine:
             assert wo.dns_t
-        if wo.tcp_success is not None:
+        if wo.tcp_success and not wo.tcp_failure:
             assert wo.tcp_t
         if wo.http_request_url:
             assert wo.http_t
@@ -259,7 +259,7 @@ def test_signal_obs(netinfodb, measurements):
     for wo in web_obs:
         if wo.dns_engine:
             assert wo.dns_t
-        if wo.tcp_success is not None:
+        if wo.tcp_success and not wo.tcp_failure:
             assert wo.tcp_t
         if wo.http_request_url:
             assert wo.http_t
@@ -282,7 +282,7 @@ def test_urlgetter_obs(netinfodb, measurements):
     for wo in web_obs:
         if wo.dns_engine:
             assert wo.dns_t
-        if wo.tcp_success is not None:
+        if wo.tcp_success and not wo.tcp_failure:
             assert wo.tcp_t
         if wo.http_request_url:
             assert wo.http_t
@@ -303,7 +303,7 @@ def test_urlgetter_obs(netinfodb, measurements):
     for wo in web_obs:
         if wo.dns_engine:
             assert wo.dns_t
-        if wo.tcp_success is not None:
+        if wo.tcp_success and not wo.tcp_failure:
             assert wo.tcp_t
         if wo.http_request_url:
             assert wo.http_t
@@ -326,7 +326,7 @@ def test_whatsapp_obs(netinfodb, measurements):
     for wo in web_obs:
         if wo.dns_engine:
             assert wo.dns_t
-        if wo.tcp_success is not None:
+        if wo.tcp_success and not wo.tcp_failure:
             assert wo.tcp_t
         if wo.http_request_url:
             assert wo.http_t
@@ -381,7 +381,7 @@ def test_facebook_messenger_obs(netinfodb, measurements):
     for wo in web_obs:
         if wo.dns_engine:
             assert wo.dns_t
-        if wo.tcp_success is not None:
+        if wo.tcp_success and not wo.tcp_failure:
             assert wo.tcp_t
         hostname_set.add(wo.fqdn)
     assert hostname_set == spec_hostname_set

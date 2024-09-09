@@ -19,7 +19,7 @@ class WebGroundTruth(NamedTuple):
     vp_cc: str
     is_trusted_vp: bool
 
-    hostname: str
+    fqdn: str
     ip: Optional[str]
     port: Optional[int]
 
@@ -66,7 +66,7 @@ def iter_ground_truths_from_web_control(
             vp_cc="ZZ",
             timestamp=obs.measurement_meta.measurement_start_time,
             is_trusted_vp=True,
-            hostname=obs.fqdn,
+            fqdn=obs.fqdn,
             ip=obs.ip,
             ip_asn=ip_asn,
             ip_as_org_name=ip_as_org_name,
@@ -95,7 +95,7 @@ def iter_web_ground_truths(
     end_day = (measurement_day + timedelta(days=1)).strftime("%Y-%m-%d")
     column_names = [
         "timestamp",
-        "hostname",
+        "fqdn",
         "ip",
         "port",
         "dns_failure",
@@ -112,7 +112,7 @@ def iter_web_ground_truths(
     q = """
     SELECT (
         toStartOfDay(measurement_start_time) as timestamp,
-        hostname,
+        fqdn,
         ip,
         port,
         dns_failure,
@@ -171,7 +171,7 @@ class WebGroundTruthDB:
     """
 
     _indexes = (
-        ("hostname_idx", "hostname, vp_asn, vp_cc"),
+        ("fqdn_idx", "fqdn, vp_asn, vp_cc"),
         ("ip_port_idx", "ip, port, vp_asn, vp_cc"),
         ("http_request_url_idx", "http_request_url, vp_asn, vp_cc"),
     )
@@ -230,7 +230,7 @@ class WebGroundTruthDB:
 
             timestamp TEXT,
 
-            hostname TEXT,
+            fqdn TEXT,
             ip TEXT,
             ip_asn INT,
             ip_as_org_name TEXT,
@@ -295,7 +295,7 @@ class WebGroundTruthDB:
                 # to DNS resolutions, so we only get DNS failure or DNS success
                 # rows
                 [
-                    " hostname = ? AND (dns_success = 1 OR dns_failure IS NOT NULL) "
+                    " fqdn = ? AND (dns_success = 1 OR dns_failure IS NOT NULL) "
                     for _ in range(len(hostnames))
                 ]
             )

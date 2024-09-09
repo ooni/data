@@ -1,5 +1,19 @@
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, overload
+
+from oonidata.models.nettests import (
+    Signal,
+    SupportedDataformats,
+    Whatsapp,
+    Telegram,
+    StunReachability,
+    Tor,
+    FacebookMessenger,
+    HTTPHeaderFieldManipulation,
+    UrlGetter,
+    WebConnectivity,
+    HTTPInvalidRequestLine,
+)
 
 from oonidata.models.observations import (
     HTTPMiddleboxObservation,
@@ -45,6 +59,40 @@ TypeWebConnectivityObservations = Tuple[
 ]
 TypeWebObservations = Tuple[List[WebObservation]]
 TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
+
+
+@overload
+def measurement_to_observations(
+    msmt: Union[HTTPHeaderFieldManipulation, HTTPInvalidRequestLine],
+    netinfodb: NetinfoDB,
+    bucket_datetime: datetime = datetime(1984, 1, 1, tzinfo=timezone.utc),
+) -> TypeHTTPMiddleboxObservations: ...
+
+
+@overload
+def measurement_to_observations(
+    msmt: WebConnectivity,
+    netinfodb: NetinfoDB,
+    bucket_datetime: datetime = datetime(1984, 1, 1, tzinfo=timezone.utc),
+) -> TypeWebConnectivityObservations: ...
+
+
+@overload
+def measurement_to_observations(
+    msmt: Union[
+        Signal, Whatsapp, Telegram, StunReachability, Tor, FacebookMessenger, UrlGetter
+    ],
+    netinfodb: NetinfoDB,
+    bucket_datetime: datetime = datetime(1984, 1, 1, tzinfo=timezone.utc),
+) -> TypeWebObservations: ...
+
+
+@overload
+def measurement_to_observations(
+    msmt: SupportedDataformats,
+    netinfodb: NetinfoDB,
+    bucket_datetime: datetime = datetime(1984, 1, 1, tzinfo=timezone.utc),
+) -> TypeWebObservations: ...
 
 
 def measurement_to_observations(

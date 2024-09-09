@@ -47,6 +47,7 @@ DUMMY_MEASUREMENT_META = MeasurementMeta(
     input="",
     report_id="TEST",
     measurement_start_time=datetime(2023, 10, 31, 15, 56, 12),
+    test_runtime=1.0,
 )
 
 
@@ -177,7 +178,7 @@ def test_web_ground_truth_db():
         vp_cc="ZZ",
         is_trusted_vp=True,
         timestamp=datetime.now(),
-        hostname=None,
+        fqdn=None,
         ip=None,
         ip_asn=100,
         ip_as_org_name="fake",
@@ -204,7 +205,7 @@ def test_web_ground_truth_db():
 
     for _ in range(10):
         wgt_dict = base_wgt.copy()
-        wgt_dict["hostname"] = "ooni.org"
+        wgt_dict["fqdn"] = "ooni.org"
         all_wgt.append(wgt_dict)
 
     for _ in range(10):

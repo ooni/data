@@ -139,9 +139,15 @@ def make_web_control_observations(
         obs.http_request_url = msmt.input
         obs.http_failure = msmt.test_keys.control.http_request.failure or ""
         obs.http_success = msmt.test_keys.control.http_request.failure is None
-        obs.http_response_body_length = (
-            msmt.test_keys.control.http_request.body_length or 0
-        )
+        if (
+            not msmt.test_keys.control.http_request.body_length
+            or msmt.test_keys.control.http_request.body_length < 0
+        ):
+            obs.http_response_body_length = 0
+        else:
+            obs.http_response_body_length = (
+                msmt.test_keys.control.http_request.body_length
+            )
         web_ctrl_obs.append(obs)
 
     for idx, obs in enumerate(web_ctrl_obs):

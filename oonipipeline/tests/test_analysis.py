@@ -81,7 +81,6 @@ def test_signal(fingerprintdb, netinfodb, measurements):
             fingerprintdb=fingerprintdb,
         )
     )
-    print(list(filter(lambda x: x.blocked_score > 0.5, er)))
     assert er[0].anomaly == False
     assert er[0].confirmed == False
 

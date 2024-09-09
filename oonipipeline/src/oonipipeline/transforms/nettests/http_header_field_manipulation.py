@@ -1,12 +1,13 @@
 import dataclasses
 from datetime import datetime, timezone
+from oonidata.models.base import ProcessingMeta
 import orjson
 from typing import List, Tuple
 from oonidata.models.nettests import HTTPHeaderFieldManipulation
 from oonidata.models.observations import HTTPMiddleboxObservation
 
-from ..measurement_transformer import MeasurementTransformer
 
+from ..measurement_transformer import MeasurementTransformer
 
 class HTTPHeaderFieldManipulationTransformer(MeasurementTransformer):
     def make_observations(
@@ -15,7 +16,7 @@ class HTTPHeaderFieldManipulationTransformer(MeasurementTransformer):
         mb_obs = HTTPMiddleboxObservation(
             hfm_success=True,
             observation_idx=0,
-            created_at=datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
+            processing_meta=ProcessingMeta(created_at=datetime.now(timezone.utc)),
             measurement_meta=self.measurement_meta,
             probe_meta=self.probe_meta,
         )

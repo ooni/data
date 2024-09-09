@@ -42,6 +42,8 @@ UInt8 = Annotated[int, "UInt8"]
 UInt16 = Annotated[int, "UInt16"]
 UInt32 = Annotated[int, "UInt32"]
 
+Float64 = Annotated[float, "Float64"]
+
 ArrayString = Annotated[List[str], "Array(String)"]
 
 OptionalDatetime64_3 = Annotated[Optional[datetime], "Nullable(DateTime64(3, 'UTC'))"]

@@ -94,7 +94,7 @@ def make_observations_for_file_entry(
             obs_tuple = measurement_to_observations(
                 msmt=msmt,
                 netinfodb=netinfodb,
-                bucket_datetime=datetime.strptime("%Y-%m-%d", bucket_date),
+                bucket_datetime=datetime.strptime(bucket_date, "%Y-%m-%d"),
             )
             for obs_list in obs_tuple:
                 db.write_table_model_rows(obs_list, use_buffer_table=False)
@@ -264,7 +264,7 @@ def get_previous_range(params: GetPreviousRangeParams) -> List[PrevRange]:
                 get_prev_range(
                     db=db,
                     table_name=table_name,
-                    bucket_date=params.bucket_date,
+                    bucket_datetime=params.bucket_date,
                     test_name=params.test_name,
                     probe_cc=params.probe_cc,
                 ),

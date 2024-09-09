@@ -164,7 +164,6 @@ class ClickhouseConnection(DatabaseConnection):
         self.row_buffer[table_name] += row_list
 
         if len(self.row_buffer[table_name]) >= self.write_batch_size:
-            log.debug(f"flushing table {table_name}")
             self.flush(table_name)
 
     def flush(self, table_name=None):
@@ -175,6 +174,7 @@ class ClickhouseConnection(DatabaseConnection):
                 self._flush_table(t_name)
 
     def _flush_table(self, table_name):
+        log.debug(f"flushing table {table_name}")
         if table_name in self.row_buffer and self.row_buffer[table_name]:
             rows_to_flush = self.row_buffer[table_name]
             if rows_to_flush:

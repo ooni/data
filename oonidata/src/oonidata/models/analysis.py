@@ -25,8 +25,6 @@ class WebAnalysis:
     analysis_id: str
     observation_id: str
 
-    created_at: datetime
-
     # This is the domain name associated with the target, for example for
     # facebook it will be www.facebook.com, but also edge-mqtt.facebook.com
     target_domain_name: str

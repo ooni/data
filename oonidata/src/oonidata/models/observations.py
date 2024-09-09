@@ -10,6 +10,7 @@ from typing import (
 
 from oonidata.models.base import (
     ArrayString,
+    Float64,
     OptionalDatetime,
     UInt16,
     UInt32,
@@ -34,7 +35,9 @@ class MeasurementMeta:
     software_version: str
     test_name: str
     test_version: str
+    test_runtime: Float64
 
+    test_helper_address: str = ""
     input: str = ""
 
 
@@ -117,37 +120,38 @@ class TLSObservation:
     timestamp: datetime
 
     failure: Failure
+    success: bool
 
     server_name: str
     version: str
     cipher_suite: str
 
-    ip: Optional[str] = None
-    port: Optional[int] = None
+    ip: str = ""
+    port: int = 0
 
-    is_certificate_valid: Optional[bool] = None
+    is_certificate_valid: bool = False
 
-    end_entity_certificate_fingerprint: Optional[str] = None
-    end_entity_certificate_subject: Optional[str] = None
-    end_entity_certificate_subject_common_name: Optional[str] = None
-    end_entity_certificate_issuer: Optional[str] = None
-    end_entity_certificate_issuer_common_name: Optional[str] = None
+    end_entity_certificate_fingerprint: str = ""
+    end_entity_certificate_subject: str = ""
+    end_entity_certificate_subject_common_name: str = ""
+    end_entity_certificate_issuer: str = ""
+    end_entity_certificate_issuer_common_name: str = ""
     end_entity_certificate_san_list: List[str] = field(default_factory=list)
     end_entity_certificate_not_valid_after: Optional[datetime] = None
     end_entity_certificate_not_valid_before: Optional[datetime] = None
     peer_certificates: List[bytes] = field(default_factory=list)
-    certificate_chain_length: Optional[int] = None
+    certificate_chain_length: int = 0
     certificate_chain_fingerprints: List[str] = field(default_factory=list)
 
-    handshake_read_count: Optional[int] = None
-    handshake_write_count: Optional[int] = None
-    handshake_read_bytes: Optional[float] = None
-    handshake_write_bytes: Optional[float] = None
-    handshake_last_operation: Optional[str] = None
-    handshake_time: Optional[float] = None
+    handshake_read_count: int = 0
+    handshake_write_count: int = 0
+    handshake_read_bytes: float = 0
+    handshake_write_bytes: float = 0
+    handshake_last_operation: str = ""
+    handshake_time: float = 0
 
-    transaction_id: Optional[int] = None
-    t: Optional[float] = None
+    transaction_id: int = 0
+    t: float = 0
 
 
 @dataclass
@@ -186,7 +190,13 @@ class TCPObservation:
 
 @table_model(
     table_name="obs_web_ctrl",
-    table_index=("measurement_uid", "observation_id", "measurement_start_time"),
+    table_index=(
+        "measurement_start_time",
+        "fqdn",
+        "ip",
+        "measurement_uid",
+        "observation_idx",
+    ),
 )
 @dataclass
 class WebControlObservation:
@@ -204,7 +214,6 @@ class WebControlObservation:
     ip_as_cc: str = ""
     ip_cc: str = ""
     ip_is_bogon: bool = False
-    # Changed in > v5.0.0-alpha.4
 
     dns_failure: str = ""
     dns_success: bool = False
@@ -224,7 +233,14 @@ class WebControlObservation:
 
 @table_model(
     table_name="obs_web",
-    table_index=("measurement_uid", "observation_id", "measurement_start_time"),
+    table_index=(
+        "measurement_start_time",
+        "probe_cc",
+        "probe_asn",
+        "fqdn",
+        "observation_idx",
+        "measurement_uid",
+    ),
 )
 @dataclass
 class WebObservation:
@@ -260,15 +276,16 @@ class WebObservation:
     # from the probe
     dns_answer_asn: UInt32 = 0
     dns_answer_as_org_name: str = ""
-    dns_t: float = 0
+    dns_t: Float64 = 0
 
     # TCP related observation
     tcp_failure: str = ""
     tcp_success: bool = False
-    tcp_t: float = 0
+    tcp_t: Float64 = 0
 
     # TLS related observation
     tls_failure: str = ""
+    tls_success: bool = False
 
     tls_server_name: str = ""
     tls_version: str = ""
@@ -291,8 +308,8 @@ class WebObservation:
     tls_handshake_read_bytes: UInt32 = 0
     tls_handshake_write_bytes: UInt32 = 0
     tls_handshake_last_operation: str = ""
-    tls_handshake_time: float = 0
-    tls_t: float = 0
+    tls_handshake_time: Float64 = 0
+    tls_t: Float64 = 0
 
     # HTTP related observation
     http_request_url: str = ""
@@ -305,7 +322,7 @@ class WebObservation:
     http_request_body_length: UInt32 = 0
     http_request_method: str = ""
 
-    http_runtime: float = 0
+    http_runtime: Float64 = 0
 
     http_response_body_length: UInt32 = 0
     http_response_body_is_truncated: bool = False
@@ -316,7 +333,7 @@ class WebObservation:
     http_response_header_server: str = ""
     http_request_redirect_from: str = ""
     http_request_body_is_truncated: bool = False
-    http_t: float = 0
+    http_t: Float64 = 0
 
     # probe level analysis
     probe_analysis: str = ""
@@ -344,16 +361,15 @@ class WebObservation:
 
 @table_model(
     table_name="obs_http_middlebox",
-    table_index=("measurement_uid", "measurement_start_time"),
+    table_index=("measurement_uid", "observation_idx", "measurement_start_time"),
 )
 @dataclass
 class HTTPMiddleboxObservation:
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
+    processing_meta: ProcessingMeta
 
     observation_idx: UInt16 = 0
-
-    created_at: OptionalDatetime = None
 
     # Set the payload returned by the HTTP Invalid Request Line test
     hirl_sent_0: str = ""
