@@ -1,6 +1,6 @@
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Annotated, Any, List, Optional, Tuple
 from mashumaro import DataClassDictMixin
 from mashumaro.config import BaseConfig, TO_DICT_ADD_OMIT_NONE_FLAG
 from typing import Protocol, runtime_checkable
@@ -35,5 +35,14 @@ class TableModelProtocol(Protocol):
 
 @dataclass
 class ProcessingMeta:
-    processing_start_time: datetime
-    processing_end_time: Optional[datetime] = None
+    created_at: datetime
+
+
+UInt8 = Annotated[int, "UInt8"]
+UInt16 = Annotated[int, "UInt16"]
+UInt32 = Annotated[int, "UInt32"]
+
+ArrayString = Annotated[List[str], "Array(String)"]
+
+OptionalDatetime64_3 = Annotated[Optional[datetime], "Nullable(DateTime64(3, 'UTC'))"]
+OptionalDatetime = Annotated[Optional[datetime], "Nullable(DateTime('UTC'))"]

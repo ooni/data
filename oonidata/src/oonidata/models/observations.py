@@ -2,12 +2,21 @@ import dataclasses
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import (
+    Annotated,
     Optional,
     List,
     Tuple,
 )
 
-from oonidata.models.base import table_model, ProcessingMeta
+from oonidata.models.base import (
+    ArrayString,
+    OptionalDatetime,
+    UInt16,
+    UInt32,
+    UInt8,
+    table_model,
+    ProcessingMeta,
+)
 from oonidata.models.dataformats import Failure
 
 
@@ -16,17 +25,17 @@ from oonidata.models.dataformats import Failure
 @dataclass
 class MeasurementMeta:
     measurement_uid: str
-    input: Optional[str]
     report_id: str
 
     measurement_start_time: datetime
+    bucket_datetime: datetime
 
     software_name: str
     software_version: str
     test_name: str
     test_version: str
 
-    bucket_date: str
+    input: str = ""
 
 
 @dataclass
@@ -66,41 +75,37 @@ class ProbeMeta:
 class HTTPObservation:
     timestamp: datetime
 
-    hostname: str
+    fqdn: str
     request_url: str
 
     network: str
-    alpn: Optional[str]
+    alpn: str
 
-    failure: Failure
+    failure: str
 
     request_body_length: int
     request_method: str
-    request_headers_list: Optional[List[Tuple[str, bytes]]] = field(
-        default_factory=list
-    )
+    request_headers_list: List[Tuple[str, bytes]] = field(default_factory=list)
 
-    ip: Optional[str] = None
-    port: Optional[int] = None
+    ip: str = ""
+    port: int = 0
 
-    runtime: Optional[float] = None
+    runtime: float = 0
 
-    response_body_length: Optional[int] = None
-    response_body_is_truncated: Optional[bool] = None
-    response_body_sha1: Optional[str] = None
-    response_body_bytes: Optional[bytes] = None
+    response_body_length: int = 0
+    response_body_is_truncated: bool = False
+    response_body_sha1: str = ""
+    response_body_bytes: bytes = b""
 
-    response_status_code: Optional[int] = None
-    response_headers_list: Optional[List[Tuple[str, bytes]]] = field(
-        default_factory=list
-    )
-    response_header_location: Optional[str] = None
-    response_header_server: Optional[str] = None
-    request_redirect_from: Optional[str] = None
-    request_body_is_truncated: Optional[bool] = None
+    response_status_code: int = 0
+    response_headers_list: List[Tuple[str, bytes]] = field(default_factory=list)
+    response_header_location: str = ""
+    response_header_server: str = ""
+    request_redirect_from: str = ""
+    request_body_is_truncated: bool = False
 
-    transaction_id: Optional[int] = None
-    t: Optional[float] = None
+    transaction_id: int = 0
+    t: float = 0
 
     @property
     def request_is_encrypted(self):
@@ -149,20 +154,20 @@ class TLSObservation:
 class DNSObservation:
     timestamp: datetime
 
-    hostname: str
+    fqdn: str
 
     query_type: str
-    failure: Failure
-    engine: Optional[str]
-    engine_resolver_address: Optional[str]
+    failure: str = ""
+    engine: str = ""
+    engine_resolver_address: str = ""
 
-    answer_type: Optional[str] = None
-    answer: Optional[str] = None
-    answer_asn: Optional[int] = None
-    answer_as_org_name: Optional[str] = None
+    answer_type: str = ""
+    answer: str = ""
+    answer_asn: int = 0
+    answer_as_org_name: str = ""
 
-    transaction_id: Optional[int] = None
-    t: Optional[float] = None
+    transaction_id: int = 0
+    t: float = 0
 
 
 @dataclass
@@ -175,8 +180,8 @@ class TCPObservation:
     success: bool
     failure: Failure
 
-    t: Optional[float] = None
-    transaction_id: Optional[int] = None
+    t: float = 0
+    transaction_id: int = 0
 
 
 @table_model(
@@ -188,34 +193,33 @@ class WebControlObservation:
     measurement_meta: MeasurementMeta
     processing_meta: ProcessingMeta
 
-    hostname: str
-    observation_id: str = ""
-
-    created_at: Optional[datetime] = None
+    fqdn: str = ""
+    observation_idx: UInt8 = 0
 
     ip: str = ""
-    port: Optional[int] = None
+    port: UInt16 = 0
 
-    ip_asn: Optional[int] = None
-    ip_as_org_name: Optional[str] = None
-    ip_as_cc: Optional[str] = None
-    ip_cc: Optional[str] = None
-    ip_is_bogon: Optional[bool] = None
+    ip_asn: UInt32 = 0
+    ip_as_org_name: str = ""
+    ip_as_cc: str = ""
+    ip_cc: str = ""
+    ip_is_bogon: bool = False
+    # Changed in > v5.0.0-alpha.4
 
-    dns_failure: Optional[str] = None
-    dns_success: Optional[bool] = None
+    dns_failure: str = ""
+    dns_success: bool = False
 
-    tcp_failure: Optional[str] = None
-    tcp_success: Optional[bool] = None
+    tcp_failure: str = ""
+    tcp_success: bool = False
 
-    tls_failure: Optional[str] = None
-    tls_success: Optional[bool] = None
-    tls_server_name: Optional[str] = None
+    tls_failure: str = ""
+    tls_success: bool = False
+    tls_server_name: str = ""
 
-    http_request_url: Optional[str] = None
-    http_failure: Optional[str] = None
-    http_success: Optional[bool] = None
-    http_response_body_length: Optional[int] = None
+    http_request_url: str = ""
+    http_failure: str = ""
+    http_success: bool = False
+    http_response_body_length: UInt32 = 0
 
 
 @table_model(
@@ -228,97 +232,94 @@ class WebObservation:
     probe_meta: ProbeMeta
     processing_meta: ProcessingMeta
 
-    # These fields are added by the processor
-    observation_id: str = ""
-    created_at: Optional[datetime] = None
-    processing_time: Optional[float] = None
+    observation_idx: UInt16 = 0
 
-    target_id: Optional[str] = None
-    hostname: Optional[str] = None
+    fqdn: str = ""
+    target_id: str = ""
 
-    transaction_id: Optional[int] = None
+    transaction_id: UInt16 = 0
 
-    ip: Optional[str] = None
-    port: Optional[int] = None
+    ip: str = ""
+    port: UInt16 = 0
 
-    ip_asn: Optional[int] = None
-    ip_as_org_name: Optional[str] = None
-    ip_as_cc: Optional[str] = None
-    ip_cc: Optional[str] = None
-    ip_is_bogon: Optional[bool] = None
+    ip_asn: UInt32 = 0
+    ip_as_org_name: str = ""
+    ip_as_cc: str = ""
+    ip_cc: str = ""
+    ip_is_bogon: bool = False
 
     # DNS related observation
-    dns_query_type: Optional[str] = None
-    dns_failure: Failure = None
-    dns_engine: Optional[str] = None
-    dns_engine_resolver_address: Optional[str] = None
+    dns_query_type: str = ""
+    dns_failure: str = ""
+    dns_engine: str = ""
+    dns_engine_resolver_address: str = ""
 
-    dns_answer_type: Optional[str] = None
-    dns_answer: Optional[str] = None
+    dns_answer_type: str = ""
+    dns_answer: str = ""
     # These should match those in the IP field, but are the annotations coming
     # from the probe
-    dns_answer_asn: Optional[int] = None
-    dns_answer_as_org_name: Optional[str] = None
-    dns_t: Optional[float] = None
+    dns_answer_asn: UInt32 = 0
+    dns_answer_as_org_name: str = ""
+    dns_t: float = 0
 
     # TCP related observation
-    tcp_failure: Optional[Failure] = None
-    tcp_success: Optional[bool] = None
-    tcp_t: Optional[float] = None
+    tcp_failure: str = ""
+    tcp_success: bool = False
+    tcp_t: float = 0
 
     # TLS related observation
-    tls_failure: Optional[Failure] = None
+    tls_failure: str = ""
 
-    tls_server_name: Optional[str] = None
-    tls_version: Optional[str] = None
-    tls_cipher_suite: Optional[str] = None
-    tls_is_certificate_valid: Optional[bool] = None
+    tls_server_name: str = ""
+    tls_version: str = ""
+    tls_cipher_suite: str = ""
+    tls_is_certificate_valid: bool = False
 
-    tls_end_entity_certificate_fingerprint: Optional[str] = None
-    tls_end_entity_certificate_subject: Optional[str] = None
-    tls_end_entity_certificate_subject_common_name: Optional[str] = None
-    tls_end_entity_certificate_issuer: Optional[str] = None
-    tls_end_entity_certificate_issuer_common_name: Optional[str] = None
-    tls_end_entity_certificate_san_list: List[str] = field(default_factory=list)
-    tls_end_entity_certificate_not_valid_after: Optional[datetime] = None
-    tls_end_entity_certificate_not_valid_before: Optional[datetime] = None
-    tls_certificate_chain_length: Optional[int] = None
-    tls_certificate_chain_fingerprints: List[str] = field(default_factory=list)
+    tls_end_entity_certificate_fingerprint: str = ""
+    tls_end_entity_certificate_subject: str = ""
+    tls_end_entity_certificate_subject_common_name: str = ""
+    tls_end_entity_certificate_issuer: str = ""
+    tls_end_entity_certificate_issuer_common_name: str = ""
+    tls_end_entity_certificate_san_list: ArrayString = field(default_factory=list)
+    tls_end_entity_certificate_not_valid_after: OptionalDatetime = None
+    tls_end_entity_certificate_not_valid_before: OptionalDatetime = None
+    tls_certificate_chain_length: int = 0
+    tls_certificate_chain_fingerprints: ArrayString = field(default_factory=list)
 
-    tls_handshake_read_count: Optional[int] = None
-    tls_handshake_write_count: Optional[int] = None
-    tls_handshake_read_bytes: Optional[float] = None
-    tls_handshake_write_bytes: Optional[float] = None
-    tls_handshake_last_operation: Optional[str] = None
-    tls_handshake_time: Optional[float] = None
-    tls_t: Optional[float] = None
+    tls_handshake_read_count: UInt8 = 0
+    tls_handshake_write_count: UInt8 = 0
+    tls_handshake_read_bytes: UInt32 = 0
+    tls_handshake_write_bytes: UInt32 = 0
+    tls_handshake_last_operation: str = ""
+    tls_handshake_time: float = 0
+    tls_t: float = 0
 
     # HTTP related observation
-    http_request_url: Optional[str] = None
+    http_request_url: str = ""
 
-    http_network: Optional[str] = None
-    http_alpn: Optional[str] = None
+    http_network: str = ""
+    http_alpn: str = ""
 
-    http_failure: Failure = None
+    http_failure: str = ""
 
-    http_request_body_length: Optional[int] = None
-    http_request_method: Optional[str] = None
+    http_request_body_length: UInt32 = 0
+    http_request_method: str = ""
 
-    http_runtime: Optional[float] = None
+    http_runtime: float = 0
 
-    http_response_body_length: Optional[int] = None
-    http_response_body_is_truncated: Optional[bool] = None
-    http_response_body_sha1: Optional[str] = None
+    http_response_body_length: UInt32 = 0
+    http_response_body_is_truncated: bool = False
+    http_response_body_sha1: str = ""
 
-    http_response_status_code: Optional[int] = None
-    http_response_header_location: Optional[str] = None
-    http_response_header_server: Optional[str] = None
-    http_request_redirect_from: Optional[str] = None
-    http_request_body_is_truncated: Optional[bool] = None
-    http_t: Optional[float] = None
+    http_response_status_code: UInt16 = 0
+    http_response_header_location: str = ""
+    http_response_header_server: str = ""
+    http_request_redirect_from: str = ""
+    http_request_body_is_truncated: bool = False
+    http_t: float = 0
 
     # probe level analysis
-    probe_analysis: Optional[str] = None
+    probe_analysis: str = ""
 
     # Removed in v5.0.0-alpha.1
     # post_processed_at: Optional[datetime] = None
@@ -335,6 +336,11 @@ class WebObservation:
     # removed in v5.0.0-alpha.2
     # post_processed_at: Optional[datetime] = None
 
+    # in > v5.0.0-alpha.4
+    # important schema changes occurred in this table dropping a lot of nullable
+    # columns. See diff for full changes
+    # TODO(art): add link to diff
+
 
 @table_model(
     table_name="obs_http_middlebox",
@@ -345,26 +351,26 @@ class HTTPMiddleboxObservation:
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
 
-    observation_id: str = ""
+    observation_idx: UInt16 = 0
 
-    created_at: Optional[datetime] = None
+    created_at: OptionalDatetime = None
 
     # Set the payload returned by the HTTP Invalid Request Line test
-    hirl_sent_0: Optional[str] = None
-    hirl_sent_1: Optional[str] = None
-    hirl_sent_2: Optional[str] = None
-    hirl_sent_3: Optional[str] = None
-    hirl_sent_4: Optional[str] = None
+    hirl_sent_0: str = ""
+    hirl_sent_1: str = ""
+    hirl_sent_2: str = ""
+    hirl_sent_3: str = ""
+    hirl_sent_4: str = ""
 
-    hirl_received_0: Optional[str] = None
-    hirl_received_1: Optional[str] = None
-    hirl_received_2: Optional[str] = None
-    hirl_received_3: Optional[str] = None
-    hirl_received_4: Optional[str] = None
+    hirl_received_0: str = ""
+    hirl_received_1: str = ""
+    hirl_received_2: str = ""
+    hirl_received_3: str = ""
+    hirl_received_4: str = ""
 
-    hirl_failure: Optional[str] = None
-    hirl_success: Optional[bool] = None
+    hirl_failure: str = ""
+    hirl_success: bool = False
 
-    hfm_diff: Optional[str] = None
-    hfm_failure: Optional[str] = None
-    hfm_success: Optional[bool] = None
+    hfm_diff: str = ""
+    hfm_failure: str = ""
+    hfm_success: bool = False

@@ -33,84 +33,43 @@ from oonidata.models.observations import (
 from .connections import ClickhouseConnection
 
 
-MAPPED_BASIC_TYPES = [str, int, bool, datetime, float, dict]
-BasicType = Union[str, int, bool, datetime, float, dict]
+MAPPED_BASIC_TYPES = {
+    str: "String",
+    int: "Int32",
+    bool: "Bool",
+    float: "Float32",
+    dict: "String",
+    List[str]: "Array(String)",
+    List[float]: "Array(Float32)",
+    # Cast JSON to dict
+    List[Dict]: "String",
+    List[List[str]]: "Array(Array(String))",
+    datetime: "Datetime('UTC')",
+}
 
 
-def python_basic_type_to_clickhouse(t: BasicType) -> str:
-    if t == str:
-        return "String"
-    if t == int:
-        return "Int32"
-    if t == bool:
-        return "Int8"
-    if t == datetime:
-        return "Datetime64(3, 'UTC')"
-    if t == float:
-        return "Float64"
-    if t == dict:
-        return "String"
-    raise Exception(f"Unsupported type {t}")
+def annotated_clickhouse_type(t):
+    """
+    these are typed annotated with Annotated[python_type, "CLICKHOUSE_TYPE_STR"]
+    """
+    return typing.get_args(t)[1]
 
 
 def typing_to_clickhouse(t: Any) -> str:
+    t_origin = typing.get_origin(t)
+    if t_origin == typing.Annotated:
+        return annotated_clickhouse_type(t)
+    elif t_origin == typing.Union:
+        args = typing.get_args(t)
+        if len(args) == 2 and args[1] == NoneType:
+            assert args[0] in MAPPED_BASIC_TYPES, f"{args[0]} not in basic types"
+            mapped_basic_type = MAPPED_BASIC_TYPES[args[0]]
+            return f"Nullable({mapped_basic_type})"
+
     if t in MAPPED_BASIC_TYPES:
-        return python_basic_type_to_clickhouse(t)
+        return MAPPED_BASIC_TYPES[t]
 
-    if t in (Optional[str], Optional[bytes]):
-        return "Nullable(String)"
-
-    if t == Optional[int]:
-        return "Nullable(Int32)"
-
-    if t == Optional[bool]:
-        return "Nullable(Int8)"
-
-    if t == Optional[datetime]:
-        return "Nullable(Datetime64(3, 'UTC'))"
-
-    # Casting it to JSON
-    if t == List[Dict]:
-        return "String"
-
-    if t == Optional[float]:
-        return "Nullable(Float64)"
-
-    if t == List[float]:
-        return "Array(Float64)"
-
-    if t == List[List[str]]:
-        return "Array(Array(String))"
-
-    if t in (List[str], List[bytes]):
-        return "Array(String)"
-
-    if t == Optional[List[str]]:
-        return "Nullable(Array(String))"
-
-    if t == Optional[List[Tuple[str, bytes]]]:
-        return "Nullable(Array(Array(String)))"
-
-    if t in (Mapping[str, str], Dict[str, str]):
-        return "Map(String, String)"
-
-    # TODO(art): eventually all the above types should be mapped using a similar pattern
-    child_type, parent_type = typing.get_args(t)
-    is_nullable = False
-    if parent_type == NoneType:
-        is_nullable = True
-        target_type = child_type
-    else:
-        target_type = parent_type
-    target_origin = typing.get_origin(target_type)
-    target_args = typing.get_args(target_type)
-    assert (
-        target_origin == tuple
-    ), f"{target_origin} is not tuple (target_args={target_args}, {target_type} {parent_type})"
-    tuple_args = ", ".join([python_basic_type_to_clickhouse(a) for a in target_args])
-    if is_nullable:
-        return f"Nullable(Tuple({tuple_args}))"
-    return f"Tuple({tuple_args})"
+    raise Exception(f"could not map {t} to anything {t_origin}")
 
 
 def iter_table_fields(
@@ -187,6 +146,7 @@ def make_create_queries(
     max_rows=100_000,
     min_bytes=10_000_000,
     max_bytes=1_000_000_000,
+    with_buffer_table=True,
 ):
     create_queries = []
     for model in table_models:
@@ -195,23 +155,24 @@ def make_create_queries(
             format_create_query(table_name, model),
         )
 
-        engine_str = f"""
-        Buffer(
-            currentDatabase(), {table_name}, 
-            {num_layers},
-            {min_time}, {max_time}, 
-            {min_rows}, {max_rows},
-            {min_bytes}, {max_bytes}
-        )
-        """
-        create_queries.append(
-            format_create_query(
-                f"buffer_{table_name}",
-                model,
-                engine=engine_str,
-                extra=False,
+        if with_buffer_table:
+            engine_str = f"""
+            Buffer(
+                currentDatabase(), {table_name}, 
+                {num_layers},
+                {min_time}, {max_time}, 
+                {min_rows}, {max_rows},
+                {min_bytes}, {max_bytes}
             )
-        )
+            """
+            create_queries.append(
+                format_create_query(
+                    f"buffer_{table_name}",
+                    model,
+                    engine=engine_str,
+                    extra=False,
+                )
+            )
     return create_queries
 
 
