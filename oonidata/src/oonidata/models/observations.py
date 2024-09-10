@@ -226,7 +226,6 @@ class WebControlObservation:
     table_name="obs_web",
     table_index=(
         "measurement_start_time",
-        "hostname",
         "probe_cc",
         "probe_asn",
         "measurement_uid",
