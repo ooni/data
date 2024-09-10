@@ -445,8 +445,8 @@ def measurement_to_tls_observation(
             tlso.end_entity_certificate_issuer_common_name = (
                 cert_meta.issuer_common_name
             )
-            tlso.end_entity_certificate_not_valid_after = cert_meta.not_valid_after
-            tlso.end_entity_certificate_not_valid_before = cert_meta.not_valid_before
+            tlso.end_entity_certificate_not_valid_after = cert_meta.not_valid_after.replace(microsecond=0)
+            tlso.end_entity_certificate_not_valid_before = cert_meta.not_valid_before.replace(microsecond=0)
             tlso.end_entity_certificate_san_list = cert_meta.san_list
         except Exception as exc:
             log.warning(exc)
