@@ -60,7 +60,7 @@ def make_signal_experiment_result(
             outcome_meta["why"] = "dns failure"
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.hostname}",
                     category="dns",
@@ -112,7 +112,7 @@ def make_signal_experiment_result(
 
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.hostname}",
                     category="dns",
@@ -127,7 +127,7 @@ def make_signal_experiment_result(
         else:
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.hostname}",
                     category="dns",
@@ -152,7 +152,7 @@ def make_signal_experiment_result(
 
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.ip}:{web_o.port}",
                     category="tcp",
@@ -168,7 +168,7 @@ def make_signal_experiment_result(
         elif not dns_blocked and web_o.tcp_success:
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.ip}:{web_o.port}",
                     category="tcp",
@@ -197,7 +197,7 @@ def make_signal_experiment_result(
 
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.hostname}",
                     category="tls",
@@ -225,7 +225,7 @@ def make_signal_experiment_result(
 
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.hostname}",
                     category="tls",
@@ -240,7 +240,7 @@ def make_signal_experiment_result(
         elif not dns_blocked and not tcp_blocked and web_o.tls_cipher_suite is not None:
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.hostname}",
                     category="tls",

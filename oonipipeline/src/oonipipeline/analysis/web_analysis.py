@@ -685,7 +685,7 @@ def make_web_analysis(
         website_analysis = WebAnalysis(
             measurement_meta=web_o.measurement_meta,
             probe_meta=web_o.probe_meta,
-            observation_id=web_o.observation_id,
+            observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
             created_at=created_at,
             analysis_id=f"{web_o.measurement_meta.measurement_uid}_{idx}",
             target_domain_name=domain_name,

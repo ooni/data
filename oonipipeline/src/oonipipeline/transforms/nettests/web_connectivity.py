@@ -137,7 +137,7 @@ def make_web_control_observations(
         web_ctrl_obs.append(obs)
 
     for idx, obs in enumerate(web_ctrl_obs):
-        obs.observation_id = f"{obs.measurement_meta.measurement_uid}_{idx}"
+        obs.observation_idx = idx
 
     return web_ctrl_obs
 
