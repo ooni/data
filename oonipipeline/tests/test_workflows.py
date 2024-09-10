@@ -174,8 +174,6 @@ def test_make_file_entry_batch(datadir, db):
     )
 
     assert obs_msmt_count == 453
-    # Flush buffer table
-    db.execute("OPTIMIZE TABLE buffer_obs_web")
     make_ground_truths_in_day(
         MakeGroundTruthsParams(
             day=date(2023, 10, 31).strftime("%Y-%m-%d"),
@@ -225,8 +223,6 @@ def test_write_observations(measurements, netinfodb, db):
             assert len(obs_idxs) == len(set(obs_idxs))
             db.write_table_model_rows(obs_list)
     db.close()
-    # Flush buffer table
-    db.execute("OPTIMIZE TABLE buffer_obs_web")
     cnt_by_cc = get_obs_count_by_cc(
         ObsCountParams(
             clickhouse_url=db.clickhouse_url,

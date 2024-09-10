@@ -157,7 +157,5 @@ def db_notruncate(clickhouse_server):
 def db(clickhouse_server):
     db = create_db_for_fixture(clickhouse_server)
     for _, table_name in make_create_queries(min_time=1, max_time=2):
-        if table_name.startswith("buffer_"):
-            continue
         db.execute(f"TRUNCATE TABLE {table_name};")
     yield db

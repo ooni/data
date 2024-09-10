@@ -80,8 +80,6 @@ def maybe_create_delete_tables(
     clickhouse_url: str,
     create_tables: bool,
     drop_tables: bool,
-    clickhouse_buffer_min_time: int = 10,
-    clickhouse_buffer_max_time: int = 60,
 ):
     if create_tables:
         if drop_tables:
@@ -90,9 +88,7 @@ def maybe_create_delete_tables(
             )
 
         with ClickhouseConnection(clickhouse_url) as db:
-            for query, table_name in make_create_queries(
-                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
-            ):
+            for query, table_name in make_create_queries():
                 if drop_tables:
                     db.execute(f"DROP TABLE IF EXISTS {table_name};")
                 db.execute(query)
@@ -146,8 +142,6 @@ def backfill(
         clickhouse_url=config.clickhouse_url,
         create_tables=create_tables,
         drop_tables=drop_tables,
-        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
     )
 
     temporal_config = TemporalConfig(
@@ -277,8 +271,6 @@ def checkdb(
         clickhouse_url=config.clickhouse_url,
         create_tables=create_tables,
         drop_tables=drop_tables,
-        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
     )
 
     with ClickhouseConnection(config.clickhouse_url) as db:

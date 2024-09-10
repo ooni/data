@@ -91,7 +91,6 @@ async def test_observation_workflow(datadir, db):
                 id="obs-wf",
                 task_queue=TASK_QUEUE_NAME,
             )
-            db.execute("OPTIMIZE TABLE buffer_obs_web")
             assert wf_res["measurement_count"] == 613
             assert wf_res["size"] == 11381440
             assert wf_res["bucket_date"] == "2022-10-21"

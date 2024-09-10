@@ -117,7 +117,6 @@ def test_full_workflow(
 
     wait_for_backfill()
     # We wait on the table buffers to be flushed
-    db.execute("OPTIMIZE TABLE buffer_obs_web")
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
     res = db.execute(
         "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
@@ -152,7 +151,6 @@ def test_full_workflow(
 
     wait_for_backfill()
     # We wait on the table buffers to be flushed
-    db.execute("OPTIMIZE TABLE buffer_obs_web")
 
     # Wait for the mutation to finish running
     wait_for_mutations(db, "obs_web")
@@ -261,7 +259,6 @@ def test_full_workflow(
     wait_for_backfill()
     # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
     db.execute("OPTIMIZE TABLE measurement_experiment_result")
-    db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
     wait_for_mutations(db, "measurement_experiment_result")
 
     # TODO(art): find a better way than sleeping to get the tables to be flushed

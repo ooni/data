@@ -97,7 +97,7 @@ def make_observations_for_file_entry(
                 bucket_date=bucket_date,
             )
             for obs_list in obs_tuple:
-                db.write_table_model_rows(obs_list, use_buffer_table=False)
+                db.write_table_model_rows(obs_list)
             measurement_count += 1
         except Exception as exc:
             log.error(f"failed at idx: {measurement_count} ({msmt_str})", exc_info=True)
