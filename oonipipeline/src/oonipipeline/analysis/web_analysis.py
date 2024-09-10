@@ -12,7 +12,6 @@ from typing import (
     List,
     Dict,
 )
-from oonidata.models.base import ProcessingMeta
 from oonidata.models.analysis import WebAnalysis
 from oonidata.models.observations import WebControlObservation, WebObservation
 
@@ -686,9 +685,6 @@ def make_web_analysis(
         website_analysis = WebAnalysis(
             measurement_meta=web_o.measurement_meta,
             probe_meta=web_o.probe_meta,
-            processing_meta=ProcessingMeta(
-                processing_start_time=datetime.now(timezone.utc)
-            ),
             observation_id=web_o.observation_id,
             created_at=created_at,
             analysis_id=f"{web_o.measurement_meta.measurement_uid}_{idx}",
@@ -980,7 +976,4 @@ def make_web_analysis(
                 http_analysis.is_http_fp_false_positive
             )
 
-        website_analysis.processing_meta.processing_start_time = datetime.now(
-            timezone.utc
-        )
         yield website_analysis
