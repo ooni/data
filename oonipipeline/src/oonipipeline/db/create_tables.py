@@ -16,7 +16,7 @@ from typing import (
 from dataclasses import Field, fields
 import typing
 
-from oonidata.models.base import TableModelProtocol, ProcessingMeta
+from oonidata.models.base import TableModelProtocol
 from oonidata.models.experiment_result import (
     ExperimentResult,
     MeasurementExperimentResult,
@@ -126,11 +126,6 @@ def iter_table_fields(
             continue
         if f.name == "measurement_meta":
             for f in fields(MeasurementMeta):
-                type_str = typing_to_clickhouse(f.type)
-                yield f, type_str
-            continue
-        if f.type == ProcessingMeta:
-            for f in fields(ProcessingMeta):
                 type_str = typing_to_clickhouse(f.type)
                 yield f, type_str
             continue

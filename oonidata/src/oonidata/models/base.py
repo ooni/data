@@ -31,9 +31,3 @@ class TableModelProtocol(Protocol):
 
     probe_meta: Any
     measurement_meta: Any
-
-
-@dataclass
-class ProcessingMeta:
-    processing_start_time: datetime
-    processing_end_time: Optional[datetime] = None
