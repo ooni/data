@@ -103,11 +103,11 @@ def measurement_to_observations(
     TypeWebObservations,
     TypeWebConnectivityObservations,
     TypeHTTPMiddleboxObservations,
-    Tuple[(None,)],
+    List,
 ]:
     if msmt.test_name in NETTEST_TRANSFORMERS:
         transformer = NETTEST_TRANSFORMERS[msmt.test_name](
             measurement=msmt, netinfodb=netinfodb, bucket_datetime=bucket_datetime
         )
         return transformer.make_observations(msmt)
-    return (None,)
+    return []

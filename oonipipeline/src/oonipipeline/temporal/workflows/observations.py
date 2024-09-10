@@ -9,20 +9,11 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from oonidata.datautils import PerfTimer
-    from oonipipeline.temporal.activities.common import (
-        OptimizeTablesParams,
-        optimize_tables,
-    )
     from oonipipeline.temporal.activities.observations import (
-        DeletePreviousRangeParams,
-        GetPreviousRangeParams,
         MakeObservationsParams,
-        delete_previous_range,
-        get_previous_range,
         make_observations,
     )
     from oonipipeline.temporal.workflows.common import (
-        TASK_QUEUE_NAME,
         get_workflow_start_time,
     )
 
