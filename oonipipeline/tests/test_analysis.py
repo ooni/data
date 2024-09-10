@@ -74,6 +74,7 @@ def test_signal(fingerprintdb, netinfodb, measurements):
     web_observations = measurement_to_observations(signal_new_ca, netinfodb=netinfodb)[
         0
     ]
+    assert web_observations and len(web_observations) > 0
     er = list(
         make_signal_experiment_result(
             web_observations=web_observations,

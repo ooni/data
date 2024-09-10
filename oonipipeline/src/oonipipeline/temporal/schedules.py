@@ -62,6 +62,7 @@ async def list_existing_schedules(
     client: TemporalClient,
     probe_cc: List[str],
     test_name: List[str],
+    custom_prefix: str = "",
 ):
     schedule_id_map_list = ScheduleIdMapList(
         observations=[],
@@ -71,9 +72,11 @@ async def list_existing_schedules(
 
     schedule_list = await client.list_schedules()
     async for sched in schedule_list:
-        if sched.id.startswith(f"{OBSERVATIONS_SCHED_PREFIX}-{filter_id}"):
+        if sched.id.startswith(
+            f"{custom_prefix}{OBSERVATIONS_SCHED_PREFIX}-{filter_id}"
+        ):
             schedule_id_map_list.observations.append(sched.id)
-        elif sched.id.startswith(f"{ANALYSIS_SCHED_PREFIX}-{filter_id}"):
+        elif sched.id.startswith(f"{custom_prefix}{ANALYSIS_SCHED_PREFIX}-{filter_id}"):
             schedule_id_map_list.analysis.append(sched.id)
 
     return schedule_id_map_list
@@ -85,6 +88,7 @@ async def schedule_all(
     test_name: List[str],
     clickhouse_url: str,
     data_dir: str,
+    custom_prefix: str = "",
 ) -> ScheduleIdMap:
     schedule_id_map = ScheduleIdMap()
     filter_id = gen_schedule_filter_id(probe_cc, test_name)
@@ -96,7 +100,10 @@ async def schedule_all(
     ts = datetime.now(timezone.utc).strftime("%y.%m.%d_%H%M%S")
 
     existing_schedules = await list_existing_schedules(
-        client=client, probe_cc=probe_cc, test_name=test_name
+        client=client,
+        probe_cc=probe_cc,
+        test_name=test_name,
+        custom_prefix=custom_prefix,
     )
 
     assert len(existing_schedules.observations) == 0
@@ -110,13 +117,13 @@ async def schedule_all(
         fast_fail=False,
     )
     sched_handle = await client.create_schedule(
-        id=f"{OBSERVATIONS_SCHED_PREFIX}-{filter_id}-{ts}",
+        id=f"{custom_prefix}{OBSERVATIONS_SCHED_PREFIX}-{filter_id}-{ts}",
         schedule=Schedule(
             action=ScheduleActionStartWorkflow(
                 ObservationsWorkflow.run,
                 obs_params,
-                id=f"{OBSERVATIONS_WF_PREFIX}-{filter_id}-{ts}",
-                task_queue=TASK_QUEUE_NAME,
+                id=f"{custom_prefix}{OBSERVATIONS_WF_PREFIX}-{filter_id}-{ts}",
+                task_queue=f"{custom_prefix}{TASK_QUEUE_NAME}",
                 execution_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
                 task_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
                 run_timeout=MAKE_OBSERVATIONS_START_TO_CLOSE_TIMEOUT,
@@ -136,45 +143,45 @@ async def schedule_all(
     )
     schedule_id_map.observations = sched_handle.id
 
-    analysis_params = AnalysisWorkflowParams(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse=clickhouse_url,
-        data_dir=data_dir,
-        fast_fail=False,
-    )
-    sched_handle = await client.create_schedule(
-        id=f"{ANALYSIS_SCHED_PREFIX}-{filter_id}-{ts}",
-        schedule=Schedule(
-            action=ScheduleActionStartWorkflow(
-                AnalysisWorkflow.run,
-                analysis_params,
-                id=f"{ANALYSIS_WF_PREFIX}-{filter_id}-{ts}",
-                task_queue=TASK_QUEUE_NAME,
-                execution_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
-                task_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
-                run_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
-            ),
-            spec=ScheduleSpec(
-                intervals=[
-                    ScheduleIntervalSpec(
-                        # We offset the Analysis workflow by 4 hours assuming
-                        # that the observation generation will take less than 4
-                        # hours to complete.
-                        # TODO(art): it's probably better to refactor this into some
-                        # kind of DAG
-                        every=timedelta(days=1),
-                        offset=timedelta(hours=6),
-                    )
-                ],
-            ),
-            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.ALLOW_ALL),
-            state=ScheduleState(
-                note="Run the analysis workflow every day with an offset of 6 hours to ensure the observation workflow has completed"
-            ),
-        ),
-    )
-    schedule_id_map.analysis = sched_handle.id
+    # analysis_params = AnalysisWorkflowParams(
+    #     probe_cc=probe_cc,
+    #     test_name=test_name,
+    #     clickhouse=clickhouse_url,
+    #     data_dir=data_dir,
+    #     fast_fail=False,
+    # )
+    # sched_handle = await client.create_schedule(
+    #     id=f"{custom_prefix}{ANALYSIS_SCHED_PREFIX}-{filter_id}-{ts}",
+    #     schedule=Schedule(
+    #         action=ScheduleActionStartWorkflow(
+    #             AnalysisWorkflow.run,
+    #             analysis_params,
+    #             id=f"{custom_prefix}{ANALYSIS_WF_PREFIX}-{filter_id}-{ts}",
+    #             task_queue=f"{custom_prefix}{TASK_QUEUE_NAME}",
+    #             execution_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+    #             task_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+    #             run_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+    #         ),
+    #         spec=ScheduleSpec(
+    #             intervals=[
+    #                 ScheduleIntervalSpec(
+    #                     # We offset the Analysis workflow by 4 hours assuming
+    #                     # that the observation generation will take less than 4
+    #                     # hours to complete.
+    #                     # TODO(art): it's probably better to refactor this into some
+    #                     # kind of DAG
+    #                     every=timedelta(days=1),
+    #                     offset=timedelta(hours=6),
+    #                 )
+    #             ],
+    #         ),
+    #         policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.ALLOW_ALL),
+    #         state=ScheduleState(
+    #             note="Run the analysis workflow every day with an offset of 6 hours to ensure the observation workflow has completed"
+    #         ),
+    #     ),
+    # )
+    # schedule_id_map.analysis = sched_handle.id
 
     return schedule_id_map
 
@@ -183,10 +190,14 @@ async def clear_schedules(
     client: TemporalClient,
     probe_cc: List[str],
     test_name: List[str],
+    custom_prefix: str = "",
 ) -> List[str]:
     schedule_ids = []
     existing_schedules = await list_existing_schedules(
-        client=client, probe_cc=probe_cc, test_name=test_name
+        client=client,
+        probe_cc=probe_cc,
+        test_name=test_name,
+        custom_prefix=custom_prefix,
     )
     for sid in existing_schedules.observations + existing_schedules.analysis:
         log.info(f"deleting schedule {sid}")
@@ -202,9 +213,13 @@ async def schedule_backfill(
     end_at: datetime,
     probe_cc: List[str],
     test_name: List[str],
+    custom_prefix: str = "",
 ):
     existing_schedules = await list_existing_schedules(
-        client=client, probe_cc=probe_cc, test_name=test_name
+        client=client,
+        probe_cc=probe_cc,
+        test_name=test_name,
+        custom_prefix=custom_prefix,
     )
     if workflow_name == "observations":
         assert (

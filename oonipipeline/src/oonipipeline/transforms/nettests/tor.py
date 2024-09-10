@@ -4,7 +4,6 @@ from oonidata.models.observations import WebObservation
 
 from ..measurement_transformer import MeasurementTransformer
 
-
 class TorTransformer(MeasurementTransformer):
     def make_observations(self, msmt: Tor) -> Tuple[List[WebObservation]]:
         web_obs_list = []

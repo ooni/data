@@ -9,20 +9,11 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from oonidata.datautils import PerfTimer
-    from oonipipeline.temporal.activities.common import (
-        OptimizeTablesParams,
-        optimize_tables,
-    )
     from oonipipeline.temporal.activities.observations import (
-        DeletePreviousRangeParams,
-        GetPreviousRangeParams,
         MakeObservationsParams,
-        delete_previous_range,
-        get_previous_range,
         make_observations,
     )
     from oonipipeline.temporal.workflows.common import (
-        TASK_QUEUE_NAME,
         get_workflow_start_time,
     )
 
@@ -56,25 +47,6 @@ class ObservationsWorkflow:
             bucket_date=params.bucket_date,
         )
 
-        await workflow.execute_activity(
-            optimize_tables,
-            OptimizeTablesParams(clickhouse=params.clickhouse, table_names=["obs_web"]),
-            start_to_close_timeout=timedelta(minutes=20),
-            retry_policy=RetryPolicy(maximum_attempts=10),
-        )
-
-        previous_ranges = await workflow.execute_activity(
-            get_previous_range,
-            GetPreviousRangeParams(
-                clickhouse=params.clickhouse,
-                bucket_date=params.bucket_date,
-                test_name=params.test_name,
-                probe_cc=params.probe_cc,
-                tables=["obs_web"],
-            ),
-            start_to_close_timeout=timedelta(minutes=2),
-            retry_policy=RetryPolicy(maximum_attempts=4),
-        )
         workflow.logger.info(
             f"finished get_previous_range for bucket_date={params.bucket_date}"
         )
@@ -93,16 +65,6 @@ class ObservationsWorkflow:
 
         workflow.logger.info(
             f"finished optimize_tables for bucket_date={params.bucket_date}"
-        )
-
-        await workflow.execute_activity(
-            delete_previous_range,
-            DeletePreviousRangeParams(
-                clickhouse=params.clickhouse,
-                previous_ranges=previous_ranges,
-            ),
-            start_to_close_timeout=timedelta(minutes=10),
-            retry_policy=RetryPolicy(maximum_attempts=10),
         )
 
         return {

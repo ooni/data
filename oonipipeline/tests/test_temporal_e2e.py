@@ -1,5 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from oonipipeline.temporal.schedules import (
     list_existing_schedules,
     schedule_all,
@@ -95,27 +96,30 @@ async def test_observation_workflow(datadir, db):
             assert wf_res["measurement_count"] == 613
             assert wf_res["size"] == 11381440
             assert wf_res["bucket_date"] == "2022-10-21"
+            bucket_datetime = datetime.strptime(
+                wf_res["bucket_date"], "%Y-%m-%d"
+            ).replace(tzinfo=timezone.utc)
 
             res = db.execute(
                 """
-                SELECT bucket_date,
+                SELECT bucket_datetime,
                 COUNT(DISTINCT(measurement_uid))
                 FROM obs_web WHERE probe_cc = 'BA'
-                GROUP BY bucket_date
+                GROUP BY bucket_datetime
                 """
             )
             bucket_dict = dict(res)
-            assert bucket_dict[wf_res["bucket_date"]] == wf_res["measurement_count"]
+            assert bucket_dict[bucket_datetime] == wf_res["measurement_count"]
             res = db.execute(
                 """
-                SELECT bucket_date,
+                SELECT bucket_datetime,
                 COUNT()
                 FROM obs_web WHERE probe_cc = 'BA'
-                GROUP BY bucket_date
+                GROUP BY bucket_datetime
                 """
             )
             bucket_dict = dict(res)
-            obs_count = bucket_dict[wf_res["bucket_date"]]
+            obs_count = bucket_dict[bucket_datetime]
             assert obs_count == 2548
 
             wf_res = await env.client.execute_workflow(
@@ -128,13 +132,13 @@ async def test_observation_workflow(datadir, db):
             wait_for_mutations(db, "obs_web")
             res = db.execute(
                 """
-                SELECT bucket_date,
+                SELECT bucket_datetime,
                 COUNT()
                 FROM obs_web WHERE probe_cc = 'BA'
-                GROUP BY bucket_date
+                GROUP BY bucket_datetime
                 """
             )
             bucket_dict = dict(res)
-            obs_count_2 = bucket_dict[wf_res["bucket_date"]]
+            obs_count_2 = bucket_dict[bucket_datetime]
 
             assert obs_count == obs_count_2

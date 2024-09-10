@@ -1,12 +1,12 @@
 import dataclasses
 from datetime import datetime, timezone
 from typing import List, Tuple
+from oonidata.models.base import ProcessingMeta
 from oonidata.models.dataformats import maybe_binary_data_to_bytes
 from oonidata.models.nettests import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
 
 from ..measurement_transformer import MeasurementTransformer
-
 
 def detect_target_index(sent_data):
     """
@@ -54,8 +54,8 @@ class HTTPInvalidRequestLineTransformer(MeasurementTransformer):
     ) -> Tuple[List[HTTPMiddleboxObservation]]:
         mb_obs = HTTPMiddleboxObservation(
             hirl_success=True,
-            observation_id=f"{msmt.measurement_uid}_0",
-            created_at=datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
+            observation_idx=0,
+            processing_meta=ProcessingMeta(created_at=datetime.now(timezone.utc)),
             measurement_meta=self.measurement_meta,
             probe_meta=self.probe_meta,
         )

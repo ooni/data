@@ -1,4 +1,19 @@
-from typing import List, Tuple, Union
+from datetime import datetime, timezone
+from typing import List, Optional, Tuple, Union, overload
+
+from oonidata.models.nettests import (
+    Signal,
+    SupportedDataformats,
+    Whatsapp,
+    Telegram,
+    StunReachability,
+    Tor,
+    FacebookMessenger,
+    HTTPHeaderFieldManipulation,
+    UrlGetter,
+    WebConnectivity,
+    HTTPInvalidRequestLine,
+)
 
 from oonidata.models.observations import (
     HTTPMiddleboxObservation,
@@ -46,22 +61,53 @@ TypeWebObservations = Tuple[List[WebObservation]]
 TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 
 
+@overload
+def measurement_to_observations(
+    msmt: Union[HTTPHeaderFieldManipulation, HTTPInvalidRequestLine],
+    netinfodb: NetinfoDB,
+    bucket_datetime: datetime = datetime(1984, 1, 1, tzinfo=timezone.utc),
+) -> TypeHTTPMiddleboxObservations: ...
+
+
+@overload
+def measurement_to_observations(
+    msmt: WebConnectivity,
+    netinfodb: NetinfoDB,
+    bucket_datetime: datetime = datetime(1984, 1, 1, tzinfo=timezone.utc),
+) -> TypeWebConnectivityObservations: ...
+
+
+@overload
+def measurement_to_observations(
+    msmt: Union[
+        Signal, Whatsapp, Telegram, StunReachability, Tor, FacebookMessenger, UrlGetter
+    ],
+    netinfodb: NetinfoDB,
+    bucket_datetime: datetime = datetime(1984, 1, 1, tzinfo=timezone.utc),
+) -> TypeWebObservations: ...
+
+
+@overload
+def measurement_to_observations(
+    msmt: SupportedDataformats,
+    netinfodb: NetinfoDB,
+    bucket_datetime: datetime = datetime(1984, 1, 1, tzinfo=timezone.utc),
+) -> TypeWebObservations: ...
+
+
 def measurement_to_observations(
     msmt,
     netinfodb: NetinfoDB,
-    # the bucket_date should be set for all the workflows that deal with ingesting data,
-    # but it's not strictly needed. We use the special value of 1984-01-01
-    # to signal that the bucket is unknown.
-    bucket_date: str = "1984-01-01",
+    bucket_datetime: datetime = datetime(1984, 1, 1, tzinfo=timezone.utc),
 ) -> Union[
     TypeWebObservations,
     TypeWebConnectivityObservations,
     TypeHTTPMiddleboxObservations,
-    Tuple[()],
+    List,
 ]:
     if msmt.test_name in NETTEST_TRANSFORMERS:
         transformer = NETTEST_TRANSFORMERS[msmt.test_name](
-            measurement=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+            measurement=msmt, netinfodb=netinfodb, bucket_datetime=bucket_datetime
         )
         return transformer.make_observations(msmt)
-    return ()
+    return []

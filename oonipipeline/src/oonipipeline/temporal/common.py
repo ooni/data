@@ -23,7 +23,7 @@ TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 class BatchParameters:
     test_name: List[str]
     probe_cc: List[str]
-    bucket_date: Optional[str]
+    bucket_datetime: Optional[str]
     timestamp: Optional[str]
 
 
@@ -43,9 +43,9 @@ class PrevRange:
         where = "WHERE "
         q_args: Dict[str, Any] = {}
 
-        if self.batch_parameters.bucket_date:
-            where = "WHERE bucket_date = %(bucket_date)s"
-            q_args["bucket_date"] = self.batch_parameters.bucket_date
+        if self.batch_parameters.bucket_datetime:
+            where = "WHERE bucket_datetime = %(bucket_datetime)s"
+            q_args["bucket_datetime"] = self.batch_parameters.bucket_datetime
 
         elif self.batch_parameters.timestamp:
             start_timestamp = datetime.strptime(
@@ -105,7 +105,7 @@ def get_prev_range(
     table_name: str,
     test_name: List[str],
     probe_cc: List[str],
-    bucket_date: Optional[str] = None,
+    bucket_datetime: Optional[str] = None,
     timestamp: Optional[str] = None,
     timestamp_column: str = "timestamp",
     probe_cc_column: str = "probe_cc",
@@ -135,15 +135,15 @@ def get_prev_range(
     # A batch specified by test_name, probe_cc and one of either bucket_date or
     # timestamp depending on it being observations or experiment results.
     assert (
-        timestamp or bucket_date
-    ), "either timestamp or bucket_date should be provided"
+        timestamp or bucket_datetime
+    ), "either timestamp or bucket_datetime should be provided"
     prev_range = PrevRange(
         table_name=table_name,
         batch_parameters=BatchParameters(
             test_name=test_name,
             probe_cc=probe_cc,
             timestamp=timestamp,
-            bucket_date=bucket_date,
+            bucket_datetime=bucket_datetime,
         ),
         timestamp_column=timestamp_column,
         probe_cc_column=probe_cc_column,
@@ -171,28 +171,3 @@ def get_prev_range(
         )
 
     return prev_range
-
-
-def make_db_rows(
-    dc_list: List,
-    column_names: List[str],
-    bucket_date: Optional[str] = None,
-    custom_remap: Optional[Dict[str, Callable]] = None,
-) -> Tuple[str, List[str]]:
-    # TODO(art): this function is quite sketchy
-    assert len(dc_list) > 0
-
-    def maybe_remap(k, value):
-        if custom_remap and k in custom_remap:
-            return custom_remap[k](value)
-        return value
-
-    table_name = dc_list[0].__table_name__
-    rows = []
-    for d in dc_list:
-        if bucket_date:
-            d.bucket_date = bucket_date
-        assert table_name == d.__table_name__, "inconsistent group of observations"
-        rows.append(tuple(maybe_remap(k, getattr(d, k)) for k in column_names))
-
-    return table_name, rows

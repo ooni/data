@@ -75,6 +75,7 @@ end_at_option = click.option(
     """,
 )
 start_workers_option = click.option("--start-workers/--no-start-workers", default=True)
+custom_prefix_option = click.option("--custom-prefix", type=str, default="")
 
 def maybe_create_delete_tables(
     clickhouse_url: str,
@@ -117,6 +118,7 @@ def cli(log_level: int):
 @end_at_option
 @probe_cc_option
 @test_name_option
+@custom_prefix_option
 @click.option("--workflow-name", type=str, required=True)
 @click.option(
     "--create-tables",
@@ -132,6 +134,7 @@ def backfill(
     probe_cc: List[str],
     test_name: List[str],
     workflow_name: str,
+    custom_prefix: str,
     start_at: datetime,
     end_at: datetime,
     create_tables: bool,
@@ -164,15 +167,18 @@ def backfill(
         test_name=test_name,
         start_at=start_at,
         end_at=end_at,
+        custom_prefix=custom_prefix,
     )
 
 
 @cli.command()
 @probe_cc_option
 @test_name_option
+@custom_prefix_option
 def schedule(
     probe_cc: List[str],
     test_name: List[str],
+    custom_prefix: str,
 ):
     """
     Create schedules for the specified parameters
@@ -190,15 +196,18 @@ def schedule(
         clickhouse_url=config.clickhouse_url,
         data_dir=config.data_dir,
         temporal_config=temporal_config,
+        custom_prefix=custom_prefix,
     )
 
 
 @cli.command()
 @probe_cc_option
 @test_name_option
+@custom_prefix_option
 def clear_schedules(
     probe_cc: List[str],
     test_name: List[str],
+    custom_prefix: str,
 ):
     """
     Create schedules for the specified parameters
@@ -214,6 +223,7 @@ def clear_schedules(
         probe_cc=probe_cc,
         test_name=test_name,
         temporal_config=temporal_config,
+        custom_prefix=custom_prefix,
     )
 
 
@@ -232,7 +242,8 @@ def status():
 
 
 @cli.command()
-def startworkers():
+@custom_prefix_option
+def startworkers(custom_prefix: str):
     click.echo(f"starting workers")
     click.echo(f"downloading NetinfoDB to {config.data_dir}")
     NetinfoDB(datadir=Path(config.data_dir), download=True)
@@ -247,7 +258,7 @@ def startworkers():
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
-    start_workers(temporal_config=temporal_config)
+    start_workers(temporal_config=temporal_config, custom_prefix=custom_prefix)
 
 
 @cli.command()
@@ -261,21 +272,30 @@ def startworkers():
     is_flag=True,
     help="should we drop tables before creating them",
 )
-def checkdb(
-    create_tables: bool,
-    drop_tables: bool,
-):
+@click.option(
+    "--list-diff",
+    is_flag=True,
+    help="should we list the table diff?",
+)
+def checkdb(create_tables: bool, drop_tables: bool, list_diff: bool):
     """
     Check if the database tables require migrations. If the create-tables flag
     is not specified, it will not perform any operations.
     """
-    maybe_create_delete_tables(
-        clickhouse_url=config.clickhouse_url,
-        create_tables=create_tables,
-        drop_tables=drop_tables,
-        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
-    )
+    click.echo("Listing create table queries")
+    for query, table_name in make_create_queries(with_buffer_table=False):
+        print(f"-- ## CREATE FOR {table_name}")
+        print(query)
 
-    with ClickhouseConnection(config.clickhouse_url) as db:
-        list_all_table_diffs(db)
+    if create_tables or drop_tables:
+        maybe_create_delete_tables(
+            clickhouse_url=config.clickhouse_url,
+            create_tables=create_tables,
+            drop_tables=drop_tables,
+            clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
+            clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
+        )
+
+    if list_diff:
+        with ClickhouseConnection(config.clickhouse_url) as db:
+            list_all_table_diffs(db)

@@ -6,7 +6,6 @@ from oonidata.models.observations import WebObservation
 
 from ..measurement_transformer import MeasurementTransformer
 
-
 SIGNAL_ROOT_CA_OLD = """-----BEGIN CERTIFICATE-----
 MIID7zCCAtegAwIBAgIJAIm6LatK5PNiMA0GCSqGSIb3DQEBBQUAMIGNMQswCQYD
 VQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5j

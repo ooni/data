@@ -4,7 +4,6 @@ from oonidata.models.observations import WebObservation
 
 from ..measurement_transformer import MeasurementTransformer
 
-
 class WhatsappTransformer(MeasurementTransformer):
     def make_observations(self, msmt: Whatsapp) -> Tuple[List[WebObservation]]:
         dns_observations = self.make_dns_observations(msmt.test_keys.queries)

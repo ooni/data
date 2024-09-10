@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta, timezone
 import gzip
 from pathlib import Path
 import sqlite3
+import time
 from typing import List, Tuple
 from unittest.mock import MagicMock
 
@@ -65,15 +66,15 @@ def test_get_prev_range(db):
     db.execute(
         """CREATE TABLE test_range (
         created_at DateTime64(3, 'UTC'),
-        bucket_date String,
+        bucket_datetime DateTime('UTC'),
         test_name String,
         probe_cc String
     )
     ENGINE = MergeTree
-    ORDER BY (bucket_date, created_at)
+    ORDER BY (bucket_datetime, created_at)
     """
     )
-    bucket_date = "2000-01-01"
+    bucket_date = datetime(2000, 1, 1)
     test_name = "web_connectivity"
     probe_cc = "IT"
     min_time = datetime(2000, 1, 1, 23, 42, 00)
@@ -81,14 +82,14 @@ def test_get_prev_range(db):
     for i in range(200):
         rows.append((min_time + timedelta(seconds=i), bucket_date, test_name, probe_cc))
     db.execute(
-        "INSERT INTO test_range (created_at, bucket_date, test_name, probe_cc) VALUES",
+        "INSERT INTO test_range (created_at, bucket_datetime, test_name, probe_cc) VALUES",
         rows,
     )
     prev_range = get_prev_range(
         db,
         "test_range",
         test_name=[test_name],
-        bucket_date=bucket_date,
+        bucket_datetime=bucket_date.strftime("%Y-%m-%d"),
         probe_cc=[probe_cc],
     )
     assert prev_range.min_created_at and prev_range.max_created_at
@@ -101,28 +102,28 @@ def test_get_prev_range(db):
 
     db.execute("TRUNCATE TABLE test_range")
 
-    bucket_date = "2000-03-01"
+    bucket_date = datetime(2000, 3, 1)
     test_name = "web_connectivity"
     probe_cc = "IT"
     min_time = datetime(2000, 1, 1, 23, 42, 00)
-    rows: List[Tuple[datetime, str, str, str]] = []
+    rows: List[Tuple[datetime, datetime, str, str]] = []
     for i in range(10):
         rows.append(
-            (min_time + timedelta(seconds=i), "2000-02-01", test_name, probe_cc)
+            (min_time + timedelta(seconds=i), datetime(2000, 2, 1), test_name, probe_cc)
         )
     min_time = rows[-1][0]
     for i in range(10):
         rows.append((min_time + timedelta(seconds=i), bucket_date, test_name, probe_cc))
 
     db.execute(
-        "INSERT INTO test_range (created_at, bucket_date, test_name, probe_cc) VALUES",
+        "INSERT INTO test_range (created_at, bucket_datetime, test_name, probe_cc) VALUES",
         rows,
     )
     prev_range = get_prev_range(
         db,
         "test_range",
         test_name=[test_name],
-        bucket_date=bucket_date,
+        bucket_datetime=bucket_date.strftime("%Y-%m-%d"),
         probe_cc=[probe_cc],
     )
     assert prev_range.min_created_at and prev_range.max_created_at
@@ -215,26 +216,40 @@ def test_write_observations(measurements, netinfodb, db):
             "2023-09-07",
         ),
     ]
+    from pprint import pprint
+
     for msmt_uid, bucket_date in msmt_uids:
         msmt = load_measurement(msmt_path=measurements[msmt_uid])
         for obs_list in measurement_to_observations(
-            msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+            msmt=msmt,
+            netinfodb=netinfodb,
+            bucket_datetime=datetime.strptime(bucket_date, "%Y-%m-%d"),
         ):
-            db.write_table_model_rows(obs_list)
+            db.write_table_model_rows(obs_list, use_buffer_table=False)
     db.close()
-    # Flush buffer table
-    db.execute("OPTIMIZE TABLE buffer_obs_web")
     cnt_by_cc = get_obs_count_by_cc(
         ObsCountParams(
             clickhouse_url=db.clickhouse_url,
             start_day="2020-01-01",
             end_day="2023-12-01",
+            table_name="obs_web",
         )
     )
     assert cnt_by_cc["CH"] == 2
-    assert cnt_by_cc["GR"] == 4
+    assert cnt_by_cc["GR"] == 20
     assert cnt_by_cc["US"] == 3
-    assert cnt_by_cc["RU"] == 3
+    assert cnt_by_cc["RU"] == 47
+
+    cnt_by_cc = get_obs_count_by_cc(
+        ObsCountParams(
+            clickhouse_url=db.clickhouse_url,
+            start_day="2020-01-01",
+            end_day="2023-12-01",
+            table_name="obs_http_middlebox",
+        )
+    )
+    assert cnt_by_cc["NP"] == 1
+    assert cnt_by_cc["BR"] == 2
 
 
 def test_hirl_observations(measurements, netinfodb):
@@ -245,7 +260,9 @@ def test_hirl_observations(measurements, netinfodb):
     )
     assert isinstance(msmt, HTTPInvalidRequestLine)
     middlebox_obs_tuple = measurement_to_observations(
-        msmt, netinfodb=netinfodb, bucket_date="2023-09-07"
+        msmt,
+        netinfodb=netinfodb,
+        bucket_datetime=datetime(2023, 9, 7),
     )
     assert len(middlebox_obs_tuple) == 1
     middlebox_obs = middlebox_obs_tuple[0]
@@ -262,7 +279,9 @@ def test_insert_query_for_observation(measurements, netinfodb):
     )
     assert isinstance(http_blocked, WebConnectivity)
     mt = MeasurementTransformer(
-        measurement=http_blocked, netinfodb=netinfodb, bucket_date="2022-06-08"
+        measurement=http_blocked,
+        netinfodb=netinfodb,
+        bucket_datetime=datetime(2022, 6, 8),
     )
     all_web_obs = [
         obs
@@ -281,7 +300,9 @@ def test_web_connectivity_processor(netinfodb, measurements):
     )
     assert isinstance(msmt, WebConnectivity)
 
-    p = measurement_to_observations(msmt, netinfodb=netinfodb, bucket_date="2022-06-27")
+    p = measurement_to_observations(
+        msmt, netinfodb=netinfodb, bucket_datetime=datetime(2023, 6, 27)
+    )
     assert len(p) == 2
     web_obs_list, web_ctrl_list = p
     assert len(web_obs_list) == 3
@@ -336,7 +357,7 @@ async def get_previous_range_mocked(params: GetPreviousRangeParams) -> List[Prev
             batch_parameters=BatchParameters(
                 test_name=[],
                 probe_cc=[],
-                bucket_date="2024-01-01",
+                bucket_datetime="2024-01-01",
                 timestamp=datetime(2024, 1, 1).strftime(TS_FORMAT),
             ),
             timestamp_column="timestamp",

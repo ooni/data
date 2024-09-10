@@ -13,10 +13,9 @@ class BrowserWebTransformer(MeasurementTransformer):
             measurement_meta=self.measurement_meta,
             probe_meta=self.probe_meta,
             processing_meta=ProcessingMeta(
-                processing_start_time=datetime.now(timezone.utc),
-                processing_end_time=datetime.now(timezone.utc),
+                created_at=datetime.now(timezone.utc),
             ),
-            http_failure=msmt.test_keys.result,
-            http_runtime=msmt.test_keys.load_time_ms,
+            http_failure=msmt.test_keys.result or "",
+            http_runtime=msmt.test_keys.load_time_ms or 0,
         )
         return ([bw_obs],)

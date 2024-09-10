@@ -1,12 +1,13 @@
 import dataclasses
 from datetime import datetime, timezone
+from oonidata.models.base import ProcessingMeta
 import orjson
 from typing import List, Tuple
 from oonidata.models.nettests import HTTPHeaderFieldManipulation
 from oonidata.models.observations import HTTPMiddleboxObservation
 
-from ..measurement_transformer import MeasurementTransformer
 
+from ..measurement_transformer import MeasurementTransformer
 
 class HTTPHeaderFieldManipulationTransformer(MeasurementTransformer):
     def make_observations(
@@ -14,8 +15,8 @@ class HTTPHeaderFieldManipulationTransformer(MeasurementTransformer):
     ) -> Tuple[List[HTTPMiddleboxObservation]]:
         mb_obs = HTTPMiddleboxObservation(
             hfm_success=True,
-            observation_id=f"{msmt.measurement_uid}_0",
-            created_at=datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
+            observation_idx=0,
+            processing_meta=ProcessingMeta(created_at=datetime.now(timezone.utc)),
             measurement_meta=self.measurement_meta,
             probe_meta=self.probe_meta,
         )
@@ -27,7 +28,7 @@ class HTTPHeaderFieldManipulationTransformer(MeasurementTransformer):
 
         http_transaction = msmt.test_keys.requests[0]
         if not http_transaction.response:
-            mb_obs.hfm_failure = msmt.test_keys.requests[0].failure
+            mb_obs.hfm_failure = msmt.test_keys.requests[0].failure or ""
             if not mb_obs.hfm_failure:
                 mb_obs.hfm_failure = "missing_response"
             mb_obs.hfm_success = False

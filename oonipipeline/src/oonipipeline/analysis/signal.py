@@ -36,8 +36,7 @@ def make_signal_experiment_result(
             list(
                 filter(
                     lambda o: (
-                        o.hostname == "uptime.signal.org"
-                        and o.dns_answer == "127.0.0.2"
+                        o.fqdn == "uptime.signal.org" and o.dns_answer == "127.0.0.2"
                     ),
                     web_observations,
                 )
@@ -50,7 +49,7 @@ def make_signal_experiment_result(
         dns_blocked = False
         tcp_blocked = False
 
-        if web_o.hostname == "uptime.signal.org":
+        if web_o.fqdn == "uptime.signal.org":
             # we don't care about the signal uptime query results
             continue
 
@@ -60,13 +59,13 @@ def make_signal_experiment_result(
             outcome_meta["why"] = "dns failure"
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
+                    subject=f"{web_o.fqdn}",
                     category="dns",
                     label="",
                     detail=f"{web_o.dns_failure}",
-                    meta={},
+                    meta=outcome_meta,
                     blocked_score=0.8,
                     down_score=0.2,
                     ok_score=0.0,
@@ -98,7 +97,7 @@ def make_signal_experiment_result(
 
             # Having a TLS inconsistency is a much stronger indication than not
             # knowing.
-            if web_o.tls_is_certificate_valid == False:
+            if web_o.tls_server_name and web_o.tls_is_certificate_valid == False:
                 # In these case we ignore TCP failures, since it's very likely
                 # to be DNS based.
                 dns_blocked = True
@@ -112,13 +111,13 @@ def make_signal_experiment_result(
 
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
+                    subject=f"{web_o.fqdn}",
                     category="dns",
                     label=outcome_label,
                     detail=f"{web_o.dns_failure}",
-                    meta={},
+                    meta=outcome_meta,
                     blocked_score=blocked_score,
                     down_score=down_score,
                     ok_score=1 - (blocked_score + down_score),
@@ -127,9 +126,9 @@ def make_signal_experiment_result(
         else:
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
+                    subject=f"{web_o.fqdn}",
                     category="dns",
                     label=outcome_label,
                     detail=f"{web_o.dns_failure}",
@@ -152,7 +151,7 @@ def make_signal_experiment_result(
 
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.ip}:{web_o.port}",
                     category="tcp",
@@ -168,7 +167,7 @@ def make_signal_experiment_result(
         elif not dns_blocked and web_o.tcp_success:
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
                     subject=f"{web_o.ip}:{web_o.port}",
                     category="tcp",
@@ -197,13 +196,13 @@ def make_signal_experiment_result(
 
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
+                    subject=f"{web_o.fqdn}",
                     category="tls",
                     label="",
                     detail=f"{web_o.tls_failure}",
-                    meta={},
+                    meta=outcome_meta,
                     blocked_score=blocked_score,
                     down_score=down_score,
                     ok_score=1 - (blocked_score + down_score),
@@ -213,7 +212,7 @@ def make_signal_experiment_result(
         # TODO: to do this properly we need to rule out cases in which the
         # certificate is invalid due to bad DNS vs it being invalid due to TLS
         # MITM. Doing so requires a ground truth which we should eventually add.
-        elif web_o.tls_is_certificate_valid == False:
+        elif web_o.tls_server_name and web_o.tls_is_certificate_valid == False:
             # TODO: maybe refactor this with the above switch case
             down_score = 0.1
             blocked_score = 0.9
@@ -225,9 +224,9 @@ def make_signal_experiment_result(
 
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
+                    subject=f"{web_o.fqdn}",
                     category="tls",
                     label="",
                     detail=f"ssl_invalid_certificate",
@@ -240,9 +239,9 @@ def make_signal_experiment_result(
         elif not dns_blocked and not tcp_blocked and web_o.tls_cipher_suite is not None:
             outcomes.append(
                 Outcome(
-                    observation_id=web_o.observation_id,
+                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
                     scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
+                    subject=f"{web_o.fqdn}",
                     category="tls",
                     label="",
                     detail="ok",

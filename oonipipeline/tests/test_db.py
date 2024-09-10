@@ -1,6 +1,6 @@
 import pytest
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Annotated, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock, call
 
 from clickhouse_driver import Client
@@ -25,10 +25,11 @@ def test_create_tables():
         col_int Int32,
         col_str String,
         col_dict String,
+        col_list_str Array(String),
+        col_list_list_str Array(Array(String)),
         col_opt_list_str Nullable(Array(String)),
-        col_opt_tup_str_str Nullable(Tuple(String, String)),
-        col_opt_list_tup_str_byt Nullable(Array(Array(String))),
-        col_dict_str_str Map(String, String)
+        col_dict_str_str String,
+        col_annotated_uint8 UInt8
     )
     ENGINE = MergeTree()
     PRIMARY KEY (col_int)
@@ -37,14 +38,12 @@ def test_create_tables():
     assert col_map["col_int"] == typing_to_clickhouse(int)
     assert col_map["col_str"] == typing_to_clickhouse(str)
     assert col_map["col_dict"] == typing_to_clickhouse(dict)
+    assert col_map["col_list_str"] == typing_to_clickhouse(List[str])
+    assert col_map["col_list_list_str"] == typing_to_clickhouse(List[List[str]])
     assert col_map["col_opt_list_str"] == typing_to_clickhouse(Optional[List[str]])
-    assert col_map["col_opt_tup_str_str"] == typing_to_clickhouse(
-        Optional[Tuple[str, str]]
+    assert col_map["col_annotated_uint8"] == typing_to_clickhouse(
+        Annotated[int, "UInt8"]
     )
-    assert col_map["col_opt_list_tup_str_byt"] == typing_to_clickhouse(
-        Optional[List[Tuple[str, bytes]]]
-    )
-    assert col_map["col_dict_str_str"] == typing_to_clickhouse(Dict[str, str])
 
     @dataclass
     class SampleTable:

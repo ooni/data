@@ -5,7 +5,6 @@ from oonidata.models.observations import WebObservation
 
 from ..measurement_transformer import MeasurementTransformer
 
-
 class TelegramTransformer(MeasurementTransformer):
     def make_observations(self, msmt: Telegram) -> Tuple[List[WebObservation]]:
         dns_observations = self.make_dns_observations(msmt.test_keys.queries)
