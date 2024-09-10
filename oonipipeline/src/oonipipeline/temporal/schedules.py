@@ -143,45 +143,45 @@ async def schedule_all(
     )
     schedule_id_map.observations = sched_handle.id
 
-    analysis_params = AnalysisWorkflowParams(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse=clickhouse_url,
-        data_dir=data_dir,
-        fast_fail=False,
-    )
-    sched_handle = await client.create_schedule(
-        id=f"{custom_prefix}{ANALYSIS_SCHED_PREFIX}-{filter_id}-{ts}",
-        schedule=Schedule(
-            action=ScheduleActionStartWorkflow(
-                AnalysisWorkflow.run,
-                analysis_params,
-                id=f"{custom_prefix}{ANALYSIS_WF_PREFIX}-{filter_id}-{ts}",
-                task_queue=f"{custom_prefix}{TASK_QUEUE_NAME}",
-                execution_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
-                task_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
-                run_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
-            ),
-            spec=ScheduleSpec(
-                intervals=[
-                    ScheduleIntervalSpec(
-                        # We offset the Analysis workflow by 4 hours assuming
-                        # that the observation generation will take less than 4
-                        # hours to complete.
-                        # TODO(art): it's probably better to refactor this into some
-                        # kind of DAG
-                        every=timedelta(days=1),
-                        offset=timedelta(hours=6),
-                    )
-                ],
-            ),
-            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.ALLOW_ALL),
-            state=ScheduleState(
-                note="Run the analysis workflow every day with an offset of 6 hours to ensure the observation workflow has completed"
-            ),
-        ),
-    )
-    schedule_id_map.analysis = sched_handle.id
+    # analysis_params = AnalysisWorkflowParams(
+    #     probe_cc=probe_cc,
+    #     test_name=test_name,
+    #     clickhouse=clickhouse_url,
+    #     data_dir=data_dir,
+    #     fast_fail=False,
+    # )
+    # sched_handle = await client.create_schedule(
+    #     id=f"{custom_prefix}{ANALYSIS_SCHED_PREFIX}-{filter_id}-{ts}",
+    #     schedule=Schedule(
+    #         action=ScheduleActionStartWorkflow(
+    #             AnalysisWorkflow.run,
+    #             analysis_params,
+    #             id=f"{custom_prefix}{ANALYSIS_WF_PREFIX}-{filter_id}-{ts}",
+    #             task_queue=f"{custom_prefix}{TASK_QUEUE_NAME}",
+    #             execution_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+    #             task_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+    #             run_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+    #         ),
+    #         spec=ScheduleSpec(
+    #             intervals=[
+    #                 ScheduleIntervalSpec(
+    #                     # We offset the Analysis workflow by 4 hours assuming
+    #                     # that the observation generation will take less than 4
+    #                     # hours to complete.
+    #                     # TODO(art): it's probably better to refactor this into some
+    #                     # kind of DAG
+    #                     every=timedelta(days=1),
+    #                     offset=timedelta(hours=6),
+    #                 )
+    #             ],
+    #         ),
+    #         policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.ALLOW_ALL),
+    #         state=ScheduleState(
+    #             note="Run the analysis workflow every day with an offset of 6 hours to ensure the observation workflow has completed"
+    #         ),
+    #     ),
+    # )
+    # schedule_id_map.analysis = sched_handle.id
 
     return schedule_id_map
 
