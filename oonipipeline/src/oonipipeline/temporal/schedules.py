@@ -117,7 +117,7 @@ async def schedule_all(
         fast_fail=False,
     )
     sched_handle = await client.create_schedule(
-        id=f"{OBSERVATIONS_SCHED_PREFIX}-{filter_id}-{ts}",
+        id=f"{custom_prefix}{OBSERVATIONS_SCHED_PREFIX}-{filter_id}-{ts}",
         schedule=Schedule(
             action=ScheduleActionStartWorkflow(
                 ObservationsWorkflow.run,
@@ -151,7 +151,7 @@ async def schedule_all(
         fast_fail=False,
     )
     sched_handle = await client.create_schedule(
-        id=f"{ANALYSIS_SCHED_PREFIX}-{filter_id}-{ts}",
+        id=f"{custom_prefix}{ANALYSIS_SCHED_PREFIX}-{filter_id}-{ts}",
         schedule=Schedule(
             action=ScheduleActionStartWorkflow(
                 AnalysisWorkflow.run,
