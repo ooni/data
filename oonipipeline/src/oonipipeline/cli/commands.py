@@ -75,6 +75,7 @@ end_at_option = click.option(
     """,
 )
 start_workers_option = click.option("--start-workers/--no-start-workers", default=True)
+custom_prefix_option = click.option("--custom-prefix", type=str, default="")
 
 def maybe_create_delete_tables(
     clickhouse_url: str,
@@ -117,6 +118,7 @@ def cli(log_level: int):
 @end_at_option
 @probe_cc_option
 @test_name_option
+@custom_prefix_option
 @click.option("--workflow-name", type=str, required=True)
 @click.option(
     "--create-tables",
@@ -132,6 +134,7 @@ def backfill(
     probe_cc: List[str],
     test_name: List[str],
     workflow_name: str,
+    custom_prefix: str,
     start_at: datetime,
     end_at: datetime,
     create_tables: bool,
@@ -164,15 +167,18 @@ def backfill(
         test_name=test_name,
         start_at=start_at,
         end_at=end_at,
+        custom_prefix=custom_prefix,
     )
 
 
 @cli.command()
 @probe_cc_option
 @test_name_option
+@custom_prefix_option
 def schedule(
     probe_cc: List[str],
     test_name: List[str],
+    custom_prefix: str,
 ):
     """
     Create schedules for the specified parameters
@@ -190,15 +196,18 @@ def schedule(
         clickhouse_url=config.clickhouse_url,
         data_dir=config.data_dir,
         temporal_config=temporal_config,
+        custom_prefix=custom_prefix,
     )
 
 
 @cli.command()
 @probe_cc_option
 @test_name_option
+@custom_prefix_option
 def clear_schedules(
     probe_cc: List[str],
     test_name: List[str],
+    custom_prefix: str,
 ):
     """
     Create schedules for the specified parameters
@@ -214,6 +223,7 @@ def clear_schedules(
         probe_cc=probe_cc,
         test_name=test_name,
         temporal_config=temporal_config,
+        custom_prefix=custom_prefix,
     )
 
 

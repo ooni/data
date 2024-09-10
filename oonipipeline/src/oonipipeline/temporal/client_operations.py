@@ -119,6 +119,7 @@ async def execute_backfill(
     end_at: datetime,
     workflow_name: str,
     temporal_config: TemporalConfig,
+    custom_prefix: str,
 ):
     log.info(f"creating all schedules")
 
@@ -131,6 +132,7 @@ async def execute_backfill(
         start_at=start_at,
         end_at=end_at,
         workflow_name=workflow_name,
+        custom_prefix=custom_prefix,
     )
 
 
@@ -140,6 +142,7 @@ async def create_schedules(
     clickhouse_url: str,
     data_dir: str,
     temporal_config: TemporalConfig,
+    custom_prefix: str,
 ) -> ScheduleIdMap:
     log.info(f"creating all schedules")
 
@@ -151,6 +154,7 @@ async def create_schedules(
         test_name=test_name,
         clickhouse_url=clickhouse_url,
         data_dir=data_dir,
+        custom_prefix=custom_prefix,
     )
 
 
@@ -158,6 +162,7 @@ async def execute_clear_schedules(
     probe_cc: List[str],
     test_name: List[str],
     temporal_config: TemporalConfig,
+    custom_prefix: str,
 ) -> List[str]:
     log.info(f"rescheduling everything")
 
@@ -167,6 +172,7 @@ async def execute_clear_schedules(
         client=client,
         probe_cc=probe_cc,
         test_name=test_name,
+        custom_prefix=custom_prefix,
     )
 
 
@@ -214,6 +220,7 @@ def run_backfill(
     workflow_name: str,
     start_at: datetime,
     end_at: datetime,
+    custom_prefix: str = "",
 ):
     try:
         asyncio.run(
@@ -224,6 +231,7 @@ def run_backfill(
                 test_name=test_name,
                 start_at=start_at,
                 end_at=end_at,
+                custom_prefix=custom_prefix,
             )
         )
     except KeyboardInterrupt:
@@ -236,6 +244,7 @@ def run_create_schedules(
     clickhouse_url: str,
     data_dir: str,
     temporal_config: TemporalConfig,
+    custom_prefix: str = "",
 ):
     try:
         asyncio.run(
@@ -245,6 +254,7 @@ def run_create_schedules(
                 clickhouse_url=clickhouse_url,
                 data_dir=data_dir,
                 temporal_config=temporal_config,
+                custom_prefix=custom_prefix,
             )
         )
     except KeyboardInterrupt:
@@ -255,6 +265,7 @@ def run_clear_schedules(
     probe_cc: List[str],
     test_name: List[str],
     temporal_config: TemporalConfig,
+    custom_prefix: str = "",
 ):
     try:
         asyncio.run(
@@ -262,6 +273,7 @@ def run_clear_schedules(
                 probe_cc=probe_cc,
                 test_name=test_name,
                 temporal_config=temporal_config,
+                custom_prefix=custom_prefix,
             )
         )
     except KeyboardInterrupt:
