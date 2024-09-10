@@ -95,7 +95,7 @@ def test_web_ground_truth_from_clickhouse(db, datadir, netinfodb, tmp_path):
             port=443,
             http_request_url="https://explorer.ooni.org/",
             created_at=datetime(2023, 11, 17, 10, 35, 34),
-            observation_id="TEST",
+            observation_idx=1,
             target_id=None,
             transaction_id=None,
             ip_asn=54113,
