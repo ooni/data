@@ -51,12 +51,15 @@ ACTIVTIES = [
 
 
 async def worker_main(
-    temporal_config: TemporalConfig, max_workers: int, executor: Executor
+    temporal_config: TemporalConfig,
+    max_workers: int,
+    executor: Executor,
+    custom_prefix: str = "",
 ):
     client = await temporal_connect(temporal_config=temporal_config)
     async with Worker(
         client,
-        task_queue=TASK_QUEUE_NAME,
+        task_queue=f"{custom_prefix}{TASK_QUEUE_NAME}",
         workflows=WORKFLOWS,
         activities=ACTIVTIES,
         activity_executor=executor,
@@ -68,7 +71,7 @@ async def worker_main(
         log.info("Shutting down")
 
 
-def start_workers(temporal_config: TemporalConfig):
+def start_workers(temporal_config: TemporalConfig, custom_prefix: str):
     max_workers = max(os.cpu_count() or 4, 4)
     log.info(f"starting workers with max_workers={max_workers}")
     executor = ThreadPoolExecutor(max_workers=max_workers + 2)
@@ -84,6 +87,7 @@ def start_workers(temporal_config: TemporalConfig):
                 temporal_config=temporal_config,
                 max_workers=max_workers,
                 executor=executor,
+                custom_prefix=custom_prefix,
             )
         )
     except KeyboardInterrupt:

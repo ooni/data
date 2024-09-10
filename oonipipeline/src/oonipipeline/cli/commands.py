@@ -242,7 +242,8 @@ def status():
 
 
 @cli.command()
-def startworkers():
+@custom_prefix_option
+def startworkers(custom_prefix: str):
     click.echo(f"starting workers")
     click.echo(f"downloading NetinfoDB to {config.data_dir}")
     NetinfoDB(datadir=Path(config.data_dir), download=True)
@@ -257,7 +258,7 @@ def startworkers():
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
-    start_workers(temporal_config=temporal_config)
+    start_workers(temporal_config=temporal_config, custom_prefix=custom_prefix)
 
 
 @cli.command()
