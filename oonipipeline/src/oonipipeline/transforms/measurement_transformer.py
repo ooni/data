@@ -428,7 +428,7 @@ def measurement_to_tls_observation(
         try:
             tlso.certificate_chain_fingerprints = list(
                 map(lambda d: hashlib.sha256(d).hexdigest(), tlso.peer_certificates)
-            )
+            )[1:]
         except Exception:
             log.warning("failed to decode peer_certificates")
 
