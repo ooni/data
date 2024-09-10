@@ -269,6 +269,10 @@ def checkdb(
     Check if the database tables require migrations. If the create-tables flag
     is not specified, it will not perform any operations.
     """
+    for query, table_name in make_create_queries():
+        click.echo(f"## Create for {table_name}")
+        click.echo(query)
+
     maybe_create_delete_tables(
         clickhouse_url=config.clickhouse_url,
         create_tables=create_tables,

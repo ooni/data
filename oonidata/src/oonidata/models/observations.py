@@ -241,7 +241,6 @@ class WebObservation:
     # These fields are added by the processor
     observation_idx: int = 0
     created_at: Optional[datetime] = None
-    processing_time: Optional[float] = None
 
     target_id: Optional[str] = None
     hostname: Optional[str] = None
