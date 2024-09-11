@@ -277,25 +277,24 @@ def startworkers():
 
 @cli.command()
 @click.option(
-    "--create-tables",
-    is_flag=True,
+    "--create-tables/--no-create-tables",
+    default=False,
     help="should we attempt to create the required clickhouse tables",
 )
 @click.option(
-    "--drop-tables",
-    is_flag=True,
+    "--drop-tables/--no-drop-tables",
+    default=False,
     help="should we drop tables before creating them",
 )
 @click.option(
-    "--print-create",
-    is_flag=True,
+    "--print-create/--no-print-create",
     default=True,
-    help="should we drop tables before creating them",
+    help="should we print the create table queries",
 )
 @click.option(
-    "--print-diff",
-    is_flag=True,
-    help="should we drop tables before creating them",
+    "--print-diff/--no-print-diff",
+    default=False,
+    help="should we print the table diff",
 )
 def checkdb(
     create_tables: bool, drop_tables: bool, print_create: bool, print_diff: bool
