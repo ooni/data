@@ -177,13 +177,16 @@ def backfill(
 
     run_async(main())
 
+
 @cli.command()
 @probe_cc_option
 @test_name_option
-def schedule(
-    probe_cc: List[str],
-    test_name: List[str],
-):
+@click.option(
+    "--analysis/--no-analysis",
+    default=True,
+    help="should we drop tables before creating them",
+)
+def schedule(probe_cc: List[str], test_name: List[str], analysis: bool):
     """
     Create schedules for the specified parameters
     """
@@ -203,6 +206,7 @@ def schedule(
             test_name=test_name,
             clickhouse_url=config.clickhouse_url,
             data_dir=config.data_dir,
+            schedule_analysis=analysis,
         )
 
     run_async(main())
