@@ -348,9 +348,13 @@ def check_duplicates(start_at: datetime, end_at: datetime, optimize: bool):
         start_bucket=start_at,
         end_bucket=end_at,
     )
+    found_duplicates = False
     for count, bucket_date in duplicates:
         if count > 0:
+            found_duplicates = True
             click.echo(f"* {bucket_date}: {count}")
+    if not found_duplicates:
+        click.echo("no duplicates found")
     if optimize:
         optimize_all_tables_by_partition(
             clickhouse_url=config.clickhouse_url,
