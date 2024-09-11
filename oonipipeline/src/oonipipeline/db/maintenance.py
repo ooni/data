@@ -9,7 +9,7 @@ from clickhouse_driver import Client as Clickhouse
 
 def click_execute(q, params: Optional[dict] = None, clickhouse_url: str = "localhost"):
     click = Clickhouse(
-        "localhost",
+        clickhouse_url,
         connect_timeout=10,
         send_receive_timeout=60 * 15,
         sync_request_timeout=5,
