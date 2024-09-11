@@ -130,7 +130,7 @@ def cli(log_level: int):
 @end_at_option
 @probe_cc_option
 @test_name_option
-@click.option("--workflow-name", type=str, required=True)
+@click.option("--workflow-name", type=str, required=True, default="observations")
 @click.option(
     "--create-tables",
     is_flag=True,
