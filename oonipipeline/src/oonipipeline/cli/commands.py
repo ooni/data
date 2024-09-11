@@ -5,6 +5,11 @@ from typing import Coroutine, List, Optional
 from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
 
+from oonipipeline.db.maintenance import (
+    optimize_all_tables_by_partition,
+    list_partitions_to_delete,
+    list_duplicates_in_buckets,
+)
 from oonipipeline.temporal.client_operations import (
     TemporalConfig,
     get_status,
@@ -322,3 +327,32 @@ def checkdb(
     if print_diff:
         with ClickhouseConnection(config.clickhouse_url) as db:
             list_all_table_diffs(db)
+
+
+@cli.command()
+@start_at_option
+@end_at_option
+@click.option(
+    "--optimize/--no-optimize",
+    default=False,
+    help="should we perform an optimization of the tables as well",
+)
+def checkdb(start_at: datetime, end_at: datetime, optimize: bool):
+    """
+    Perform checks on the bucket ranges to ensure no duplicate entries are
+    present. This is useful when backfilling the database to make sure the
+    optimize operations have converged.
+    """
+    duplicates = list_duplicates_in_buckets(
+        clickhouse_url=config.clickhouse_url,
+        start_bucket=start_at,
+        end_bucket=end_at,
+    )
+    for count, bucket_date in duplicates:
+        if count > 0:
+            click.echo(f"* {bucket_date}: {count}")
+    if optimize:
+        optimize_all_tables_by_partition(
+            clickhouse_url=config.clickhouse_url,
+            partition_list=list_partitions_to_delete(duplicates),
+        )
