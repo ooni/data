@@ -37,17 +37,15 @@ def optimize_all_tables(params: ClickhouseParams):
 class OptimizeTablesParams:
     clickhouse: str
     table_names: List[str]
+    partition_str: str
 
 
 @activity.defn
 def optimize_tables(params: OptimizeTablesParams):
     with ClickhouseConnection(params.clickhouse) as db:
         for table_name in params.table_names:
-            # Wait for mutation to complete so that we don't run into out of
-            # space issues while doing the batch inserts
-            wait_for_mutations(db, table_name=table_name)
-            log.info(f"waiting for mutations to finish on {table_name}")
-            db.execute(f"OPTIMIZE TABLE {table_name}")
+            log.info(f"OPTIMIZING {table_name} for partition {params.partition_str}")
+            db.execute(f"OPTIMIZE TABLE {table_name} PARTITION {params.partition_str}")
 
 
 def update_assets(
