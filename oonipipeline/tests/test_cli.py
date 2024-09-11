@@ -37,29 +37,6 @@ class MockContext:
         self.default_map = {}
 
 
-@pytest.mark.skip("TODO(art): maybe test new settings parsing")
-def test_parse_config(tmp_path):
-    ctx = MockContext()
-
-    config_content = """[options]
-    something = other
-    [options.subcommand]
-    otherthing = bar
-    [options.subcommand2]
-    spam = ham
-    """
-    config_path = tmp_path / "config.ini"
-    with config_path.open("w") as out_file:
-        out_file.write(textwrap.dedent(config_content))
-    defaults = parse_config_file(ctx, str(config_path))
-    assert defaults["something"] == "other"
-    assert defaults["subcommand"]["otherthing"] == "bar"
-    assert defaults["subcommand2"]["spam"] == "ham"
-    assert defaults["schedule"]["something"] == "other"
-    assert defaults["backfill"]["something"] == "other"
-
-
-@pytest.mark.skip("TODO(art): moved into temporal_e2e")
 def test_full_workflow(
     db,
     cli_runner,
@@ -84,12 +61,6 @@ def test_full_workflow(
             datadir,
             "--clickhouse",
             db.clickhouse_url,
-            "--clickhouse-buffer-min-time",
-            1,
-            "--clickhouse-buffer-max-time",
-            2,
-            # "--archives-dir",
-            # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
@@ -103,14 +74,8 @@ def test_full_workflow(
             "2022-10-22",
             "--clickhouse",
             db.clickhouse_url,
-            "--clickhouse-buffer-min-time",
-            1,
-            "--clickhouse-buffer-max-time",
-            2,
-            "--schedule-id",
-            "oonipipeline-observations-schedule-ba-web_connectivity",
-            # "--archives-dir",
-            # tmp_path.absolute(),
+            "--workflow-name",
+            "observations",
         ],
     )
     assert result.exit_code == 0
@@ -137,14 +102,8 @@ def test_full_workflow(
             "2022-10-22",
             "--clickhouse",
             db.clickhouse_url,
-            "--clickhouse-buffer-min-time",
-            1,
-            "--clickhouse-buffer-max-time",
-            2,
-            "--schedule-id",
-            "oonipipeline-observations-schedule-ba-web_connectivity",
-            # "--archives-dir",
-            # tmp_path.absolute(),
+            "--workflow-name",
+            "observations",
         ],
     )
     assert result.exit_code == 0

@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from oonipipeline.temporal.schedules import (
     list_existing_schedules,
     schedule_all,
-    clear_schedules,
+    clear_all_schedules,
 )
 import pytest
 
@@ -36,7 +36,7 @@ async def test_scheduling(datadir, db):
 
         scheduled_ids = [sched_res.analysis, sched_res.observations]
         while len(scheduled_ids) > 0:
-            cleared_schedule_ids = await clear_schedules(
+            cleared_schedule_ids = await clear_all_schedules(
                 client=env.client,
                 probe_cc=[],
                 test_name=[],
