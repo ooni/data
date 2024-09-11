@@ -337,7 +337,7 @@ def checkdb(
     default=False,
     help="should we perform an optimization of the tables as well",
 )
-def checkdb(start_at: datetime, end_at: datetime, optimize: bool):
+def check_duplicates(start_at: datetime, end_at: datetime, optimize: bool):
     """
     Perform checks on the bucket ranges to ensure no duplicate entries are
     present. This is useful when backfilling the database to make sure the
