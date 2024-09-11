@@ -152,7 +152,9 @@ def format_create_query(
     index_str = ",\n".join(model.__table_index__)
     extra_str = ""
     if extra:
-        extra_str = f"ORDER BY ({index_str}) SETTINGS index_granularity = 8192;"
+        if model.__partition_key__:
+            extra_str = f"PARTITION BY ({model.__partition_key__})\n"
+        extra_str += f"ORDER BY ({index_str}) SETTINGS index_granularity = 8192;"
     return (
         f"""
     CREATE TABLE IF NOT EXISTS {table_name} (

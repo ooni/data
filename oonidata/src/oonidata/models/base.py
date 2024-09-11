@@ -14,10 +14,13 @@ class BaseModel(DataClassDictMixin):
         code_generation_options = [TO_DICT_ADD_OMIT_NONE_FLAG]
 
 
-def table_model(table_name: str, table_index: Tuple[str, ...]):
+def table_model(
+    table_name: str, table_index: Tuple[str, ...], partition_key: Optional[str] = None
+):
     def decorator(cls):
         cls.__table_name__ = table_name
         cls.__table_index__ = table_index
+        cls.__partition_key__ = partition_key
         return cls
 
     return decorator
@@ -28,6 +31,7 @@ def table_model(table_name: str, table_index: Tuple[str, ...]):
 class TableModelProtocol(Protocol):
     __table_name__: str
     __table_index__: Tuple[str, ...]
+    __partition_key__: Optional[str]
 
     probe_meta: Any
     measurement_meta: Any

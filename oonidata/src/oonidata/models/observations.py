@@ -187,6 +187,7 @@ class TCPObservation:
         "measurement_uid",
         "observation_idx",
     ),
+    partition_key="concat(substring(bucket_date, 1, 4), substring(bucket_date, 6, 2))",
 )
 @dataclass
 class WebControlObservation:
@@ -231,6 +232,7 @@ class WebControlObservation:
         "measurement_uid",
         "observation_idx",
     ),
+    partition_key="concat(substring(bucket_date, 1, 4), substring(bucket_date, 6, 2))",
 )
 @dataclass
 class WebObservation:
@@ -351,6 +353,7 @@ class WebObservation:
         "measurement_uid",
         "observation_idx",
     ),
+    partition_key="concat(substring(bucket_date, 1, 4), substring(bucket_date, 6, 2))",
 )
 @dataclass
 class HTTPMiddleboxObservation:
