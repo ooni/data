@@ -143,7 +143,7 @@ def create_db_for_fixture(conn_url):
         db.execute("SELECT 1")
     except:
         pytest.skip("no database connection")
-    for query, _ in make_create_queries(min_time=1, max_time=2):
+    for query, _ in make_create_queries():
         db.execute(query)
     return db
 
@@ -156,6 +156,6 @@ def db_notruncate(clickhouse_server):
 @pytest.fixture
 def db(clickhouse_server):
     db = create_db_for_fixture(clickhouse_server)
-    for _, table_name in make_create_queries(min_time=1, max_time=2):
+    for _, table_name in make_create_queries():
         db.execute(f"TRUNCATE TABLE {table_name};")
     yield db
