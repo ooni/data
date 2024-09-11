@@ -45,7 +45,9 @@ def optimize_tables(params: OptimizeTablesParams):
     with ClickhouseConnection(params.clickhouse) as db:
         for table_name in params.table_names:
             log.info(f"OPTIMIZING {table_name} for partition {params.partition_str}")
-            db.execute(f"OPTIMIZE TABLE {table_name} PARTITION {params.partition_str}")
+            db.execute(
+                f"OPTIMIZE TABLE {table_name} PARTITION '{params.partition_str}'"
+            )
 
 
 def update_assets(
