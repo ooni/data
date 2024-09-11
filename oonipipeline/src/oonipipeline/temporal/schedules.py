@@ -179,7 +179,7 @@ async def schedule_all(
     return schedule_id_map
 
 
-async def clear_schedules(
+async def clear_all_schedules(
     client: TemporalClient,
     probe_cc: List[str],
     test_name: List[str],

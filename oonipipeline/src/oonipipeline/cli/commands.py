@@ -1,15 +1,19 @@
+import asyncio
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Coroutine, List, Optional
 from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
 
 from oonipipeline.temporal.client_operations import (
     TemporalConfig,
-    run_backfill,
-    run_create_schedules,
-    run_status,
-    run_clear_schedules,
+    get_status,
+    temporal_connect,
+)
+from oonipipeline.temporal.schedules import (
+    clear_all_schedules,
+    schedule_all,
+    schedule_backfill,
 )
 from oonipipeline.temporal.workers import start_workers
 
@@ -22,6 +26,14 @@ from ..db.connections import ClickhouseConnection
 from ..db.create_tables import make_create_queries, list_all_table_diffs
 from ..netinfo import NetinfoDB
 from ..settings import config
+
+
+def run_async(main: Coroutine):
+    try:
+        asyncio.run(main)
+    except KeyboardInterrupt:
+        print("shutting down")
+
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
     if s:
@@ -151,15 +163,19 @@ def backfill(
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
-    run_backfill(
-        workflow_name=workflow_name,
-        temporal_config=temporal_config,
-        probe_cc=probe_cc,
-        test_name=test_name,
-        start_at=start_at,
-        end_at=end_at,
-    )
+    async def main():
+        client = await temporal_connect(temporal_config=temporal_config)
 
+        return await schedule_backfill(
+            client=client,
+            probe_cc=probe_cc,
+            test_name=test_name,
+            start_at=start_at,
+            end_at=end_at,
+            workflow_name=workflow_name,
+        )
+
+    run_async(main())
 
 @cli.command()
 @probe_cc_option
@@ -178,13 +194,18 @@ def schedule(
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
-    run_create_schedules(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse_url=config.clickhouse_url,
-        data_dir=config.data_dir,
-        temporal_config=temporal_config,
-    )
+    async def main():
+        client = await temporal_connect(temporal_config=temporal_config)
+
+        return await schedule_all(
+            client=client,
+            probe_cc=probe_cc,
+            test_name=test_name,
+            clickhouse_url=config.clickhouse_url,
+            data_dir=config.data_dir,
+        )
+
+    run_async(main())
 
 
 @cli.command()
@@ -204,11 +225,16 @@ def clear_schedules(
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
-    run_clear_schedules(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        temporal_config=temporal_config,
-    )
+    async def main():
+        client = await temporal_connect(temporal_config=temporal_config)
+
+        return await clear_all_schedules(
+            client=client,
+            probe_cc=probe_cc,
+            test_name=test_name,
+        )
+
+    run_async(main())
 
 
 @cli.command()
@@ -222,7 +248,12 @@ def status():
         temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
-    run_status(temporal_config=temporal_config)
+
+    run_async(
+        get_status(
+            temporal_config=temporal_config,
+        )
+    )
 
 
 @cli.command()

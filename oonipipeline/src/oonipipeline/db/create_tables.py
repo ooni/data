@@ -176,15 +176,7 @@ table_models = [
 ]
 
 
-def make_create_queries(
-    num_layers=1,
-    min_time=10,
-    max_time=500,
-    min_rows=10_0000,
-    max_rows=100_000,
-    min_bytes=10_000_000,
-    max_bytes=1_000_000_000,
-):
+def make_create_queries():
     create_queries = []
     for model in table_models:
         table_name = model.__table_name__
