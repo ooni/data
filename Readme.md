@@ -2,7 +2,7 @@ There are different ways to access OONI data, wether that is via: [OONI
 Explorer](https://explorer.ooni.org/), the [OONI API](https://api.ooni.io/) or
 clickhouse table dumps.
 
-The [OONI API](https://api.ooni.io/) is meant for developers and researches and allows [searching for
+The [OONI API](https://api.ooni.io/) is meant for developers and researchers and allows [searching for
 measurement metadata](https://api.ooni.io/apidocs/#/default/get_api_v1_measurements), [fetching single measurements](https://api.ooni.io/apidocs/#/default/get_api_v1_measurement_meta), and [generating statistics](https://api.ooni.io/apidocs/#/default/get_api_v1_aggregation).
 
 **Hovever the OONI API, is not designed for large data transfers (i.e. extracting tens of thousands of measurements or many GB of data) and implements rate limiting API.**
