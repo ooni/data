@@ -48,6 +48,7 @@ path = ".venv/"
 path = "src/oonidata/__about__.py"
 
 [tool.hatch.envs.default.scripts]
+oonidata = "python -m oonidata.main {args}"
 test = "pytest {args:tests}"
 test-cov = "pytest -s --full-trace --log-level=INFO  --log-cli-level=INFO -v --setup-show --cov=./ --cov-report=xml --cov-report=html --cov-report=term {args:tests}"
 cov-report = ["coverage report"]
