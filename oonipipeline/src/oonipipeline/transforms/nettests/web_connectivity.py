@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 from urllib.parse import urlparse
 from oonidata.datautils import is_ip_bogon
-from oonidata.models.base import ProcessingMeta
 from oonidata.models.nettests import WebConnectivity
 from oonidata.models.observations import (
     MeasurementMeta,
@@ -44,9 +43,6 @@ def make_web_control_observations(
     if msmt.test_keys.control.dns and msmt.test_keys.control.dns.failure:
         obs = WebControlObservation(
             measurement_meta=measurement_meta,
-            processing_meta=ProcessingMeta(
-                processing_start_time=datetime.now(timezone.utc)
-            ),
             hostname=hostname,
             created_at=created_at,
         )
@@ -64,9 +60,6 @@ def make_web_control_observations(
 
             obs = WebControlObservation(
                 measurement_meta=measurement_meta,
-                processing_meta=ProcessingMeta(
-                    processing_start_time=datetime.now(timezone.utc)
-                ),
                 hostname=hostname,
                 created_at=created_at,
             )
@@ -89,9 +82,6 @@ def make_web_control_observations(
                     measurement_meta=measurement_meta,
                     hostname=p.hostname,
                     port=p.port,
-                    processing_meta=ProcessingMeta(
-                        processing_start_time=datetime.now(timezone.utc)
-                    ),
                     created_at=created_at,
                 )
 
@@ -127,9 +117,6 @@ def make_web_control_observations(
     for ip in dns_ips - mapped_dns_ips:
         obs = WebControlObservation(
             measurement_meta=measurement_meta,
-            processing_meta=ProcessingMeta(
-                processing_start_time=datetime.now(timezone.utc)
-            ),
             hostname=hostname,
             created_at=created_at,
         )
@@ -140,9 +127,6 @@ def make_web_control_observations(
     if msmt.test_keys.control.http_request:
         obs = WebControlObservation(
             measurement_meta=measurement_meta,
-            processing_meta=ProcessingMeta(
-                processing_start_time=datetime.now(timezone.utc)
-            ),
             hostname=hostname,
             created_at=created_at,
         )
@@ -153,8 +137,7 @@ def make_web_control_observations(
         web_ctrl_obs.append(obs)
 
     for idx, obs in enumerate(web_ctrl_obs):
-        obs.observation_id = f"{obs.measurement_meta.measurement_uid}_{idx}"
-        obs.processing_meta.processing_end_time = datetime.now(timezone.utc)
+        obs.observation_idx = idx
 
     return web_ctrl_obs
 

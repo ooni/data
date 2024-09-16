@@ -29,28 +29,25 @@ class ClickhouseParams:
 def optimize_all_tables(params: ClickhouseParams):
     with ClickhouseConnection(params.clickhouse_url) as db:
         table_names = [table_name for _, table_name in make_create_queries()]
-        # We first flush the buffer_ tables and then the non-buffer tables
-        for table_name in filter(lambda x: x.startswith("buffer_"), table_names):
-            db.execute(f"OPTIMIZE TABLE {table_name}")
-        for table_name in filter(lambda x: not x.startswith("buffer_"), table_names):
-            db.execute(f"OPTIMIZE TABLE {table_name}")
+        for tn in table_names:
+            db.execute(f"OPTIMIZE TABLE {tn}")
 
 
 @dataclass
 class OptimizeTablesParams:
     clickhouse: str
     table_names: List[str]
+    partition_str: str
 
 
 @activity.defn
 def optimize_tables(params: OptimizeTablesParams):
     with ClickhouseConnection(params.clickhouse) as db:
         for table_name in params.table_names:
-            # Wait for mutation to complete so that we don't run into out of
-            # space issues while doing the batch inserts
-            wait_for_mutations(db, table_name=table_name)
-            log.info(f"waiting for mutations to finish on {table_name}")
-            db.execute(f"OPTIMIZE TABLE {table_name}")
+            log.info(f"OPTIMIZING {table_name} for partition {params.partition_str}")
+            db.execute(
+                f"OPTIMIZE TABLE {table_name} PARTITION '{params.partition_str}'"
+            )
 
 
 def update_assets(

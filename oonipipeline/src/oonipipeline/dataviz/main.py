@@ -30,19 +30,17 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=f"{current_dir}/templates")
 
 
-def extract_meta(orig_obs_list) -> Tuple[List, Dict, Dict, Dict]:
+def extract_meta(orig_obs_list) -> Tuple[List, Dict, Dict]:
     obs_list = []
 
     measurement_meta = {}
     probe_meta = {}
-    processing_meta = {}
     for obs in orig_obs_list:
         wo_dict = asdict(obs)
         measurement_meta = wo_dict.pop("probe_meta", None)
         probe_meta = wo_dict.pop("measurement_meta", None)
-        processing_meta = wo_dict.pop("processing_meta", None)
         obs_list.append(wo_dict)
-    return obs_list, measurement_meta, probe_meta, processing_meta
+    return obs_list, measurement_meta, probe_meta
 
 
 @app.get("/analysis/")
@@ -116,7 +114,7 @@ def analysis_by_msmt(
     # print(analysis_transcript_list)
 
     web_analysis_list, _, _, _ = extract_meta(web_analysis)
-    web_observations_list, measurement_meta, probe_meta, processing_meta = extract_meta(
+    web_observations_list, measurement_meta, probe_meta = extract_meta(
         web_observations
     )
     return templates.TemplateResponse(
@@ -132,7 +130,7 @@ def analysis_by_msmt(
             web_observations=web_observations_list,
             measurement_meta=measurement_meta,
             probe_meta=probe_meta,
-            processing_meta=processing_meta,
+            processing_meta={},
             loni_blocked_dict=dict(zip(wer.loni_blocked_keys, wer.loni_blocked_values)),
             loni_blocked_value=sum(wer.loni_blocked_values),
             loni_down_dict=dict(zip(wer.loni_down_keys, wer.loni_down_values)),
@@ -157,10 +155,10 @@ def observations_by_msmt(
         msmt, netinfodb=netinfodb
     )
 
-    web_observations_list, probe_meta, measurement_meta, processing_meta = extract_meta(
+    web_observations_list, probe_meta, measurement_meta = extract_meta(
         web_observations
     )
-    web_control_observations, _, _, _ = extract_meta(web_control_observations)
+    web_control_observations, _, _ = extract_meta(web_control_observations)
     return templates.TemplateResponse(
         request=request,
         name="observations.html",

@@ -100,9 +100,7 @@ class ClickhouseConnection(DatabaseConnection):
             *args, **kwargs, settings={"max_block_size": self.max_block_size}
         )
 
-    def write_rows(self, table_name, rows, column_names, use_buffer_table=False):
-        if use_buffer_table:
-            table_name = f"buffer_{table_name}"
+    def write_rows(self, table_name, rows, column_names):
         fields_str = ", ".join(column_names)
         query_str = f"INSERT INTO {table_name} ({fields_str}) VALUES"
         self.execute(query_str, rows)
@@ -119,8 +117,6 @@ class ClickhouseConnection(DatabaseConnection):
                 d.update(d.pop("probe_meta"))
             if "measurement_meta" in d:
                 d.update(d.pop("measurement_meta"))
-            if "processing_meta" in d:
-                d.update(d.pop("processing_meta"))
 
             # TODO(art): this custom_remap should not be here
             if "loni_list" in d:
@@ -137,27 +133,18 @@ class ClickhouseConnection(DatabaseConnection):
     def write_table_model_rows(
         self,
         row_iterator: Union[Iterable, List],
-        use_buffer_table=True,
     ):
         """
         Write rows from a TableModelProtocol to the database.
 
-        We use two stages of buffering for performance reasons:
-        1. Python in memory buffer to batch writes to the underlying database
-            connection via the max_block_size argument
-        2. An optional Buffer table to batch the actual writes at the Clickhouse level.
-
-        The second is needed because we might have multiple connections
-        hitting the database at a given time and it's desirable to be able to
-        tune the actual underlying writes at the clickhouse level.
+        We use buffering for performance reasons via a Python in memory buffer
+        to batch writes to the underlying database connection via the
+        max_block_size argument
         """
         row_list, table_name = self._consume_rows(row_iterator)
         if len(row_list) == 0:
             return
         assert table_name is not None, f"no table for {row_list}"
-
-        if use_buffer_table:
-            table_name = f"buffer_{table_name}"
 
         if table_name not in self.row_buffer:
             self.row_buffer[table_name] = []

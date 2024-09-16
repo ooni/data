@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from oonipipeline.temporal.schedules import (
     list_existing_schedules,
     schedule_all,
-    clear_schedules,
+    clear_all_schedules,
 )
 import pytest
 
@@ -36,7 +36,7 @@ async def test_scheduling(datadir, db):
 
         scheduled_ids = [sched_res.analysis, sched_res.observations]
         while len(scheduled_ids) > 0:
-            cleared_schedule_ids = await clear_schedules(
+            cleared_schedule_ids = await clear_all_schedules(
                 client=env.client,
                 probe_cc=[],
                 test_name=[],
@@ -91,7 +91,6 @@ async def test_observation_workflow(datadir, db):
                 id="obs-wf",
                 task_queue=TASK_QUEUE_NAME,
             )
-            db.execute("OPTIMIZE TABLE buffer_obs_web")
             assert wf_res["measurement_count"] == 613
             assert wf_res["size"] == 11381440
             assert wf_res["bucket_date"] == "2022-10-21"

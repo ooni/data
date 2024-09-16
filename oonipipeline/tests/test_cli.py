@@ -1,12 +1,10 @@
 import asyncio
-from multiprocessing import Process
+from unittest import mock
 from pathlib import Path
 import time
-import textwrap
 
 from oonipipeline.cli.commands import cli
 from oonipipeline.temporal.client_operations import TemporalConfig, get_status
-import pytest
 
 
 def wait_for_mutations(db, table_name):
@@ -37,40 +35,23 @@ class MockContext:
         self.default_map = {}
 
 
-@pytest.mark.skip("TODO(art): maybe test new settings parsing")
-def test_parse_config(tmp_path):
-    ctx = MockContext()
-
-    config_content = """[options]
-    something = other
-    [options.subcommand]
-    otherthing = bar
-    [options.subcommand2]
-    spam = ham
-    """
-    config_path = tmp_path / "config.ini"
-    with config_path.open("w") as out_file:
-        out_file.write(textwrap.dedent(config_content))
-    defaults = parse_config_file(ctx, str(config_path))
-    assert defaults["something"] == "other"
-    assert defaults["subcommand"]["otherthing"] == "bar"
-    assert defaults["subcommand2"]["spam"] == "ham"
-    assert defaults["schedule"]["something"] == "other"
-    assert defaults["backfill"]["something"] == "other"
-
-
-@pytest.mark.skip("TODO(art): moved into temporal_e2e")
+@mock.patch("oonipipeline.cli.commands.make_create_queries")
+@mock.patch("oonipipeline.cli.commands.list_all_table_diffs")
+@mock.patch("oonipipeline.cli.commands.maybe_create_delete_tables")
+@mock.patch("oonipipeline.cli.commands.clear_all_schedules")
+@mock.patch("oonipipeline.cli.commands.schedule_backfill")
+@mock.patch("oonipipeline.cli.commands.schedule_all")
+@mock.patch("oonipipeline.cli.commands.temporal_connect")
 def test_full_workflow(
-    db,
+    temporal_connect_mock,
+    schedule_all_mock,
+    schedule_backfill_mock,
+    clear_all_schedules_mock,
+    maybe_create_delete_tables_mock,
+    list_all_table_diffs,
+    make_create_queries_mock,
     cli_runner,
-    fingerprintdb,
-    netinfodb,
-    datadir,
-    tmp_path: Path,
-    temporal_dev_server,
-    temporal_workers,
 ):
-    print(f"running schedule observations")
     result = cli_runner.invoke(
         cli,
         [
@@ -79,20 +60,12 @@ def test_full_workflow(
             "BA",
             "--test-name",
             "web_connectivity",
-            "--create-tables",
-            "--data-dir",
-            datadir,
-            "--clickhouse",
-            db.clickhouse_url,
-            "--clickhouse-buffer-min-time",
-            1,
-            "--clickhouse-buffer-max-time",
-            2,
-            # "--archives-dir",
-            # tmp_path.absolute(),
         ],
     )
     assert result.exit_code == 0
+    assert temporal_connect_mock.called
+    assert schedule_all_mock.called
+    temporal_connect_mock.reset_mock()
     result = cli_runner.invoke(
         cli,
         [
@@ -101,173 +74,42 @@ def test_full_workflow(
             "2022-10-21",
             "--end-at",
             "2022-10-22",
-            "--clickhouse",
-            db.clickhouse_url,
-            "--clickhouse-buffer-min-time",
-            1,
-            "--clickhouse-buffer-max-time",
-            2,
-            "--schedule-id",
-            "oonipipeline-observations-schedule-ba-web_connectivity",
-            # "--archives-dir",
-            # tmp_path.absolute(),
+            "--workflow-name",
+            "observations",
         ],
     )
     assert result.exit_code == 0
+    assert temporal_connect_mock.called
+    assert schedule_backfill_mock.called
 
-    wait_for_backfill()
-    # We wait on the table buffers to be flushed
-    db.execute("OPTIMIZE TABLE buffer_obs_web")
-    # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
-    res = db.execute(
-        "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
-    )
-    bucket_dict = dict(res)
-    assert "2022-10-20" in bucket_dict, bucket_dict
-    assert bucket_dict["2022-10-20"] == 200, bucket_dict
-    obs_count = bucket_dict["2022-10-20"]
-
-    print("running backfill")
+    temporal_connect_mock.reset_mock()
     result = cli_runner.invoke(
         cli,
         [
-            "backfill",
-            "--start-at",
-            "2022-10-21",
-            "--end-at",
-            "2022-10-22",
-            "--clickhouse",
-            db.clickhouse_url,
-            "--clickhouse-buffer-min-time",
-            1,
-            "--clickhouse-buffer-max-time",
-            2,
-            "--schedule-id",
-            "oonipipeline-observations-schedule-ba-web_connectivity",
-            # "--archives-dir",
-            # tmp_path.absolute(),
+            "clear-schedules",
         ],
     )
     assert result.exit_code == 0
+    assert temporal_connect_mock.called
+    assert clear_all_schedules_mock.called
 
-    wait_for_backfill()
-    # We wait on the table buffers to be flushed
-    db.execute("OPTIMIZE TABLE buffer_obs_web")
-
-    # Wait for the mutation to finish running
-    wait_for_mutations(db, "obs_web")
-    res = db.execute(
-        "SELECT bucket_date, COUNT(DISTINCT(measurement_uid)) FROM obs_web WHERE probe_cc = 'BA' GROUP BY bucket_date"
-    )
-    bucket_dict = dict(res)
-    assert "2022-10-20" in bucket_dict, bucket_dict
-    # By re-running it against the same date, we should still get the same observation count
-    assert bucket_dict["2022-10-20"] == obs_count, bucket_dict
-
-    # result = cli_runner.invoke(
-    #    cli,
-    #    [
-    #        "fphunt",
-    #        "--data-dir",
-    #        datadir,
-    #        "--archives-dir",
-    #        tmp_path.absolute(),
-    #    ],
-    # )
-    # assert result.exit_code == 0
-
-    # print("running mkanalysis")
-    # result = cli_runner.invoke(
-    #     cli,
-    #     [
-    #         "mkanalysis",
-    #         "--probe-cc",
-    #         "BA",
-    #         "--start-day",
-    #         "2022-10-20",
-    #         "--end-day",
-    #         "2022-10-21",
-    #         "--test-name",
-    #         "web_connectivity",
-    #         "--data-dir",
-    #         datadir,
-    #         "--clickhouse",
-    #         db.clickhouse_url,
-    #         "--clickhouse-buffer-min-time",
-    #         1,
-    #         "--clickhouse-buffer-max-time",
-    #         2,
-    #         "--parallelism",
-    #         1,
-    #     ],
-    # )
-    # assert result.exit_code == 0
-    # time.sleep(3)
-    # res = db.execute(
-    #     "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
-    # )
-    # assert res[0][0] == 200  # type: ignore
-    # print("finished ALL")
-    # # We wait on the table buffers to be flushed
-
-    print("running schedule analysis")
     result = cli_runner.invoke(
         cli,
-        [
-            "schedule",
-            "--probe-cc",
-            "BA",
-            "--test-name",
-            "web_connectivity",
-            "--create-tables",
-            "--data-dir",
-            datadir,
-            "--clickhouse",
-            db.clickhouse_url,
-            "--clickhouse-buffer-min-time",
-            1,
-            "--clickhouse-buffer-max-time",
-            2,
-            "--no-observations",
-            "--analysis",
-            # "--archives-dir",
-            # tmp_path.absolute(),
-        ],
+        ["checkdb", "--print-create", "--create-tables", "--print-diff"],
     )
     assert result.exit_code == 0
+    assert maybe_create_delete_tables_mock.called
+    assert list_all_table_diffs.called
+    assert make_create_queries_mock.called
+
+    maybe_create_delete_tables_mock.reset_mock()
+    list_all_table_diffs.reset_mock()
+    make_create_queries_mock.reset_mock()
     result = cli_runner.invoke(
         cli,
-        [
-            "backfill",
-            "--start-at",
-            "2022-10-21",
-            "--end-at",
-            "2022-10-22",
-            "--clickhouse",
-            db.clickhouse_url,
-            "--clickhouse-buffer-min-time",
-            1,
-            "--clickhouse-buffer-max-time",
-            2,
-            "--schedule-id",
-            "oonipipeline-analysis-schedule-ba-web_connectivity",
-            # "--archives-dir",
-            # tmp_path.absolute(),
-        ],
+        ["checkdb", "--print-create"],
     )
     assert result.exit_code == 0
-
-    # We wait on the table buffers to be flushed
-    wait_for_backfill()
-    # assert len(list(tmp_path.glob("*.warc.gz"))) == 1
-    db.execute("OPTIMIZE TABLE measurement_experiment_result")
-    db.execute("OPTIMIZE TABLE buffer_measurement_experiment_result")
-    wait_for_mutations(db, "measurement_experiment_result")
-
-    # TODO(art): find a better way than sleeping to get the tables to be flushed
-    time.sleep(10)
-    res = db.execute(
-        "SELECT COUNT(DISTINCT(measurement_uid)) FROM measurement_experiment_result WHERE measurement_uid LIKE '20221020%' AND location_network_cc = 'BA'"
-    )
-    assert res[0][0] == 200  # type: ignore
-    print("finished ALL")
+    assert not maybe_create_delete_tables_mock.called
+    assert not list_all_table_diffs.called
+    assert make_create_queries_mock.called

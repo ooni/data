@@ -16,7 +16,7 @@ from typing import (
 from dataclasses import Field, fields
 import typing
 
-from oonidata.models.base import TableModelProtocol, ProcessingMeta
+from oonidata.models.base import TableModelProtocol
 from oonidata.models.experiment_result import (
     ExperimentResult,
     MeasurementExperimentResult,
@@ -129,11 +129,6 @@ def iter_table_fields(
                 type_str = typing_to_clickhouse(f.type)
                 yield f, type_str
             continue
-        if f.type == ProcessingMeta:
-            for f in fields(ProcessingMeta):
-                type_str = typing_to_clickhouse(f.type)
-                yield f, type_str
-            continue
 
         try:
             type_str = typing_to_clickhouse(f.type)
@@ -157,7 +152,9 @@ def format_create_query(
     index_str = ",\n".join(model.__table_index__)
     extra_str = ""
     if extra:
-        extra_str = f"ORDER BY ({index_str}) SETTINGS index_granularity = 8192;"
+        if model.__partition_key__:
+            extra_str = f"PARTITION BY ({model.__partition_key__})\n"
+        extra_str += f"ORDER BY ({index_str}) SETTINGS index_granularity = 8192;"
     return (
         f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
@@ -179,38 +176,12 @@ table_models = [
 ]
 
 
-def make_create_queries(
-    num_layers=1,
-    min_time=10,
-    max_time=500,
-    min_rows=10_0000,
-    max_rows=100_000,
-    min_bytes=10_000_000,
-    max_bytes=1_000_000_000,
-):
+def make_create_queries():
     create_queries = []
     for model in table_models:
         table_name = model.__table_name__
         create_queries.append(
             format_create_query(table_name, model),
-        )
-
-        engine_str = f"""
-        Buffer(
-            currentDatabase(), {table_name}, 
-            {num_layers},
-            {min_time}, {max_time}, 
-            {min_rows}, {max_rows},
-            {min_bytes}, {max_bytes}
-        )
-        """
-        create_queries.append(
-            format_create_query(
-                f"buffer_{table_name}",
-                model,
-                engine=engine_str,
-                extra=False,
-            )
         )
     return create_queries
 
@@ -323,9 +294,6 @@ def list_all_table_diffs(db: ClickhouseConnection):
             diff_orig = get_table_column_diff(
                 db=db, base_class=base_class, table_name=table_name
             )
-            diff_buffer = get_table_column_diff(
-                db=db, base_class=base_class, table_name=f"buffer_{table_name}"
-            )
         except TableDoesNotExistError:
             print(f"# {table_name} does not exist")
             print("rerun with --create-tables")
@@ -334,11 +302,6 @@ def list_all_table_diffs(db: ClickhouseConnection):
             print(f"# {table_name} diff")
             for cd in diff_orig:
                 print(cd.get_sql_migration())
-        if len(diff_buffer) > 0:
-            print(f"# buffer_{table_name} diff")
-            for cd in diff_buffer:
-                print(cd.get_sql_migration())
-
 
 def main():
     for query, table_name in make_create_queries():

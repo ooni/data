@@ -3,7 +3,7 @@ import dataclasses
 from datetime import datetime
 from typing import List, Optional
 
-from .base import table_model, ProcessingMeta
+from .base import table_model
 from oonidata.models.observations import MeasurementMeta, ProbeMeta
 
 
@@ -20,7 +20,6 @@ from oonidata.models.observations import MeasurementMeta, ProbeMeta
 class WebAnalysis:
     probe_meta: ProbeMeta
     measurement_meta: MeasurementMeta
-    processing_meta: ProcessingMeta
 
     analysis_id: str
     observation_id: str

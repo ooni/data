@@ -174,8 +174,6 @@ def test_make_file_entry_batch(datadir, db):
     )
 
     assert obs_msmt_count == 453
-    # Flush buffer table
-    db.execute("OPTIMIZE TABLE buffer_obs_web")
     make_ground_truths_in_day(
         MakeGroundTruthsParams(
             day=date(2023, 10, 31).strftime("%Y-%m-%d"),
@@ -220,10 +218,11 @@ def test_write_observations(measurements, netinfodb, db):
         for obs_list in measurement_to_observations(
             msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
         ):
+            # Ensure observation IDS do not clash
+            obs_idxs = list(map(lambda x: x.observation_idx, obs_list))
+            assert len(obs_idxs) == len(set(obs_idxs))
             db.write_table_model_rows(obs_list)
     db.close()
-    # Flush buffer table
-    db.execute("OPTIMIZE TABLE buffer_obs_web")
     cnt_by_cc = get_obs_count_by_cc(
         ObsCountParams(
             clickhouse_url=db.clickhouse_url,
@@ -232,9 +231,9 @@ def test_write_observations(measurements, netinfodb, db):
         )
     )
     assert cnt_by_cc["CH"] == 2
-    assert cnt_by_cc["GR"] == 4
+    assert cnt_by_cc["GR"] == 20
     assert cnt_by_cc["US"] == 3
-    assert cnt_by_cc["RU"] == 3
+    assert cnt_by_cc["RU"] == 47
 
 
 def test_hirl_observations(measurements, netinfodb):

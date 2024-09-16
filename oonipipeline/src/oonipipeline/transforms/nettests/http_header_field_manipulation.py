@@ -14,7 +14,7 @@ class HTTPHeaderFieldManipulationTransformer(MeasurementTransformer):
     ) -> Tuple[List[HTTPMiddleboxObservation]]:
         mb_obs = HTTPMiddleboxObservation(
             hfm_success=True,
-            observation_id=f"{msmt.measurement_uid}_0",
+            observation_idx=1,
             created_at=datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
             measurement_meta=self.measurement_meta,
             probe_meta=self.probe_meta,

@@ -16,7 +16,6 @@ from typing import (
 )
 from collections import defaultdict
 
-from oonidata.models.base import ProcessingMeta
 from oonidata.models.dataformats import (
     DNSAnswer,
     DNSQuery,
@@ -502,6 +501,7 @@ def make_web_observation(
     msmt_meta: MeasurementMeta,
     probe_meta: ProbeMeta,
     netinfodb: NetinfoDB,
+    observation_idx: int = 0,
     dns_o: Optional[DNSObservation] = None,
     tcp_o: Optional[TCPObservation] = None,
     tls_o: Optional[TLSObservation] = None,
@@ -518,9 +518,8 @@ def make_web_observation(
         probe_analysis=probe_analysis,
         measurement_meta=msmt_meta,
         probe_meta=probe_meta,
-        processing_meta=ProcessingMeta(
-            processing_start_time=datetime.now(timezone.utc)
-        ),
+        observation_idx=observation_idx,
+        created_at=datetime.now(timezone.utc),
     )
     dns_ip = None
     if dns_o and dns_o.answer:
@@ -565,7 +564,6 @@ def make_web_observation(
     maybe_set_web_fields(
         src_obs=http_o, prefix="http_", web_obs=web_obs, field_names=WEB_OBS_FIELDS
     )
-    web_obs.processing_meta.processing_end_time = datetime.now(timezone.utc)
     return web_obs
 
 
@@ -753,6 +751,7 @@ class MeasurementTransformer:
             msmt=measurement, bucket_date=bucket_date
         )
         self.probe_meta = make_probe_meta(msmt=measurement, netinfodb=netinfodb)
+        self.observation_idx = 1
 
     def make_http_observations(
         self,
@@ -903,6 +902,7 @@ class MeasurementTransformer:
                     http_o=http_o,
                     target_id=target_id,
                     probe_analysis=probe_analysis,
+                    observation_idx=self.observation_idx,
                 )
             )
             if tcp_o:
@@ -911,6 +911,7 @@ class MeasurementTransformer:
                 tls_observations.remove(tls_o)
             if http_o:
                 http_observations.remove(http_o)
+            self.observation_idx += 1
 
         for tcp_o in tcp_observations:
             _, tls_o, http_o = find_relevant_observations(
@@ -933,8 +934,10 @@ class MeasurementTransformer:
                     http_o=http_o,
                     target_id=target_id,
                     probe_analysis=probe_analysis,
+                    observation_idx=self.observation_idx,
                 )
             )
+            self.observation_idx += 1
 
         for tls_o in tls_observations:
             _, _, http_o = find_relevant_observations(
@@ -953,8 +956,10 @@ class MeasurementTransformer:
                     http_o=http_o,
                     target_id=target_id,
                     probe_analysis=probe_analysis,
+                    observation_idx=self.observation_idx,
                 )
             )
+            self.observation_idx += 1
 
         for http_o in http_observations:
             web_obs_list.append(
@@ -965,14 +970,10 @@ class MeasurementTransformer:
                     http_o=http_o,
                     target_id=target_id,
                     probe_analysis=probe_analysis,
+                    observation_idx=self.observation_idx,
                 )
             )
-
-        for idx, obs in enumerate(web_obs_list):
-            obs.observation_id = f"{obs.measurement_meta.measurement_uid}_{idx}"
-            obs.created_at = datetime.now(timezone.utc).replace(
-                microsecond=0, tzinfo=None
-            )
+            self.observation_idx += 1
 
         return web_obs_list
 

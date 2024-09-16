@@ -1,15 +1,24 @@
+import asyncio
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Coroutine, List, Optional
 from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
 
+from oonipipeline.db.maintenance import (
+    optimize_all_tables_by_partition,
+    list_partitions_to_delete,
+    list_duplicates_in_buckets,
+)
 from oonipipeline.temporal.client_operations import (
     TemporalConfig,
-    run_backfill,
-    run_create_schedules,
-    run_status,
-    run_clear_schedules,
+    get_status,
+    temporal_connect,
+)
+from oonipipeline.temporal.schedules import (
+    clear_all_schedules,
+    schedule_all,
+    schedule_backfill,
 )
 from oonipipeline.temporal.workers import start_workers
 
@@ -22,6 +31,14 @@ from ..db.connections import ClickhouseConnection
 from ..db.create_tables import make_create_queries, list_all_table_diffs
 from ..netinfo import NetinfoDB
 from ..settings import config
+
+
+def run_async(main: Coroutine):
+    try:
+        asyncio.run(main)
+    except KeyboardInterrupt:
+        print("shutting down")
+
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
     if s:
@@ -80,8 +97,6 @@ def maybe_create_delete_tables(
     clickhouse_url: str,
     create_tables: bool,
     drop_tables: bool,
-    clickhouse_buffer_min_time: int = 10,
-    clickhouse_buffer_max_time: int = 60,
 ):
     if create_tables:
         if drop_tables:
@@ -90,9 +105,7 @@ def maybe_create_delete_tables(
             )
 
         with ClickhouseConnection(clickhouse_url) as db:
-            for query, table_name in make_create_queries(
-                min_time=clickhouse_buffer_min_time, max_time=clickhouse_buffer_max_time
-            ):
+            for query, table_name in make_create_queries():
                 if drop_tables:
                     db.execute(f"DROP TABLE IF EXISTS {table_name};")
                 db.execute(query)
@@ -117,7 +130,7 @@ def cli(log_level: int):
 @end_at_option
 @probe_cc_option
 @test_name_option
-@click.option("--workflow-name", type=str, required=True)
+@click.option("--workflow-name", type=str, required=True, default="observations")
 @click.option(
     "--create-tables",
     is_flag=True,
@@ -146,8 +159,6 @@ def backfill(
         clickhouse_url=config.clickhouse_url,
         create_tables=create_tables,
         drop_tables=drop_tables,
-        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
     )
 
     temporal_config = TemporalConfig(
@@ -157,23 +168,30 @@ def backfill(
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
-    run_backfill(
-        workflow_name=workflow_name,
-        temporal_config=temporal_config,
-        probe_cc=probe_cc,
-        test_name=test_name,
-        start_at=start_at,
-        end_at=end_at,
-    )
+    async def main():
+        client = await temporal_connect(temporal_config=temporal_config)
+
+        return await schedule_backfill(
+            client=client,
+            probe_cc=probe_cc,
+            test_name=test_name,
+            start_at=start_at,
+            end_at=end_at,
+            workflow_name=workflow_name,
+        )
+
+    run_async(main())
 
 
 @cli.command()
 @probe_cc_option
 @test_name_option
-def schedule(
-    probe_cc: List[str],
-    test_name: List[str],
-):
+@click.option(
+    "--analysis/--no-analysis",
+    default=True,
+    help="should we drop tables before creating them",
+)
+def schedule(probe_cc: List[str], test_name: List[str], analysis: bool):
     """
     Create schedules for the specified parameters
     """
@@ -184,13 +202,19 @@ def schedule(
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
-    run_create_schedules(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse_url=config.clickhouse_url,
-        data_dir=config.data_dir,
-        temporal_config=temporal_config,
-    )
+    async def main():
+        client = await temporal_connect(temporal_config=temporal_config)
+
+        return await schedule_all(
+            client=client,
+            probe_cc=probe_cc,
+            test_name=test_name,
+            clickhouse_url=config.clickhouse_url,
+            data_dir=config.data_dir,
+            schedule_analysis=analysis,
+        )
+
+    run_async(main())
 
 
 @cli.command()
@@ -210,11 +234,16 @@ def clear_schedules(
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
 
-    run_clear_schedules(
-        probe_cc=probe_cc,
-        test_name=test_name,
-        temporal_config=temporal_config,
-    )
+    async def main():
+        client = await temporal_connect(temporal_config=temporal_config)
+
+        return await clear_all_schedules(
+            client=client,
+            probe_cc=probe_cc,
+            test_name=test_name,
+        )
+
+    run_async(main())
 
 
 @cli.command()
@@ -228,7 +257,12 @@ def status():
         temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
         temporal_tls_client_key_path=config.temporal_tls_client_key_path,
     )
-    run_status(temporal_config=temporal_config)
+
+    run_async(
+        get_status(
+            temporal_config=temporal_config,
+        )
+    )
 
 
 @cli.command()
@@ -252,30 +286,77 @@ def startworkers():
 
 @cli.command()
 @click.option(
-    "--create-tables",
-    is_flag=True,
+    "--create-tables/--no-create-tables",
+    default=False,
     help="should we attempt to create the required clickhouse tables",
 )
 @click.option(
-    "--drop-tables",
-    is_flag=True,
+    "--drop-tables/--no-drop-tables",
+    default=False,
     help="should we drop tables before creating them",
 )
+@click.option(
+    "--print-create/--no-print-create",
+    default=True,
+    help="should we print the create table queries",
+)
+@click.option(
+    "--print-diff/--no-print-diff",
+    default=False,
+    help="should we print the table diff",
+)
 def checkdb(
-    create_tables: bool,
-    drop_tables: bool,
+    create_tables: bool, drop_tables: bool, print_create: bool, print_diff: bool
 ):
     """
     Check if the database tables require migrations. If the create-tables flag
     is not specified, it will not perform any operations.
     """
-    maybe_create_delete_tables(
-        clickhouse_url=config.clickhouse_url,
-        create_tables=create_tables,
-        drop_tables=drop_tables,
-        clickhouse_buffer_min_time=config.clickhouse_buffer_min_time,
-        clickhouse_buffer_max_time=config.clickhouse_buffer_max_time,
-    )
+    if print_create:
+        for query, table_name in make_create_queries():
+            click.echo(f"## Create for {table_name}")
+            click.echo(query)
 
-    with ClickhouseConnection(config.clickhouse_url) as db:
-        list_all_table_diffs(db)
+    if create_tables or drop_tables:
+        maybe_create_delete_tables(
+            clickhouse_url=config.clickhouse_url,
+            create_tables=create_tables,
+            drop_tables=drop_tables,
+        )
+
+    if print_diff:
+        with ClickhouseConnection(config.clickhouse_url) as db:
+            list_all_table_diffs(db)
+
+
+@cli.command()
+@start_at_option
+@end_at_option
+@click.option(
+    "--optimize/--no-optimize",
+    default=False,
+    help="should we perform an optimization of the tables as well",
+)
+def check_duplicates(start_at: datetime, end_at: datetime, optimize: bool):
+    """
+    Perform checks on the bucket ranges to ensure no duplicate entries are
+    present. This is useful when backfilling the database to make sure the
+    optimize operations have converged.
+    """
+    duplicates = list_duplicates_in_buckets(
+        clickhouse_url=config.clickhouse_url,
+        start_bucket=start_at,
+        end_bucket=end_at,
+    )
+    found_duplicates = False
+    for count, bucket_date in duplicates:
+        if count > 0:
+            found_duplicates = True
+            click.echo(f"* {bucket_date}: {count}")
+    if not found_duplicates:
+        click.echo("no duplicates found")
+    if optimize:
+        optimize_all_tables_by_partition(
+            clickhouse_url=config.clickhouse_url,
+            partition_list=list_partitions_to_delete(duplicates),
+        )

@@ -16,8 +16,6 @@ class Settings(BaseSettings):
     data_dir: str = "tests/data/datadir"
 
     clickhouse_url: str = "clickhouse://localhost"
-    clickhouse_buffer_min_time: int = 10
-    clickhouse_buffer_max_time: int = 60
     clickhouse_write_batch_size: int = 200_000
 
     telemetry_endpoint: Optional[str] = None

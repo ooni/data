@@ -192,7 +192,9 @@ def make_analysis_in_a_day(params: MakeAnalysisParams) -> dict:
                 )
 
             except:
-                web_obs_ids = ",".join(map(lambda wo: wo.observation_id, web_obs))
+                web_obs_ids = ",".join(
+                    map(lambda wo: wo.measurement_meta.measurement_uid, web_obs)
+                )
                 log.error(
                     f"failed to generate analysis for {web_obs_ids}", exc_info=True
                 )

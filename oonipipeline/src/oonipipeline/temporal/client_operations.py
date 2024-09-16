@@ -1,15 +1,7 @@
-import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import List, Optional, Tuple
 
-from oonipipeline.temporal.schedules import (
-    ScheduleIdMap,
-    schedule_all,
-    schedule_backfill,
-    clear_schedules,
-)
 
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -112,64 +104,6 @@ async def temporal_connect(
     return client
 
 
-async def execute_backfill(
-    probe_cc: List[str],
-    test_name: List[str],
-    start_at: datetime,
-    end_at: datetime,
-    workflow_name: str,
-    temporal_config: TemporalConfig,
-):
-    log.info(f"creating all schedules")
-
-    client = await temporal_connect(temporal_config=temporal_config)
-
-    return await schedule_backfill(
-        client=client,
-        probe_cc=probe_cc,
-        test_name=test_name,
-        start_at=start_at,
-        end_at=end_at,
-        workflow_name=workflow_name,
-    )
-
-
-async def create_schedules(
-    probe_cc: List[str],
-    test_name: List[str],
-    clickhouse_url: str,
-    data_dir: str,
-    temporal_config: TemporalConfig,
-) -> ScheduleIdMap:
-    log.info(f"creating all schedules")
-
-    client = await temporal_connect(temporal_config=temporal_config)
-
-    return await schedule_all(
-        client=client,
-        probe_cc=probe_cc,
-        test_name=test_name,
-        clickhouse_url=clickhouse_url,
-        data_dir=data_dir,
-    )
-
-
-async def execute_clear_schedules(
-    probe_cc: List[str],
-    test_name: List[str],
-    temporal_config: TemporalConfig,
-) -> List[str]:
-    log.info(f"rescheduling everything")
-
-    client = await temporal_connect(temporal_config=temporal_config)
-
-    return await clear_schedules(
-        client=client,
-        probe_cc=probe_cc,
-        test_name=test_name,
-    )
-
-
 async def get_status(
     temporal_config: TemporalConfig,
 ) -> Tuple[List[WorkflowExecution], List[WorkflowExecution]]:
@@ -205,83 +139,3 @@ async def get_status(
             print(f"  execution_time={workflow.execution_time}")
             print(f"  execution_time={workflow.execution_time}")
     return active_observation_workflows, active_observation_workflows
-
-
-def run_backfill(
-    temporal_config: TemporalConfig,
-    probe_cc: List[str],
-    test_name: List[str],
-    workflow_name: str,
-    start_at: datetime,
-    end_at: datetime,
-):
-    try:
-        asyncio.run(
-            execute_backfill(
-                temporal_config=temporal_config,
-                workflow_name=workflow_name,
-                probe_cc=probe_cc,
-                test_name=test_name,
-                start_at=start_at,
-                end_at=end_at,
-            )
-        )
-    except KeyboardInterrupt:
-        print("shutting down")
-
-
-def run_create_schedules(
-    probe_cc: List[str],
-    test_name: List[str],
-    clickhouse_url: str,
-    data_dir: str,
-    temporal_config: TemporalConfig,
-):
-    try:
-        asyncio.run(
-            create_schedules(
-                probe_cc=probe_cc,
-                test_name=test_name,
-                clickhouse_url=clickhouse_url,
-                data_dir=data_dir,
-                temporal_config=temporal_config,
-            )
-        )
-    except KeyboardInterrupt:
-        print("shutting down")
-
-
-def run_clear_schedules(
-    probe_cc: List[str],
-    test_name: List[str],
-    temporal_config: TemporalConfig,
-):
-    try:
-        asyncio.run(
-            execute_clear_schedules(
-                probe_cc=probe_cc,
-                test_name=test_name,
-                temporal_config=temporal_config,
-            )
-        )
-    except KeyboardInterrupt:
-        print("shutting down")
-
-
-def start_event_loop(async_task):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(async_task())
-
-
-def run_status(
-    temporal_config: TemporalConfig,
-):
-    try:
-        asyncio.run(
-            get_status(
-                temporal_config=temporal_config,
-            )
-        )
-    except KeyboardInterrupt:
-        print("shutting down")

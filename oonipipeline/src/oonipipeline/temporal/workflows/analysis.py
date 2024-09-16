@@ -16,6 +16,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from oonipipeline.temporal.activities.common import (
         ClickhouseParams,
+        OptimizeTablesParams,
         ObsCountParams,
         get_obs_count_by_cc,
         optimize_all_tables,

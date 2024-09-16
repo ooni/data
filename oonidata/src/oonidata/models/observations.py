@@ -7,7 +7,7 @@ from typing import (
     Tuple,
 )
 
-from oonidata.models.base import table_model, ProcessingMeta
+from oonidata.models.base import table_model
 from oonidata.models.dataformats import Failure
 
 
@@ -181,15 +181,20 @@ class TCPObservation:
 
 @table_model(
     table_name="obs_web_ctrl",
-    table_index=("measurement_uid", "observation_id", "measurement_start_time"),
+    table_index=(
+        "measurement_start_time",
+        "hostname",
+        "measurement_uid",
+        "observation_idx",
+    ),
+    partition_key="concat(substring(bucket_date, 1, 4), substring(bucket_date, 6, 2))",
 )
 @dataclass
 class WebControlObservation:
     measurement_meta: MeasurementMeta
-    processing_meta: ProcessingMeta
 
     hostname: str
-    observation_id: str = ""
+    observation_idx: int = 0
 
     created_at: Optional[datetime] = None
 
@@ -220,18 +225,23 @@ class WebControlObservation:
 
 @table_model(
     table_name="obs_web",
-    table_index=("measurement_uid", "observation_id", "measurement_start_time"),
+    table_index=(
+        "measurement_start_time",
+        "probe_cc",
+        "probe_asn",
+        "measurement_uid",
+        "observation_idx",
+    ),
+    partition_key="concat(substring(bucket_date, 1, 4), substring(bucket_date, 6, 2))",
 )
 @dataclass
 class WebObservation:
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
-    processing_meta: ProcessingMeta
 
     # These fields are added by the processor
-    observation_id: str = ""
+    observation_idx: int = 0
     created_at: Optional[datetime] = None
-    processing_time: Optional[float] = None
 
     target_id: Optional[str] = None
     hostname: Optional[str] = None
@@ -338,14 +348,19 @@ class WebObservation:
 
 @table_model(
     table_name="obs_http_middlebox",
-    table_index=("measurement_uid", "measurement_start_time"),
+    table_index=(
+        "measurement_start_time",
+        "measurement_uid",
+        "observation_idx",
+    ),
+    partition_key="concat(substring(bucket_date, 1, 4), substring(bucket_date, 6, 2))",
 )
 @dataclass
 class HTTPMiddleboxObservation:
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
 
-    observation_id: str = ""
+    observation_idx: int = 0
 
     created_at: Optional[datetime] = None
 
