@@ -756,6 +756,9 @@ def measurement_to_openvpn_observation(
         timestamp=make_timestamp(msmt_meta.measurement_start_time, openvpn_h.t),
         success=openvpn_h.failure == None,
         protocol="openvpn",
+        transport = openvpn_h.transport,
+        ip = openvpn_h.ip,
+        port = openvpn_h.port,
         openvpn_bootstrap_time=bootstrap_time,
     )
 
@@ -769,6 +772,7 @@ def measurement_to_openvpn_observation(
     oo.handshake_t = openvpn_h.t
     oo.handshake_t0 = openvpn_h.t0
 
+    # TODO(ain): condition to test version >= xyz
     if len(network_events) != 0:
         for evt in network_events:
             if evt.packet is not None:
@@ -779,11 +783,11 @@ def measurement_to_openvpn_observation(
                 elif "client_hello" in evt.tags:
                     oo.openvpn_handshake_clt_hello_t = evt.t
                 elif "server_hello" in evt.tags:
-                    oo.openvpn_handshake_clt_hello_t = evt.t
-                elif evt.operation == "state" and evt.stage == "GOT_KEY":
-                    oo.openvpn_handshake_got_keys__t = evt.t
-                elif evt.operation == "state" and evt.stage == "GENERATED_KEYS":
-                    oo.openvpn_handshake_gen_keys__t = evt.t
+                    oo.openvpn_handshake_srv_hello_t = evt.t
+            if evt.operation == "state" and evt.stage == "GOT_KEY":
+                oo.openvpn_handshake_got_keys__t = evt.t
+            if evt.operation == "state" and evt.stage == "GENERATED_KEYS":
+                oo.openvpn_handshake_gen_keys__t = evt.t
 
         oo.openvpn_handshake_key_exchg_n = count_key_exchange_packets(network_events)
 
