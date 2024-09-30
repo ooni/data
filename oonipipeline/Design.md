@@ -12,11 +12,11 @@ needed.
 
 ### Expose a queriable low level view on measurements
 
-Currently it's only possible to query measurement at a granuliaty which is as
-fine a measurement.
+Currently it's only possible to query measurement at a granularity which is as
+fine as a measurement.
 
 This means that it's only possible to answer questions which the original
-designer of the experiment had already throught of.
+designer of the experiment had already thought of.
 
 On the other hand the new pipeline breaks down measurements into distinct
 observations (think 1 DNS query and answer or 1 TLS handshake towards a
@@ -145,16 +145,17 @@ port combination.
 
 You can run the observation generation with a clickhouse backend like so:
 
+TODO(art): check this is correct.
+
 ```
-poetry run python -m oonidata mkobs --clickhouse clickhouse://localhost/ --data-dir tests/data/datadir/ --start-day 2022-08-01 --end-day 2022-10-01 --create-tables --parallelism 20
+hatch run oonipipeline --probe-cc US --test-name signal --workflow-name observations --start-at 2022-08-01 --end-at 2022-10-01 
 ```
 
 Here is the list of supported observations so far:
 
 - [x] WebObservation, which has information about DNS, TCP, TLS and HTTP(s)
 - [x] WebControlObservation, has the control measurements run by web connectivity (is used to generate ground truths)
-- [ ] CircumventionToolObservation, still needs to be designed and implemented
-      (ideally we would use the same for OpenVPN, Psiphon, VanillaTor)
+- [x] OpenVPNObservation, with measurements run by the openvpn experiment.
 
 ### Response body archiving
 

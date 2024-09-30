@@ -383,3 +383,88 @@ class HTTPMiddleboxObservation:
     hfm_diff: Optional[str] = None
     hfm_failure: Optional[str] = None
     hfm_success: Optional[bool] = None
+
+
+@table_model(
+    table_name="obs_openvpn",
+    table_index=(
+        "measurement_start_time",
+        "measurement_uid",
+        "observation_idx",
+    ),
+)
+@dataclass
+class OpenVPNObservation:
+    measurement_meta: MeasurementMeta
+
+    probe_meta: ProbeMeta
+
+    observation_idx: int = 0
+
+    created_at: Optional[datetime] = None
+
+    timestamp: datetime = None
+
+    # Fields added by the processor
+
+    ip: str = ""
+    port: int = 0
+    transport: str = ""
+
+    success: bool = False
+    failure: Failure = None
+
+    protocol: str = ""
+    variant: Optional[str] = None
+
+    # TCP related observation
+    tcp_failure: Optional[Failure] = None
+    tcp_success: Optional[bool] = None
+    tcp_t: Optional[float] = None
+
+    # OpenVPN handshake observation
+    openvpn_handshake_failure: Optional[Failure] = None
+    openvpn_handshake_t: Optional[float] = None
+    openvpn_handshake_t0: Optional[float] = None
+    openvpn_bootstrap_time: Optional[float] = None
+
+    # timing info about the handshake packets
+    openvpn_handshake_hr_client_t: Optional[float] = None
+    openvpn_handshake_hr_server_t: Optional[float] = None
+    openvpn_handshake_clt_hello_t: Optional[float] = None
+    openvpn_handshake_srv_hello_t: Optional[float] = None
+    openvpn_handshake_key_exchg_n: Optional[int] = None
+    openvpn_handshake_got_keys__t: Optional[float] = None
+    openvpn_handshake_gen_keys__t: Optional[float] = None
+
+
+
+
+@table_model(
+    table_name="obs_tunnel",
+    table_index= ("measurement_uid", "observation_idx", "measurement_start_time"),
+)
+@dataclass
+class TunnelEndpointObservation:
+    measurement_meta: MeasurementMeta
+    probe_meta: ProbeMeta
+
+    measurement_start_time: datetime
+
+    ip: str
+    port: int
+    transport: str
+
+    # definition of success will need to change when/if we're able to gather metrics
+    # through the tunnel.
+    success: bool
+    failure: Failure
+
+    protocol: str
+    family: str
+
+    # indicates obfuscation or modifications from the main protocol family.
+    variant: Optional[str] = None
+
+    # any metadata about the providers behind the endpoints.
+    provider: Optional[str] = None

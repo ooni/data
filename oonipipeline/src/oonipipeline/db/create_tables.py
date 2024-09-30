@@ -28,6 +28,7 @@ from oonidata.models.observations import (
     WebControlObservation,
     WebObservation,
     HTTPMiddleboxObservation,
+    OpenVPNObservation,
 )
 
 from .connections import ClickhouseConnection
@@ -170,6 +171,7 @@ def format_create_query(
 table_models = [
     WebObservation,
     WebControlObservation,
+    OpenVPNObservation,
     HTTPMiddleboxObservation,
     WebAnalysis,
     MeasurementExperimentResult,
