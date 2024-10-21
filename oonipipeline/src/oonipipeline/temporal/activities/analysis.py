@@ -20,7 +20,9 @@ with workflow.unsafe.imports_passed_through():
     from ...analysis.control import BodyDB, WebGroundTruthDB
     from ...analysis.datasources import iter_web_observations
     from ...analysis.web_analysis import make_web_analysis
-    from ...analysis.website_experiment_results import make_website_experiment_results
+    from ...analysis.archive.website_experiment_results import (
+        make_website_experiment_results,
+    )
     from ...db.connections import ClickhouseConnection
     from ...fingerprintdb import FingerprintDB
 

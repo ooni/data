@@ -17,7 +17,9 @@ from ..analysis.control import (
     iter_ground_truths_from_web_control,
 )
 from ..analysis.web_analysis import make_web_analysis
-from ..analysis.website_experiment_results import make_website_experiment_results
+from ..analysis.archive.website_experiment_results import (
+    make_website_experiment_results,
+)
 
 from ..fingerprintdb import FingerprintDB
 from ..netinfo import NetinfoDB

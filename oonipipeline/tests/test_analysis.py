@@ -29,7 +29,7 @@ from oonipipeline.transforms.nettests.signal import SIGNAL_PEM_STORE
 from oonipipeline.transforms.observations import measurement_to_observations
 
 from oonipipeline.analysis.signal import make_signal_experiment_result
-from oonipipeline.analysis.website_experiment_results import (
+from oonipipeline.analysis.archive.website_experiment_results import (
     make_website_experiment_results,
 )
 
@@ -71,37 +71,30 @@ def test_signal(fingerprintdb, netinfodb, measurements):
             pem_cert_store=SIGNAL_PEM_STORE,
         )
 
-    web_observations = measurement_to_observations(signal_new_ca, netinfodb=netinfodb)[
-        0
-    ]
-    er = list(
-        make_signal_experiment_result(
-            web_observations=web_observations,
-            fingerprintdb=fingerprintdb,
-        )
+    er = make_signal_experiment_result(
+        msmt=signal_new_ca,
+        netinfodb=netinfodb,
+        fingerprintdb=fingerprintdb,
     )
-    assert er[0].anomaly == False
-    assert er[0].confirmed == False
+    assert er.anomaly == False
+    assert er.confirmed == False
 
     signal_blocked_uz = load_measurement(
         msmt_path=measurements["20210926222047.205897_UZ_signal_95fab4a2e669573f"]
     )
     assert isinstance(signal_blocked_uz, Signal)
-    web_observations = measurement_to_observations(
-        signal_blocked_uz, netinfodb=netinfodb
-    )[0]
-    blocking_event = list(
-        make_signal_experiment_result(
-            web_observations=web_observations,
-            fingerprintdb=fingerprintdb,
-        )
+
+    blocking_event = make_signal_experiment_result(
+        msmt=signal_blocked_uz,
+        netinfodb=netinfodb,
+        fingerprintdb=fingerprintdb,
     )
-    assert blocking_event[0].anomaly == True
-    assert blocking_event[0].confirmed == False
+    assert blocking_event.anomaly == True
+    assert blocking_event.confirmed == False
     tls_be = list(
         filter(
-            lambda be: be.outcome_category == "tls",
-            blocking_event,
+            lambda be: be["label"].startswith("tls"),
+            blocking_event.loni_list,
         )
     )
     assert len(tls_be) > 0
@@ -110,24 +103,20 @@ def test_signal(fingerprintdb, netinfodb, measurements):
         msmt_path=measurements["20221018174612.488229_IR_signal_f8640b28061bec06"]
     )
     assert isinstance(signal_blocked_ir, Signal)
-    web_observations = measurement_to_observations(
-        signal_blocked_ir, netinfodb=netinfodb
-    )[0]
-    blocking_event = list(
-        make_signal_experiment_result(
-            web_observations=web_observations,
-            fingerprintdb=fingerprintdb,
-        )
+    blocking_event = make_signal_experiment_result(
+        msmt=signal_blocked_ir,
+        netinfodb=netinfodb,
+        fingerprintdb=fingerprintdb,
     )
-    assert blocking_event[0].anomaly == True
+    assert blocking_event.anomaly == True
     dns_outcomes = list(
         filter(
-            lambda be: be.outcome_category == "dns",
-            blocking_event,
+            lambda be: be["label"].startswith("dns"),
+            blocking_event.loni_list,
         )
     )
     assert len(dns_outcomes) > 0
-    assert blocking_event[0].confirmed == True
+    assert blocking_event.confirmed == True
 
 
 def make_experiment_result_from_wc_ctrl(msmt_path, fingerprintdb, netinfodb):

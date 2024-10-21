@@ -1,3 +1,4 @@
+import logging
 from typing import List, Generator
 
 from oonidata.models.experiment_result import (
@@ -5,27 +6,33 @@ from oonidata.models.experiment_result import (
     ExperimentResult,
     Outcome,
     fp_to_scope,
-    iter_experiment_results,
+    make_experiment_result,
+    Loni,
 )
-from oonidata.models.observations import WebObservation
+from oonidata.models.nettests import Signal
+from ..netinfo import NetinfoDB
+from ..transforms.observations import measurement_to_observations
 
 from ..fingerprintdb import FingerprintDB
 
 
-## TODO(art): port this over to the new MeasurementExperimentResult model
+log = logging.getLogger("oonidata.analysis")
 
 
 def make_signal_experiment_result(
-    web_observations: List[WebObservation],
+    msmt: Signal,
     fingerprintdb: FingerprintDB,
-) -> Generator[ExperimentResult, None, None]:
-    confirmed = False
-    anomaly = False
-    experiment_group = "im"
-    target_name = "signal"
-    outcome_label = ""
+    netinfodb: NetinfoDB,
+) -> ExperimentResult:
 
-    outcomes = []
+    web_observations = measurement_to_observations(
+        msmt, netinfodb=netinfodb, bucket_date=""
+    )[0]
+    blocking_scope = BlockingScope.UNKNOWN
+    msm_failure = False
+
+    analysis_transcript = []
+    loni_list = []
     # This DNS query is used by signal to figure out if some of it's
     # services are down.
     # see: https://github.com/signalapp/Signal-Android/blob/c4bc2162f23e0fd6bc25941af8fb7454d91a4a35/app/src/main/java/org/thoughtcrime/securesms/jobs/ServiceOutageDetectionJob.java#L25
@@ -55,129 +62,117 @@ def make_signal_experiment_result(
             continue
 
         if web_o.dns_failure:
-            anomaly = True
-            outcome_meta = {}
-            outcome_meta["why"] = "dns failure"
-            outcomes.append(
-                Outcome(
-                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
-                    scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
-                    category="dns",
-                    label="",
-                    detail=f"{web_o.dns_failure}",
-                    meta={},
-                    blocked_score=0.8,
-                    down_score=0.2,
-                    ok_score=0.0,
+            analysis_transcript.append(f"dns_failure is not None")
+            loni_list.append(
+                Loni(
+                    target=f"{web_o.hostname}",
+                    label=f"dns.{web_o.dns_failure}",
+                    blocked=0.8,
+                    down=0.2,
+                    ok=0.0,
                 )
             )
             continue
 
         if web_o.dns_answer and not web_o.tls_is_certificate_valid:
-            # We don't set the anomaly flag, because this logic is very
-            # susceptible to false positives
-            # anomaly = True
-            outcome_meta = {}
-            outcome_meta["why"] = "tls is inconsistent"
-            outcome_meta["ip"] = web_o.dns_answer
+            analysis_transcript.append(f"not tls_is_certificate_valid")
 
-            blocked_score = 0.6
-            down_score = 0.0
-            blocking_scope = BlockingScope.UNKNOWN
+            blocked, down, ok = (0.3, 0.3, 0.3)
+            outcome_label = f"tls.{web_o.tls_failure}"
             fp = fingerprintdb.match_dns(web_o.dns_answer)
             if fp:
+                dns_blocked = True
+                outcome_label = f"dns.inconsistent_answer"
                 blocking_scope = fp_to_scope(fp.scope)
+                analysis_transcript.append(f"fingerprint_name == '{fp.name}'")
                 if blocking_scope != BlockingScope.SERVER_SIDE_BLOCK:
-                    dns_blocked = True
-                    confirmed = True
-                    anomaly = True
-                    outcome_label = "blocked"
-                outcome_meta["fingerprint"] = fp.name
-                # TODO: add country consistency checks
+                    analysis_transcript.append(
+                        f"fingerprint_scope != 'server_side_block'"
+                    )
+                    blocked, down, ok = (0.8, 0.2, 0.0)
+                    outcome_label = f"dns.inconsistent_answer.network_block"
+                    if (
+                        fp.expected_countries
+                        and web_o.probe_meta.probe_cc in fp.expected_countries
+                    ):
+                        analysis_transcript.append(f"probe_cc in expected_countries")
+                        outcome_label = f"dns.inconsistent_answer.country_consistent"
+                        blocked, down, ok = (1.0, 0.0, 0.0)
+                else:
+                    analysis_transcript.append(
+                        f"fingerprint_scope == 'server_side_block'"
+                    )
+                    blocked, down, ok = (0.9, 0.0, 0.1)
+                    outcome_label = f"dns.inconsistent_answer.server_side_block"
+
+                # outcome_meta["fingerprint"] = fp.name
 
             # Having a TLS inconsistency is a much stronger indication than not
             # knowing.
-            if web_o.tls_is_certificate_valid == False:
+            elif web_o.tls_is_certificate_valid == False:
                 # In these case we ignore TCP failures, since it's very likely
                 # to be DNS based.
+                analysis_transcript.append(f"tls_is_certificate_valid == False")
+                blocked, down, ok = (0.8, 0.0, 0.2)
+                outcome_label = f"dns.invalid_answer.{web_o.tls_failure}"
                 dns_blocked = True
-                anomaly = True
-                blocked_score = 0.8
 
             # TODO: Is this reasonable?
-            if signal_is_down == True and confirmed == False:
-                down_score = 0.8
-                blocked_score = 0.0
+            elif signal_is_down == True:
+                analysis_transcript.append(f"signal_is_down == True")
+                blocked, down, ok = (0.0, 0.8, 0.2)
 
-            outcomes.append(
-                Outcome(
-                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
-                    scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
-                    category="dns",
+            loni_list.append(
+                Loni(
+                    target=f"{web_o.ip}@{web_o.hostname}",
                     label=outcome_label,
-                    detail=f"{web_o.dns_failure}",
-                    meta={},
-                    blocked_score=blocked_score,
-                    down_score=down_score,
-                    ok_score=1 - (blocked_score + down_score),
+                    blocked=blocked,
+                    down=down,
+                    ok=ok,
                 )
             )
         else:
-            outcomes.append(
-                Outcome(
-                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
-                    scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
-                    category="dns",
-                    label=outcome_label,
-                    detail=f"{web_o.dns_failure}",
-                    meta={"why": "TLS consistent answer"},
-                    blocked_score=0.2,
-                    down_score=0.0,
-                    ok_score=0.8,
+            analysis_transcript.append(f"is_tls_certificate_valid == True")
+            blocked, down, ok = (0.2, 0.0, 0.8)
+            loni_list.append(
+                Loni(
+                    target=f"{web_o.ip}@{web_o.hostname}",
+                    label="ok",
+                    blocked=blocked,
+                    down=down,
+                    ok=ok,
                 )
             )
 
         if not dns_blocked and web_o.tcp_failure:
-            down_score = 0.0
-            blocked_score = 0.7
-            anomaly = True
+            analysis_transcript.append(f"not dns_blocked and tcp_failure is not None")
+            blocked, down, ok = (0.7, 0.0, 0.3)
             tcp_blocked = True
+            outcome_label = f"tcp.{web_o.tcp_failure}"
             if signal_is_down == True:
-                down_score = 0.9
-                blocked_score = 0.0
-                anomaly = False
+                analysis_transcript.append(f"signal_is_down == True")
+                blocked, down, ok = (0.0, 0.9, 0.1)
 
-            outcomes.append(
-                Outcome(
-                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
-                    scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.ip}:{web_o.port}",
-                    category="tcp",
-                    label="",
-                    detail=f"{web_o.tcp_failure}",
-                    meta={"why": "tcp failure"},
-                    blocked_score=blocked_score,
-                    down_score=down_score,
-                    ok_score=1 - (blocked_score + down_score),
+            loni_list.append(
+                Loni(
+                    target=f"{web_o.ip}:{web_o.port}@{web_o.hostname}",
+                    label=outcome_label,
+                    blocked=blocked,
+                    down=down,
+                    ok=ok,
                 )
             )
 
         elif not dns_blocked and web_o.tcp_success:
-            outcomes.append(
-                Outcome(
-                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
-                    scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.ip}:{web_o.port}",
-                    category="tcp",
-                    label=outcome_label,
-                    detail=f"ok",
-                    meta={},
-                    blocked_score=0.0,
-                    down_score=0.0,
-                    ok_score=1.0,
+            blocked, down, ok = (0.0, 0.0, 1.0)
+
+            loni_list.append(
+                Loni(
+                    target=f"{web_o.ip}:{web_o.port}@{web_o.hostname}",
+                    label="ok",
+                    blocked=blocked,
+                    down=down,
+                    ok=ok,
                 )
             )
 
@@ -187,26 +182,19 @@ def make_signal_experiment_result(
             and web_o.tls_failure
             and not web_o.tls_failure.startswith("ssl_")
         ):
-            down_score = 0.3
-            blocked_score = 0.7
-            anomaly = True
+            blocked, down, ok = (0.7, 0.3, 0.0)
             if signal_is_down == True:
-                down_score = 0.9
-                blocked_score = 0.1
-                anomaly = False
+                blocked, down, ok = (0.1, 0.9, 0.0)
 
-            outcomes.append(
-                Outcome(
-                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
-                    scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
-                    category="tls",
-                    label="",
-                    detail=f"{web_o.tls_failure}",
-                    meta={},
-                    blocked_score=blocked_score,
-                    down_score=down_score,
-                    ok_score=1 - (blocked_score + down_score),
+            outcome_label = f"tls.{web_o.tls_failure}"
+
+            loni_list.append(
+                Loni(
+                    target=f"{web_o.ip}@{web_o.hostname}",
+                    label=outcome_label,
+                    blocked=blocked,
+                    down=down,
+                    ok=ok,
                 )
             )
 
@@ -215,50 +203,42 @@ def make_signal_experiment_result(
         # MITM. Doing so requires a ground truth which we should eventually add.
         elif web_o.tls_is_certificate_valid == False:
             # TODO: maybe refactor this with the above switch case
-            down_score = 0.1
-            blocked_score = 0.9
-            anomaly = True
+            blocked, down, ok = (0.9, 0.1, 0.0)
             if signal_is_down == True:
-                down_score = 0.9
-                blocked_score = 0.1
-                anomaly = False
+                blocked, down, ok = (0.1, 0.9, 0.0)
 
-            outcomes.append(
-                Outcome(
-                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
-                    scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
-                    category="tls",
-                    label="",
-                    detail=f"ssl_invalid_certificate",
-                    meta={},
-                    blocked_score=blocked_score,
-                    down_score=down_score,
-                    ok_score=1 - (blocked_score + down_score),
+            outcome_label = f"tls.bad_certificate"
+            loni_list.append(
+                Loni(
+                    target=f"{web_o.ip}@{web_o.hostname}",
+                    label=outcome_label,
+                    blocked=blocked,
+                    down=down,
+                    ok=ok,
                 )
             )
         elif not dns_blocked and not tcp_blocked and web_o.tls_cipher_suite is not None:
-            outcomes.append(
-                Outcome(
-                    observation_id=f"{web_o.measurement_meta.measurement_uid}_{web_o.observation_idx}",
-                    scope=BlockingScope.UNKNOWN,
-                    subject=f"{web_o.hostname}",
-                    category="tls",
-                    label="",
-                    detail="ok",
-                    meta={},
-                    blocked_score=0.0,
-                    down_score=0.0,
-                    ok_score=1.0,
+            blocked, down, ok = (0.0, 0.0, 1.0)
+            loni_list.append(
+                Loni(
+                    target=f"{web_o.ip}@{web_o.hostname}",
+                    label="ok",
+                    blocked=blocked,
+                    down=down,
+                    ok=ok,
                 )
             )
 
-    return iter_experiment_results(
+    return make_experiment_result(
         obs=web_observations[0],
-        experiment_group=experiment_group,
-        domain_name=target_name,
-        target_name=target_name,
-        anomaly=anomaly,
-        confirmed=confirmed,
-        outcomes=outcomes,
+        domain="signal",
+        test_helper_address=None,
+        test_runtime=0,
+        ooni_run_link_id="",
+        nettest_group="im",
+        probe_analysis=msmt.test_keys.signal_backend_status,
+        blocking_scope=blocking_scope.value,
+        msm_failure=msm_failure,
+        loni_list=loni_list,
+        analysis_transcript_list=analysis_transcript,
     )

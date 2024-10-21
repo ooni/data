@@ -1,5 +1,7 @@
 import dataclasses
-from dataclasses import dataclass
+
+from typing import TypedDict
+from dataclasses import asdict, dataclass
 import logging
 from typing import Any, Dict, Generator, List, Optional, NamedTuple, Mapping, Tuple
 from enum import Enum
@@ -190,18 +192,29 @@ class MeasurementExperimentResult:
     confirmed: Optional[bool]
 
 
+class Loni(TypedDict):
+    ok: float
+    down: float
+    blocked: float
+    label: str
+    target: str
+
+
 class ExperimentResult(NamedTuple):
     __table_name__ = "experiment_result"
 
-    measurement_uid: str
-    observation_id: str
-    report_id: str
-    input: Optional[str]
-    timestamp: datetime
     created_at: datetime
 
-    probe_asn: int
+    measurement_uid: str
+    report_id: str
+
+    input: str
+    input_options: Dict[str, Any]
+    domain: str
+    domain_category_code: str
+
     probe_cc: str
+    probe_asn: int
 
     probe_as_org_name: str
     probe_as_cc: str
@@ -214,91 +227,133 @@ class ExperimentResult(NamedTuple):
     resolver_as_cc: Optional[str]
     resolver_cc: Optional[str]
 
+    test_name: str
+    test_version: str
+    nettest_group: str
+
+    software_name: str
+    software_version: str
+
+    architecture: Optional[str]
+    engine_name: Optional[str]
+    engine_version: Optional[str]
+
+    measurement_start_time: datetime
+
+    test_runtime: float
+
+    test_helper_address: Optional[str]
+    test_helper_type: Optional[str]
+    ooni_run_link_id: Optional[str]
+
     anomaly: bool
     confirmed: bool
+    msm_failure: bool
 
-    ## These fields will be shared by multiple experiment results in a given
-    ## measurement
-    # Indicates the experiment group for this particular result, ex. im,
-    # websites, circumvention
-    experiment_group: str
-    # The domain name for the specified target
-    domain_name: str
-    # A string indicating the name of the target, ex. Signal, Facebook website
-    target_name: str
+    probe_analysis: Optional[str]
 
-    ## These fields are unique to a particular experiment result
-    # A string indicating the subject of this experiment result, for example an
-    # IP:port combination.
-    subject: str
-    # In the event of blocking, indicates to what extent the blocking is
-    # happening: ISP, National, Local, Server Side, Throttling, Unknown
-    outcome_scope: str
-    # Specifies the category of the outcome, usually indicating the protocol for
-    # which we saw the block, ex. dns, tcp, tls, http, https
-    outcome_category: str
-    # Specifies, within the given class, what were the details of the outcome, ex. connection_reset, timeout, etc.
-    outcome_detail: str
-    # Additional metadata which can be used by an analyst to understand why the
-    # analysis engine came to a certain conclusion
-    outcome_meta: Mapping[str, str]
+    blocking_scope: Optional[str]
 
-    # An additional label useful for assessing the metrics of the analysis
-    # engine.
-    # For example it can be used to include the blocking fingerprint flag.
-    outcome_label: str
+    # Likelyhood of network interference values which define a probability space
+    loni_down_value: float
+    loni_blocked_value: float
+    loni_ok_value: float
+    loni_label: str
 
-    # These are scores which estimate the likelyhood of this particular subject
-    # being reachable, down or blocked.
-    # The sum of all the scores for a given outcome will be 1.0
-    ok_score: float
-    down_score: float
-    blocked_score: float
+    # Encoded as JSON
+    loni_list: List[Loni]
 
-    experiment_result_id: str
+    # Inside this string we include a representation of the logic that lead us
+    # to produce the above loni values
+    analysis_transcript_list: List[List[str]]
 
 
-def iter_experiment_results(
+def make_experiment_result(
     obs: WebObservation,
-    experiment_group: str,
-    anomaly: bool,
-    confirmed: bool,
-    domain_name: str,
-    target_name: str,
-    outcomes: List[Outcome],
-) -> Generator[ExperimentResult, None, None]:
+    domain: str,
+    test_helper_address: Optional[str],
+    test_runtime: float,
+    ooni_run_link_id: Optional[str],
+    nettest_group: str,
+    probe_analysis: Optional[str],
+    blocking_scope: Optional[str],
+    msm_failure: bool,
+    loni_list: List[Loni],
+    analysis_transcript_list: List[List[str]],
+) -> ExperimentResult:
     created_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    for idx, outcome in enumerate(outcomes):
-        yield ExperimentResult(
-            measurement_uid=obs.measurement_meta.measurement_uid,
-            created_at=created_at,
-            report_id=obs.measurement_meta.report_id,
-            input=obs.measurement_meta.input,
-            timestamp=obs.measurement_meta.measurement_start_time,
-            probe_asn=obs.probe_meta.probe_asn,
-            probe_cc=obs.probe_meta.probe_cc,
-            probe_as_org_name=obs.probe_meta.probe_as_org_name,
-            probe_as_cc=obs.probe_meta.probe_as_cc,
-            network_type=obs.probe_meta.network_type,
-            resolver_ip=obs.probe_meta.resolver_ip,
-            resolver_asn=obs.probe_meta.resolver_asn,
-            resolver_as_org_name=obs.probe_meta.resolver_as_org_name,
-            resolver_as_cc=obs.probe_meta.resolver_as_cc,
-            resolver_cc=obs.probe_meta.resolver_cc,
-            experiment_result_id=f"{obs.measurement_meta.measurement_uid}_{idx}",
-            experiment_group=experiment_group,
-            anomaly=anomaly,
-            confirmed=confirmed,
-            domain_name=domain_name,
-            target_name=target_name,
-            observation_id=outcome.observation_id,
-            subject=outcome.subject,
-            outcome_scope=outcome.scope.value,
-            outcome_category=outcome.category,
-            outcome_detail=outcome.detail,
-            outcome_meta=outcome.meta,
-            outcome_label=outcome.label,
-            ok_score=outcome.ok_score,
-            down_score=outcome.down_score,
-            blocked_score=outcome.blocked_score,
-        )
+    test_helper_type = None
+    if test_helper_address and test_helper_address.startswith("https://"):
+        test_helper_type = "https"
+
+    confirmed = False
+    anomaly = False
+    loni_ok_value = 0.0
+    loni_down_value = 0.0
+    loni_blocked_value = 0.0
+    blocked, down, ok = [], [], []
+    for loni in loni_list:
+        blocked.append((loni["blocked"], loni["label"]))
+        down.append((loni["down"], loni["label"]))
+        ok.append((loni["ok"], loni["label"]))
+    loni_blocked = max(blocked, key=lambda x: x[0])
+    loni_down = max(down, key=lambda x: x[0])
+    loni_blocked_value = loni_blocked[0]
+    loni_down_value = loni_down[0]
+    loni_ok_value = 1 - (loni_blocked_value + loni_down_value)
+    loni_label = ""
+    if loni_ok_value > 0.5:
+        loni_label = "ok"
+    elif loni_blocked_value > loni_down_value:
+        if loni_blocked_value == 1:
+            confirmed = True
+        loni_label = f"{loni_blocked[1]}"
+        anomaly = True
+    else:
+        loni_label = f"{loni_down[1]}"
+
+    assert loni_label != "", "unable to set loni_label"
+
+    return ExperimentResult(
+        created_at=created_at,
+        measurement_uid=obs.measurement_meta.measurement_uid,
+        report_id=obs.measurement_meta.report_id,
+        input=obs.measurement_meta.input if obs.measurement_meta.input else "",
+        input_options={},
+        domain=domain,
+        domain_category_code="",
+        probe_asn=obs.probe_meta.probe_asn,
+        probe_cc=obs.probe_meta.probe_cc,
+        probe_as_org_name=obs.probe_meta.probe_as_org_name,
+        probe_as_cc=obs.probe_meta.probe_as_cc,
+        network_type=obs.probe_meta.network_type,
+        resolver_ip=obs.probe_meta.resolver_ip,
+        resolver_asn=obs.probe_meta.resolver_asn,
+        resolver_as_org_name=obs.probe_meta.resolver_as_org_name,
+        resolver_as_cc=obs.probe_meta.resolver_as_cc,
+        resolver_cc=obs.probe_meta.resolver_cc,
+        test_name=obs.measurement_meta.test_name,
+        test_version=obs.measurement_meta.test_version,
+        nettest_group=nettest_group,
+        software_name=obs.measurement_meta.software_name,
+        software_version=obs.measurement_meta.software_version,
+        architecture=obs.probe_meta.architecture,
+        engine_name=obs.probe_meta.engine_name,
+        engine_version=obs.probe_meta.engine_version,
+        measurement_start_time=obs.measurement_meta.measurement_start_time,
+        test_runtime=test_runtime,
+        test_helper_address=test_helper_address,
+        test_helper_type=test_helper_type,
+        ooni_run_link_id=ooni_run_link_id,
+        anomaly=anomaly,
+        confirmed=confirmed,
+        msm_failure=msm_failure,
+        probe_analysis=probe_analysis,
+        blocking_scope=blocking_scope,
+        loni_ok_value=loni_ok_value,
+        loni_blocked_value=loni_blocked_value,
+        loni_down_value=loni_down_value,
+        loni_label=loni_label,
+        loni_list=loni_list,
+        analysis_transcript_list=analysis_transcript_list,
+    )

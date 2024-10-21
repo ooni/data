@@ -4,10 +4,7 @@ import logging
 from typing import Dict, Generator, List, Optional, Tuple
 
 from oonidata.models.analysis import WebAnalysis
-from oonidata.models.experiment_result import (
-    MeasurementExperimentResult,
-    ExperimentResult,
-)
+from oonidata.models.experiment_result import MeasurementExperimentResult
 
 log = logging.getLogger("oonidata.analysis")
 
