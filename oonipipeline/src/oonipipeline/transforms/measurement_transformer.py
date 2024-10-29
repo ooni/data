@@ -404,12 +404,12 @@ def measurement_to_tls_observation(
         tlso.handshake_write_bytes = 0
         for ne in tls_network_events:
             if ne.operation == "write":
-                if ne.num_bytes:
+                if ne.num_bytes >= 0:
                     tlso.handshake_write_count += 1
                     tlso.handshake_write_bytes += ne.num_bytes
                 tlso.handshake_last_operation = f"write_{tlso.handshake_write_count}"
             elif ne.operation == "read" and ne.num_bytes:
-                if ne.num_bytes:
+                if ne.num_bytes >= 0:
                     tlso.handshake_read_count += 1
                     tlso.handshake_read_bytes += ne.num_bytes
                 tlso.handshake_last_operation = f"read_{tlso.handshake_read_count}"
