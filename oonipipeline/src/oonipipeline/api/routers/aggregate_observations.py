@@ -51,9 +51,9 @@ AggregationKeys = Literal[
 
 
 @router.get(
-    "/observations-aggregate", response_model_exclude_none=True, tags=["aggregation"]
+    "/aggregation/observations", response_model_exclude_none=True, tags=["aggregation"]
 )
-async def get_obs_aggregation(
+async def get_aggregation_observations(
     db: Annotated[ClickhouseClient, Depends(get_clickhouse_client)],
     group_by: Annotated[List[AggregationKeys], Query()] = [
         "failure",
@@ -168,10 +168,8 @@ AND measurement_start_time < %(until)s
 {group_by_str}
 {order_by_str}
 """
-    print(query)
     entries = []
     for row in db.execute_iter(query, params_filter):
         d = dict(zip(column_keys, row))
-        print(d)
         entries.append(AggregationEntry(**d))
     return AggregationResponse(aggregation=entries)
