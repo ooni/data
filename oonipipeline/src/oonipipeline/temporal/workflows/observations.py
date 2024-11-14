@@ -20,14 +20,12 @@ with workflow.unsafe.imports_passed_through():
     from oonipipeline.temporal.workflows.common import (
         get_workflow_start_time,
     )
-
+    from oonipipeline.settings import config
 
 @dataclass
 class ObservationsWorkflowParams:
     probe_cc: List[str]
     test_name: List[str]
-    clickhouse: str
-    data_dir: str
     fast_fail: bool
     is_reprocessing: bool = True
     bucket_date: Optional[str] = None
@@ -46,8 +44,8 @@ class ObservationsWorkflow:
         params_make_observations = MakeObservationsParams(
             probe_cc=params.probe_cc,
             test_name=params.test_name,
-            clickhouse=params.clickhouse,
-            data_dir=params.data_dir,
+            clickhouse=config.clickhouse_url,
+            data_dir=config.data_dir,
             fast_fail=params.fast_fail,
             bucket_date=params.bucket_date,
         )
@@ -70,7 +68,7 @@ class ObservationsWorkflow:
             await workflow.execute_activity(
                 optimize_tables,
                 OptimizeTablesParams(
-                    clickhouse=params.clickhouse,
+                    clickhouse=config.clickhouse_url,
                     table_names=["obs_web", "obs_web_ctrl", "obs_http_middlebox"],
                     partition_str=partition_str,
                 ),

@@ -106,8 +106,6 @@ async def schedule_all(
     obs_params = ObservationsWorkflowParams(
         probe_cc=probe_cc,
         test_name=test_name,
-        clickhouse=clickhouse_url,
-        data_dir=data_dir,
         fast_fail=False,
     )
     sched_handle = await client.create_schedule(
