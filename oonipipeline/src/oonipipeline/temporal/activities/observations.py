@@ -13,11 +13,6 @@ from oonidata.datautils import PerfTimer
 from oonidata.models.nettests import SupportedDataformats
 from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.netinfo import NetinfoDB
-from oonipipeline.temporal.common import (
-    PrevRange,
-    get_prev_range,
-    maybe_delete_prev_range,
-)
 from oonipipeline.temporal.activities.common import process_pool_executor, update_assets
 from oonipipeline.settings import config
 from opentelemetry import trace
@@ -244,45 +239,3 @@ async def make_observations(params: MakeObservationsParams) -> MakeObservationsR
         "measurement_per_sec": measurement_count / tbatch.s,
         "total_size": batches["total_size"],
     }
-
-
-@dataclass
-class GetPreviousRangeParams:
-    clickhouse: str
-    bucket_date: str
-    test_name: List[str]
-    probe_cc: List[str]
-    tables: List[str]
-
-
-@activity.defn
-def get_previous_range(params: GetPreviousRangeParams) -> List[PrevRange]:
-    with ClickhouseConnection(params.clickhouse) as db:
-        prev_ranges = []
-        for table_name in params.tables:
-            prev_ranges.append(
-                get_prev_range(
-                    db=db,
-                    table_name=table_name,
-                    bucket_date=params.bucket_date,
-                    test_name=params.test_name,
-                    probe_cc=params.probe_cc,
-                ),
-            )
-    return prev_ranges
-
-
-@dataclass
-class DeletePreviousRangeParams:
-    clickhouse: str
-    previous_ranges: List[PrevRange]
-
-
-@activity.defn
-def delete_previous_range(params: DeletePreviousRangeParams) -> List[str]:
-    delete_queries = []
-    with ClickhouseConnection(params.clickhouse) as db:
-        for pr in params.previous_ranges:
-            log.info("deleting previous range of {pr}")
-            delete_queries.append(maybe_delete_prev_range(db=db, prev_range=pr))
-    return delete_queries

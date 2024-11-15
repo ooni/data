@@ -6,14 +6,10 @@ from temporalio.worker import Worker
 
 from oonipipeline.temporal.activities.analysis import make_analysis_in_a_day
 from oonipipeline.temporal.activities.common import (
-    get_obs_count_by_cc,
     optimize_all_tables,
     optimize_tables,
 )
-from oonipipeline.temporal.activities.ground_truths import make_ground_truths_in_day
 from oonipipeline.temporal.activities.observations import (
-    delete_previous_range,
-    get_previous_range,
     make_observations,
 )
 from oonipipeline.temporal.client_operations import (
@@ -23,29 +19,23 @@ from oonipipeline.temporal.client_operations import (
 )
 from oonipipeline.temporal.workflows.common import TASK_QUEUE_NAME
 from oonipipeline.temporal.workflows.analysis import AnalysisWorkflow
-from oonipipeline.temporal.workflows.ctrl import GroundTruthsWorkflow
 from oonipipeline.temporal.workflows.observations import ObservationsWorkflow
 
 log = logging.getLogger("oonipipeline.workers")
 
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, Executor
+from concurrent.futures import ThreadPoolExecutor, Executor
 
 interrupt_event = asyncio.Event()
 
 WORKFLOWS = [
     ObservationsWorkflow,
-    GroundTruthsWorkflow,
     AnalysisWorkflow,
 ]
 
 ACTIVTIES = [
-    delete_previous_range,
-    get_previous_range,
     make_observations,
-    make_ground_truths_in_day,
     make_analysis_in_a_day,
     optimize_all_tables,
-    get_obs_count_by_cc,
     optimize_tables,
 ]
 
