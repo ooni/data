@@ -17,10 +17,6 @@ from dataclasses import Field, fields
 import typing
 
 from oonidata.models.base import TableModelProtocol
-from oonidata.models.experiment_result import (
-    MeasurementExperimentResult,
-)
-from oonidata.models.analysis import WebAnalysis
 from oonidata.models.observations import (
     MeasurementMeta,
     ProbeMeta,
@@ -170,8 +166,6 @@ table_models = [
     WebObservation,
     WebControlObservation,
     HTTPMiddleboxObservation,
-    WebAnalysis,
-    MeasurementExperimentResult,
 ]
 
 
