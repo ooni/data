@@ -159,6 +159,9 @@ def db_notruncate(clickhouse_server):
 def db(clickhouse_server):
     db = create_db_for_fixture(clickhouse_server)
     for _, table_name in make_create_queries():
+        # Ignore the fingerprints_dns table, since it's a remote table
+        if table_name == "fingerprints_dns":
+            continue
         db.execute(f"TRUNCATE TABLE {table_name};")
 
     config.clickhouse_url = db.clickhouse_url

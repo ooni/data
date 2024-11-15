@@ -33,9 +33,6 @@ from oonipipeline.temporal.activities.analysis import (
     MakeAnalysisParams,
     make_analysis_in_a_day,
 )
-from oonipipeline.temporal.common import (
-    TS_FORMAT,
-)
 from oonipipeline.temporal.workflows.analysis import (
     AnalysisWorkflowParams,
     AnalysisWorkflow,
@@ -85,15 +82,13 @@ def test_make_file_entry_batch(datadir, db):
     )
 
     assert obs_msmt_count == 453
-    analysis_res = make_analysis_in_a_day(
+    make_analysis_in_a_day(
         MakeAnalysisParams(
             probe_cc=["IR"],
             test_name=["webconnectivity"],
-            fast_fail=False,
             day=date(2023, 10, 31).strftime("%Y-%m-%d"),
         ),
     )
-    assert analysis_res["count"] == obs_msmt_count
 
 
 def test_write_observations(measurements, netinfodb, db):
@@ -236,8 +231,8 @@ async def make_observations_mocked(
 
 
 @activity.defn(name="make_analysis_in_a_day")
-async def make_analysis_in_a_day_mocked(params: MakeAnalysisParams) -> dict:
-    return {"count": 100}
+async def make_analysis_in_a_day_mocked(params: MakeAnalysisParams):
+    pass
 
 
 @pytest.mark.asyncio
@@ -249,7 +244,7 @@ async def test_temporal_workflows():
         bucket_date="2024-01-02",
     )
     analysis_params = AnalysisWorkflowParams(
-        probe_cc=[], test_name=[], clickhouse="", data_dir="", day="2024-01-01"
+        probe_cc=[], test_name=[], day="2024-01-01"
     )
     async with await WorkflowEnvironment.start_time_skipping() as env:
         async with Worker(
@@ -279,7 +274,6 @@ async def test_temporal_workflows():
                 id="analysis-wf",
                 task_queue=TASK_QUEUE_NAME,
             )
-            assert res["analysis_count"] == 100
             assert res["day"] == "2024-01-01"
 
 

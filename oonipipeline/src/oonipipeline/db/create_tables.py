@@ -18,7 +18,6 @@ import typing
 
 from oonidata.models.base import TableModelProtocol
 from oonidata.models.experiment_result import (
-    ExperimentResult,
     MeasurementExperimentResult,
 )
 from oonidata.models.analysis import WebAnalysis
@@ -177,7 +176,43 @@ table_models = [
 
 
 def make_create_queries():
-    create_queries = []
+    create_queries = [
+        (
+            """
+        CREATE TABLE IF NOT EXISTS fingerprints_dns (
+            `name` String, `scope` String, `other_names` String, `location_found` String, `pattern_type` String,
+            `pattern` String, `confidence_no_fp` String, `expected_countries` String, `source` String, `exp_url` String, `notes` String
+        ) ENGINE = URL('https://raw.githubusercontent.com/ooni/blocking-fingerprints/main/fingerprints_dns.csv', 'CSV')
+        """,
+            "fingerprints_dns",
+        ),
+        (
+            """
+        CREATE TABLE IF NOT EXISTS analysis_web_measurement
+        (
+            `domain` String,
+            `input` String,
+            `test_name` String,
+            `probe_asn` UInt32,
+            `probe_as_org_name` String,
+            `probe_cc` String,
+            `resolver_asn` UInt32, `resolver_as_cc` String, `network_type` String,
+            `measurement_start_time` DateTime64(3, 'UTC'),
+            `measurement_uid` String, `top_probe_analysis` Nullable(String),
+            `top_dns_failure` Nullable(String),
+            `top_tcp_failure` Nullable(String), `top_tls_failure` Nullable(String),
+            `dns_blocked_max` Float32, `dns_down_max` Float32, `dns_ok_max` Float32,
+            `tcp_blocked_max` Float32, `tcp_down_max` Float32, `tcp_ok_max` Float32,
+            `tls_blocked_max` Float32, `tls_down_max` Float32, `tls_ok_max` Float32
+        )
+        ENGINE = ReplacingMergeTree
+        PRIMARY KEY measurement_uid
+        ORDER BY (measurement_uid, measurement_start_time, probe_cc, probe_asn)
+        SETTINGS index_granularity = 8192
+    """,
+            "analysis_web_measurement",
+        ),
+    ]
     for model in table_models:
         table_name = model.__table_name__
         create_queries.append(

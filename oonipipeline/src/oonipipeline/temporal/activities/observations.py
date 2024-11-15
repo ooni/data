@@ -54,6 +54,21 @@ class MakeObservationsFileEntryBatch:
     fast_fail: bool
 
 
+def write_observations_to_db(
+    db: ClickhouseConnection,
+    netinfodb: NetinfoDB,
+    bucket_date: str,
+    msmt: SupportedDataformats,
+):
+    obs_tuple = measurement_to_observations(
+        msmt=msmt,
+        netinfodb=netinfodb,
+        bucket_date=bucket_date,
+    )
+    for obs_list in obs_tuple:
+        db.write_table_model_rows(obs_list)
+
+
 def make_observations_for_file_entry(
     db: ClickhouseConnection,
     netinfodb: NetinfoDB,
@@ -86,13 +101,9 @@ def make_observations_for_file_entry(
             continue
         try:
             msmt = load_measurement(msmt_dict)
-            obs_tuple = measurement_to_observations(
-                msmt=msmt,
-                netinfodb=netinfodb,
-                bucket_date=bucket_date,
+            write_observations_to_db(
+                db=db, netinfodb=netinfodb, bucket_date=bucket_date, msmt=msmt
             )
-            for obs_list in obs_tuple:
-                db.write_table_model_rows(obs_list)
             measurement_count += 1
         except Exception as exc:
             log.error(f"failed at idx: {measurement_count} ({msmt_str})", exc_info=True)

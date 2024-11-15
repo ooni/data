@@ -83,8 +83,6 @@ async def schedule_all(
     client: TemporalClient,
     probe_cc: List[str],
     test_name: List[str],
-    clickhouse_url: str,
-    data_dir: str,
     schedule_analysis: bool = True,
 ) -> ScheduleIdMap:
     schedule_id_map = ScheduleIdMap()
@@ -139,9 +137,6 @@ async def schedule_all(
         analysis_params = AnalysisWorkflowParams(
             probe_cc=probe_cc,
             test_name=test_name,
-            clickhouse=clickhouse_url,
-            data_dir=data_dir,
-            fast_fail=False,
         )
         sched_handle = await client.create_schedule(
             id=f"{ANALYSIS_SCHED_PREFIX}-{filter_id}-{ts}",

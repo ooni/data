@@ -66,7 +66,7 @@ TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 def measurement_to_observations(
     msmt: Union[HTTPHeaderFieldManipulation, HTTPInvalidRequestLine],
     netinfodb: NetinfoDB,
-    bucket_date: str,
+    bucket_date: str = "1984-01-01",
 ) -> TypeHTTPMiddleboxObservations: ...
 
 
@@ -74,7 +74,7 @@ def measurement_to_observations(
 def measurement_to_observations(
     msmt: WebConnectivity,
     netinfodb: NetinfoDB,
-    bucket_date: str,
+    bucket_date: str = "1984-01-01",
 ) -> TypeWebConnectivityObservations: ...
 
 
@@ -84,7 +84,7 @@ def measurement_to_observations(
         Signal, Whatsapp, Telegram, StunReachability, Tor, FacebookMessenger, UrlGetter
     ],
     netinfodb: NetinfoDB,
-    bucket_date: str,
+    bucket_date: str = "1984-01-01",
 ) -> TypeWebObservations: ...
 
 
@@ -92,7 +92,7 @@ def measurement_to_observations(
 def measurement_to_observations(
     msmt: SupportedDataformats,
     netinfodb: NetinfoDB,
-    bucket_date: str,
+    bucket_date: str = "1984-01-01",
 ) -> TypeWebObservations: ...
 
 

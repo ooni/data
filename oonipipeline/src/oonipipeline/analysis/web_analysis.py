@@ -1,7 +1,7 @@
 import logging
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..db.connections import ClickhouseConnection
 
@@ -24,28 +24,34 @@ CLOUD_PROVIDERS_ASNS = [
 ]
 
 
-def make_analysis_web_fuzzy_logic(
-    db: ClickhouseConnection,
+def format_query_analysis_web_fuzzy_logic(
     start_time: datetime,
     end_time: datetime,
     probe_cc: List[str],
     # We are only doing web_connectivity for the moment
     test_name: List[str] = ["web_connectivity"],
+    measurement_uid: Optional[str] = None,
 ):
     q_params: Dict[str, Any] = {
         "start_time": start_time,
         "end_time": end_time,
         "cloud_provider_asns": CLOUD_PROVIDERS_ASNS,
     }
-    and_where = []
+    and_where = [
+        "measurement_start_time > %(start_time)s",
+        "measurement_start_time <= %(end_time)s",
+    ]
     if len(probe_cc) > 0:
         and_where.append("probe_cc IN %(probe_cc)s")
         q_params["probe_cc"] = probe_cc
     if len(test_name) > 0:
         and_where.append("test_name IN %(test_name)s")
         q_params["test_name"] = test_name
+    if measurement_uid is not None:
+        and_where.append("measurement_uid = %(measurement_uid)s")
+        q_params["measurement_uid"] = measurement_uid
 
-    where_clause = "AND ".join(and_where)
+    where_clause = " AND ".join(and_where)
 
     SQL = f"""
     WITH
@@ -362,8 +368,8 @@ def make_analysis_web_fuzzy_logic(
 
         FROM
         obs_web
-        WHERE measurement_start_time > %(start_time)s
-        AND measurement_start_time <= %(end_time)s
+        WHERE
+
         {where_clause}
     ) as experiment
 
@@ -504,5 +510,54 @@ def make_analysis_web_fuzzy_logic(
     measurement_start_time,
     measurement_uid
     """
+    return SQL, q_params
 
-    return db.execute_iter(SQL, params=q_params)
+
+def get_analysis_web_fuzzy_logic(
+    db: ClickhouseConnection,
+    start_time: datetime,
+    end_time: datetime,
+    probe_cc: List[str],
+    # We are only doing web_connectivity for the moment
+    test_name: List[str] = ["web_connectivity"],
+    measurement_uid: Optional[str] = None,
+):
+    SQL, q_params = format_query_analysis_web_fuzzy_logic(
+        start_time=start_time,
+        end_time=end_time,
+        probe_cc=probe_cc,
+        test_name=test_name,
+        measurement_uid=measurement_uid,
+    )
+    res = db.execute_iter(SQL, params=q_params, with_column_types=True)
+    column_names = list(map(lambda x: x[0], next(res)))
+    for row in res:
+        row = dict(zip(column_names, row))
+        yield row
+
+
+def write_analysis_web_fuzzy_logic(
+    db: ClickhouseConnection,
+    start_time: datetime,
+    end_time: datetime,
+    probe_cc: List[str],
+    # We are only doing web_connectivity for the moment
+    test_name: List[str] = ["web_connectivity"],
+    measurement_uid: Optional[str] = None,
+):
+    SQL, q_params = format_query_analysis_web_fuzzy_logic(
+        start_time=start_time,
+        end_time=end_time,
+        probe_cc=probe_cc,
+        test_name=test_name,
+        measurement_uid=measurement_uid,
+    )
+    INSERT_SQL = f"""
+    INSERT INTO analysis_web_measurement
+    SELECT * FROM (
+        {SQL}
+    )
+    """
+    # TODO(art): this is currently a pretty sub-optimal workaround to the whole
+    # database class needing to be refactored
+    return db._execute(INSERT_SQL, params=q_params)
