@@ -114,6 +114,8 @@ class TLSObservation:
     failure: Failure
 
     server_name: str
+    outer_server_name: str
+    echconfig: str
     version: str
     cipher_suite: str
 
@@ -280,6 +282,8 @@ class WebObservation:
     tls_failure: Optional[Failure] = None
 
     tls_server_name: Optional[str] = None
+    tls_outer_server_name: Optional[str] = None
+    tls_echconfig: Optional[str] = None
     tls_version: Optional[str] = None
     tls_cipher_suite: Optional[str] = None
     tls_is_certificate_valid: Optional[bool] = None
