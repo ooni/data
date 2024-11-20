@@ -333,6 +333,8 @@ class TLSHandshake(BaseModel):
     peer_certificates: Optional[List[BinaryData]] = None
 
     server_name: Optional[str] = None
+    outer_server_name: Optional[str] = None
+    echconfig: Optional[str] = None
 
     tags: Optional[List[str]] = None
     tls_version: Optional[str] = None
