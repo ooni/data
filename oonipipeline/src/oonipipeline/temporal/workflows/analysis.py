@@ -6,6 +6,7 @@ from typing import List, Optional
 
 
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from oonidata.datautils import PerfTimer
@@ -42,6 +43,7 @@ class AnalysisWorkflow:
                 day=params.day,
             ),
             start_to_close_timeout=MAKE_ANALYSIS_START_TO_CLOSE_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
         )
 
         return {"day": params.day}
