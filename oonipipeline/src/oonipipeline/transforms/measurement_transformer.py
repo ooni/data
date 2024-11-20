@@ -364,6 +364,8 @@ def measurement_to_tls_observation(
     tlso = TLSObservation(
         timestamp=make_timestamp(msmt_meta.measurement_start_time, tls_h.t),
         server_name=tls_h.server_name if tls_h.server_name else "",
+        outer_server_name=tls_h.outer_server_name if tls_h.outer_server_name else "",
+        echconfig=tls_h.echconfig if tls_h.echconfig else "",
         version=tls_h.tls_version if tls_h.tls_version else "",
         cipher_suite=tls_h.cipher_suite if tls_h.cipher_suite else "",
         end_entity_certificate_san_list=[],
@@ -714,10 +716,12 @@ def make_measurement_meta(msmt: BaseMeasurement, bucket_date: str) -> Measuremen
     if isinstance(input_, list):
         input_ = ":".join(input_)
 
+    annotations = msmt.annotations or {}
     return MeasurementMeta(
         measurement_uid=msmt.measurement_uid,
         report_id=msmt.report_id,
         input=input_,
+        ooni_run_link_id=str(annotations.get("ooni_run_link_id", "")),
         software_name=msmt.software_name,
         software_version=msmt.software_version,
         test_name=msmt.test_name,
