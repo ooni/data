@@ -27,7 +27,7 @@ class ObservationsWorkflowParams:
     probe_cc: List[str]
     test_name: List[str]
     fast_fail: bool
-    is_reprocessing: bool = True
+    is_reprocessing: bool = False
     bucket_date: Optional[str] = None
 
 
