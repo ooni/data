@@ -716,10 +716,12 @@ def make_measurement_meta(msmt: BaseMeasurement, bucket_date: str) -> Measuremen
     if isinstance(input_, list):
         input_ = ":".join(input_)
 
+    annotations = msmt.annotations or {}
     return MeasurementMeta(
         measurement_uid=msmt.measurement_uid,
         report_id=msmt.report_id,
         input=input_,
+        ooni_run_link_id=str(annotations.get("ooni_run_link_id", "")),
         software_name=msmt.software_name,
         software_version=msmt.software_version,
         test_name=msmt.test_name,

@@ -43,6 +43,7 @@ DUMMY_MEASUREMENT_META = MeasurementMeta(
     test_name="web_connectivity",
     test_version="0.4.2",
     measurement_uid="TEST",
+    ooni_run_link_id="1234",
     input=None,
     report_id="TEST",
     measurement_start_time=datetime(2023, 10, 31, 15, 56, 12),

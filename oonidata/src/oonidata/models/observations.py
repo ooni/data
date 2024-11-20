@@ -18,6 +18,7 @@ class MeasurementMeta:
     measurement_uid: str
     input: Optional[str]
     report_id: str
+    ooni_run_link_id: str
 
     measurement_start_time: datetime
 
