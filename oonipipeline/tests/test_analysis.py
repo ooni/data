@@ -12,8 +12,6 @@ from oonipipeline.temporal.activities.observations import write_observations_to_
 import pytest
 
 from oonidata.dataclient import load_measurement
-from oonidata.models.analysis import WebAnalysis
-from oonidata.models.experiment_result import MeasurementExperimentResult
 from oonidata.models.nettests.signal import Signal
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.observations import (
