@@ -57,8 +57,6 @@ class AggregationResponse(BaseModel):
     dimension_count: int
     result: List[AggregationEntry]
 
-OONI_DATA_COLS_REMAP = {"domain": "fqdn"}
-
 
 @router.get("/aggregation/analysis", tags=["aggregation"])
 async def get_aggregation_analysis(
@@ -91,8 +89,7 @@ async def get_aggregation_analysis(
             f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
         )
     elif axis_x:
-        col_name = OONI_DATA_COLS_REMAP.get(axis_x, axis_x)
-        extra_cols[col_name] = col_name
+        extra_cols[axis_x] = axis_x
 
     if probe_asn is not None:
         if isinstance(probe_asn, str) and probe_asn.startswith("AS"):
@@ -131,8 +128,7 @@ async def get_aggregation_analysis(
                 f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
             )
         else:
-            col_name = OONI_DATA_COLS_REMAP.get(axis_y, axis_y)
-            extra_cols[col_name] = col_name
+            extra_cols[axis_y] = axis_y
 
     if since is not None:
         q_args["since"] = since
