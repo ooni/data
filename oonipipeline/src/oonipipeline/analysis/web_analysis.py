@@ -288,6 +288,7 @@ def format_query_analysis_web_fuzzy_logic(
     network_type,
     measurement_start_time,
     measurement_uid,
+    ooni_run_link_id,
 
     anyHeavy(probe_analysis) as top_probe_analysis,
 
@@ -311,8 +312,6 @@ def format_query_analysis_web_fuzzy_logic(
     max(tls_down) as tls_down_max,
     max(tls_ok) as tls_ok_max
 
-    --report_id
-
     FROM (
         WITH
         position(ip, '.') = 0 as ip_is_v6,
@@ -320,6 +319,7 @@ def format_query_analysis_web_fuzzy_logic(
 
         SELECT
         measurement_uid,
+        ooni_run_link_id,
         report_id,
         hostname,
         input,
@@ -508,7 +508,8 @@ def format_query_analysis_web_fuzzy_logic(
     resolver_asn, resolver_as_cc,
     network_type, test_name,
     measurement_start_time,
-    measurement_uid
+    measurement_uid,
+    ooni_run_link_id
     """
     return SQL, q_params
 
