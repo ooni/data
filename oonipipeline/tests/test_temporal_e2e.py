@@ -28,8 +28,6 @@ async def test_scheduling(datadir, db):
             client=env.client,
             probe_cc=[],
             test_name=[],
-            clickhouse_url=db.clickhouse_url,
-            data_dir=str(datadir),
         )
         assert sched_res.analysis
         assert sched_res.observations
@@ -60,8 +58,6 @@ async def test_scheduling(datadir, db):
             client=env.client,
             probe_cc=[],
             test_name=[],
-            clickhouse_url=db.clickhouse_url,
-            data_dir=str(datadir),
         )
         assert sched_res.analysis != sched_res2.analysis
         assert sched_res.observations != sched_res2.observations
@@ -72,8 +68,6 @@ async def test_observation_workflow(datadir, db):
     obs_params = ObservationsWorkflowParams(
         probe_cc=["BA"],
         test_name=["web_connectivity"],
-        clickhouse=db.clickhouse_url,
-        data_dir=str(datadir.absolute()),
         fast_fail=False,
         bucket_date="2022-10-21",
     )

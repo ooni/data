@@ -13,11 +13,6 @@ from oonidata.datautils import PerfTimer
 from oonidata.models.nettests import SupportedDataformats
 from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.netinfo import NetinfoDB
-from oonipipeline.temporal.common import (
-    PrevRange,
-    get_prev_range,
-    maybe_delete_prev_range,
-)
 from oonipipeline.temporal.activities.common import process_pool_executor, update_assets
 from oonipipeline.settings import config
 from opentelemetry import trace
@@ -59,6 +54,21 @@ class MakeObservationsFileEntryBatch:
     fast_fail: bool
 
 
+def write_observations_to_db(
+    db: ClickhouseConnection,
+    netinfodb: NetinfoDB,
+    bucket_date: str,
+    msmt: SupportedDataformats,
+):
+    obs_tuple = measurement_to_observations(
+        msmt=msmt,
+        netinfodb=netinfodb,
+        bucket_date=bucket_date,
+    )
+    for obs_list in obs_tuple:
+        db.write_table_model_rows(obs_list)
+
+
 def make_observations_for_file_entry(
     db: ClickhouseConnection,
     netinfodb: NetinfoDB,
@@ -91,13 +101,9 @@ def make_observations_for_file_entry(
             continue
         try:
             msmt = load_measurement(msmt_dict)
-            obs_tuple = measurement_to_observations(
-                msmt=msmt,
-                netinfodb=netinfodb,
-                bucket_date=bucket_date,
+            write_observations_to_db(
+                db=db, netinfodb=netinfodb, bucket_date=bucket_date, msmt=msmt
             )
-            for obs_list in obs_tuple:
-                db.write_table_model_rows(obs_list)
             measurement_count += 1
         except Exception as exc:
             log.error(f"failed at idx: {measurement_count} ({msmt_str})", exc_info=True)
@@ -244,45 +250,3 @@ async def make_observations(params: MakeObservationsParams) -> MakeObservationsR
         "measurement_per_sec": measurement_count / tbatch.s,
         "total_size": batches["total_size"],
     }
-
-
-@dataclass
-class GetPreviousRangeParams:
-    clickhouse: str
-    bucket_date: str
-    test_name: List[str]
-    probe_cc: List[str]
-    tables: List[str]
-
-
-@activity.defn
-def get_previous_range(params: GetPreviousRangeParams) -> List[PrevRange]:
-    with ClickhouseConnection(params.clickhouse) as db:
-        prev_ranges = []
-        for table_name in params.tables:
-            prev_ranges.append(
-                get_prev_range(
-                    db=db,
-                    table_name=table_name,
-                    bucket_date=params.bucket_date,
-                    test_name=params.test_name,
-                    probe_cc=params.probe_cc,
-                ),
-            )
-    return prev_ranges
-
-
-@dataclass
-class DeletePreviousRangeParams:
-    clickhouse: str
-    previous_ranges: List[PrevRange]
-
-
-@activity.defn
-def delete_previous_range(params: DeletePreviousRangeParams) -> List[str]:
-    delete_queries = []
-    with ClickhouseConnection(params.clickhouse) as db:
-        for pr in params.previous_ranges:
-            log.info("deleting previous range of {pr}")
-            delete_queries.append(maybe_delete_prev_range(db=db, prev_range=pr))
-    return delete_queries

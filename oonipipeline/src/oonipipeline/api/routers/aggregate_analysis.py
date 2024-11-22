@@ -9,10 +9,7 @@ from oonidata.datautils import PerfTimer
 from .utils import get_measurement_start_day_agg, TimeGrains
 from ..dependencies import ClickhouseClient, get_clickhouse_client
 from .list_analysis import (
-    OONI_DATA_COLS_REMAP,
-    OONI_DATA_COLS_REMAP_INV,
     SinceUntil,
-    test_name_to_group,
     utc_30_days_ago,
     utc_today,
 )
@@ -40,27 +37,19 @@ class DBStats(BaseModel):
 
 
 class AggregationEntry(BaseModel):
-    anomaly_count: int
-    confirmed_count: int
-    failure_count: int
-    ok_count: int
-    measurement_count: int
+    anomaly_count: float
+    confirmed_count: float
+    failure_count: float
+    ok_count: float
+    measurement_count: float
 
-    observation_count: int
-    vantage_point_count: int
     measurement_start_day: date
-    loni_down_map: Dict[str, float]
-    loni_down_value: float
-    loni_blocked_map: Dict[str, float]
-    loni_blocked_value: float
-    # loni_ok_map: Dict[str, float]
-    loni_ok_value: float
+    outcome_label: str
+    outcome_value: float
 
     domain: Optional[str] = None
     probe_cc: Optional[str] = None
     probe_asn: Optional[int] = None
-    test_name: Optional[str] = None
-
 
 class AggregationResponse(BaseModel):
     # TODO(arturo): these keys are inconsistent with the other APIs
@@ -69,8 +58,8 @@ class AggregationResponse(BaseModel):
     result: List[AggregationEntry]
 
 
-@router.get("/aggregation", tags=["aggregation"])
-async def get_aggregation(
+@router.get("/aggregation/analysis", tags=["aggregation"])
+async def get_aggregation_analysis(
     db: Annotated[ClickhouseClient, Depends(get_clickhouse_client)],
     axis_x: Annotated[AggregationKeys, Query()] = "measurement_start_day",
     axis_y: Annotated[Optional[AggregationKeys], Query()] = None,
@@ -84,7 +73,7 @@ async def get_aggregation(
     since: SinceUntil = utc_30_days_ago(),
     until: SinceUntil = utc_today(),
     time_grain: Annotated[TimeGrains, Query()] = "day",
-    anomaly_sensitivity: Annotated[float, Query()] = 0.7,
+    anomaly_sensitivity: Annotated[float, Query()] = 0.9,
     format: Annotated[Literal["JSON", "CSV"], Query()] = "JSON",
     download: Annotated[bool, Query()] = False,
 ) -> AggregationResponse:
@@ -100,34 +89,34 @@ async def get_aggregation(
             f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
         )
     elif axis_x:
-        col = OONI_DATA_COLS_REMAP.get(axis_x)
-        extra_cols[axis_x] = f"{col} as {axis_x}"
+        extra_cols[axis_x] = axis_x
 
     if probe_asn is not None:
         if isinstance(probe_asn, str) and probe_asn.startswith("AS"):
             probe_asn = int(probe_asn[2:])
         q_args["probe_asn"] = probe_asn
-        and_clauses.append("location_network_asn = %(probe_asn)d")
-        extra_cols["probe_asn"] = "location_network_asn as probe_asn"
+        and_clauses.append("probe_asn = %(probe_asn)d")
+        extra_cols["probe_asn"] = "probe_asn"
     if probe_cc is not None:
         q_args["probe_cc"] = probe_cc
-        and_clauses.append("location_network_cc = %(probe_cc)s")
-        extra_cols["probe_cc"] = "location_network_cc as probe_cc"
+        and_clauses.append("probe_cc = %(probe_cc)s")
+        extra_cols["probe_cc"] = "probe_cc"
     if test_name is not None:
-        q_args["test_name"] = test_name_to_group(test_name)
-        and_clauses.append("target_nettest_group = %(test_name)s")
-        extra_cols["test_name"] = "target_nettest_group as test_name"
-    if category_code is not None:
-        q_args["category_code"] = category_code
-        and_clauses.append("target_category_code = %(category_code)s")
-        extra_cols["category_code"] = "target_category_code as category_code"
+        q_args["test_name"] = test_name
+        and_clauses.append("test_name = %(test_name)s")
+        extra_cols["test_name"] = "test_name"
+    # if category_code is not None:
+    #     q_args["category_code"] = category_code
+    #     and_clauses.append("%(category_code)s")
+    #     extra_cols["category_code"] = "category_code"
     if domain is not None:
         q_args["domain"] = domain
-        and_clauses.append("target_domain_name = %(domain)s")
-        extra_cols["domain"] = "target_domain_name as domain"
+        and_clauses.append("domain = %(domain)s")
+        extra_cols["domain"] = "domain"
     if input is not None:
-        # XXX
-        pass
+        q_args["input"] = input
+        and_clauses.append("input = %(input)s")
+        extra_cols["input"] = "input"
 
     if axis_y:
         dimension_count += 1
@@ -139,157 +128,166 @@ async def get_aggregation(
                 f"{get_measurement_start_day_agg(time_grain)} as measurement_start_day"
             )
         else:
-            col = OONI_DATA_COLS_REMAP_INV.get(axis_y)
-            extra_cols[axis_y] = f"{col} as {axis_y}"
+            extra_cols[axis_y] = axis_y
 
     if since is not None:
         q_args["since"] = since
-        and_clauses.append("timeofday >= %(since)s")
+        and_clauses.append("measurement_start_time >= %(since)s")
     if until is not None:
-        and_clauses.append("timeofday <= %(until)s")
+        and_clauses.append("measurement_start_time <= %(until)s")
         q_args["until"] = until
-
-    q_args["anomaly_sensitivity"] = anomaly_sensitivity
-
-    """
-    if anomaly is True:
-        and_clauses.append("arraySum(loni_blocked_values) > 0.5")
-    elif anomaly is False:
-        and_clauses.append("arraySum(loni_blocked_values) <= 0.5")
-
-    if confirmed is True:
-        and_clauses.append("arraySum(loni_blocked_values) == 1.0")
-
-    if failure is False:
-        # TODO(arturo): how do we map this onto failure?
-        pass
-    """
 
     where = ""
     if len(and_clauses) > 0:
         where += " WHERE "
         where += " AND ".join(and_clauses)
 
-    # TODO(arturo): the sort of this matters. We should be smarter.
-    base_cols = [
-        "loni_down_map",
-        "loni_blocked_map",
-        "loni_ok_value",
-        "loni_down_value",
-        "loni_blocked_value",
-        "measurement_count",
-        "observation_count",
-        "vantage_point_count",
-        "confirmed_count",
-        "anomaly_count",
-    ]
-
     q = f"""
     WITH
-    loni_blocked_weight_avg_map as loni_blocked_map,
-    loni_down_weight_avg_map as loni_down_map,
-    arraySum(mapValues(loni_blocked_map)) as loni_blocked_value_avg,
-    arraySum(mapValues(loni_down_map)) as loni_down_value_avg,
-    loni_ok_weight_avg_value as loni_ok_value_avg,
+    mapFilter((k, v) -> v != 0, dns_nok_outcomes) as dns_outcomes,
+    mapFilter((k, v) -> v != 0, tcp_nok_outcomes) as tcp_outcomes,
+    mapFilter((k, v) -> v != 0, tls_nok_outcomes) as tls_outcomes,
 
-    loni_ok_value_avg +  loni_down_value_avg + loni_blocked_value_avg as loni_total
+    arrayZip(mapKeys(dns_outcomes), mapValues(dns_outcomes)) as dns_outcome_list,
+    arraySum((v) -> v.2, dns_outcome_list) as dns_nok_sum,
+    arraySort((v) -> -v.2, arrayMap((v) -> (v.1, v.2/dns_nok_sum), dns_outcome_list)) as dns_outcomes_norm,
+
+    arrayZip(mapKeys(tcp_outcomes), mapValues(tcp_outcomes)) as tcp_outcome_list,
+    arraySum((v) -> v.2, tcp_outcome_list) as tcp_nok_sum,
+    arraySort((v) -> -v.2, arrayMap((v) -> (v.1, v.2/tcp_nok_sum), tcp_outcome_list)) as tcp_outcomes_norm,
+
+    arrayZip(mapKeys(tls_outcomes), mapValues(tls_outcomes)) as tls_outcome_list,
+    arraySum((v) -> v.2, tls_outcome_list) as tls_nok_sum,
+    arraySort((v) -> -v.2, arrayMap((v) -> (v.1, v.2/tls_nok_sum), tls_outcome_list)) as tls_outcomes_norm,
+
+    arraySort(
+        (v) -> -v.2,
+        [
+            (dns_outcome_nok_label, dns_outcome_nok_value),
+            (tcp_outcome_nok_label, tcp_outcome_nok_value),
+            (tls_outcome_nok_label, tls_outcome_nok_value),
+            IF(
+                tls_ok_sum = 0 AND tls_outcome_nok_value = 0,
+                -- Special case for when the tested target was not supporting HTTPS and hence the TLS outcome is not so relevant
+                ('ok', arrayMin([dns_outcome_ok_value, tcp_outcome_ok_value])),
+                ('ok', arrayMin([dns_outcome_ok_value, tcp_outcome_ok_value, tls_outcome_ok_value]))
+            )
+        ]
+    ) as all_outcomes_sorted,
+
+    arrayConcat(dns_outcomes_norm, tcp_outcomes_norm, tls_outcomes_norm) as all_nok_outcomes,
+
+    dns_outcomes_norm[1].1 as dns_outcome_nok_label,
+    dns_outcomes_norm[1].2 as dns_outcome_nok_value,
+
+    tcp_outcomes_norm[1].1 as tcp_outcome_nok_label,
+    tcp_outcomes_norm[1].2 as tcp_outcome_nok_value,
+
+    tls_outcomes_norm[1].1 as tls_outcome_nok_label,
+    tls_outcomes_norm[1].2 as tls_outcome_nok_value,
+
+    IF(dns_ok_sum > 0, 1 - dns_outcome_nok_value, 0) as dns_outcome_ok_value,
+    IF(tcp_ok_sum > 0, 1 - tcp_outcome_nok_value, 0) as tcp_outcome_ok_value,
+    IF(tls_ok_sum > 0, 1 - tls_outcome_nok_value, 0) as tls_outcome_ok_value,
+
+    all_outcomes_sorted[1].1 as final_outcome_label,
+    IF(final_outcome_label = 'ok', all_outcomes_sorted[1].2, all_outcomes_sorted[1].2) as final_outcome_value
 
     SELECT
 
-    loni_down_map,
-    loni_blocked_map,
-
-    -- TODO(arturo): this is a bit ghetto
-    loni_ok_value_avg / loni_total as loni_ok_value,
-    loni_down_value_avg / loni_total as loni_down_value,
-    loni_blocked_value_avg / loni_total as loni_blocked_value,
-
-    measurement_count_agg as measurement_count,
-    observation_count_agg as observation_count,
-    vantage_point_count,
-
-    confirmed_count,
-    anomaly_count,
-
-    -- Extra columns
-    {", ".join(extra_cols.keys())}
+    {",".join(extra_cols.keys())},
+    probe_analysis,
+    all_nok_outcomes as all_outcomes,
+    final_outcome_label as outcome_label,
+    final_outcome_value as outcome_value
 
     FROM (
         WITH
-        CAST((loni_down_keys, loni_down_values), 'Map(String, Float64)') as loni_down_map,
-        CAST((loni_blocked_keys, loni_blocked_values), 'Map(String, Float64)') as loni_blocked_map
-        SELECT 
+        IF(resolver_asn = probe_asn, 1, 0) as is_isp_resolver,
+        multiIf(
+            top_dns_failure IN ('android_dns_cache_no_data', 'dns_nxdomain_error'),
+            'nxdomain',
+            coalesce(top_dns_failure, 'got_answer')
+        ) as dns_failure
+        SELECT
+            {",".join(extra_cols.values())},
 
-        sumMap(loni_down_map) as loni_down_sum,
-        countMap(loni_down_map) as loni_down_cnt,
-        arraySum(mapValues(loni_down_cnt)) as loni_down_cnt_total,
-        arraySum(mapValues(loni_down_sum)) as loni_down_value_total,
-        mapApply(
-            (k, v) -> (
-                k,
-                if(
-                    loni_down_cnt_total == 0 or loni_down_value_total == 0, 0,
-                    toFloat64(v) / toFloat64(loni_down_value_total)  * toFloat64(loni_down_cnt[k])/toFloat64(loni_down_cnt_total)
+            anyHeavy(top_probe_analysis) as probe_analysis,
+
+            sumMap(
+                map(
+                    CONCAT(IF(is_isp_resolver, 'dns_isp.blocked.', 'dns_other.blocked.'), dns_failure), dns_blocked_max,
+                    CONCAT(IF(is_isp_resolver, 'dns_isp.down.', 'dns_other.down.'), dns_failure), dns_down_max
                 )
-            ),
-            loni_down_sum
-        ) as loni_down_weight_avg_map,
-        
-        sumMap(loni_blocked_map) as loni_blocked_sum,
-        countMap(loni_blocked_map) as loni_blocked_cnt,
-        arraySum(mapValues(loni_blocked_cnt)) as loni_blocked_cnt_total,
-        arraySum(mapValues(loni_blocked_sum)) as loni_blocked_value_total,
-        mapApply(
-            (k, v) -> (
-                k,
-                if(
-                    loni_blocked_cnt_total == 0 or loni_blocked_value_total == 0, 0,
-                    toFloat64(v) / toFloat64(loni_blocked_value_total) * toFloat64(loni_blocked_cnt[k]) / toFloat64(loni_blocked_cnt_total)
+            ) as dns_nok_outcomes,
+            sum(dns_ok_max) as dns_ok_sum,
+
+            sumMap(
+                map(
+                    CONCAT('tcp.blocked.', coalesce(top_tcp_failure, '')), tcp_blocked_max,
+                    CONCAT('tcp.down.', coalesce(top_tcp_failure, '')), tcp_down_max
                 )
-            ),
-            loni_blocked_sum
-        ) as loni_blocked_weight_avg_map,
-        
-        sum(loni_ok_value) as loni_ok_total,
-        COUNT() as loni_ok_cnt,
-        loni_ok_total/loni_ok_cnt as loni_ok_weight_avg_value,
+            )  as tcp_nok_outcomes,
+            sum(tcp_ok_max) as tcp_ok_sum,
 
-        SUM(measurement_count) as measurement_count_agg,
-        SUM(observation_count) as observation_count_agg,
-        COUNT(DISTINCT 
-            location_network_type,
-            location_network_asn,
-            location_network_cc,
-            location_resolver_asn
-        ) as vantage_point_count,
+            sumMap(
+                map(
+                    CONCAT('tls.blocked.', coalesce(top_tls_failure, '')), tls_blocked_max,
+                    CONCAT('tls.down.', coalesce(top_tls_failure, '')), tls_down_max
+                )
+            ) as tls_nok_outcomes,
+            sum(tls_ok_max) as tls_ok_sum
 
-        sumIf(measurement_count, arraySum(loni_blocked_values) == 1) as confirmed_count,
-        sumIf(measurement_count, arraySum(loni_blocked_values) >= %(anomaly_sensitivity)f) as anomaly_count,
-
-        -- Extra columns
-        {", ".join(extra_cols.values())}
-
-        FROM measurement_experiment_result
+        FROM ooni.analysis_web_measurement
         {where}
         GROUP BY {", ".join(extra_cols.keys())}
         ORDER BY {", ".join(extra_cols.keys())}
     )
     """
 
-    cols = base_cols + list(extra_cols.keys())
     t = PerfTimer()
     log.info(f"running query {q} with {q_args}")
     rows = db.execute(q, q_args)
+
+    fixed_cols = ["probe_analysis", "all_outcomes", "outcome_label", "outcome_value"]
 
     results: List[AggregationEntry] = []
     if rows and isinstance(rows, list):
         for row in rows:
             print(row)
-            d = dict(zip(cols, row))
-            d["failure_count"] = 0
-            d["ok_count"] = d["measurement_count"] - d["anomaly_count"]
-            log.debug(f"adding {d}")
-            results.append(AggregationEntry(**d))
+            d = dict(zip(list(extra_cols.keys()) + fixed_cols, row))
+            outcome_value = d["outcome_value"]
+            outcome_label = d["outcome_label"]
+            anomaly_count = 0
+            confirmed_count = 0
+            failure_count = 0
+            ok_count = 0
+            if outcome_label == "ok":
+                ok_count = outcome_value
+            elif "blocked." in outcome_label:
+                if outcome_value >= anomaly_sensitivity:
+                    confirmed_count = outcome_value
+                else:
+                    anomaly_count = outcome_value
+
+            # Map "down" to failures
+            else:
+                failure_count = outcome_value
+
+            entry = AggregationEntry(
+                anomaly_count=anomaly_count,
+                confirmed_count=confirmed_count,
+                failure_count=failure_count,
+                ok_count=ok_count,
+                measurement_count=1.0,
+                measurement_start_day=d["measurement_start_day"],
+                outcome_label=outcome_label,
+                outcome_value=outcome_value,
+                domain=d.get("domain"),
+                probe_cc=d.get("probe_cc"),
+                probe_asn=d.get("probe_asn"),
+            )
+            results.append(entry)
     return AggregationResponse(
         db_stats=DBStats(
             bytes=-1,

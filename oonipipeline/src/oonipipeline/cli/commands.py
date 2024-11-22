@@ -209,8 +209,6 @@ def schedule(probe_cc: List[str], test_name: List[str], analysis: bool):
             client=client,
             probe_cc=probe_cc,
             test_name=test_name,
-            clickhouse_url=config.clickhouse_url,
-            data_dir=config.data_dir,
             schedule_analysis=analysis,
         )
 

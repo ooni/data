@@ -3,6 +3,7 @@ In here we define all the base dataformats used in OONI Measurements.
 
 See: https://github.com/ooni/spec/tree/master/data-formats
 """
+
 from base64 import b64decode
 import hashlib
 
