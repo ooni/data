@@ -7,8 +7,8 @@ from datetime import date
 import time
 
 
-from oonipipeline.temporal.client_operations import TemporalConfig
-from oonipipeline.temporal.workers import start_workers
+from oonipipeline.tasks.client_operations import TemporalConfig
+from oonipipeline.tasks.workers import start_workers
 import pytest
 
 import orjson

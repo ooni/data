@@ -1,6 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from oonipipeline.temporal.schedules import (
+from oonipipeline.tasks.schedules import (
     list_existing_schedules,
     schedule_all,
     clear_all_schedules,
@@ -10,13 +10,13 @@ import pytest
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from oonipipeline.temporal.workflows.common import TASK_QUEUE_NAME
+from oonipipeline.tasks.workflows.common import TASK_QUEUE_NAME
 
-from oonipipeline.temporal.workflows.observations import (
+from oonipipeline.tasks.workflows.observations import (
     ObservationsWorkflow,
     ObservationsWorkflowParams,
 )
-from oonipipeline.temporal.workers import ACTIVTIES
+from oonipipeline.tasks.workers import ACTIVTIES
 
 from .utils import wait_for_mutations
 

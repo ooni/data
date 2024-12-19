@@ -13,7 +13,7 @@ from oonidata.datautils import PerfTimer
 from oonidata.models.nettests import SupportedDataformats
 from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.netinfo import NetinfoDB
-from oonipipeline.temporal.activities.common import process_pool_executor, update_assets
+from oonipipeline.tasks.common import process_pool_executor, update_assets
 from oonipipeline.settings import config
 from opentelemetry import trace
 

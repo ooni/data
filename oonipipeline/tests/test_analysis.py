@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 from oonipipeline.analysis.web_analysis import (
     get_analysis_web_fuzzy_logic,
 )
-from oonipipeline.temporal.activities.observations import write_observations_to_db
+from oonipipeline.tasks.activities.observations import write_observations_to_db
 import pytest
 
 from oonidata.dataclient import load_measurement

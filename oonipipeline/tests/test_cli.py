@@ -4,7 +4,7 @@ from pathlib import Path
 import time
 
 from oonipipeline.cli.commands import cli
-from oonipipeline.temporal.client_operations import TemporalConfig, get_status
+from oonipipeline.tasks.client_operations import TemporalConfig, get_status
 
 
 def wait_for_mutations(db, table_name):

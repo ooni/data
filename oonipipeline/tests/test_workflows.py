@@ -18,30 +18,30 @@ from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
 
-from oonipipeline.temporal.activities.common import (
+from oonipipeline.tasks.activities.common import (
     ClickhouseParams,
     OptimizeTablesParams,
 )
-from oonipipeline.temporal.activities.observations import (
+from oonipipeline.tasks.activities.observations import (
     MakeObservationsParams,
     MakeObservationsResult,
     make_observations_for_file_entry_batch,
 )
 from oonipipeline.transforms.measurement_transformer import MeasurementTransformer
 from oonipipeline.transforms.observations import measurement_to_observations
-from oonipipeline.temporal.activities.analysis import (
+from oonipipeline.tasks.activities.analysis import (
     MakeAnalysisParams,
     make_analysis_in_a_day,
 )
-from oonipipeline.temporal.workflows.analysis import (
+from oonipipeline.tasks.workflows.analysis import (
     AnalysisWorkflowParams,
     AnalysisWorkflow,
 )
-from oonipipeline.temporal.workflows.observations import (
+from oonipipeline.tasks.workflows.observations import (
     ObservationsWorkflowParams,
     ObservationsWorkflow,
 )
-from oonipipeline.temporal.workflows.common import TASK_QUEUE_NAME
+from oonipipeline.tasks.workflows.common import TASK_QUEUE_NAME
 
 
 def get_obs_count_by_cc(

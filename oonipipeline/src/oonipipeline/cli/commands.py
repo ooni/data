@@ -10,17 +10,17 @@ from oonipipeline.db.maintenance import (
     list_partitions_to_delete,
     list_duplicates_in_buckets,
 )
-from oonipipeline.temporal.client_operations import (
+from oonipipeline.tasks.client_operations import (
     TemporalConfig,
     get_status,
     temporal_connect,
 )
-from oonipipeline.temporal.schedules import (
+from oonipipeline.tasks.schedules import (
     clear_all_schedules,
     schedule_all,
     schedule_backfill,
 )
-from oonipipeline.temporal.workers import start_workers
+from oonipipeline.tasks.workers import start_workers
 
 import click
 from click_loglevel import LogLevel
