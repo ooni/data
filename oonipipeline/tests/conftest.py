@@ -1,14 +1,8 @@
-import asyncio
 from multiprocessing import Process
 import os
-import subprocess
 from pathlib import Path
 from datetime import date
-import time
 
-
-from oonipipeline.temporal.client_operations import TemporalConfig
-from oonipipeline.temporal.workers import start_workers
 import pytest
 
 import orjson
@@ -49,31 +43,6 @@ def clickhouse_server(docker_ip, docker_services):
         timeout=30.0, pause=0.1, check=lambda: is_clickhouse_running(url)
     )
     yield url
-
-
-@pytest.fixture(scope="session")
-def temporal_workers(request):
-    print("Starting temporal workers")
-    temporal_config = TemporalConfig()
-
-    p = Process(target=start_workers, args=(temporal_config,))
-    p.start()
-    print("started workers")
-    time.sleep(2)
-    if p.is_alive() == False and p.exitcode != 0:
-        raise Exception("process died")
-    request.addfinalizer(p.kill)
-    yield p
-
-
-@pytest.fixture(scope="session")
-def temporal_dev_server(request):
-    print("starting temporal dev server")
-    proc = subprocess.Popen(["temporal", "server", "start-dev"])
-    time.sleep(2)
-    assert not proc.poll()
-    request.addfinalizer(proc.kill)
-    yield proc
 
 
 @pytest.fixture

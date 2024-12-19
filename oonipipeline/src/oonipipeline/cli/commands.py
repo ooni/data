@@ -1,43 +1,30 @@
-import asyncio
 import logging
 from pathlib import Path
-from typing import Coroutine, List, Optional
-from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
+from datetime import date, timedelta, datetime, timezone
+
+import click
+from click_loglevel import LogLevel
 
 from oonipipeline.db.maintenance import (
     optimize_all_tables_by_partition,
     list_partitions_to_delete,
     list_duplicates_in_buckets,
 )
-from oonipipeline.temporal.client_operations import (
-    TemporalConfig,
-    get_status,
-    temporal_connect,
+from oonipipeline.tasks.observations import (
+    MakeObservationsParams,
+    make_observations,
 )
-from oonipipeline.temporal.schedules import (
-    clear_all_schedules,
-    schedule_all,
-    schedule_backfill,
+from oonipipeline.tasks.analysis import (
+    MakeAnalysisParams,
+    make_analysis_in_a_day,
 )
-from oonipipeline.temporal.workers import start_workers
-
-import click
-from click_loglevel import LogLevel
-
 
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
 from ..db.create_tables import make_create_queries, list_all_table_diffs
 from ..netinfo import NetinfoDB
 from ..settings import config
-
-
-def run_async(main: Coroutine):
-    try:
-        asyncio.run(main)
-    except KeyboardInterrupt:
-        print("shutting down")
 
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
@@ -160,127 +147,29 @@ def backfill(
         create_tables=create_tables,
         drop_tables=drop_tables,
     )
-
-    temporal_config = TemporalConfig(
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
-
-    async def main():
-        client = await temporal_connect(temporal_config=temporal_config)
-
-        return await schedule_backfill(
-            client=client,
-            probe_cc=probe_cc,
-            test_name=test_name,
-            start_at=start_at,
-            end_at=end_at,
-            workflow_name=workflow_name,
-        )
-
-    run_async(main())
-
-
-@cli.command()
-@probe_cc_option
-@test_name_option
-@click.option(
-    "--analysis/--no-analysis",
-    default=True,
-    help="should we drop tables before creating them",
-)
-def schedule(probe_cc: List[str], test_name: List[str], analysis: bool):
-    """
-    Create schedules for the specified parameters
-    """
-    temporal_config = TemporalConfig(
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
-
-    async def main():
-        client = await temporal_connect(temporal_config=temporal_config)
-
-        return await schedule_all(
-            client=client,
-            probe_cc=probe_cc,
-            test_name=test_name,
-            schedule_analysis=analysis,
-        )
-
-    run_async(main())
-
-
-@cli.command()
-@probe_cc_option
-@test_name_option
-def clear_schedules(
-    probe_cc: List[str],
-    test_name: List[str],
-):
-    """
-    Create schedules for the specified parameters
-    """
-    temporal_config = TemporalConfig(
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
-
-    async def main():
-        client = await temporal_connect(temporal_config=temporal_config)
-
-        return await clear_all_schedules(
-            client=client,
-            probe_cc=probe_cc,
-            test_name=test_name,
-        )
-
-    run_async(main())
-
-
-@cli.command()
-def status():
-    click.echo(f"getting status from {config.temporal_address}")
-    temporal_config = TemporalConfig(
-        prometheus_bind_address=config.prometheus_bind_address,
-        telemetry_endpoint=config.telemetry_endpoint,
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
-
-    run_async(
-        get_status(
-            temporal_config=temporal_config,
-        )
-    )
-
-
-@cli.command()
-def startworkers():
-    click.echo(f"starting workers")
-    click.echo(f"downloading NetinfoDB to {config.data_dir}")
-    NetinfoDB(datadir=Path(config.data_dir), download=True)
-    click.echo("done downloading netinfodb")
-
-    temporal_config = TemporalConfig(
-        prometheus_bind_address=config.prometheus_bind_address,
-        telemetry_endpoint=config.telemetry_endpoint,
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
-
-    start_workers(temporal_config=temporal_config)
-
+    date_range = [start_at + timedelta(days=i) for i in range((end_at - start_at).days)]
+    for day in date_range:
+        click.echo(f"Processing {day}")
+        start_day = day.strftime("%Y-%m-%d")
+        if workflow_name == "observations":
+            make_observations(
+                MakeObservationsParams(
+                    probe_cc=probe_cc,
+                    test_name=test_name,
+                    clickhouse=config.clickhouse_url,
+                    data_dir=config.data_dir,
+                    fast_fail=False,
+                    bucket_date=start_day,
+                )
+            )
+        elif workflow_name == "analysis":
+            make_analysis_in_a_day(
+                MakeAnalysisParams(
+                    probe_cc=probe_cc,
+                    test_name=test_name,
+                    day=start_day,
+                )
+            )
 
 @cli.command()
 @click.option(
