@@ -26,6 +26,7 @@ dependencies = [
   "warcio ~= 1.7.4",
   "msgpack ~= 1.0.4",
   "click-loglevel ~= 0.5.0",
+  "pyopenssl",
   "opentelemetry-exporter-otlp-proto-grpc ~= 1.29.0",
   "uvicorn ~= 0.25.0",
   "pydantic-settings ~= 2.4.0",
