@@ -363,7 +363,7 @@ class NetworkEvent(BaseModel):
     num_bytes: Optional[int] = None
     proto: Optional[str] = None
     tags: Optional[List[str]] = None
-    transaction_id: Optional[str] = None
+    transaction_id: Optional[int] = None
 
     # Deprecated fields
     dial_id: Optional[int] = None
