@@ -1,47 +1,28 @@
-from datetime import date, datetime, timedelta, timezone
 import gzip
-from pathlib import Path
 import sqlite3
+from pathlib import Path
+from datetime import date
 from typing import Dict, List, Tuple
 from unittest.mock import MagicMock
 
-from oonipipeline.db.connections import ClickhouseConnection
-from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
-from temporalio import activity
-
 import pytest
 
+from oonipipeline.db.connections import ClickhouseConnection
 from oonidata.dataclient import stream_jsonl, load_measurement
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
 
-from oonipipeline.tasks.activities.common import (
-    ClickhouseParams,
-    OptimizeTablesParams,
-)
-from oonipipeline.tasks.activities.observations import (
-    MakeObservationsParams,
-    MakeObservationsResult,
+from oonipipeline.tasks.observations import (
     make_observations_for_file_entry_batch,
 )
 from oonipipeline.transforms.measurement_transformer import MeasurementTransformer
 from oonipipeline.transforms.observations import measurement_to_observations
-from oonipipeline.tasks.activities.analysis import (
+from oonipipeline.tasks.analysis import (
     MakeAnalysisParams,
     make_analysis_in_a_day,
 )
-from oonipipeline.tasks.workflows.analysis import (
-    AnalysisWorkflowParams,
-    AnalysisWorkflow,
-)
-from oonipipeline.tasks.workflows.observations import (
-    ObservationsWorkflowParams,
-    ObservationsWorkflow,
-)
-from oonipipeline.tasks.workflows.common import TASK_QUEUE_NAME
 
 
 def get_obs_count_by_cc(
@@ -206,75 +187,6 @@ def test_full_processing(raw_measurements, netinfodb):
                     msmt=msmt,
                     netinfodb=netinfodb,
                 )
-
-
-@activity.defn(name="optimize_all_tables")
-async def optimize_all_tables_mocked(params: ClickhouseParams):
-    return
-
-
-@activity.defn(name="optimize_tables")
-async def optimize_tables_mocked(params: OptimizeTablesParams):
-    return
-
-
-@activity.defn(name="make_observations")
-async def make_observations_mocked(
-    params: MakeObservationsParams,
-) -> MakeObservationsResult:
-    return {
-        "measurement_count": 100,
-        "measurement_per_sec": 3.0,
-        "mb_per_sec": 1.0,
-        "total_size": 2000,
-    }
-
-
-@activity.defn(name="make_analysis_in_a_day")
-async def make_analysis_in_a_day_mocked(params: MakeAnalysisParams):
-    pass
-
-
-@pytest.mark.asyncio
-async def test_temporal_workflows():
-    obs_params = ObservationsWorkflowParams(
-        probe_cc=[],
-        test_name=[],
-        fast_fail=False,
-        bucket_date="2024-01-02",
-    )
-    analysis_params = AnalysisWorkflowParams(
-        probe_cc=[], test_name=[], day="2024-01-01"
-    )
-    async with await WorkflowEnvironment.start_time_skipping() as env:
-        async with Worker(
-            env.client,
-            task_queue=TASK_QUEUE_NAME,
-            workflows=[ObservationsWorkflow, AnalysisWorkflow],
-            activities=[
-                optimize_tables_mocked,
-                optimize_all_tables_mocked,
-                make_analysis_in_a_day_mocked,
-                make_observations_mocked,
-            ],
-        ):
-            res = await env.client.execute_workflow(
-                ObservationsWorkflow.run,
-                obs_params,
-                id="obs-wf",
-                task_queue=TASK_QUEUE_NAME,
-            )
-            assert res["size"] == 2000
-            assert res["measurement_count"] == 100
-            assert res["bucket_date"] == "2024-01-02"
-
-            res = await env.client.execute_workflow(
-                AnalysisWorkflow.run,
-                analysis_params,
-                id="analysis-wf",
-                task_queue=TASK_QUEUE_NAME,
-            )
-            assert res["day"] == "2024-01-01"
 
 
 @pytest.mark.skip(reason="TODO(art): fixme")

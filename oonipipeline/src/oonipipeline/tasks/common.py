@@ -1,8 +1,8 @@
+import logging
 import pathlib
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
-from concurrent.futures import ProcessPoolExecutor
 
 from threading import Lock
 
@@ -10,21 +10,17 @@ from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.db.create_tables import make_create_queries
 
 from oonipipeline.netinfo import NetinfoDB
-from temporalio import activity
 
 DATETIME_UTC_FORMAT = "%Y-%m-%dT%H:%M%SZ"
 
-log = activity.logger
+log = logging.getLogger()
 
-
-process_pool_executor = ProcessPoolExecutor()
 
 @dataclass
 class ClickhouseParams:
     clickhouse_url: str
 
 
-@activity.defn
 def optimize_all_tables(params: ClickhouseParams):
     with ClickhouseConnection(params.clickhouse_url) as db:
         table_names = [table_name for _, table_name in make_create_queries()]
@@ -39,7 +35,6 @@ class OptimizeTablesParams:
     partition_str: str
 
 
-@activity.defn
 def optimize_tables(params: OptimizeTablesParams):
     with ClickhouseConnection(params.clickhouse) as db:
         for table_name in params.table_names:

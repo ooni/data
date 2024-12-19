@@ -1,6 +1,5 @@
 from typing import List
 
-
 from oonidata.dataclient import load_measurement
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.telegram import Telegram
