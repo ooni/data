@@ -3,17 +3,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import List
 
-from temporalio import workflow, activity
 
-with workflow.unsafe.imports_passed_through():
-    import clickhouse_driver
-
-    from ...analysis.web_analysis import write_analysis_web_fuzzy_logic
-    from ...db.connections import ClickhouseConnection
-    from ...settings import config
-
-
-log = activity.logger
+from ..analysis.web_analysis import write_analysis_web_fuzzy_logic
+from ..db.connections import ClickhouseConnection
+from ..settings import config
 
 
 @dataclass
@@ -23,7 +16,6 @@ class MakeAnalysisParams:
     day: str
 
 
-@activity.defn
 def make_analysis_in_a_day(params: MakeAnalysisParams):
     day = datetime.strptime(params.day, "%Y-%m-%d")
     start_time = day
