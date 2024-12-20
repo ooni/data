@@ -43,9 +43,7 @@ def run_make_analysis(
     make_analysis_in_a_day(params)
 
 
-REQUIREMENTS = [
-    "-e 'git+https://github.com/ooni/data@airflow#egg=oonipipeline&subdirectory=oonipipeline'"
-]
+REQUIREMENTS = ["./oonipipeline"]
 
 with DAG(
     dag_id="batch_measurement_processing",
