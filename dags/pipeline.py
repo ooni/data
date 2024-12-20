@@ -49,7 +49,6 @@ REQUIREMENTS = [str((pathlib.Path(__file__).parent.parent / "oonipipeline").abso
 with DAG(
     dag_id="batch_measurement_processing",
     default_args={
-        "depends_on_past": True,
         "retries": 3,
         "retry_delay": datetime.timedelta(minutes=30),
     },
