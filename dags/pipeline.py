@@ -1,3 +1,4 @@
+import pathlib
 import datetime
 from typing import List
 
@@ -43,7 +44,7 @@ def run_make_analysis(
     make_analysis_in_a_day(params)
 
 
-REQUIREMENTS = ["./oonipipeline"]
+REQUIREMENTS = [str((pathlib.Path(__file__).parent.parent / "oonipipeline").absolute())]
 
 with DAG(
     dag_id="batch_measurement_processing",
