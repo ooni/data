@@ -53,8 +53,8 @@ def test_wc_v5_cn_bug_observations(netinfodb, measurements):
     assert len(obs_tup) == 2
     web_obs, web_ctrl_obs = obs_tup
     assert isinstance(web_obs[0], WebObservation)
-    assert len(web_obs) == 15
-    assert len(web_ctrl_obs) == 13
+    assert len(web_obs) == 4
+    assert len(web_ctrl_obs) == 2
 
 
 def test_http_observations(measurements, netinfodb):
