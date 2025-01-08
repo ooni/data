@@ -128,7 +128,7 @@ def cli(log_level: int):
     is_flag=True,
     help="should we drop tables before creating them",
 )
-def backfill(
+def run(
     probe_cc: List[str],
     test_name: List[str],
     workflow_name: str,
@@ -138,9 +138,9 @@ def backfill(
     drop_tables: bool,
 ):
     """
-    Backfill for OONI measurements and write them into clickhouse
+    Process OONI measurements and write them into clickhouse
     """
-    click.echo(f"Runnning backfill of worfklow {workflow_name}")
+    click.echo(f"Runnning worfklow {workflow_name}")
 
     maybe_create_delete_tables(
         clickhouse_url=config.clickhouse_url,
