@@ -81,9 +81,10 @@ There should be clear instructions on how to set it up and get it running.
 The analysis engine is made up of several components:
 
 - Observation generation
-- Response body archiving
-- Ground truth generation
 - Experiment result generation
+
+As part of future work we might also perform:
+- Response body archiving
 
 Below we explain each step of this process in detail
 
@@ -94,17 +95,8 @@ graph
     M{{Measurement}} --> OGEN[[make_observations]]
     OGEN --> |many| O{{Observations}}
     NDB[(NetInfoDB)] --> OGEN
-    OGEN --> RB{{ResponseBodies}}
-    RB --> BA[(BodyArchive)]
-    FDB[(FingerprintDB)] --> FPH
-    FPH --> BA
-    RB --> FPH[[fingerprint_hunter]]
     O --> ODB[(ObservationTables)]
 
-    ODB --> MKGT[[make_ground_truths]]
-    MKGT --> GTDB[(GroundTruthDB)]
-    GTDB --> MKER
-    BA --> MKER
     ODB --> MKER[[make_experiment_results]]
     MKER --> |one| ER{{ExperimentResult}}
 ```
@@ -137,63 +129,11 @@ incredibly fast.
 A side effect is that we end up with tables are can be a bit sparse (several
 columns are NULL).
 
-The tricky part, in the case of complex tests like web_connectivity, is to
+The tricky part, in the case of complex tests like `web_connectivity`, is to
 figure out which individual sub measurements fit into the same observation row.
 For example we would like to have the TCP connect result to appear in the same
 row as the DNS query that lead to it with the TLS handshake towards that IP,
 port combination.
-
-You can run the observation generation with a clickhouse backend like so:
-
-```
-poetry run python -m oonidata mkobs --clickhouse clickhouse://localhost/ --data-dir tests/data/datadir/ --start-day 2022-08-01 --end-day 2022-10-01 --create-tables --parallelism 20
-```
-
-Here is the list of supported observations so far:
-
-- [x] WebObservation, which has information about DNS, TCP, TLS and HTTP(s)
-- [x] WebControlObservation, has the control measurements run by web connectivity (is used to generate ground truths)
-- [ ] CircumventionToolObservation, still needs to be designed and implemented
-      (ideally we would use the same for OpenVPN, Psiphon, VanillaTor)
-
-### Response body archiving
-
-It is optionally possible to also create WAR archives of HTTP response bodies
-when running the observation generation.
-
-This is enabled by passing the extra command line argument `--archives-dir`.
-
-Whenever a response body is detected in a measurement it is sent to the
-archiving queue which takes the response body, looks up in the database if it
-has seen it already (so we don't store exact duplicate bodies).
-If we haven't archived it yet, we write the body to a WAR file and record it's
-sha1 hash together with the filename where we wrote it to into a database.
-
-These WAR archives can then be mined asynchronously for blockpages using the
-fingerprint hunter command:
-
-```
-oonidata fphunt --data-dir tests/data/datadir/ --archives-dir warchives/ --parallelism 20
-```
-
-When a blockpage matching the fingerprint is detected, the relevant database row
-for that fingerprint is updated with the ID of the fingerprint which was
-detected.
-
-### Ground Truth generation
-
-In order to establish if something is being blocked or not, we need some ground truth for comparison.
-
-The goal of the ground truth generation task is to build a ground truth
-database, which contains all the ground truths for every target that has been
-tested in a particular day.
-
-Currently it's implemented using the WebControlObservations, but in the future
-we could just use other WebObservation.
-
-Each ground truth database is actually just a sqlite3 database. For a given day
-it's approximately 150MB in size and we load them in memory when we are running
-the analysis workflow.
 
 ### ExperimentResult generation
 
@@ -218,7 +158,7 @@ blocking https://facebook.com/ with the following logic:
 - any TLS handshake with SNI facebook.com gets a RST
 
 In this scenario, assuming the probe has discovered other IPs for facebook.com
-through other means (ex. through the test helper or DoH as web_connectivity 0.5
+through other means (ex. through the test helper or DoH as `web_connectivity` 0.5
 does), we would like to emit the following experiment results:
 
 - BLOCKED, `dns.bogon`, `facebook.com`
@@ -231,55 +171,3 @@ does), we would like to emit the following experiment results:
 
 This way we are fully characterising the block in all the methods through which
 it is implemented.
-
-### Current pipeline
-
-This section documents the current [ooni/pipeline](https://github.com/ooni/pipeline)
-design.
-
-```mermaid
-graph LR
-
-    Probes --> ProbeServices
-    ProbeServices --> Fastpath
-    Fastpath --> S3MiniCans
-    Fastpath --> S3JSONL
-    Fastpath --> FastpathClickhouse
-    S3JSONL --> API
-    FastpathClickhouse --> API
-    API --> Explorer
-```
-
-```mermaid
-classDiagram
-    direction RL
-    class CommonMeta{
-        measurement_uid
-        report_id
-        input
-        domain
-        probe_cc
-        probe_asn
-        test_name
-        test_start_time
-        measurement_start_time
-        platform
-        software_name
-        software_version
-    }
-
-    class Measurement{
-        +Dict test_keys
-    }
-
-    class Fastpath{
-        anomaly
-        confirmed
-        msm_failure
-        blocking_general
-        +Dict scores
-    }
-    Fastpath "1" --> "1" Measurement
-    Measurement *-- CommonMeta
-    Fastpath *-- CommonMeta
-```
