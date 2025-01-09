@@ -11,6 +11,7 @@ from ..settings import config
 
 @dataclass
 class MakeAnalysisParams:
+    clickhouse_url: str
     probe_cc: List[str]
     test_name: List[str]
     day: str
@@ -23,7 +24,7 @@ def make_analysis_in_a_day(params: MakeAnalysisParams):
 
     probe_cc = params.probe_cc
     test_name = params.test_name
-    db = ClickhouseConnection(config.clickhouse_url)
+    db = ClickhouseConnection(params.clickhouse_url)
 
     write_analysis_web_fuzzy_logic(
         db=db,
