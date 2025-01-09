@@ -32,7 +32,7 @@ def test_full_workflow(
     result = cli_runner.invoke(
         cli,
         [
-            "backfill",
+            "run",
             "--start-at",
             "2022-10-21",
             "--end-at",

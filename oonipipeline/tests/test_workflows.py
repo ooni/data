@@ -66,6 +66,7 @@ def test_make_file_entry_batch(datadir, db):
     make_analysis_in_a_day(
         MakeAnalysisParams(
             probe_cc=["IR"],
+            clickhouse_url=db.clickhouse_url,
             test_name=["webconnectivity"],
             day=date(2023, 10, 31).strftime("%Y-%m-%d"),
         ),
