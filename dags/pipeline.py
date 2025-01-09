@@ -62,6 +62,8 @@ with DAG(
     start_date=datetime.datetime(2012, 12, 4),
     schedule="@daily",
     catchup=False,
+    concurrency=1,
+    max_active_runs=1
 ) as dag_full:
     start_day = "{{ ds }}"
     op_make_observations = PythonVirtualenvOperator(
@@ -92,33 +94,3 @@ with DAG(
     )
 
     op_make_observations >> op_make_analysis
-
-with DAG(
-    dag_id="batch_analysis_only",
-    default_args={
-        "retries": 3,
-        "retry_delay": datetime.timedelta(minutes=30),
-    },
-    params={
-        "probe_cc": Param(default=[], type=["null", "array"]),
-        "test_name": Param(default=[], type=["null", "array"]),
-    },
-    start_date=datetime.datetime(2012, 12, 4),
-    schedule=None,
-    catchup=False,
-) as dag_analysis:
-    start_day = "{{ ds }}"
-    op_make_analysis_only = PythonVirtualenvOperator(
-        task_id="make_analysis",
-        python_callable=run_make_analysis,
-        op_kwargs={
-            "probe_cc": dag_analysis.params["probe_cc"],
-            "test_name": dag_analysis.params["test_name"],
-            "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
-            "day": start_day,
-        },
-        requirements=REQUIREMENTS,
-        system_site_packages=False,
-    )
-
-    op_make_analysis_only
