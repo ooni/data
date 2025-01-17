@@ -165,6 +165,7 @@ def run(
         elif workflow_name == "analysis":
             make_analysis_in_a_day(
                 MakeAnalysisParams(
+                    clickhouse_url=config.clickhouse_url,
                     probe_cc=probe_cc,
                     test_name=test_name,
                     day=start_day,

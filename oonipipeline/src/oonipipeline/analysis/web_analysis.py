@@ -116,9 +116,9 @@ def format_query_analysis_web_fuzzy_logic(
         length(dns_answers) = 0 AND dns_failure IS NULL,
         tuple(0.0, 0.0, 0.0),
 
-        -- We matches a country blockpage, our possibility of blocking is 1.
+        -- We matched a country blockpage, our possibility of blocking is 1.
         dns_blocking_country_consistent,
-        tuple(1.0, 1.0, 0.0),
+        tuple(1.0, 0.0, 0.0),
 
         -- We got a TLS consistent inside of DNS, this is a very strong signal that
         -- the answer is good.
