@@ -197,6 +197,10 @@ def format_query_analysis_web_fuzzy_logic(
         -- We didn't get a good DNS answer, so we can't do much to analyze this result set since we
         -- can't trust what we saw in DNS, so we just return early and ignore this from the perspective of
         -- a TCP analysis
+
+        -- TODO(art): since this being applied after the first check for success, we
+        -- run the risk of marking as OK TCP instances where we were able to connect to the blockpage.
+        -- It it correct to do so?
         dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down),
         tuple(0, 0, 0),
 
