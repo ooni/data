@@ -45,6 +45,14 @@ def clickhouse_server(docker_ip, docker_services):
     yield url
 
 
+@pytest.fixture(scope="session")
+def airflow(docker_ip, docker_services):
+    """Ensure that HTTP service is up and responsive."""
+    port = docker_services.port_for("airflow", 8080)
+    url = "{}:{}".format(docker_ip, port)
+    yield url
+
+
 @pytest.fixture
 def datadir():
     config.data_dir = str(DATA_DIR)

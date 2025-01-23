@@ -539,7 +539,7 @@ def get_file_entries_hourly(
     if from_cans == True:
         prefix_list = get_can_prefixes(start_day, end_day) + prefix_list
 
-    log.info(f"using prefix list {prefix_list}")
+    log.debug(f"using prefix list {prefix_list}")
     file_entries = []
     prefix_idx = 0
     total_prefixes = len(prefix_list)
@@ -600,21 +600,16 @@ def get_file_entries(
 
 
 def list_file_entries_batches(
-    start_day: Union[date, str],
-    end_day: Union[date, str],
+    start_hour: datetime,
+    end_hour: datetime,
     probe_cc: CSVList = None,
     test_name: CSVList = None,
     from_cans: bool = True,
 ) -> Tuple[List[List[Tuple]], int]:
-    if isinstance(start_day, str):
-        start_day = datetime.strptime(start_day, "%Y-%m-%d").date()
-    if isinstance(end_day, str):
-        end_day = datetime.strptime(end_day, "%Y-%m-%d").date()
-
     t = PerfTimer()
-    file_entries = get_file_entries(
-        start_day=start_day,
-        end_day=end_day,
+    file_entries = get_file_entries_hourly(
+        start_hour=start_hour,
+        end_hour=end_hour,
         test_name=test_name,
         probe_cc=probe_cc,
         from_cans=from_cans,
@@ -624,7 +619,7 @@ def list_file_entries_batches(
         60_000_000, int(total_file_entry_size / 100)
     )  # split into approximately 100 batches or 60 MB each batch, whichever is greater
 
-    log.info(
+    log.debug(
         f"took {t.pretty} to get {len(file_entries)} entries (batch size: {round(max_batch_size/10**6, 2)}MB)"
     )
     batches = []
@@ -641,7 +636,7 @@ def list_file_entries_batches(
             total_size += fe.size
             current_batch.append((fe.bucket_name, fe.s3path, fe.ext, fe.size))
         log.debug(
-            f"batch size for {start_day}-{end_day} ({probe_cc},{test_name}): {len(current_batch)}"
+            f"batch size for {start_hour}-{end_hour} ({probe_cc},{test_name}): {len(current_batch)}"
         )
         batches.append(current_batch)
         current_batch = []
