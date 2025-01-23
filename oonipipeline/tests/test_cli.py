@@ -68,6 +68,21 @@ def test_full_workflow(
     assert not list_all_table_diffs.called
     assert make_create_queries_mock.called
 
+    result = cli_runner.invoke(
+        cli,
+        [
+            "run",
+            "--start-at",
+            "2022-10-21T01:00:00",
+            "--end-at",
+            "2022-10-22T02:00:00",
+            "--probe-cc",
+            "BA",
+            "--test-name",
+            "web_connectivity",
+        ],
+    )
+    assert result.exit_code == 0
 
 def test_build_timestamps():
     start = datetime.strptime("2024-01-01 01", "%Y-%m-%d %H")
