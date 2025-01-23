@@ -21,7 +21,7 @@ from oonipipeline.transforms.measurement_transformer import MeasurementTransform
 from oonipipeline.transforms.observations import measurement_to_observations
 from oonipipeline.tasks.analysis import (
     MakeAnalysisParams,
-    make_analysis_in_a_day,
+    make_analysis,
 )
 
 
@@ -63,12 +63,12 @@ def test_make_file_entry_batch(datadir, db):
     )
 
     assert obs_msmt_count == 453
-    make_analysis_in_a_day(
+    make_analysis(
         MakeAnalysisParams(
             probe_cc=["IR"],
             clickhouse_url=db.clickhouse_url,
             test_name=["webconnectivity"],
-            day=date(2023, 10, 31).strftime("%Y-%m-%d"),
+            timestamp=date(2023, 10, 31).strftime("%Y-%m-%d"),
         ),
     )
 

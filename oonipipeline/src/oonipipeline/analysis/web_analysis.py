@@ -522,7 +522,6 @@ def get_analysis_web_fuzzy_logic(
     db: ClickhouseConnection,
     start_time: datetime,
     end_time: datetime,
-    bucket_date: str,
     probe_cc: List[str],
     # We are only doing web_connectivity for the moment
     test_name: List[str] = ["web_connectivity"],
