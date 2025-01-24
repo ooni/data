@@ -504,6 +504,7 @@ def format_query_analysis_web_fuzzy_logic(
             GROUP BY hostname, measurement_day
         ) as other
         ON ctrl.hostname = other.hostname AND ctrl.measurement_day = other.measurement_day
+        SETTINGS join_algorithm = 'grace_hash', grace_hash_join_initial_buckets = 8
     ) as full_ctrl
     ON full_ctrl.hostname = experiment.hostname AND full_ctrl.measurement_day = experiment.measurement_day
     GROUP BY domain,
@@ -514,7 +515,7 @@ def format_query_analysis_web_fuzzy_logic(
     measurement_start_time,
     measurement_uid,
     ooni_run_link_id
-    SETTINGS join_algorithm = 'grace_hash'
+    SETTINGS join_algorithm = 'grace_hash', grace_hash_join_initial_buckets = 8
     """
     return SQL, q_params
 
