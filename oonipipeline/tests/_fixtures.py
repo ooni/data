@@ -39,6 +39,8 @@ SAMPLE_MEASUREMENTS = [
     "20240302000305.316064_EG_webconnectivity_397bca9091b07444",  # nxdomain blocked, unknown_failure and from the future
     "20240309112858.009725_SE_webconnectivity_dce757ef4ec9b6c8",  # blockpage for Iran in Sweden
     "20241101171509.547086_CN_webconnectivity_f0ec3f0e369cec9b",  # web_connectivity 0.5 which was failing
+    "20250120145930.582606_US_echcheck_899a304b7beef05c", # echcheck tls_handshakes
+    "20240714111032.898994_GB_echcheck_f10079cac5cdf770" # echcheck control and target
 ]
 
 SAMPLE_POSTCANS = ["2024030100_AM_webconnectivity.n1.0.tar.gz"]

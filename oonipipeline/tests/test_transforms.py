@@ -2,6 +2,7 @@ from typing import List
 
 from oonidata.dataclient import load_measurement
 from oonidata.models.nettests.dnscheck import DNSCheck
+from oonidata.models.nettests.echcheck import ECHCheck
 from oonidata.models.nettests.telegram import Telegram
 from oonidata.models.nettests.signal import Signal
 from oonidata.models.nettests.facebook_messenger import FacebookMessenger
@@ -408,3 +409,35 @@ def test_facebook_messenger_obs(netinfodb, measurements):
         hostname_set.add(wo.hostname)
     assert hostname_set == spec_hostname_set
     assert len(web_obs) == 14
+
+
+def test_echcheck_obs_tls_handshakes(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements["20250120145930.582606_US_echcheck_899a304b7beef05c"]
+    )
+    assert isinstance(msmt, ECHCheck)
+    assert msmt.test_version == '0.2.0'
+
+    obs_tup = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2022-10-13"
+    )
+    assert len(obs_tup) == 1
+    web_obs = obs_tup[0]
+    assert len(web_obs) == 3
+    assert any(wo.tls_echconfig == "GREASE" for wo in web_obs)
+
+
+def test_echcheck_obs_control_and_target(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements["20240714111032.898994_GB_echcheck_f10079cac5cdf770"]
+    )
+    assert isinstance(msmt, ECHCheck)
+    assert msmt.test_version == '0.1.2'
+
+    obs_tup = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2022-10-13"
+    )
+    assert len(obs_tup) == 1
+    web_obs = obs_tup[0]
+    assert len(web_obs) == 2
+    assert any(wo.tls_echconfig == "GREASE" for wo in web_obs)
