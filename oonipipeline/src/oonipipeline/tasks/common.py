@@ -70,6 +70,6 @@ def update_assets(
             NetinfoDB(datadir=datadir, download=True)
             last_updated_path.write_text(now.strftime(DATETIME_UTC_FORMAT))
     else:
-        log.info(
+        log.debug(
             f"skipping updating netinfodb because {last_updated_delta} < {refresh_hours}h"
         )

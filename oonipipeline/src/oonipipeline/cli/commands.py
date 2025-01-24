@@ -6,19 +6,22 @@ from datetime import date, timedelta, datetime, timezone
 import click
 from click_loglevel import LogLevel
 
+from oonipipeline.cli.utils import build_timestamps
 from oonipipeline.db.maintenance import (
     optimize_all_tables_by_partition,
     list_partitions_to_delete,
     list_duplicates_in_buckets,
 )
+from oonipipeline.tasks.common import OptimizeTablesParams, optimize_tables
 from oonipipeline.tasks.observations import (
     MakeObservationsParams,
     make_observations,
 )
 from oonipipeline.tasks.analysis import (
     MakeAnalysisParams,
-    make_analysis_in_a_day,
+    make_analysis,
 )
+from tqdm import tqdm
 
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
@@ -43,22 +46,6 @@ test_name_option = click.option(
     type=str,
     callback=_parse_csv,
     help="test_name you care to process, can be comma separated for a list (eg. web_connectivity,whatsapp). If omitted will select process all test names.",
-)
-start_day_option = click.option(
-    "--start-day",
-    default=(date.today() - timedelta(days=14)).strftime("%Y-%m-%d"),
-    help="""the timestamp of the day for which we should start processing data (inclusive).
-
-    Note: this is the upload date, which doesn't necessarily match the measurement date.
-    """,
-)
-end_day_option = click.option(
-    "--end-day",
-    default=(date.today() + timedelta(days=1)).strftime("%Y-%m-%d"),
-    help="""the timestamp of the day for which we should start processing data (inclusive). 
-
-    Note: this is the upload date, which doesn't necessarily match the measurement date.
-    """,
 )
 start_at_option = click.option(
     "--start-at",
@@ -119,6 +106,18 @@ def cli(log_level: int):
 @test_name_option
 @click.option("--workflow-name", type=str, required=True, default="observations")
 @click.option(
+    "--only-observations",
+    is_flag=True,
+    default=False,
+    help="should we only run the observations generation workflow?",
+)
+@click.option(
+    "--only-analysis",
+    is_flag=True,
+    default=False,
+    help="should we only run the analysis workflow?",
+)
+@click.option(
     "--create-tables",
     is_flag=True,
     help="should we attempt to create the required clickhouse tables",
@@ -134,24 +133,26 @@ def run(
     workflow_name: str,
     start_at: datetime,
     end_at: datetime,
+    only_observations: bool,
+    only_analysis: bool,
     create_tables: bool,
     drop_tables: bool,
 ):
     """
     Process OONI measurements and write them into clickhouse
     """
-    click.echo(f"Runnning worfklow {workflow_name}")
+    click.echo(f"Runnning workflow {workflow_name}")
 
     maybe_create_delete_tables(
         clickhouse_url=config.clickhouse_url,
         create_tables=create_tables,
         drop_tables=drop_tables,
     )
-    date_range = [start_at + timedelta(days=i) for i in range((end_at - start_at).days)]
-    for day in date_range:
-        click.echo(f"Processing {day}")
-        start_day = day.strftime("%Y-%m-%d")
-        if workflow_name == "observations":
+
+    last_month = None
+    for timestamp, current_day in tqdm(build_timestamps(start_at, end_at)):
+        click.echo(f"Processing {timestamp}")
+        if not only_analysis:
             make_observations(
                 MakeObservationsParams(
                     probe_cc=probe_cc,
@@ -159,18 +160,54 @@ def run(
                     clickhouse=config.clickhouse_url,
                     data_dir=config.data_dir,
                     fast_fail=False,
-                    bucket_date=start_day,
+                    bucket_date=timestamp,
                 )
             )
-        elif workflow_name == "analysis":
-            make_analysis_in_a_day(
+            click.echo("finished running make_observations")
+
+        if not only_observations:
+            make_analysis(
                 MakeAnalysisParams(
                     clickhouse_url=config.clickhouse_url,
                     probe_cc=probe_cc,
                     test_name=test_name,
-                    day=start_day,
+                    timestamp=timestamp,
                 )
             )
+            click.echo("finished running make_analysis")
+
+        def optimize_params(partition_str: str):
+            return OptimizeTablesParams(
+                clickhouse=config.clickhouse_url,
+                table_names=[
+                    "obs_web",
+                    "obs_web_ctrl",
+                    "obs_http_middlebox",
+                    "analysis_web_measurement",
+                ],
+                partition_str=partition_str,
+            )
+
+        # optimize tables at the end of the month
+        # this is done using the PARTITION key to remove duplicate entries that
+        # may have been inserted during reprocessing
+        if last_month is None:
+            last_month = current_day.month
+        elif last_month != current_day.month:
+            partition_str = current_day.strftime("%Y%m")
+            click.echo(f"optimizing tables with {partition_str}")
+            optimize_tables(optimize_params(partition_str))
+            click.echo("finished optimizing tables")
+            last_month = current_day.month
+
+    # Ensure the last month in the range is also optimized
+    partition_str = current_day.strftime("%Y%m")
+    click.echo(f"optimizing tables with {partition_str}")
+    optimize_tables(optimize_params(partition_str))
+    click.echo("finished optimizing tables")
+
+    click.echo("finished all runs")
+
 
 @cli.command()
 @click.option(

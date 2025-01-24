@@ -204,6 +204,7 @@ def make_create_queries():
         ENGINE = ReplacingMergeTree
         PRIMARY KEY measurement_uid
         ORDER BY (measurement_uid, measurement_start_time, probe_cc, probe_asn)
+        PARTITION BY substring(measurement_uid, 1, 6)
         SETTINGS index_granularity = 8192
     """,
             "analysis_web_measurement",

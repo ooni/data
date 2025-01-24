@@ -14,13 +14,16 @@ class MakeAnalysisParams:
     clickhouse_url: str
     probe_cc: List[str]
     test_name: List[str]
-    day: str
+    timestamp: str
 
 
-def make_analysis_in_a_day(params: MakeAnalysisParams):
-    day = datetime.strptime(params.day, "%Y-%m-%d")
-    start_time = day
-    end_time = day + timedelta(days=1)
+def make_analysis(params: MakeAnalysisParams):
+    if "T" in params.timestamp:
+        start_hour = datetime.strptime(params.timestamp, "%Y-%m-%dT%H")
+        end_hour = start_hour + timedelta(hours=1)
+    else:
+        start_hour = datetime.strptime(params.timestamp, "%Y-%m-%d")
+        end_hour = start_hour + timedelta(days=1)
 
     probe_cc = params.probe_cc
     test_name = params.test_name
@@ -28,8 +31,8 @@ def make_analysis_in_a_day(params: MakeAnalysisParams):
 
     write_analysis_web_fuzzy_logic(
         db=db,
-        start_time=start_time,
-        end_time=end_time,
+        start_time=start_hour,
+        end_time=end_hour,
         probe_cc=probe_cc,
         test_name=test_name,
     )

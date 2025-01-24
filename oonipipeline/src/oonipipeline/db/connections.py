@@ -118,10 +118,6 @@ class ClickhouseConnection(DatabaseConnection):
             if "measurement_meta" in d:
                 d.update(d.pop("measurement_meta"))
 
-            # TODO(art): this custom_remap should not be here
-            if "loni_list" in d:
-                d["loni_list"] = orjson.dumps(d["loni_list"])
-
             if table_name is None:
                 table_name = row.__table_name__
             else:

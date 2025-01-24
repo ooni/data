@@ -58,3 +58,19 @@ def test_observation_workflow(datadir, db):
     obs_count_2 = bucket_dict[bucket_date]
 
     assert obs_count == obs_count_2
+
+
+def test_observation_workflow_hourly(datadir, db):
+    bucket_date = "2022-10-21T01"
+    obs_params = MakeObservationsParams(
+        probe_cc=["IT"],
+        test_name=["web_connectivity"],
+        fast_fail=False,
+        bucket_date=bucket_date,
+        clickhouse=db.clickhouse_url,
+        data_dir=datadir,
+    )
+    wf_res = make_observations(obs_params)
+
+    assert wf_res["measurement_count"] == 1814
+    assert wf_res["total_size"] == 33597397

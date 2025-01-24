@@ -169,14 +169,26 @@ ObservationBatches = TypedDict(
 def make_observation_batches(
     bucket_date: str, probe_cc: List[str], test_name: List[str]
 ) -> ObservationBatches:
-    day = datetime.strptime(bucket_date, "%Y-%m-%d").date()
+    """
+    Lists all file_entries for the specified batch bucket_date and returns them
+    in batches.
+
+    bucket_date: is a string either formatted as YYYY-MM-DD or YYYY-MM-DDTHH
+    depending on whether we are processing an hourly batch or a daily batch.
+    """
+    if "T" in bucket_date:
+        start_hour = datetime.strptime(bucket_date, "%Y-%m-%dT%H")
+        end_hour = start_hour + timedelta(hours=1)
+    else:
+        start_hour = datetime.strptime(bucket_date, "%Y-%m-%d")
+        end_hour = start_hour + timedelta(days=1)
 
     t = PerfTimer()
     file_entry_batches, total_size = list_file_entries_batches(
         probe_cc=probe_cc,
         test_name=test_name,
-        start_day=day,
-        end_day=day + timedelta(days=1),
+        start_hour=start_hour,
+        end_hour=end_hour,
     )
     log.info(
         f"listing bucket_date={bucket_date} {len(file_entry_batches)} batches took {t.pretty}"
@@ -198,7 +210,7 @@ MakeObservationsResult = TypedDict(
 def make_observations(params: MakeObservationsParams) -> MakeObservationsResult:
     tbatch = PerfTimer()
     current_span = trace.get_current_span()
-    log.info(f"starting update_assets for {params.bucket_date}")
+    log.debug(f"starting update_assets for {params.bucket_date}")
 
     update_assets(
         data_dir=params.data_dir,

@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from oonidata.dataclient import (
     date_interval,
+    get_file_entries_hourly,
     iter_file_entries,
     get_v2_prefixes,
     iter_measurements,
@@ -88,6 +89,27 @@ def test_get_file_entries_for_cc():
     )
     # assert len(fe_list) == 1125
     assert len(fe_list) == 454
+
+
+def test_get_file_entries_by_hour():
+    from oonidata.dataclient import ProgressStatus
+
+    def progress_callback(p):
+        assert p.total_prefixes == 1
+        assert (
+            p.progress_status == ProgressStatus.LISTING_BEGIN
+            or p.progress_status == ProgressStatus.LISTING
+        )
+
+    fe_list = get_file_entries_hourly(
+        probe_cc="IT",
+        test_name="webconnectivity",
+        start_hour=datetime(2022, 8, 1, 11),
+        end_hour=datetime(2022, 8, 1, 12),
+        from_cans=True,
+        progress_callback=progress_callback,
+    )
+    assert len(fe_list) == 4
 
 
 def test_get_can_prefixes():
