@@ -84,7 +84,8 @@ def test_full_workflow(
     )
     assert result.exit_code == 0
 
-def test_build_timestamps():
+
+def test_build_timestamps_long():
     start = datetime.strptime("2024-01-01 01", "%Y-%m-%d %H")
     end = datetime.strptime("2024-01-05 01", "%Y-%m-%d %H")
     result = build_timestamps(start, end)
@@ -95,7 +96,8 @@ def test_build_timestamps():
         map(lambda x: x[0], result)
     )  # Complete day in the middle
 
-    # Single day
+
+def test_build_timestamps_single_day():
     start = datetime.strptime("2024-01-01 01", "%Y-%m-%d %H")
     end = datetime.strptime("2024-01-01 23", "%Y-%m-%d %H")
     result = build_timestamps(start, end)
@@ -103,7 +105,8 @@ def test_build_timestamps():
     assert all("T" in ts[0] for ts in result)  # All hourly format
     assert len(result) == 22  # Correct number of hours
 
-    # Exactly midnight
+
+def test_build_timestamps_midnight():
     start = datetime.strptime("2024-01-01 00", "%Y-%m-%d %H")
     end = datetime.strptime("2024-01-03 00", "%Y-%m-%d %H")
     result = build_timestamps(start, end)
@@ -112,6 +115,8 @@ def test_build_timestamps():
     assert "2024-01-02" in list(map(lambda x: x[0], result))
     assert result[-1][0] == "2024-01-02"
 
+
+def test_build_timestamps_intraday():
     start = datetime.strptime("2024-01-01 05", "%Y-%m-%d %H")
     end = datetime.strptime("2024-01-01 06", "%Y-%m-%d %H")
     result = build_timestamps(start, end)
