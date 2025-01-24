@@ -114,7 +114,7 @@ with DAG(
     start_date=datetime.datetime(2012, 12, 4),
     # We offset the schedule by 30 minutes so that we give time for the uploader
     # to finish
-    schedule="0 30 * * *",
+    schedule="30 * * * *",
     catchup=False,
     max_active_tasks=2,
     max_active_runs=2,
