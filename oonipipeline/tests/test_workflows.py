@@ -25,7 +25,7 @@ from oonipipeline.tasks.analysis import (
 )
 
 
-def get_obs_count_by_cc(
+def get_metric_count_by_cc(
     clickhouse_url: str, table_name: str, start_day: str, end_day: str
 ) -> Dict[str, int]:
     with ClickhouseConnection(clickhouse_url) as db:
@@ -67,10 +67,17 @@ def test_make_file_entry_batch(datadir, db):
         MakeAnalysisParams(
             probe_cc=["IR"],
             clickhouse_url=db.clickhouse_url,
-            test_name=["webconnectivity"],
+            test_name=["web_connectivity"],
             timestamp=date(2023, 10, 31).strftime("%Y-%m-%d"),
         ),
     )
+    cnt_by_cc = get_metric_count_by_cc(
+        clickhouse_url=db.clickhouse_url,
+        start_day="2023-10-31",
+        end_day="2023-11-01",
+        table_name="analysis_web_measurement",
+    )
+    assert cnt_by_cc["IR"] == 453
 
 
 def test_write_observations(measurements, netinfodb, db):
@@ -102,7 +109,7 @@ def test_write_observations(measurements, netinfodb, db):
             assert len(obs_idxs) == len(set(obs_idxs))
             db.write_table_model_rows(obs_list)
     db.close()
-    cnt_by_cc = get_obs_count_by_cc(
+    cnt_by_cc = get_metric_count_by_cc(
         clickhouse_url=db.clickhouse_url,
         start_day="2020-01-01",
         end_day="2023-12-01",
