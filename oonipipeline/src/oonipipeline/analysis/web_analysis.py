@@ -514,6 +514,7 @@ def format_query_analysis_web_fuzzy_logic(
     measurement_start_time,
     measurement_uid,
     ooni_run_link_id
+    SETTINGS join_algorithm = 'grace_hash'
     """
     return SQL, q_params
 
