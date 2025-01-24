@@ -67,8 +67,8 @@ with DAG(
     # to finish
     schedule="30 0 * * *",
     catchup=False,
-    concurrency=1,
-    max_active_runs=1,
+    max_active_tasks=2,
+    max_active_runs=2,
 ) as dag_full:
     # YYYY-MM-DD
     start_day = "{{ ds }}"
@@ -116,8 +116,8 @@ with DAG(
     # to finish
     schedule="0 30 * * *",
     catchup=False,
-    concurrency=1,
-    max_active_runs=1,
+    max_active_tasks=2,
+    max_active_runs=2,
 ) as dag_full:
     # YYYY-MM-DDTHH
     start_hour = "{{ ts }}"[:13]
