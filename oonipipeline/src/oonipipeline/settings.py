@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     clickhouse_url: str = "clickhouse://localhost"
     clickhouse_write_batch_size: int = 200_000
 
+    max_workers = int(os.cpu_count() * 0.7)
+
     telemetry_endpoint: Optional[str] = None
     prometheus_bind_address: Optional[str] = None
 

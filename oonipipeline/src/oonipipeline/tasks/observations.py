@@ -224,7 +224,7 @@ def make_observations(params: MakeObservationsParams) -> MakeObservationsResult:
         bucket_date=params.bucket_date,
     )
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=config.max_workers) as executor:
         futures = [
             executor.submit(
                 make_observations_for_file_entry_batch,
