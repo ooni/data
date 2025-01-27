@@ -48,6 +48,7 @@ from ..netinfo import NetinfoDB
 
 log = logging.getLogger("oonidata.transforms")
 
+# see also: https://github.com/ooni/probe/issues/2420
 unknown_failure_map = (
     (
         "A socket operation was attempted to an unreachable network",
