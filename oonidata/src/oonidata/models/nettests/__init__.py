@@ -13,6 +13,7 @@ from .browser_web import BrowserWeb
 from .whatsapp import Whatsapp
 from .http_invalid_request_line import HTTPInvalidRequestLine
 from .http_header_field_manipulation import HTTPHeaderFieldManipulation
+from .echcheck import ECHCheck
 from .openvpn import OpenVPN
 
 SUPPORTED_CLASSES = [
@@ -30,6 +31,7 @@ SUPPORTED_CLASSES = [
     Whatsapp,
     OpenVPN,
     BaseMeasurement,
+    ECHCheck,
 ]
 SupportedDataformats = Union[
     HTTPHeaderFieldManipulation,

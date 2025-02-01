@@ -1,14 +1,8 @@
-import asyncio
 from multiprocessing import Process
 import os
-import subprocess
 from pathlib import Path
 from datetime import date
-import time
 
-
-from oonipipeline.temporal.client_operations import TemporalConfig
-from oonipipeline.temporal.workers import start_workers
 import pytest
 
 import orjson
@@ -23,6 +17,7 @@ from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.db.create_tables import make_create_queries
 from oonipipeline.fingerprintdb import FingerprintDB
 from oonipipeline.netinfo import NetinfoDB
+from oonipipeline.settings import config
 
 from ._fixtures import SAMPLE_MEASUREMENTS
 
@@ -50,33 +45,9 @@ def clickhouse_server(docker_ip, docker_services):
     yield url
 
 
-@pytest.fixture(scope="session")
-def temporal_workers(request):
-    print("Starting temporal workers")
-    temporal_config = TemporalConfig()
-
-    p = Process(target=start_workers, args=(temporal_config,))
-    p.start()
-    print("started workers")
-    time.sleep(2)
-    if p.is_alive() == False and p.exitcode != 0:
-        raise Exception("process died")
-    request.addfinalizer(p.kill)
-    yield p
-
-
-@pytest.fixture(scope="session")
-def temporal_dev_server(request):
-    print("starting temporal dev server")
-    proc = subprocess.Popen(["temporal", "server", "start-dev"])
-    time.sleep(2)
-    assert not proc.poll()
-    request.addfinalizer(proc.kill)
-    yield proc
-
-
 @pytest.fixture
 def datadir():
+    config.data_dir = str(DATA_DIR)
     return DATA_DIR
 
 
@@ -157,5 +128,10 @@ def db_notruncate(clickhouse_server):
 def db(clickhouse_server):
     db = create_db_for_fixture(clickhouse_server)
     for _, table_name in make_create_queries():
+        # Ignore the fingerprints_dns table, since it's a remote table
+        if table_name == "fingerprints_dns":
+            continue
         db.execute(f"TRUNCATE TABLE {table_name};")
+
+    config.clickhouse_url = db.clickhouse_url
     yield db

@@ -3,6 +3,7 @@ In here we define all the base dataformats used in OONI Measurements.
 
 See: https://github.com/ooni/spec/tree/master/data-formats
 """
+
 from base64 import b64decode
 import hashlib
 
@@ -334,6 +335,8 @@ class TLSHandshake(BaseModel):
     peer_certificates: Optional[List[BinaryData]] = None
 
     server_name: Optional[str] = None
+    outer_server_name: Optional[str] = None
+    echconfig: Optional[str] = None
 
     tags: Optional[List[str]] = None
     tls_version: Optional[str] = None
@@ -361,7 +364,7 @@ class NetworkEvent(BaseModel):
     num_bytes: Optional[int] = None
     proto: Optional[str] = None
     tags: Optional[List[str]] = None
-    transaction_id: Optional[str] = None
+    transaction_id: Optional[int] = None
 
     # Deprecated fields
     dial_id: Optional[int] = None

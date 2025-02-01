@@ -1,43 +1,33 @@
-import asyncio
 import logging
 from pathlib import Path
-from typing import Coroutine, List, Optional
-from datetime import date, timedelta, datetime, timezone
 from typing import List, Optional
+from datetime import date, timedelta, datetime, timezone
 
+import click
+from click_loglevel import LogLevel
+
+from oonipipeline.cli.utils import build_timestamps
 from oonipipeline.db.maintenance import (
     optimize_all_tables_by_partition,
     list_partitions_to_delete,
     list_duplicates_in_buckets,
 )
-from oonipipeline.temporal.client_operations import (
-    TemporalConfig,
-    get_status,
-    temporal_connect,
+from oonipipeline.tasks.common import OptimizeTablesParams, optimize_tables
+from oonipipeline.tasks.observations import (
+    MakeObservationsParams,
+    make_observations,
 )
-from oonipipeline.temporal.schedules import (
-    clear_all_schedules,
-    schedule_all,
-    schedule_backfill,
+from oonipipeline.tasks.analysis import (
+    MakeAnalysisParams,
+    make_analysis,
 )
-from oonipipeline.temporal.workers import start_workers
-
-import click
-from click_loglevel import LogLevel
-
+from tqdm import tqdm
 
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
 from ..db.create_tables import make_create_queries, list_all_table_diffs
 from ..netinfo import NetinfoDB
 from ..settings import config
-
-
-def run_async(main: Coroutine):
-    try:
-        asyncio.run(main)
-    except KeyboardInterrupt:
-        print("shutting down")
 
 
 def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
@@ -56,22 +46,6 @@ test_name_option = click.option(
     type=str,
     callback=_parse_csv,
     help="test_name you care to process, can be comma separated for a list (eg. web_connectivity,whatsapp). If omitted will select process all test names.",
-)
-start_day_option = click.option(
-    "--start-day",
-    default=(date.today() - timedelta(days=14)).strftime("%Y-%m-%d"),
-    help="""the timestamp of the day for which we should start processing data (inclusive).
-
-    Note: this is the upload date, which doesn't necessarily match the measurement date.
-    """,
-)
-end_day_option = click.option(
-    "--end-day",
-    default=(date.today() + timedelta(days=1)).strftime("%Y-%m-%d"),
-    help="""the timestamp of the day for which we should start processing data (inclusive). 
-
-    Note: this is the upload date, which doesn't necessarily match the measurement date.
-    """,
 )
 start_at_option = click.option(
     "--start-at",
@@ -132,6 +106,18 @@ def cli(log_level: int):
 @test_name_option
 @click.option("--workflow-name", type=str, required=True, default="observations")
 @click.option(
+    "--only-observations",
+    is_flag=True,
+    default=False,
+    help="should we only run the observations generation workflow?",
+)
+@click.option(
+    "--only-analysis",
+    is_flag=True,
+    default=False,
+    help="should we only run the analysis workflow?",
+)
+@click.option(
     "--create-tables",
     is_flag=True,
     help="should we attempt to create the required clickhouse tables",
@@ -141,19 +127,21 @@ def cli(log_level: int):
     is_flag=True,
     help="should we drop tables before creating them",
 )
-def backfill(
+def run(
     probe_cc: List[str],
     test_name: List[str],
     workflow_name: str,
     start_at: datetime,
     end_at: datetime,
+    only_observations: bool,
+    only_analysis: bool,
     create_tables: bool,
     drop_tables: bool,
 ):
     """
-    Backfill for OONI measurements and write them into clickhouse
+    Process OONI measurements and write them into clickhouse
     """
-    click.echo(f"Runnning backfill of worfklow {workflow_name}")
+    click.echo(f"Runnning workflow {workflow_name}")
 
     maybe_create_delete_tables(
         clickhouse_url=config.clickhouse_url,
@@ -161,127 +149,64 @@ def backfill(
         drop_tables=drop_tables,
     )
 
-    temporal_config = TemporalConfig(
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
+    last_month = None
+    for timestamp, current_day in tqdm(build_timestamps(start_at, end_at)):
+        click.echo(f"Processing {timestamp}")
+        if not only_analysis:
+            make_observations(
+                MakeObservationsParams(
+                    probe_cc=probe_cc,
+                    test_name=test_name,
+                    clickhouse=config.clickhouse_url,
+                    data_dir=config.data_dir,
+                    fast_fail=False,
+                    bucket_date=timestamp,
+                )
+            )
+            click.echo("finished running make_observations")
 
-    async def main():
-        client = await temporal_connect(temporal_config=temporal_config)
+        if not only_observations:
+            make_analysis(
+                MakeAnalysisParams(
+                    clickhouse_url=config.clickhouse_url,
+                    probe_cc=probe_cc,
+                    test_name=test_name,
+                    timestamp=timestamp,
+                )
+            )
+            click.echo("finished running make_analysis")
 
-        return await schedule_backfill(
-            client=client,
-            probe_cc=probe_cc,
-            test_name=test_name,
-            start_at=start_at,
-            end_at=end_at,
-            workflow_name=workflow_name,
-        )
+        def optimize_params(partition_str: str):
+            return OptimizeTablesParams(
+                clickhouse=config.clickhouse_url,
+                table_names=[
+                    "obs_web",
+                    "obs_web_ctrl",
+                    "obs_http_middlebox",
+                    "analysis_web_measurement",
+                ],
+                partition_str=partition_str,
+            )
 
-    run_async(main())
+        # optimize tables at the end of the month
+        # this is done using the PARTITION key to remove duplicate entries that
+        # may have been inserted during reprocessing
+        if last_month is None:
+            last_month = current_day.month
+        elif last_month != current_day.month:
+            partition_str = current_day.strftime("%Y%m")
+            click.echo(f"optimizing tables with {partition_str}")
+            optimize_tables(optimize_params(partition_str))
+            click.echo("finished optimizing tables")
+            last_month = current_day.month
 
+    # Ensure the last month in the range is also optimized
+    partition_str = current_day.strftime("%Y%m")
+    click.echo(f"optimizing tables with {partition_str}")
+    optimize_tables(optimize_params(partition_str))
+    click.echo("finished optimizing tables")
 
-@cli.command()
-@probe_cc_option
-@test_name_option
-@click.option(
-    "--analysis/--no-analysis",
-    default=True,
-    help="schedule analysis too",
-)
-def schedule(probe_cc: List[str], test_name: List[str], analysis: bool):
-    """
-    Create schedules for the specified parameters
-    """
-    temporal_config = TemporalConfig(
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
-
-    async def main():
-        client = await temporal_connect(temporal_config=temporal_config)
-
-        return await schedule_all(
-            client=client,
-            probe_cc=probe_cc,
-            test_name=test_name,
-            clickhouse_url=config.clickhouse_url,
-            data_dir=config.data_dir,
-            schedule_analysis=analysis,
-        )
-
-    run_async(main())
-
-
-@cli.command()
-@probe_cc_option
-@test_name_option
-def clear_schedules(
-    probe_cc: List[str],
-    test_name: List[str],
-):
-    """
-    Create schedules for the specified parameters
-    """
-    temporal_config = TemporalConfig(
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
-
-    async def main():
-        client = await temporal_connect(temporal_config=temporal_config)
-
-        return await clear_all_schedules(
-            client=client,
-            probe_cc=probe_cc,
-            test_name=test_name,
-        )
-
-    run_async(main())
-
-
-@cli.command()
-def status():
-    click.echo(f"getting status from {config.temporal_address}")
-    temporal_config = TemporalConfig(
-        prometheus_bind_address=config.prometheus_bind_address,
-        telemetry_endpoint=config.telemetry_endpoint,
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
-
-    run_async(
-        get_status(
-            temporal_config=temporal_config,
-        )
-    )
-
-
-@cli.command()
-def startworkers():
-    click.echo(f"starting workers")
-    click.echo(f"downloading NetinfoDB to {config.data_dir}")
-    NetinfoDB(datadir=Path(config.data_dir), download=True)
-    click.echo("done downloading netinfodb")
-
-    temporal_config = TemporalConfig(
-        prometheus_bind_address=config.prometheus_bind_address,
-        telemetry_endpoint=config.telemetry_endpoint,
-        temporal_address=config.temporal_address,
-        temporal_namespace=config.temporal_namespace,
-        temporal_tls_client_cert_path=config.temporal_tls_client_cert_path,
-        temporal_tls_client_key_path=config.temporal_tls_client_key_path,
-    )
-
-    start_workers(temporal_config=temporal_config)
+    click.echo("finished all runs")
 
 
 @cli.command()

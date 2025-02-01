@@ -1,11 +1,11 @@
 import asyncio
+from datetime import datetime
 from unittest import mock
 from pathlib import Path
 import time
 
 from oonipipeline.cli.commands import cli
-from oonipipeline.temporal.client_operations import TemporalConfig, get_status
-
+from oonipipeline.cli.utils import build_timestamps
 
 def wait_for_mutations(db, table_name):
     while True:
@@ -17,19 +17,6 @@ def wait_for_mutations(db, table_name):
         time.sleep(1)
 
 
-def wait_for_backfill():
-    temporal_config = TemporalConfig(temporal_address="localhost:7233")
-    loop = asyncio.new_event_loop()
-    time.sleep(1)
-
-    while True:
-        res = loop.run_until_complete(get_status(temporal_config))
-        if len(res[0]) == 0 and len(res[1]) == 0:
-            break
-        time.sleep(3)
-    loop.close()
-
-
 class MockContext:
     def __init__(self):
         self.default_map = {}
@@ -38,15 +25,7 @@ class MockContext:
 @mock.patch("oonipipeline.cli.commands.make_create_queries")
 @mock.patch("oonipipeline.cli.commands.list_all_table_diffs")
 @mock.patch("oonipipeline.cli.commands.maybe_create_delete_tables")
-@mock.patch("oonipipeline.cli.commands.clear_all_schedules")
-@mock.patch("oonipipeline.cli.commands.schedule_backfill")
-@mock.patch("oonipipeline.cli.commands.schedule_all")
-@mock.patch("oonipipeline.cli.commands.temporal_connect")
 def test_full_workflow(
-    temporal_connect_mock,
-    schedule_all_mock,
-    schedule_backfill_mock,
-    clear_all_schedules_mock,
     maybe_create_delete_tables_mock,
     list_all_table_diffs,
     make_create_queries_mock,
@@ -55,7 +34,11 @@ def test_full_workflow(
     result = cli_runner.invoke(
         cli,
         [
-            "schedule",
+            "run",
+            "--start-at",
+            "2022-10-21",
+            "--end-at",
+            "2022-10-22",
             "--probe-cc",
             "BA",
             "--test-name",
@@ -63,35 +46,6 @@ def test_full_workflow(
         ],
     )
     assert result.exit_code == 0
-    assert temporal_connect_mock.called
-    assert schedule_all_mock.called
-    temporal_connect_mock.reset_mock()
-    result = cli_runner.invoke(
-        cli,
-        [
-            "backfill",
-            "--start-at",
-            "2022-10-21",
-            "--end-at",
-            "2022-10-22",
-            "--workflow-name",
-            "observations",
-        ],
-    )
-    assert result.exit_code == 0
-    assert temporal_connect_mock.called
-    assert schedule_backfill_mock.called
-
-    temporal_connect_mock.reset_mock()
-    result = cli_runner.invoke(
-        cli,
-        [
-            "clear-schedules",
-        ],
-    )
-    assert result.exit_code == 0
-    assert temporal_connect_mock.called
-    assert clear_all_schedules_mock.called
 
     result = cli_runner.invoke(
         cli,
@@ -113,3 +67,59 @@ def test_full_workflow(
     assert not maybe_create_delete_tables_mock.called
     assert not list_all_table_diffs.called
     assert make_create_queries_mock.called
+
+    result = cli_runner.invoke(
+        cli,
+        [
+            "run",
+            "--start-at",
+            "2022-10-21T01:00:00",
+            "--end-at",
+            "2022-10-22T02:00:00",
+            "--probe-cc",
+            "BA",
+            "--test-name",
+            "web_connectivity",
+        ],
+    )
+    assert result.exit_code == 0
+
+
+def test_build_timestamps_long():
+    start = datetime.strptime("2024-01-01 01", "%Y-%m-%d %H")
+    end = datetime.strptime("2024-01-05 01", "%Y-%m-%d %H")
+    result = build_timestamps(start, end)
+
+    assert result[0][0] == "2024-01-01T01"  # First hour
+    assert result[-1][0] == "2024-01-05T00"  # Last hour
+    assert "2024-01-02" in list(
+        map(lambda x: x[0], result)
+    )  # Complete day in the middle
+
+
+def test_build_timestamps_single_day():
+    start = datetime.strptime("2024-01-01 01", "%Y-%m-%d %H")
+    end = datetime.strptime("2024-01-01 23", "%Y-%m-%d %H")
+    result = build_timestamps(start, end)
+
+    assert all("T" in ts[0] for ts in result)  # All hourly format
+    assert len(result) == 22  # Correct number of hours
+
+
+def test_build_timestamps_midnight():
+    start = datetime.strptime("2024-01-01 00", "%Y-%m-%d %H")
+    end = datetime.strptime("2024-01-03 00", "%Y-%m-%d %H")
+    result = build_timestamps(start, end)
+
+    assert result[0][0] == "2024-01-01T00"
+    assert "2024-01-02" in list(map(lambda x: x[0], result))
+    assert result[-1][0] == "2024-01-02"
+
+
+def test_build_timestamps_intraday():
+    start = datetime.strptime("2024-01-01 05", "%Y-%m-%d %H")
+    end = datetime.strptime("2024-01-01 06", "%Y-%m-%d %H")
+    result = build_timestamps(start, end)
+
+    assert len(result) == 1
+    assert result[0][0] == "2024-01-01T05"

@@ -39,6 +39,7 @@ from .nettests.openvpn import OpenVPNTransformer
 from .nettests.http_invalid_request_line import (
     HTTPInvalidRequestLineTransformer,
 )
+from .nettests.echcheck import ECHCheckTransformer
 
 from ..netinfo import NetinfoDB
 
@@ -56,6 +57,7 @@ NETTEST_TRANSFORMERS = {
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
     "openvpn": OpenVPNTransformer,
+    "echcheck": ECHCheckTransformer,
 }
 
 TypeWebConnectivityObservations = Tuple[
@@ -70,7 +72,7 @@ TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 def measurement_to_observations(
     msmt: Union[HTTPHeaderFieldManipulation, HTTPInvalidRequestLine],
     netinfodb: NetinfoDB,
-    bucket_date: str,
+    bucket_date: str = "1984-01-01",
 ) -> TypeHTTPMiddleboxObservations: ...
 
 
@@ -78,7 +80,7 @@ def measurement_to_observations(
 def measurement_to_observations(
     msmt: WebConnectivity,
     netinfodb: NetinfoDB,
-    bucket_date: str,
+    bucket_date: str = "1984-01-01",
 ) -> TypeWebConnectivityObservations: ...
 
 
@@ -88,7 +90,7 @@ def measurement_to_observations(
         Signal, Whatsapp, Telegram, StunReachability, Tor, FacebookMessenger, UrlGetter
     ],
     netinfodb: NetinfoDB,
-    bucket_date: str,
+    bucket_date: str = "1984-01-01",
 ) -> TypeWebObservations: ...
 
 
@@ -96,7 +98,7 @@ def measurement_to_observations(
 def measurement_to_observations(
     msmt: SupportedDataformats,
     netinfodb: NetinfoDB,
-    bucket_date: str,
+    bucket_date: str = "1984-01-01",
 ) -> TypeWebObservations: ...
 
 

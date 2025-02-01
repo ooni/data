@@ -1,8 +1,14 @@
 import asyncio
+import pathlib
+import logging
 import concurrent.futures
 from dataclasses import dataclass
 import functools
 from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
+from datetime import datetime, timedelta
+
+from opentelemetry import trace
+
 from oonidata.dataclient import (
     ccs_set,
     list_file_entries_batches,
@@ -13,25 +19,12 @@ from oonidata.datautils import PerfTimer
 from oonidata.models.nettests import SupportedDataformats
 from oonipipeline.db.connections import ClickhouseConnection
 from oonipipeline.netinfo import NetinfoDB
-from oonipipeline.temporal.common import (
-    PrevRange,
-    get_prev_range,
-    maybe_delete_prev_range,
-)
-from oonipipeline.temporal.activities.common import process_pool_executor, update_assets
+from oonipipeline.tasks.common import update_assets
 from oonipipeline.settings import config
-from opentelemetry import trace
-
-from temporalio import activity
-
-
-import pathlib
-from datetime import datetime, timedelta
-
 from oonipipeline.transforms.observations import measurement_to_observations
 
-log = activity.logger
 
+log = logging.getLogger()
 
 @dataclass
 class MakeObservationsParams:
@@ -57,6 +50,21 @@ class MakeObservationsFileEntryBatch:
     test_name: List[str]
     bucket_date: str
     fast_fail: bool
+
+
+def write_observations_to_db(
+    db: ClickhouseConnection,
+    netinfodb: NetinfoDB,
+    bucket_date: str,
+    msmt: SupportedDataformats,
+):
+    obs_tuple = measurement_to_observations(
+        msmt=msmt,
+        netinfodb=netinfodb,
+        bucket_date=bucket_date,
+    )
+    for obs_list in obs_tuple:
+        db.write_table_model_rows(obs_list)
 
 
 def make_observations_for_file_entry(
@@ -91,13 +99,9 @@ def make_observations_for_file_entry(
             continue
         try:
             msmt = load_measurement(msmt_dict)
-            obs_tuple = measurement_to_observations(
-                msmt=msmt,
-                netinfodb=netinfodb,
-                bucket_date=bucket_date,
+            write_observations_to_db(
+                db=db, netinfodb=netinfodb, bucket_date=bucket_date, msmt=msmt
             )
-            for obs_list in obs_tuple:
-                db.write_table_model_rows(obs_list)
             measurement_count += 1
         except Exception as exc:
             log.error(f"failed at idx: {measurement_count} ({msmt_str})", exc_info=True)
@@ -165,14 +169,26 @@ ObservationBatches = TypedDict(
 def make_observation_batches(
     bucket_date: str, probe_cc: List[str], test_name: List[str]
 ) -> ObservationBatches:
-    day = datetime.strptime(bucket_date, "%Y-%m-%d").date()
+    """
+    Lists all file_entries for the specified batch bucket_date and returns them
+    in batches.
+
+    bucket_date: is a string either formatted as YYYY-MM-DD or YYYY-MM-DDTHH
+    depending on whether we are processing an hourly batch or a daily batch.
+    """
+    if "T" in bucket_date:
+        start_hour = datetime.strptime(bucket_date, "%Y-%m-%dT%H")
+        end_hour = start_hour + timedelta(hours=1)
+    else:
+        start_hour = datetime.strptime(bucket_date, "%Y-%m-%d")
+        end_hour = start_hour + timedelta(days=1)
 
     t = PerfTimer()
     file_entry_batches, total_size = list_file_entries_batches(
         probe_cc=probe_cc,
         test_name=test_name,
-        start_day=day,
-        end_day=day + timedelta(days=1),
+        start_hour=start_hour,
+        end_hour=end_hour,
     )
     log.info(
         f"listing bucket_date={bucket_date} {len(file_entry_batches)} batches took {t.pretty}"
@@ -191,49 +207,40 @@ MakeObservationsResult = TypedDict(
 )
 
 
-@activity.defn
-async def make_observations(params: MakeObservationsParams) -> MakeObservationsResult:
-    loop = asyncio.get_running_loop()
-
+def make_observations(params: MakeObservationsParams) -> MakeObservationsResult:
     tbatch = PerfTimer()
     current_span = trace.get_current_span()
-    activity.logger.info(f"starting update_assets for {params.bucket_date}")
-    await loop.run_in_executor(
-        None,
-        functools.partial(
-            update_assets,
-            data_dir=params.data_dir,
-            refresh_hours=10,
-            force_update=False,
-        ),
+    log.debug(f"starting update_assets for {params.bucket_date}")
+
+    update_assets(
+        data_dir=params.data_dir,
+        refresh_hours=10,
+        force_update=False,
     )
-    batches = await loop.run_in_executor(
-        None,
-        functools.partial(
-            make_observation_batches,
-            probe_cc=params.probe_cc,
-            test_name=params.test_name,
-            bucket_date=params.bucket_date,
-        ),
+
+    batches = make_observation_batches(
+        probe_cc=params.probe_cc,
+        test_name=params.test_name,
+        bucket_date=params.bucket_date,
     )
-    awaitables = []
-    for file_entry_batch in batches["batches"]:
-        awaitables.append(
-            loop.run_in_executor(
-                process_pool_executor,
-                functools.partial(
-                    make_observations_for_file_entry_batch,
-                    file_entry_batch=file_entry_batch,
-                    bucket_date=params.bucket_date,
-                    probe_cc=params.probe_cc,
-                    data_dir=pathlib.Path(params.data_dir),
-                    clickhouse=params.clickhouse,
-                    write_batch_size=config.clickhouse_write_batch_size,
-                    fast_fail=False,
-                ),
-            ),
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=config.max_workers) as executor:
+        futures = [
+            executor.submit(
+                make_observations_for_file_entry_batch,
+                file_entry_batch=file_entry_batch,
+                bucket_date=params.bucket_date,
+                probe_cc=params.probe_cc,
+                data_dir=pathlib.Path(params.data_dir),
+                clickhouse=params.clickhouse,
+                write_batch_size=config.clickhouse_write_batch_size,
+                fast_fail=False,
+            )
+            for file_entry_batch in batches["batches"]
+        ]
+        measurement_count = sum(
+            f.result() for f in concurrent.futures.as_completed(futures)
         )
-    measurement_count = sum(await asyncio.gather(*awaitables))
 
     current_span.set_attribute("total_runtime_ms", tbatch.ms)
     # current_span.set_attribute("total_failure_count", total_failure_count)
@@ -244,45 +251,3 @@ async def make_observations(params: MakeObservationsParams) -> MakeObservationsR
         "measurement_per_sec": measurement_count / tbatch.s,
         "total_size": batches["total_size"],
     }
-
-
-@dataclass
-class GetPreviousRangeParams:
-    clickhouse: str
-    bucket_date: str
-    test_name: List[str]
-    probe_cc: List[str]
-    tables: List[str]
-
-
-@activity.defn
-def get_previous_range(params: GetPreviousRangeParams) -> List[PrevRange]:
-    with ClickhouseConnection(params.clickhouse) as db:
-        prev_ranges = []
-        for table_name in params.tables:
-            prev_ranges.append(
-                get_prev_range(
-                    db=db,
-                    table_name=table_name,
-                    bucket_date=params.bucket_date,
-                    test_name=params.test_name,
-                    probe_cc=params.probe_cc,
-                ),
-            )
-    return prev_ranges
-
-
-@dataclass
-class DeletePreviousRangeParams:
-    clickhouse: str
-    previous_ranges: List[PrevRange]
-
-
-@activity.defn
-def delete_previous_range(params: DeletePreviousRangeParams) -> List[str]:
-    delete_queries = []
-    with ClickhouseConnection(params.clickhouse) as db:
-        for pr in params.previous_ranges:
-            log.info("deleting previous range of {pr}")
-            delete_queries.append(maybe_delete_prev_range(db=db, prev_range=pr))
-    return delete_queries

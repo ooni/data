@@ -18,12 +18,10 @@ class Settings(BaseSettings):
     clickhouse_url: str = "clickhouse://localhost"
     clickhouse_write_batch_size: int = 200_000
 
+    max_workers: int = int(os.cpu_count() * 0.7)
+
     telemetry_endpoint: Optional[str] = None
     prometheus_bind_address: Optional[str] = None
-    temporal_address: str = "localhost:7233"
-    temporal_namespace: Optional[str] = None
-    temporal_tls_client_cert_path: Optional[str] = None
-    temporal_tls_client_key_path: Optional[str] = None
 
     @classmethod
     def settings_customise_sources(
