@@ -2,6 +2,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import (
+    Dict,
     Optional,
     List,
     Tuple,
@@ -443,22 +444,23 @@ class OpenVPNObservation:
     openvpn_handshake_gen_keys__t: Optional[float] = None
 
 
-
-
 @table_model(
     table_name="obs_tunnel",
-    table_index= ("measurement_uid", "observation_idx", "measurement_start_time"),
+    table_index=("measurement_uid", "observation_idx", "measurement_start_time"),
 )
 @dataclass
-class TunnelEndpointObservation:
+class TunnelObservation:
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
 
-    measurement_start_time: datetime
+    observation_idx: int
 
     ip: str
     port: int
     transport: str
+
+    # label can be a fqdn or a human readable lable used to group the endpoint
+    label: str
 
     # definition of success will need to change when/if we're able to gather metrics
     # through the tunnel.
@@ -466,10 +468,17 @@ class TunnelEndpointObservation:
     failure: Failure
 
     protocol: str
-    family: str
 
     # indicates obfuscation or modifications from the main protocol family.
-    variant: Optional[str] = None
+    variant: str = ""
 
     # any metadata about the providers behind the endpoints.
-    provider: Optional[str] = None
+    provider: str = ""
+
+    # time it took to perform the bootstrap of the protocol
+    bootstrap_time: float = -1
+
+    # timing list
+    t0: float = -1
+    timing_map: Dict[str, float] = field(default_factory=dict)
+    failure_map: Dict[str, str] = field(default_factory=dict)

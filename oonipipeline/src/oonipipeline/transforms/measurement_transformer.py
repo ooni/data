@@ -37,7 +37,7 @@ from oonidata.models.observations import (
     TCPObservation,
     TLSObservation,
     WebObservation,
-    OpenVPNObservation,
+    TunnelObservation,
 )
 from oonidata.datautils import (
     InvalidCertificateChain,
@@ -734,71 +734,6 @@ def make_measurement_meta(msmt: BaseMeasurement, bucket_date: str) -> Measuremen
         measurement_start_time=measurement_start_time,
     )
 
-def count_key_exchange_packets(network_events: List[OpenVPNNetworkEvent]) -> int:
-    """
-    return number of packets exchanged in the SENT_KEY state
-    """
-    n = 0
-    for evt in network_events:
-        if evt.stage == "SENT_KEY" and evt.operation.startswith("packet_"):
-            n+=1
-    return n
-
-def measurement_to_openvpn_observation(
-    msmt_meta: MeasurementMeta,
-    probe_meta: ProbeMeta,
-    netinfodb: NetinfoDB,
-    openvpn_h: OpenVPNHandshake,
-    tcp_connect: Optional[List[TCPConnect]],
-    network_events: Optional[List[OpenVPNNetworkEvent]],
-    bootstrap_time: float,
-) -> OpenVPNObservation:
-
-    oo = OpenVPNObservation(
-        measurement_meta=msmt_meta,
-        probe_meta=probe_meta,
-        failure=normalize_failure(openvpn_h.failure),
-        timestamp=make_timestamp(msmt_meta.measurement_start_time, openvpn_h.t),
-        success=openvpn_h.failure == None,
-        protocol="openvpn",
-        transport = openvpn_h.transport,
-        ip = openvpn_h.ip,
-        port = openvpn_h.port,
-        openvpn_bootstrap_time=bootstrap_time,
-    )
-
-    if len(tcp_connect) != 0:
-        tcp = tcp_connect[0]
-        oo.tcp_success = tcp.success
-        oo.tcp_failure = tcp.failure
-        oo.tcp_t = tcp.t
-
-    oo.handshake_failure = openvpn_h.failure
-    oo.handshake_t = openvpn_h.t
-    oo.handshake_t0 = openvpn_h.t0
-
-    # TODO(ain): condition to test version >= xyz
-    if len(network_events) != 0:
-        for evt in network_events:
-            if evt.packet is not None:
-                if evt.packet.opcode == "P_CONTROL_HARD_RESET_CLIENT_V2":
-                    oo.openvpn_handshake_hr_client_t = evt.t
-                elif evt.packet.opcode == "P_CONTROL_HARD_RESET_SERVER_V2":
-                    oo.openvpn_handshake_hr_server_t = evt.t
-                elif "client_hello" in evt.tags:
-                    oo.openvpn_handshake_clt_hello_t = evt.t
-                elif "server_hello" in evt.tags:
-                    oo.openvpn_handshake_srv_hello_t = evt.t
-            if evt.operation == "state" and evt.stage == "GOT_KEY":
-                oo.openvpn_handshake_got_keys__t = evt.t
-            if evt.operation == "state" and evt.stage == "GENERATED_KEYS":
-                oo.openvpn_handshake_gen_keys__t = evt.t
-
-        oo.openvpn_handshake_key_exchg_n = count_key_exchange_packets(network_events)
-
-    return oo
-
-
 class MeasurementTransformer:
     """
     MeasurementTransformer is responsible for taking a measurement and
@@ -1048,40 +983,6 @@ class MeasurementTransformer:
             self.observation_idx += 1
 
         return web_obs_list
-
-    def make_openvpn_observations(self,
-        tcp_observations: Optional[List[TCPConnect]],
-        openvpn_handshakes: Optional[List[OpenVPNHandshake]],
-        network_events: Optional[List[OpenVPNNetworkEvent]],
-        bootstrap_time: float,
-    ) -> List[OpenVPNObservation]:
-        """
-        Returns a list of OpenVPNObservations by mapping all related
-        TCPObservations, OpenVPNNetworkevents and OpenVPNHandshakes.
-        """
-        openvpn_obs_list: List[OpenVPNObservation] = []
-
-        for openvpn_handshake in openvpn_handshakes:
-            openvpn_obs_list.append(
-                measurement_to_openvpn_observation(
-                    msmt_meta=self.measurement_meta,
-                    probe_meta=self.probe_meta,
-                    netinfodb=self.netinfodb,
-                    tcp_connect=tcp_observations,
-                    openvpn_h=openvpn_handshake,
-                    network_events=network_events,
-                    bootstrap_time=bootstrap_time,
-                )
-            )
-
-        # TODO: can factor out function with web_observation
-        for idx, obs in enumerate(openvpn_obs_list):
-            obs.observation_id = f"{obs.measurement_meta.measurement_uid}_{idx}"
-            obs.created_at = datetime.now(timezone.utc).replace(
-                microsecond=0, tzinfo=None
-            )
-
-        return openvpn_obs_list
 
     def make_observations(self, measurement):
         assert RuntimeError("make_observations is not implemented")
