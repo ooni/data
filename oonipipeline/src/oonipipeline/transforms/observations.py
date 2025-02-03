@@ -3,9 +3,9 @@ from datetime import datetime, timezone
 
 from oonidata.models.observations import (
     HTTPMiddleboxObservation,
+    TunnelObservation,
     WebControlObservation,
     WebObservation,
-    OpenVPNObservation
 )
 
 from oonidata.models.nettests import (
@@ -20,6 +20,7 @@ from oonidata.models.nettests import (
     UrlGetter,
     WebConnectivity,
     HTTPInvalidRequestLine,
+    OpenVPN,
 )
 
 from .nettests.dnscheck import DNSCheckTransformer
@@ -63,8 +64,8 @@ NETTEST_TRANSFORMERS = {
 TypeWebConnectivityObservations = Tuple[
     List[WebObservation], List[WebControlObservation]
 ]
+TypeTunnelObservations = Tuple[List[TunnelObservation], List[WebObservation]]
 TypeWebObservations = Tuple[List[WebObservation]]
-TypeOpenVPNObservations = Tuple[List[OpenVPNObservation]]
 TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 
 
@@ -96,6 +97,14 @@ def measurement_to_observations(
 
 @overload
 def measurement_to_observations(
+    msmt: OpenVPN,
+    netinfodb: NetinfoDB,
+    bucket_date: str = "1984-01-01",
+) -> TypeTunnelObservations: ...
+
+
+@overload
+def measurement_to_observations(
     msmt: SupportedDataformats,
     netinfodb: NetinfoDB,
     bucket_date: str = "1984-01-01",
@@ -113,7 +122,7 @@ def measurement_to_observations(
     TypeWebObservations,
     TypeWebConnectivityObservations,
     TypeHTTPMiddleboxObservations,
-    TypeOpenVPNObservations,
+    TypeTunnelObservations,
     Tuple[()],
 ]:
     if msmt.test_name in NETTEST_TRANSFORMERS:

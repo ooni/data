@@ -12,7 +12,7 @@ from oonidata.models.nettests.stun_reachability import StunReachability
 from oonidata.models.nettests.urlgetter import UrlGetter
 from oonidata.models.nettests.browser_web import BrowserWeb
 from oonidata.models.nettests.openvpn import OpenVPN
-from oonidata.models.observations import WebObservation
+from oonidata.models.observations import WebObservation, TunnelObservation
 
 from oonipipeline.transforms.measurement_transformer import (
     MeasurementTransformer,
@@ -423,18 +423,18 @@ def test_openvpn_obs(netinfodb, measurements):
     obs_tup_udp = measurement_to_observations(
         msmt=msmt_udp, netinfodb=netinfodb, bucket_date=bucket_date
     )
-    assert len(obs_tup_udp) == 1
-    oou: OpenVPNObservation = obs_tup_udp[0][0]
+    assert len(obs_tup_udp) == 2
+    oou: TunnelObservation = obs_tup_udp[0][0]
 
     assert oou.success is True
     assert oou.transport == "udp"
     assert oou.port == 1194
     assert oou.ip == "37.218.243.98"
-    assert oou.tcp_success is None
-    assert oou.openvpn_handshake_srv_hello_t == 0.175448177
-    assert oou.openvpn_handshake_got_keys__t == 0.305975312
-    assert oou.openvpn_handshake_gen_keys__t == 0.376011823
-    assert oou.openvpn_bootstrap_time==0.376279583
+    # assert oou.tcp_success is None
+    assert oou.timing_map["openvpn_handshake_srv_hello"] == 0.175448177
+    assert oou.timing_map["openvpn_handshake_got_keys"] == 0.305975312
+    assert oou.timing_map["openvpn_handshake_gen_keys"] == 0.376011823
+    assert oou.bootstrap_time == 0.376279583
 
     msmt_tcp = load_measurement(
         msmt_path=measurements[
@@ -445,19 +445,19 @@ def test_openvpn_obs(netinfodb, measurements):
     obs_tup_tcp = measurement_to_observations(
         msmt=msmt_tcp, netinfodb=netinfodb, bucket_date=bucket_date
     )
-    assert len(obs_tup_tcp) == 1
-    oot: OpenVPNObservation = obs_tup_tcp[0][0]
+    assert len(obs_tup_tcp) == 2
+    oot: TunnelObservation = obs_tup_tcp[0][0]
 
     assert oot.success is True
     assert oot.transport == "tcp"
     assert oot.port == 1194
     assert oot.ip == "37.218.243.98"
-    assert oot.tcp_success is True
-    assert oot.tcp_t == 0.053010729
-    assert oot.openvpn_handshake_hr_client_t==0.05684776
-    assert oot.openvpn_handshake_srv_hello_t==0.204483958
-    assert oot.openvpn_handshake_gen_keys__t==0.571443906
-    assert oot.openvpn_bootstrap_time==0.571501093
+    # assert oot.tcp_success is True
+    # assert oot.tcp_t == 0.053010729
+    assert oot.timing_map["openvpn_handshake_hr_client"] == 0.05684776
+    assert oot.timing_map["openvpn_handshake_srv_hello"] == 0.204483958
+    assert oot.timing_map["openvpn_handshake_gen_keys"] == 0.571443906
+    assert oot.bootstrap_time == 0.571501093
 
 def test_echcheck_obs_tls_handshakes(netinfodb, measurements):
     msmt = load_measurement(

@@ -3,13 +3,11 @@ from typing import Dict, List, Optional, Tuple
 from oonidata.models.dataformats import OpenVPNHandshake, OpenVPNNetworkEvent
 from oonidata.models.nettests import OpenVPN
 from oonidata.models.observations import (
-    OpenVPNObservation,
     TunnelObservation,
     WebObservation,
 )
 
 from ..measurement_transformer import MeasurementTransformer, normalize_failure
-from ..measurement_transformer import measurement_to_openvpn_observation
 
 
 def count_key_exchange_packets(network_events: List[OpenVPNNetworkEvent]) -> int:
@@ -56,7 +54,7 @@ class OpenVPNTransformer(MeasurementTransformer):
 
     def make_observations(
         self, msmt: OpenVPN
-    ) -> Tuple[List[OpenVPNObservation], List[WebObservation]]:
+    ) -> Tuple[List[TunnelObservation], List[WebObservation]]:
         if not msmt.test_keys:
             return ([], [])
 
@@ -72,7 +70,7 @@ class OpenVPNTransformer(MeasurementTransformer):
         #     TCPObservations, OpenVPNNetworkevents and OpenVPNHandshakes.
         #     """
 
-        openvpn_obs_list: List[TunnelObservation] = []
+        tunnel_observations: List[TunnelObservation] = []
 
         assert msmt.test_keys is not None
         assert msmt.test_keys.openvpn_handshake is not None
@@ -98,14 +96,12 @@ class OpenVPNTransformer(MeasurementTransformer):
             to.failure_map["handshake"] = hs.failure or ""
             idx += 1
 
-            openvpn_obs_list.append(to)
+            tunnel_observations.append(to)
 
-        web_observations = (
-            self.consume_web_observations(
-                dns_observations=[],
-                tcp_observations=self.make_tcp_observations(msmt.test_keys.tcp_connect),
-                tls_observations=[],
-                http_observations=[],
-            ),
+        web_observations = self.consume_web_observations(
+            dns_observations=[],
+            tcp_observations=self.make_tcp_observations(msmt.test_keys.tcp_connect),
+            tls_observations=[],
+            http_observations=[],
         )
-        return (openvpn_obs, web_observations)
+        return (tunnel_observations, web_observations)
