@@ -90,6 +90,9 @@ def typing_to_clickhouse(t: Any) -> str:
     if t in (Mapping[str, str], Dict[str, str]):
         return "Map(String, String)"
 
+    if t in (Mapping[str, float], Dict[str, float]):
+        return "Map(String, Float64)"
+
     # TODO(art): eventually all the above types should be mapped using a similar pattern
     child_type, parent_type = typing.get_args(t)
     is_nullable = False
