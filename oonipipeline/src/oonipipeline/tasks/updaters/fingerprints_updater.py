@@ -13,7 +13,7 @@ import csv
 
 from clickhouse_driver import Client as Clickhouse
 
-#from analysis.metrics import setup_metrics
+# from analysis.metrics import setup_metrics
 
 BASE_URL = "https://raw.githubusercontent.com/"
 HTTP_URL = f"{BASE_URL}/ooni/blocking-fingerprints/main/fingerprints_http.csv"
@@ -21,18 +21,18 @@ DNS_URL = f"{BASE_URL}/ooni/blocking-fingerprints/main/fingerprints_dns.csv"
 
 
 log = logging.getLogger("analysis.fingerprints_updater")
-#metrics = setup_metrics(name="fingerprints_updater")
+# metrics = setup_metrics(name="fingerprints_updater")
 progress_cnt = 0
 
 
 def progress(msg: str) -> None:
     global progress_cnt
-    #metrics.gauge("fingerprints_update_progress", progress_cnt)
+    # metrics.gauge("fingerprints_update_progress", progress_cnt)
     log.info(f"{progress_cnt} {msg}")
     progress_cnt += 1
 
 
-#@metrics.timer("fetch_csv")
+# @metrics.timer("fetch_csv")
 def fetch_csv(url):
     resp = urlopen(url)
     if resp.status != 200:
@@ -45,8 +45,24 @@ def fetch_csv(url):
 
 def update_fingerprints(clickhouse_url: str) -> None:
     progress("starting")
-    #assert not conf.dry_run, "Dry run mode not supported"
+    # assert not conf.dry_run, "Dry run mode not supported"
     click = Clickhouse.from_url(clickhouse_url)
+    q = """
+    CREATE TABLE IF NOT EXISTS fingerprints_dns (
+        name String,
+        scope Enum('nat' = 1, 'isp' = 2, 'prod' = 3, 'inst' = 4, 'vbw' = 5, 'fp' = 6),
+        other_names String,
+        location_found String,
+        pattern_type Enum('full' = 1, 'prefix' = 2, 'contains' = 3, 'regexp' = 4),
+        pattern String,
+        confidence_no_fp UInt8,
+        expected_countries String,
+        source String,
+        exp_url String,
+        notes String
+    ) ENGINE = EmbeddedRocksDB PRIMARY KEY(name)
+    """
+    click.execute(q)
 
     q = "DROP TABLE IF EXISTS fingerprints_dns_tmp"
     click.execute(q)
@@ -88,8 +104,25 @@ def update_fingerprints(clickhouse_url: str) -> None:
     r = click.execute("SELECT count() FROM fingerprints_dns_tmp")
     row_cnt = r[0][0]
     assert isinstance(row_cnt, int)
-    #metrics.gauge("fingerprints_dns_tmp_len", row_cnt)
+    # metrics.gauge("fingerprints_dns_tmp_len", row_cnt)
     assert 100 < row_cnt < 50_000
+
+    q = """
+    CREATE TABLE IF NOT EXISTS fingerprints_http(
+        name String,
+        scope Enum('nat' = 1, 'isp' = 2, 'prod' = 3, 'inst' = 4, 'vbw' = 5, 'fp' = 6, 'injb' = 7, 'prov' = 8),
+        other_names String,
+        location_found String,
+        pattern_type Enum('full' = 1, 'prefix' = 2, 'contains' = 3, 'regexp' = 4),
+        pattern String,
+        confidence_no_fp UInt8,
+        expected_countries String,
+        source String,
+        exp_url String,
+        notes String
+    ) ENGINE = EmbeddedRocksDB PRIMARY KEY(name)
+    """
+    click.execute(q)
 
     q = "DROP TABLE IF EXISTS fingerprints_http_tmp"
     click.execute(q)
@@ -129,7 +162,7 @@ def update_fingerprints(clickhouse_url: str) -> None:
 
     r = click.execute("SELECT count() FROM fingerprints_http_tmp")
     row_cnt = r[0][0]
-    #metrics.gauge("fingerprints_http_tmp_len", row_cnt)
+    # metrics.gauge("fingerprints_http_tmp_len", row_cnt)
     assert isinstance(row_cnt, int)
     assert 100 < row_cnt < 50_000
 

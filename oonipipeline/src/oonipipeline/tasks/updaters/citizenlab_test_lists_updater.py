@@ -23,13 +23,13 @@ import re
 
 from clickhouse_driver import Client as Clickhouse
 
-#from analysis.metrics import setup_metrics
+# from analysis.metrics import setup_metrics
 
 
 HTTPS_GIT_URL = "https://github.com/citizenlab/test-lists.git"
 
 log = logging.getLogger("analysis.citizenlab_test_lists_updater")
-#metrics = setup_metrics(name="citizenlab_test_lists_updater")
+# metrics = setup_metrics(name="citizenlab_test_lists_updater")
 
 
 VALID_URL = re.compile(
@@ -55,7 +55,7 @@ def _extract_domain(url: str) -> Optional[str]:
     return None
 
 
-#@metrics.timer("fetch_citizen_lab_lists")
+# @metrics.timer("fetch_citizen_lab_lists")
 def fetch_citizen_lab_lists() -> List[dict]:
     """Clone repository in a temporary directory and extract files"""
     out = []  # (cc or "ZZ", domain, url, category_code)
@@ -96,10 +96,36 @@ def query_c(click, query: str, qparams: dict):
     click.execute(query, qparams, types_check=True)
 
 
-#@metrics.timer("update_citizenlab_table")
+# @metrics.timer("update_citizenlab_table")
 def update_citizenlab_table(clickhouse_url: str, citizenlab: list) -> None:
     """Overwrite citizenlab_flip and swap tables atomically"""
     click = Clickhouse.from_url(clickhouse_url)
+    click.execute(
+        """CREATE TABLE IF NOT EXISTS citizenlab_flip
+(
+    `domain` String,
+    `url` String,
+    `cc` FixedString(32),
+    `category_code` String
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (domain, url, cc, category_code)
+SETTINGS index_granularity = 4
+    """
+    )
+    click.execute(
+        """CREATE TABLE IF NOT EXISTS citizenlab
+(
+    `domain` String,
+    `url` String,
+    `cc` FixedString(32),
+    `category_code` String
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (domain, url, cc, category_code)
+SETTINGS index_granularity = 4
+    """
+    )
     log.info("Emptying Clickhouse citizenlab_flip table")
     q = "TRUNCATE TABLE citizenlab_flip"
     click.execute(q)

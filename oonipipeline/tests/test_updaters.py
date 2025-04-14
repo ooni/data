@@ -5,10 +5,11 @@ ASN Meta - basic functional testing
 import datetime
 from unittest.mock import Mock, MagicMock, create_autospec
 
-from oonipipeline.tasks.updaters import asnmeta_updater
+from clickhouse_driver import Client as ClickhouseClient
+from oonipipeline.tasks.updaters import asnmeta_updater, fingerprints_updater, citizenlab_test_lists_updater
 
 
-def test_asnmeta_updater():
+def test_unit_asnmeta_updater():
     asnmeta_updater.Clickhouse = create_autospec(asnmeta_updater.Clickhouse)
 
     mock_click = MagicMock()
@@ -56,10 +57,29 @@ def test_asnmeta_updater():
     asnmeta_updater.update_asnmeta(conf)
 
     qrs = [" ".join(q[0][0].split()) for q in mock_click.execute.call_args_list]
-    assert qrs == [
+    expected_queries = [
         "DROP TABLE IF EXISTS asnmeta_tmp",
         "CREATE TABLE asnmeta_tmp ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = MergeTree() ORDER BY (asn, changed)",
         "INSERT INTO asnmeta_tmp (asn, org_name, cc, changed, aut_name, source) VALUES",
         "SELECT count() FROM asnmeta_tmp",
         "EXCHANGE TABLES asnmeta_tmp AND asnmeta",
     ]
+    for qr in expected_queries:
+        assert qr in qrs
+
+def test_end_to_end(db):
+    asnmeta_updater.update_asnmeta(db.clickhouse_url)
+    click = ClickhouseClient.from_url(db.clickhouse_url)
+    res = click.execute("SELECT COUNT() FROM asnmeta")
+    assert res[0][0] > 100
+
+    fingerprints_updater.update_fingerprints(db.clickhouse_url)
+    res = click.execute("SELECT COUNT() FROM fingerprints_http")
+    assert res[0][0] > 100
+
+    res = click.execute("SELECT COUNT() FROM fingerprints_dns")
+    assert res[0][0] > 100
+
+    citizenlab_test_lists_updater.update_citizenlab_test_lists(db.clickhouse_url)
+    res = click.execute("SELECT COUNT() FROM citizenlab")
+    assert res[0][0] > 100

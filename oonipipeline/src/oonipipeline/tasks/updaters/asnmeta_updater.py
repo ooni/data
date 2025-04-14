@@ -13,23 +13,23 @@ import logging
 
 from clickhouse_driver import Client as Clickhouse
 
-#from analysis.metrics import setup_metrics
+# from analysis.metrics import setup_metrics
 
 AS_ORG_MAP_URL = "https://archive.org/download/ip2country-as/all_as_org_map.json"
 
 log = logging.getLogger("analysis.asnmeta_updater")
-#metrics = setup_metrics(name="asnmeta_updater")
+# metrics = setup_metrics(name="asnmeta_updater")
 progress_cnt = 0
 
 
 def progress(msg: str) -> None:
     global progress_cnt
-    #metrics.gauge("asnmeta_update_progress", progress_cnt)
+    # metrics.gauge("asnmeta_update_progress", progress_cnt)
     log.info(f"{progress_cnt} {msg}")
     progress_cnt += 1
 
 
-#@metrics.timer("fetch_data")
+# @metrics.timer("fetch_data")
 def fetch_data() -> List[dict]:
     resp = urlopen(AS_ORG_MAP_URL)
     if resp.status != 200:
@@ -57,6 +57,18 @@ def fetch_data() -> List[dict]:
 def update_asnmeta(clickhouse_url: str) -> None:
     progress("starting")
     click = Clickhouse.from_url(clickhouse_url)
+    q = """
+    CREATE TABLE IF NOT EXISTS asnmeta (
+        asn UInt32,
+        org_name String,
+        cc String,
+        changed Date,
+        aut_name String,
+        source String
+    ) ENGINE = MergeTree()
+    ORDER BY (asn, changed)
+    """
+    click.execute(q)
 
     q = "DROP TABLE IF EXISTS asnmeta_tmp"
     click.execute(q)
@@ -90,7 +102,7 @@ def update_asnmeta(clickhouse_url: str) -> None:
     r = click.execute("SELECT count() FROM asnmeta_tmp")
     row_cnt = r[0][0]
     assert isinstance(row_cnt, int)
-    #metrics.gauge("asnmeta_tmp_len", row_cnt)
+    # metrics.gauge("asnmeta_tmp_len", row_cnt)
     assert 100_000 < row_cnt < 1_000_000
 
     log.info("Swapping tables")
