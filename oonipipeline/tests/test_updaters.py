@@ -67,19 +67,22 @@ def test_unit_asnmeta_updater():
     for qr in expected_queries:
         assert qr in qrs
 
-def test_end_to_end(db):
-    asnmeta_updater.update_asnmeta(db.clickhouse_url)
-    click = ClickhouseClient.from_url(db.clickhouse_url)
+
+def test_end_to_end(clickhouse_server):
+    asnmeta_updater.update_asnmeta(clickhouse_url=clickhouse_server)
+    click = ClickhouseClient.from_url(clickhouse_server)
     res = click.execute("SELECT COUNT() FROM asnmeta")
     assert res[0][0] > 100
 
-    fingerprints_updater.update_fingerprints(db.clickhouse_url)
+    fingerprints_updater.update_fingerprints(clickhouse_url=clickhouse_server)
     res = click.execute("SELECT COUNT() FROM fingerprints_http")
     assert res[0][0] > 100
 
     res = click.execute("SELECT COUNT() FROM fingerprints_dns")
     assert res[0][0] > 100
 
-    citizenlab_test_lists_updater.update_citizenlab_test_lists(db.clickhouse_url)
+    citizenlab_test_lists_updater.update_citizenlab_test_lists(
+        clickhouse_url=clickhouse_server
+    )
     res = click.execute("SELECT COUNT() FROM citizenlab")
     assert res[0][0] > 100
