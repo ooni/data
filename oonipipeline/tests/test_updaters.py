@@ -3,19 +3,18 @@ ASN Meta - basic functional testing
 """
 
 import datetime
-from unittest.mock import Mock, MagicMock, create_autospec
+from unittest.mock import Mock, MagicMock, patch
 
 from clickhouse_driver import Client as ClickhouseClient
 from oonipipeline.tasks.updaters import asnmeta_updater, fingerprints_updater, citizenlab_test_lists_updater
 
 
+@patch("oonipipeline.tasks.updaters.asnmeta_updater.Clickhouse")
+@patch("oonipipeline.tasks.updaters.asnmeta_updater.urlopen")
 def test_unit_asnmeta_updater():
-    asnmeta_updater.Clickhouse = create_autospec(asnmeta_updater.Clickhouse)
-
     mock_click = MagicMock()
     asnmeta_updater.Clickhouse.from_url.return_value = mock_click
 
-    asnmeta_updater.urlopen = create_autospec(asnmeta_updater.urlopen)
     asnmeta_updater.urlopen.return_value.status = 200
     j = """{"1": [["Level 3 Communications, Inc.", "US", "20040604", "LVLT-1", "ARIN"], ["Level 3 Parent, LLC", "US", "20180220", "LVLT-1", "ARIN"]]}"""
     asnmeta_updater.urlopen.return_value.read.return_value = j
