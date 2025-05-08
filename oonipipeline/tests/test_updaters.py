@@ -11,7 +11,7 @@ from oonipipeline.tasks.updaters import asnmeta_updater, fingerprints_updater, c
 
 @patch("oonipipeline.tasks.updaters.asnmeta_updater.Clickhouse")
 @patch("oonipipeline.tasks.updaters.asnmeta_updater.urlopen")
-def test_unit_asnmeta_updater():
+def test_unit_asnmeta_updater(mock_clickhouse, mock_urlopen):
     mock_click = MagicMock()
     asnmeta_updater.Clickhouse.from_url.return_value = mock_click
 
