@@ -38,7 +38,7 @@ def is_clickhouse_running(url):
 def clickhouse_server(docker_ip, docker_services):
     """Ensure that HTTP service is up and responsive."""
     port = docker_services.port_for("clickhouse", 9000)
-    url = "clickhouse://{}:{}/default".format(docker_ip, port)
+    url = "clickhouse://test:test@{}:{}/default".format(docker_ip, port)
     docker_services.wait_until_responsive(
         timeout=30.0, pause=0.1, check=lambda: is_clickhouse_running(url)
     )
