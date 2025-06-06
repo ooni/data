@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from oonidata.models.observations import (
     HTTPMiddleboxObservation,
+    TunnelObservation,
     WebControlObservation,
     WebObservation,
 )
@@ -19,6 +20,7 @@ from oonidata.models.nettests import (
     UrlGetter,
     WebConnectivity,
     HTTPInvalidRequestLine,
+    OpenVPN,
 )
 
 from .nettests.dnscheck import DNSCheckTransformer
@@ -34,6 +36,7 @@ from .nettests.tor import TorTransformer
 from .nettests.browser_web import BrowserWebTransformer
 from .nettests.urlgetter import UrlGetterTransformer
 from .nettests.web_connectivity import WebConnectivityTransformer
+from .nettests.openvpn import OpenVPNTransformer
 from .nettests.http_invalid_request_line import (
     HTTPInvalidRequestLineTransformer,
 )
@@ -54,12 +57,14 @@ NETTEST_TRANSFORMERS = {
     "http_header_field_manipulation": HTTPHeaderFieldManipulationTransformer,
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
+    "openvpn": OpenVPNTransformer,
     "echcheck": ECHCheckTransformer,
 }
 
 TypeWebConnectivityObservations = Tuple[
     List[WebObservation], List[WebControlObservation]
 ]
+TypeTunnelObservations = Tuple[List[TunnelObservation], List[WebObservation]]
 TypeWebObservations = Tuple[List[WebObservation]]
 TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
 
@@ -92,6 +97,14 @@ def measurement_to_observations(
 
 @overload
 def measurement_to_observations(
+    msmt: OpenVPN,
+    netinfodb: NetinfoDB,
+    bucket_date: str = "1984-01-01",
+) -> TypeTunnelObservations: ...
+
+
+@overload
+def measurement_to_observations(
     msmt: SupportedDataformats,
     netinfodb: NetinfoDB,
     bucket_date: str = "1984-01-01",
@@ -109,6 +122,7 @@ def measurement_to_observations(
     TypeWebObservations,
     TypeWebConnectivityObservations,
     TypeHTTPMiddleboxObservations,
+    TypeTunnelObservations,
     Tuple[()],
 ]:
     if msmt.test_name in NETTEST_TRANSFORMERS:
