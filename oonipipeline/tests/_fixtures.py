@@ -41,7 +41,9 @@ SAMPLE_MEASUREMENTS = [
     "20241101171509.547086_CN_webconnectivity_f0ec3f0e369cec9b",  # web_connectivity 0.5 which was failing
     "20250120145930.582606_US_echcheck_899a304b7beef05c",  # echcheck tls_handshakes
     "20240714111032.898994_GB_echcheck_f10079cac5cdf770",  # echcheck control and target
-    "20250319232753.365760_TR_whatsapp_b813f5e363550580",
+    "20250319232753.365760_TR_whatsapp_b813f5e363550580",  # TLS HS time bugs
+    "20250310005913.071112_TR_signal_e00d1c8955b29d01",  # TLS HS time bugs
+    "20250310011757.066396_TR_telegram_7a6b42661eb78d6f",  # TLS HS time bugs
 ]
 
 SAMPLE_POSTCANS = ["2024030100_AM_webconnectivity.n1.0.tar.gz"]
