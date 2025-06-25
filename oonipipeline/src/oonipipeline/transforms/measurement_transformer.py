@@ -289,17 +289,6 @@ def measurement_to_tcp_observation(
     return tcpo
 
 
-def network_events_until_connect(
-    network_events: List[NetworkEvent],
-) -> List[NetworkEvent]:
-    ne_list = []
-    for ne in network_events:
-        if ne.operation == "connect":
-            break
-        ne_list.append(ne)
-    return ne_list
-
-
 def find_tls_handshake_events_without_transaction_id(
     tls_handshake: TLSHandshake,
     src_idx: int,
