@@ -15,6 +15,7 @@ from oonidata.models.observations import WebObservation
 
 from oonipipeline.transforms.measurement_transformer import (
     MeasurementTransformer,
+    find_tls_handshake_events_without_transaction_id,
 )
 from oonipipeline.transforms.observations import (
     TypeWebObservations,
@@ -441,3 +442,29 @@ def test_echcheck_obs_control_and_target(netinfodb, measurements):
     web_obs = obs_tup[0]
     assert len(web_obs) == 2
     assert any(wo.tls_echconfig == "GREASE" for wo in web_obs)
+
+
+def test_tls_handshake_time(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements["20250319232753.365760_TR_whatsapp_b813f5e363550580"]
+    )
+
+    assert isinstance(msmt, Whatsapp)
+    assert msmt.test_keys.tls_handshakes and len(msmt.test_keys.tls_handshakes) == 2
+    assert msmt.test_keys.network_events
+    tls_hs_events_0 = find_tls_handshake_events_without_transaction_id(
+        msmt.test_keys.tls_handshakes[0], 0, msmt.test_keys.network_events
+    )
+    assert tls_hs_events_0
+    assert tls_hs_events_0[0].operation == "connect"
+    assert tls_hs_events_0[-1].operation == "tls_handshake_done"
+    assert tls_hs_events_0[-1].t - tls_hs_events_0[0].t > 0
+
+    tls_hs_events_1 = find_tls_handshake_events_without_transaction_id(
+        msmt.test_keys.tls_handshakes[1], 1, msmt.test_keys.network_events
+    )
+    assert tls_hs_events_1
+    assert tls_hs_events_1
+    assert tls_hs_events_1[0].operation == "connect"
+    assert tls_hs_events_1[-1].operation == "tls_handshake_done"
+    assert tls_hs_events_1[-1].t - tls_hs_events_1[0].t > 0
