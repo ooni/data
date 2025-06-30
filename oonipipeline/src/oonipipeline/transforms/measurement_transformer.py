@@ -289,31 +289,31 @@ def measurement_to_tcp_observation(
     return tcpo
 
 
-def network_events_until_connect(
-    network_events: List[NetworkEvent],
-) -> List[NetworkEvent]:
-    ne_list = []
-    for ne in network_events:
-        if ne.operation == "connect":
-            break
-        ne_list.append(ne)
-    return ne_list
-
-
 def find_tls_handshake_events_without_transaction_id(
     tls_handshake: TLSHandshake,
     src_idx: int,
     network_events: List[NetworkEvent],
 ) -> Optional[List[NetworkEvent]]:
+    """
+    When we don't have a transaction ID, we make the assumption that network_events are
+    locally sorted and that we can therefore consider all events related to a handshake
+    to be those contained between a "connect" event and a "tls_handshake_done" event which
+    matches the exact timestamp of the tls handshake entry.
+    See: https://github.com/ooni/data/pull/124#issuecomment-3018011287
+    """
     all_event_windows = []
     matched_event_windows = []
 
     current_event_window = []
-    for idx, ne in enumerate(network_events):
+    idx = 0
+    while idx < len(network_events):
+        ne = network_events[idx]
         if ne.operation == "connect":
-            current_event_window = []
-        current_event_window.append(ne)
-        if ne.operation == "tls_handshake_done":
+            current_event_window = [
+                ne
+            ]  # Start a new event window with the connect event
+        elif ne.operation == "tls_handshake_done":
+            current_event_window.append(ne)  # Add the tls_handshake_done event
             # We identify the network_event for the given TLS handshake based on the
             # fact that the timestamp on tls_handshake_done event is the same as the
             # tls_handshake time.
@@ -321,8 +321,12 @@ def find_tls_handshake_events_without_transaction_id(
             # handshake inside of the list of event windows.
             if ne.t == tls_handshake.t:
                 matched_event_windows.append(len(all_event_windows))
-            current_event_window += network_events_until_connect(network_events[idx:])
             all_event_windows.append(current_event_window)
+            current_event_window = []  # Reset the event window after processing
+        elif current_event_window:
+            # Add events to the current window only if we are between connect and tls_handshake_done
+            current_event_window.append(ne)
+        idx += 1
 
     # We do this because there are cases such as
     # https://explorer.ooni.org/measurement/20221114T002124Z_webconnectivity_BR_27699_n1_knqvcofoEIxHMpzj?input=https://cdt.org/

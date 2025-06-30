@@ -15,6 +15,7 @@ from oonidata.models.observations import WebObservation
 
 from oonipipeline.transforms.measurement_transformer import (
     MeasurementTransformer,
+    find_tls_handshake_events_without_transaction_id,
 )
 from oonipipeline.transforms.observations import (
     TypeWebObservations,
@@ -441,3 +442,38 @@ def test_echcheck_obs_control_and_target(netinfodb, measurements):
     web_obs = obs_tup[0]
     assert len(web_obs) == 2
     assert any(wo.tls_echconfig == "GREASE" for wo in web_obs)
+
+
+def test_tls_handshake_time(netinfodb, measurements):
+
+    def check_hs_time_consistency(msmt, tt):
+        assert isinstance(msmt, tt)
+        assert msmt.test_keys.tls_handshakes and len(msmt.test_keys.tls_handshakes) > 0
+        assert msmt.test_keys.network_events
+        for idx, tls_h in enumerate(msmt.test_keys.tls_handshakes):
+            tls_hs_events = find_tls_handshake_events_without_transaction_id(
+                tls_h, idx, msmt.test_keys.network_events
+            )
+            assert tls_hs_events
+            assert tls_hs_events[0].operation == "connect"
+            assert tls_hs_events[-1].operation == "tls_handshake_done"
+            assert tls_hs_events[-1].t - tls_hs_events[0].t > 0
+
+    check_hs_time_consistency(
+        load_measurement(
+            msmt_path=measurements["20250319232753.365760_TR_whatsapp_b813f5e363550580"]
+        ),
+        Whatsapp,
+    )
+    check_hs_time_consistency(
+        load_measurement(
+            msmt_path=measurements["20250310005913.071112_TR_signal_e00d1c8955b29d01"]
+        ),
+        Signal,
+    )
+    check_hs_time_consistency(
+        load_measurement(
+            msmt_path=measurements["20250310011757.066396_TR_telegram_7a6b42661eb78d6f"]
+        ),
+        Telegram,
+    )
