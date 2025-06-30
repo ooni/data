@@ -294,6 +294,13 @@ def find_tls_handshake_events_without_transaction_id(
     src_idx: int,
     network_events: List[NetworkEvent],
 ) -> Optional[List[NetworkEvent]]:
+    """
+    When we don't have a transaction ID, we make the assumption that network_events are
+    locally sorted and that we can therefore consider all events related to a handshake
+    to be those contained between a "connect" event and a "tls_handshake_done" event which
+    matches the exact timestamp of the tls handshake entry.
+    See: https://github.com/ooni/data/pull/124#issuecomment-3018011287
+    """
     all_event_windows = []
     matched_event_windows = []
 
