@@ -96,6 +96,14 @@ def test_build_timestamps_long():
         map(lambda x: x[0], result)
     )  # Complete day in the middle
 
+def test_build_timestamps_long_2():
+    start = datetime.strptime("2024-01-01", "%Y-%m-%d")
+    end = datetime.strptime("2024-02-01", "%Y-%m-%d")
+    result = build_timestamps(start, end)
+
+    assert result[0][0] == "2024-01-01"  # First day
+    assert result[-1][0] == "2024-01-31"  # Last day
+    assert len(result) == 31
 
 def test_build_timestamps_single_day():
     start = datetime.strptime("2024-01-01 01", "%Y-%m-%d %H")
@@ -111,7 +119,7 @@ def test_build_timestamps_midnight():
     end = datetime.strptime("2024-01-03 00", "%Y-%m-%d %H")
     result = build_timestamps(start, end)
 
-    assert result[0][0] == "2024-01-01T00"
+    assert result[0][0] == "2024-01-01"
     assert "2024-01-02" in list(map(lambda x: x[0], result))
     assert result[-1][0] == "2024-01-02"
 
