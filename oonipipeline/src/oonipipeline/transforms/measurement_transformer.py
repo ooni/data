@@ -198,7 +198,7 @@ def measurement_to_http_observation(
     )
 
     if http_transaction.address:
-        p = urlsplit("//" + http_transaction.address)
+        p = urlsplit("//" + fix_address(http_transaction.address))
         hrro.ip = p.hostname
         hrro.port = p.port
 
@@ -278,7 +278,7 @@ def measurement_to_tcp_observation(
 ) -> TCPObservation:
     tcpo = TCPObservation(
         timestamp=make_timestamp(msmt_meta.measurement_start_time, res.t),
-        ip=res.ip,
+        ip=fix_address(res.ip),
         port=res.port,
         failure=normalize_failure(res.status.failure),
         success=res.status.success,
@@ -358,6 +358,18 @@ def find_tls_handshake_network_events_with_transaction_id(
     return relevant_network_events
 
 
+def fix_address(address):
+    """
+    When anything inside of the test_keys contains the probe IP address it's
+    replaced with the string "[scrubbed]".
+    This function takes it and replaces it with "scrubbed" so that the address
+    parsing functions will work.
+    """
+    if "[scrubbed]" in address:
+        return address.replace("[scrubbed]", "scrubbed")
+    return address
+
+
 def measurement_to_tls_observation(
     msmt_meta: MeasurementMeta,
     tls_h: TLSHandshake,
@@ -380,7 +392,7 @@ def measurement_to_tls_observation(
     )
 
     if tls_h.address:
-        p = urlsplit("//" + tls_h.address)
+        p = urlsplit("//" + fix_address(tls_h.address))
         tlso.ip = p.hostname
         tlso.port = p.port
 
@@ -400,7 +412,7 @@ def measurement_to_tls_observation(
 
     if tls_network_events:
         if tls_network_events[0].address:
-            p = urlsplit("//" + tls_network_events[0].address)
+            p = urlsplit("//" + fix_address(tls_network_events[0].address))
             tlso.ip = p.hostname
             tlso.port = p.port
 
@@ -531,8 +543,8 @@ def make_web_observation(
     dns_ip = None
     if dns_o and dns_o.answer:
         try:
-            ipaddress.ip_address(dns_o.answer)
-            dns_ip = dns_o.answer
+            ipaddress.ip_address(fix_address(dns_o.answer))
+            dns_ip = fix_address(dns_o.answer)
         except ValueError:
             pass
 
@@ -835,9 +847,13 @@ class MeasurementTransformer:
             # see: https://explorer.ooni.org/measurement/20221014T000036Z_webconnectivity_RU_42668_n1_XdKjqrsbSmryZHho?input=http://www.newnownext.com/franchise/the-backlot/
             # TODO: we currently ignore these cases as the measurement is not really
             # that useful. Maybe we should do something better about it.
+            #
+            # N.B. this also happens when the IP address matches the IP of the probe
             try:
-                ipaddress.ip_address(res.ip)
+                if "[scrubbed]" not in res.ip:
+                    ipaddress.ip_address(res.ip)
             except ValueError:
+                log.error(f"invalid address {res.ip}")
                 continue
             obs_tcp.append(measurement_to_tcp_observation(self.measurement_meta, res))
         return obs_tcp

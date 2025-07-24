@@ -44,6 +44,8 @@ SAMPLE_MEASUREMENTS = [
     "20250319232753.365760_TR_whatsapp_b813f5e363550580",  # TLS HS time bugs
     "20250310005913.071112_TR_signal_e00d1c8955b29d01",  # TLS HS time bugs
     "20250310011757.066396_TR_telegram_7a6b42661eb78d6f",  # TLS HS time bugs
+    "20250125135854.612046_AU_webconnectivity_45560dd5efe1035c",  # Scrubbed IP in DNS answer
+    "20250201172431.190360_CZ_signal_ef68029a5fff6e29",  # Scrubbed IP address in test_keys
 ]
 
 SAMPLE_POSTCANS = ["2024030100_AM_webconnectivity.n1.0.tar.gz"]

@@ -477,3 +477,34 @@ def test_tls_handshake_time(netinfodb, measurements):
         ),
         Telegram,
     )
+
+
+def test_scrubbed_ip(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20250125135854.612046_AU_webconnectivity_45560dd5efe1035c"
+        ]
+    )
+    assert isinstance(msmt, WebConnectivity)
+
+    obs_tup = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2022-10-13"
+    )
+    assert len(obs_tup) == 2
+    web_obs = obs_tup[0]
+    ctrl_obs = obs_tup[1]
+    assert len(web_obs) == 4
+    assert len(ctrl_obs) == 5
+
+    msmt = load_measurement(
+        msmt_path=measurements["20250201172431.190360_CZ_signal_ef68029a5fff6e29"]
+    )
+    assert isinstance(msmt, Signal)
+
+    obs_tup = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2022-10-13"
+    )
+    assert len(obs_tup) == 1
+    web_obs = obs_tup[0]
+    assert len(web_obs) == 31
+    assert len(ctrl_obs) == 5
