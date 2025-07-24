@@ -166,7 +166,7 @@ def list_duplicates_in_buckets(
             f"""
         SELECT 
         countIf(uid_cnt > 1) as duplicate_uids,
-        short_bucket_date
+        short_bucket_date as bucket_date
         FROM (
             WITH concat(substring(bucket_date, 1, 4), '-', substring(bucket_date, 6, 2), '-', substring(bucket_date, 9, 2)) as short_bucket_date
             SELECT
