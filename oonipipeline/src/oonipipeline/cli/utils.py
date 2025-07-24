@@ -30,7 +30,6 @@ def build_timestamps(
     while current < end_at:
         if (
             current.hour == 0
-            and current != start_at
             and current < end_at.replace(hour=0)
         ):
             timestamps.append((current.strftime("%Y-%m-%d"), current))
