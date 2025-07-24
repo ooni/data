@@ -1,20 +1,21 @@
-from copy import deepcopy
 from datetime import datetime, timezone
+import logging
 from typing import Dict, List, Tuple
 from urllib.parse import urlparse
 from oonidata.datautils import is_ip_bogon
 from oonidata.models.nettests import WebConnectivity
 from oonidata.models.observations import (
     MeasurementMeta,
-    ProbeMeta,
     WebControlObservation,
     WebObservation,
 )
 
-from ..measurement_transformer import MeasurementTransformer
+from ..measurement_transformer import MeasurementTransformer, fix_address
 
 from ...netinfo import NetinfoDB
 
+
+log = logging.getLogger("oonidata.transforms.web_connectivity")
 
 def make_web_control_observations(
     msmt: WebConnectivity,
@@ -56,7 +57,11 @@ def make_web_control_observations(
     addr_map: Dict[str, WebControlObservation] = {}
     if msmt.test_keys.control.tcp_connect:
         for addr, res in msmt.test_keys.control.tcp_connect.items():
-            p = urlparse("//" + addr)
+            try:
+                p = urlparse("//" + fix_address(addr))
+            except ValueError:
+                log.error(f"invalid address '{addr}'. skipping")
+                continue
 
             obs = WebControlObservation(
                 measurement_meta=measurement_meta,
@@ -76,7 +81,11 @@ def make_web_control_observations(
             if addr in addr_map:
                 obs = addr_map[addr]
             else:
-                p = urlparse("//" + addr)
+                try:
+                    p = urlparse("//" + fix_address(addr))
+                except ValueError:
+                    log.error(f"invalid address '{addr}'. skipping")
+                    continue
                 assert p.hostname, "missing hostname in tls_handshakes control key"
                 obs = WebControlObservation(
                     measurement_meta=measurement_meta,
