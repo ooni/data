@@ -38,6 +38,8 @@ SAMPLE_MEASUREMENTS = [
     "20240302000050.000654_SN_webconnectivity_fe4221088fbdcb0a",  # nxdomain down
     "20240302000305.316064_EG_webconnectivity_397bca9091b07444",  # nxdomain blocked, unknown_failure and from the future
     "20240309112858.009725_SE_webconnectivity_dce757ef4ec9b6c8",  # blockpage for Iran in Sweden
+    "20240923234302.648951_FI_openvpn_714dd28ff412c1a5", # openvpn from Finland, tcp
+    "20240923234302.024724_FI_openvpn_515e6b6d9c0d832e", # openvpn from Finland, udp
     "20241101171509.547086_CN_webconnectivity_f0ec3f0e369cec9b",  # web_connectivity 0.5 which was failing
     "20250120145930.582606_US_echcheck_899a304b7beef05c",  # echcheck tls_handshakes
     "20240714111032.898994_GB_echcheck_f10079cac5cdf770",  # echcheck control and target

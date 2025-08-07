@@ -8,7 +8,7 @@ For historical context, these are the major revisions:
 - `v1` - OONI Pipeline based on custom CLI scripts using mongodb as a backend. Used until ~2015.
 - `v2` - OONI Pipeline based on [luigi](https://luigi.readthedocs.io/en/stable/). Used until ~2017.
 - `v3` - OONI Pipeline based on [airflow](https://airflow.apache.org/). Used until ~2020.
-- `v4` - OONI Pipeline basedon custom script and systemd units (aka fastpath). Currently in use in production.
+- `v4` - OONI Pipeline based on custom script and systemd units (aka fastpath). Currently in use in production.
 - `v5` - Next generation OONI Pipeline. What this readme is relevant to. Expected to become in production by Q4 2024.
 
 ## Setup
