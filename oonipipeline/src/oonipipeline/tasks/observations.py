@@ -129,6 +129,7 @@ def make_observations_for_file_entry_batch(
     netinfodb = NetinfoDB(datadir=data_dir, download=False)
     with ClickhouseConnection(clickhouse, write_batch_size=write_batch_size) as db:
         for bucket_name, s3path, ext, fe_size in file_entry_batch:
+            measurement_count = 0
             failure_count = 0
             log.debug(f"processing file s3://{bucket_name}/{s3path}")
             try:
@@ -149,12 +150,13 @@ def make_observations_for_file_entry_batch(
                 if fast_fail:
                     raise exc
             total_measurement_count += measurement_count
-        total_failure_count += failure_count
+            total_failure_count += failure_count
 
     log.info(
         f"finished batch for bucket_date={bucket_date}\n"
-        f"    {len(file_entry_batch)} entries \n"
-        f"    in {tbatch.s:.3f} seconds \n"
+        f"    {len(file_entry_batch)} entries\n"
+        f"    in {tbatch.s:.3f} seconds\n"
+        f"    failure_count: {total_failure_count}\n"
         f"    msmt/s: {total_measurement_count / tbatch.s}"
     )
     return total_measurement_count
