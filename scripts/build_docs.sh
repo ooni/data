@@ -1,6 +1,7 @@
 #!/bin/bash
 DOCS_ROOT=dist/docs/
 REPO_NAME="ooni/data"
+MAIN_BRANCH="main"
 COMMIT_HASH=$(git rev-parse --short HEAD)
 
 mkdir -p $DOCS_ROOT
