@@ -1,9 +1,11 @@
 #!/bin/bash
 DOCS_ROOT=dist/docs/
 REPO_NAME="ooni/data"
+MAIN_BRANCH="main"
 COMMIT_HASH=$(git rev-parse --short HEAD)
 
 mkdir -p $DOCS_ROOT
+mkdir -p $DOCS_ROOT/img
 
 strip_title() {
     # Since the title is already present in the frontmatter, we need to remove
@@ -38,5 +40,7 @@ EOF
 
 generate_doc 0 "data" "Readme.md" "00-index.md" "Accessing OONI data" "How to access OONI data"
 generate_doc 1 "data/oonidata" "oonidata/Readme.md" "01-oonidata.md" "OONI Data CLI" "Using the oonidata command line interface"
-generate_doc 2 "data/pipeline-design" "oonipipeline/Design.md" "02-pipeline-design.md" "OONI Data Pipeline design" "Design for OONI Pipeline v5"
-generate_doc 3 "data/pipeline" "oonipipeline/Readme.md" "03-pipeline.md" "OONI Data Pipeline v5" "OONI Data Pipeline v5"
+cp oonidata/docs/img/* $DOCS_ROOT/img/
+generate_doc 2 "data/oonidata-analysis-db" "oonidata/docs/DataAnalysisDB.md" "03-oonidata-analysis-db.md" "OONI Data Analysis DB" "OONI Data Analysis DB"
+generate_doc 3 "data/pipeline-design" "oonipipeline/Design.md" "02-pipeline-design.md" "OONI Data Pipeline design" "Design for OONI Pipeline v5"
+generate_doc 4 "data/pipeline" "oonipipeline/Readme.md" "03-pipeline.md" "OONI Data Pipeline v5" "OONI Data Pipeline v5"

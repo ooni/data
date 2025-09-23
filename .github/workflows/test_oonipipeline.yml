@@ -15,7 +15,9 @@ jobs:
           python-version: 3.11
 
       - name: Install hatch
-        run: pip install hatch
+        run: |
+          pip install click==8.1.8
+          pip install hatch
 
       - name: Set up datadir cache
         uses: actions/cache@v3
