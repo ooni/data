@@ -16,7 +16,7 @@ dependencies = [
   "requests ~= 2.27",
   "cryptography ~= 41.0.0",
   "clickhouse-driver ~= 0.2",
-  "click ~= 8.0.0",
+  "click == 8.2.1",
   "lxml ~= 4.9",
   "maxminddb ~= 2.2",
   "orjson ~= 3.8",
