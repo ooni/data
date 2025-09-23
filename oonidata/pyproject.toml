@@ -15,7 +15,7 @@ dependencies = [
   "lz4 ~= 4.0",
   "requests ~= 2.27",
   "cryptography ~= 38.0.3",
-  "click == 8.2.1",
+  "click ~= 8.0.0",
   "lxml ~= 4.9",
   "orjson ~= 3.8",
   "mashumaro ~= 3.0",
