@@ -194,4 +194,153 @@ ending up on the same row.
 - **probe_analysis** – The result of the probe level analysis. Generally
   matches what is seen in the fastpath.
 
+## Examples
 
+It's useful to define a function for running SQL queries and returning a pandas
+dataframe targeting the clickhouse database, as follows:
+```
+from clickhouse_driver import Client as Clickhouse
+
+def click_query(q, params=None, settings=None):
+    click = Clickhouse("localhost")
+    return click.query_dataframe(q, params=params, settings=settings)
+```
+
+### Aggregating measurements by failure counts
+
+Suppose you would like to plot observations by failure string so that you can
+assess the reason why we are failing to connect to a specific target.
+
+We make the assumption that if DNS fails, that will lead to TCP failing, if TCP
+fails, that will lead to TLS failing and if TLS fails that will lead to HTTPS
+failing.
+
+This assumption holds true for most `web_connectivity` measurements (n.b. it's
+not necessarily going to be the case for `web_connectivity` 0.5).
+
+We can use the following query:
+
+```
+df_agg = click_query("""
+WITH multiIf(
+    dns_failure IS NOT NULL, tuple('dns', dns_failure),
+    tcp_failure IS NOT NULL, tuple('tcp', tcp_failure),
+    tls_failure IS NOT NULL, tuple('tls', tls_failure),
+    http_failure IS NOT NULL, tuple('https', http_failure),
+    tuple('ok', '')
+) as failure,
+failure.1 as failure_class,
+IF(startsWith(failure.2, 'unknown_failure'), 'unknown_failure', failure.2) as failure_str_part,
+failure.2 as failure_str_raw
+SELECT 
+probe_cc,
+probe_asn,
+probe_as_org_name,
+toStartOfDay(measurement_start_time) as ts,
+hostname,
+resolver_asn,
+IF(failure_class = 'ok', 'ok', concat(failure_class, '.', failure_str_part)) as failure_str,
+COUNT() as cnt
+FROM obs_web
+WHERE measurement_start_time > %(measurement_start_day)s
+AND measurement_start_time < %(measurement_end_day)s
+AND probe_cc IN %(cc_list)s
+AND hostname = %(hostname)s
+GROUP BY probe_cc, probe_asn, probe_as_org_name, hostname, resolver_asn, ts, failure_str
+""", params={
+    "measurement_start_day": "2024-10-01",
+    "measurement_end_day": "2024-11-11",
+    "cc_list": ["IT"],
+    "hostname": "archive.ph"
+})
+```
+
+Note how in the `GROUP BY` section we are using as a grouping key `probe_asn`
+and `resolver_asn`. This is helpful because the blocking signal may differ from
+network to network, but in the case of DNS it will also be dependent on the DNS
+resolver that the probe is configured to use (eg. probes on the same network
+might produce different results if one is using the ISP provided resolver which
+implements filtering vs a public resolver that does not).
+
+We can then plot these results with:
+```
+alt.Chart(df_agg).mark_bar().encode(
+    x='ts',
+    y='cnt',
+    color='failure_str',
+    row='probe_asn',
+    tooltip=['failure_str', 'cnt', 'ts', 'hostname']
+).properties(
+    width=500,
+    height=100
+)
+```
+
+![](img/plot-1.svg)
+
+In the resulting plot it's worth noting two things:
+1. The presence of several `host_unreachable` and `network_unreachable` failure
+   strings. These are likely caused by the lack of IPv6 connectivity in the
+probe.
+2. Several failures appear as both `tls.$(failure)` and `https.$(failure)`.
+   This is likely the result of double counting when the data pipeline is not
+able to map a HTTPS transaction to the corresponding TLS handshake, hence they
+end up on two separate rows.
+
+Depending on your use-case you may want to exclude these instance by applying a
+pandas filter such as:
+```
+alt.Chart(df_agg[
+    (~df_agg['failure_str'].str.startswith('https'))
+    & ~(
+        (df_agg['failure_str'].str.contains('host_unreachable'))
+        | (df_agg['failure_str'].str.contains('network_unreachable'))
+    )
+]).mark_bar().encode(
+    x='ts',
+    y='cnt',
+    color='failure_str',
+    row='probe_asn',
+    tooltip=['failure_str', 'cnt', 'ts', 'hostname']
+).properties(
+    width=500,
+    height=100
+)
+```
+
+![](img/plot-2.svg)
+
+Which results in a much cleaner signal.
+
+Finally, we will now notice how the signal is still not so stable across the
+`probe_asn`, which is likely caused by differences in the DNS configuration.
+
+We can account for this by computing a new column which determines if the resolver is the ISP provided one or not:
+```
+df_agg['is_isp_resolver'] = df_agg['probe_asn'] == df_agg['resolver_asn']
+```
+
+and then placing them on two different columns:
+```
+alt.Chart(df_agg[
+    (~df_agg['failure_str'].str.startswith('https'))
+    & ~(
+        (df_agg['failure_str'].str.contains('host_unreachable'))
+        | (df_agg['failure_str'].str.contains('network_unreachable'))
+    )
+]).mark_bar().encode(
+    x='ts',
+    y='cnt',
+    color='failure_str',
+    row='probe_asn',
+    column='is_isp_resolver',
+    tooltip=['failure_str', 'cnt', 'ts', 'hostname']
+).properties(
+    width=500,
+    height=100
+)
+```
+
+![](img/plot-3.svg)
+
+We can now see that this mostly clears up the signal.
