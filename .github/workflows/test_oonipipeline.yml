@@ -16,7 +16,7 @@ jobs:
 
       - name: Install hatch
         run: |
-          pip install click==8.2.1
+          pip install click==8.1.8
           pip install hatch
 
       - name: Set up datadir cache
