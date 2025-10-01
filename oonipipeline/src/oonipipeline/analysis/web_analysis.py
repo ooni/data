@@ -267,7 +267,7 @@ def format_query_analysis_web_fuzzy_logic(
     tcp_t,
     http_failure,
     tcp_failure,
-    tls_failure,
+    tls_failure
 
     SELECT
     -- We parse the domain from the input, like the current pipeline would.
