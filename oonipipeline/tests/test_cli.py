@@ -5,7 +5,8 @@ from pathlib import Path
 import time
 
 from oonipipeline.cli.commands import cli
-from oonipipeline.cli.utils import build_timestamps
+from oonipipeline.cli.utils import build_timestamps, build_date_range
+import pytest
 
 def wait_for_mutations(db, table_name):
     while True:
@@ -131,3 +132,20 @@ def test_build_timestamps_intraday():
 
     assert len(result) == 1
     assert result[0][0] == "2024-01-01T05"
+
+
+def test_build_date_range():
+    start = datetime.strptime("2024-01-01 01", "%Y-%m-%d %H")
+    end = datetime.strptime("2024-01-12 23", "%Y-%m-%d %H")
+    result = build_date_range(start, end, day_delta=5)
+
+    # Make sure all the first values are hourly
+    assert all(
+        map(lambda x: x[0].hour != 0 and (x[1] - x[0]).seconds == 3600, result[:23])
+    )
+    start_dt, end_dt = result[24]
+    assert (end_dt - start_dt).days == 5
+    assert result[25][0].hour == 0
+    assert all(
+        map(lambda x: x[0].hour != 0 and (x[1] - x[0]).seconds == 3600, result[26:])
+    )

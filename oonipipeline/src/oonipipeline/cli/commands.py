@@ -6,7 +6,7 @@ from datetime import date, timedelta, datetime, timezone
 import click
 from click_loglevel import LogLevel
 
-from oonipipeline.cli.utils import build_timestamps
+from oonipipeline.cli.utils import build_timestamps, build_date_range
 from oonipipeline.db.maintenance import (
     optimize_all_tables_by_partition,
     list_partitions_to_delete,
@@ -21,6 +21,7 @@ from oonipipeline.tasks.analysis import (
     MakeAnalysisParams,
     make_analysis,
 )
+from oonipipeline.analysis.detector import run_detector
 from tqdm import tqdm
 
 from ..__about__ import VERSION
@@ -34,6 +35,10 @@ def _parse_csv(ctx, param, s: Optional[str]) -> List[str]:
     if s:
         return s.split(",")
     return []
+
+
+def _to_utc(ctx, param, d: datetime) -> datetime:
+    return d.replace(tzinfo=timezone.utc)
 
 
 probe_cc_option = click.option(
@@ -50,6 +55,7 @@ test_name_option = click.option(
 start_at_option = click.option(
     "--start-at",
     type=click.DateTime(),
+    callback=_to_utc,
     default=str(datetime.now(timezone.utc).date() - timedelta(days=14)),
     help="""the timestamp of the day for which we should start processing data (inclusive).
 
@@ -59,6 +65,7 @@ start_at_option = click.option(
 end_at_option = click.option(
     "--end-at",
     type=click.DateTime(),
+    callback=_to_utc,
     default=str(datetime.now(timezone.utc).date() + timedelta(days=1)),
     help="""the timestamp of the day for which we should start processing data (inclusive). 
 
@@ -284,4 +291,22 @@ def check_duplicates(start_at: datetime, end_at: datetime, optimize: bool):
         optimize_all_tables_by_partition(
             clickhouse_url=config.clickhouse_url,
             partition_list=list_partitions_to_delete(duplicates),
+        )
+
+
+@cli.command()
+@start_at_option
+@end_at_option
+@probe_cc_option
+def event_detector(start_at: datetime, end_at: datetime, probe_cc: List[str]):
+    if start_at < end_at:
+        raise click.BadParameter(f"start_at ({start_at}) should be < end_at {end_at}")
+
+    for start_dt, end_dt in tqdm(build_date_range(start_at, end_at, day_delta=10)):
+        click.echo(f"Processing {start_dt} - {end_dt}")
+        run_detector(
+            clickhouse_url=config.clickhouse_url,
+            start_time=start_dt,
+            end_time=end_dt,
+            probe_cc=probe_cc,
         )

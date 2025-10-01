@@ -209,6 +209,82 @@ def make_create_queries():
     """,
             "analysis_web_measurement",
         ),
+        (
+            """
+        CREATE TABLE IF NOT EXISTS event_detector_changepoints (
+            `probe_asn` UInt32,
+            `probe_cc` String,
+            `domain` String,
+            `ts` DateTime64(3, 'UTC'),
+            `count_isp_resolver` Nullable(UInt32),
+            `count_other_resolver` Nullable(UInt32),
+            `count` Nullable(UInt32),
+            `dns_isp_blocked` Nullable(float),
+            `dns_other_blocked` Nullable(float),
+            `tcp_blocked` Nullable(float),
+            `tls_blocked` Nullable(float),
+            `last_ts` DateTime64(3, 'UTC'),
+            `dns_isp_blocked_obs_w_sum` Nullable(float),
+            `dns_isp_blocked_w_sum` Nullable(float),
+            `dns_isp_blocked_s_pos` Nullable(float),
+            `dns_isp_blocked_s_neg` Nullable(float),
+            `dns_other_blocked_obs_w_sum` Nullable(float),
+            `dns_other_blocked_w_sum` Nullable(float),
+            `dns_other_blocked_s_pos` Nullable(float),
+            `dns_other_blocked_s_neg` Nullable(float),
+            `tcp_blocked_obs_w_sum` Nullable(float),
+            `tcp_blocked_w_sum` Nullable(float),
+            `tcp_blocked_s_pos` Nullable(float),
+            `tcp_blocked_s_neg` Nullable(float),
+            `tls_blocked_obs_w_sum` Nullable(float),
+            `tls_blocked_w_sum` Nullable(float),
+            `tls_blocked_s_pos` Nullable(float),
+            `tls_blocked_s_neg` Nullable(float),
+            `change_dir` Nullable(Int8),
+            `s_pos` Nullable(float),
+            `s_neg` Nullable(float),
+            `current_mean` Nullable(float),
+            `h` Nullable(float)
+        )
+        ENGINE = ReplacingMergeTree
+        ORDER BY (probe_asn, probe_cc, ts, domain);
+
+            """,
+            "event_detector_changepoints",
+        ),
+        (
+            """
+        CREATE TABLE IF NOT EXISTS event_detector_cusums
+        (
+            `probe_asn` UInt32,
+            `probe_cc` String,
+            `domain` String,
+            `ts` DateTime64(3, 'UTC'),
+            `dns_isp_blocked_obs_w_sum` Nullable(Float64),
+            `dns_isp_blocked_w_sum` Nullable(Float64),
+            `dns_isp_blocked_s_pos` Nullable(Float64),
+            `dns_isp_blocked_s_neg` Nullable(Float64),
+
+            `dns_other_blocked_obs_w_sum` Nullable(Float64),
+            `dns_other_blocked_w_sum` Nullable(Float64),
+            `dns_other_blocked_s_pos` Nullable(Float64),
+            `dns_other_blocked_s_neg` Nullable(Float64),
+
+            `tcp_blocked_obs_w_sum` Nullable(Float64),
+            `tcp_blocked_w_sum` Nullable(Float64),
+            `tcp_blocked_s_pos` Nullable(Float64),
+            `tcp_blocked_s_neg` Nullable(Float64),
+
+            `tls_blocked_obs_w_sum` Nullable(Float64),
+            `tls_blocked_w_sum` Nullable(Float64),
+            `tls_blocked_s_pos` Nullable(Float64),
+            `tls_blocked_s_neg` Nullable(Float64)
+        )
+        ENGINE = ReplacingMergeTree
+        ORDER BY (probe_asn, probe_cc, domain);
+            """,
+            "event_detector_cusums",
+        ),
     ]
     for model in table_models:
         table_name = model.__table_name__
