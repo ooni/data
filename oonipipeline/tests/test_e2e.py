@@ -1,6 +1,19 @@
+from datetime import datetime
 from oonipipeline.tasks.observations import (
     MakeObservationsParams,
     make_observations,
+)
+from oonipipeline.tasks.analysis import (
+    MakeAnalysisParams,
+    make_analysis,
+)
+from oonipipeline.tasks.detector import (
+    MakeDetectorParams,
+    make_detector,
+)
+from oonipipeline.cli.utils import build_timestamps
+from oonipipeline.tasks.updaters.citizenlab_test_lists_updater import (
+    update_citizenlab_test_lists,
 )
 
 from .utils import wait_for_mutations
@@ -74,3 +87,35 @@ def test_observation_workflow_hourly(datadir, db):
 
     assert wf_res["measurement_count"] == 1814
     assert wf_res["total_size"] == 33597397
+
+
+def test_event_detector(datadir, db):
+    update_citizenlab_test_lists(db.clickhouse_url)
+    for timestamp, _ in build_timestamps(
+        datetime(2025, 6, 23, 0, 0, 0), datetime(2025, 6, 30, 0, 0, 0)
+    ):
+        bucket_date = timestamp
+        obs_params = MakeObservationsParams(
+            probe_cc=["TG"],
+            test_name=["web_connectivity"],
+            fast_fail=False,
+            bucket_date=bucket_date,
+            clickhouse=db.clickhouse_url,
+            data_dir=datadir,
+        )
+        wf_res = make_observations(obs_params)
+        make_analysis(
+            MakeAnalysisParams(
+                probe_cc=["TG"],
+                test_name=["web_connectivity"],
+                timestamp=timestamp,
+                clickhouse_url=db.clickhouse_url,
+            )
+        )
+        make_detector(
+            MakeDetectorParams(
+                clickhouse_url=db.clickhouse_url, probe_cc=["TG"], timestamp=timestamp
+            )
+        )
+    res = db.execute("SELECT COUNT() FROM event_detector_changepoints")
+    print(res)

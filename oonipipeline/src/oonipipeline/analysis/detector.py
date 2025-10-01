@@ -12,15 +12,15 @@ log = logging.getLogger(__name__)
 
 Change = Enum('Change', [('POS', 1), ('NO', 0), ('NEG', -1)])
 
+
 def query_dataframe(
     db: ClickhouseClient,
     start_time: datetime,
     end_time: datetime,
-    probe_cc: Optional[List[str]] = None):
-    params : Dict[str, Any] = {
-        "since": start_time,
-        "until": end_time,
-    }
+    domains: List[str],
+    probe_cc: Optional[List[str]] = None,
+):
+    params: Dict[str, Any] = {"since": start_time, "until": end_time, "domain": domains}
     where = """
     WHERE domain IN %(domain)s
     AND measurement_start_time > %(since)s
@@ -43,7 +43,7 @@ def query_dataframe(
         quantileIf(0.5)(dns_blocked, is_isp_resolver = 1) AS dns_isp_blocked,
 
         quantileIf(0.5)(dns_blocked, is_isp_resolver = 0) AS dns_other_blocked,
-        
+
         quantile(0.5)(tcp_blocked) AS tcp_blocked,
 
         quantile(0.5)(tls_blocked) AS tls_blocked
@@ -56,6 +56,7 @@ def query_dataframe(
     """
     return db.query_dataframe(q, params=params)
 
+
 def get_lastcusums(db: ClickhouseClient, start_time: datetime, probe_cc: List[str]):
     where = "WHERE ts <= %(start_time)s"
     params : Dict[str, Any] = {"start_time": start_time}
@@ -63,7 +64,8 @@ def get_lastcusums(db: ClickhouseClient, start_time: datetime, probe_cc: List[st
         where += "AND probe_cc IN %(probe_cc)s"
         params["probe_cc"] = probe_cc
 
-    return db.query_dataframe("""
+    return db.query_dataframe(
+        f"""
     SELECT
     probe_asn,
     probe_cc,
@@ -93,7 +95,9 @@ def get_lastcusums(db: ClickhouseClient, start_time: datetime, probe_cc: List[st
         ORDER BY ts DESC
     )
     GROUP BY probe_asn, probe_cc, domain
-    """, params=params)
+    """,
+        params=params,
+    )
 
 @dataclass
 class LastCuSum:
@@ -264,7 +268,18 @@ def run_detector(
     edd: int = 10
 ):
     db = ClickhouseClient.from_url(clickhouse_url)
-    df = query_dataframe(db, start_time=start_time, end_time=end_time, probe_cc=probe_cc)
+    grp_domains = list(
+        db.query_dataframe(
+            "SELECT domain FROM citizenlab WHERE category_code = 'GRP' AND cc = 'ZZ'"
+        )["domain"]
+    )
+    df = query_dataframe(
+        db,
+        start_time=start_time,
+        end_time=end_time,
+        probe_cc=probe_cc,
+        domains=grp_domains,
+    )
 
     df_last_cusums = get_lastcusums(db, start_time=start_time, probe_cc=probe_cc)
     if not len(df_last_cusums):
@@ -298,10 +313,10 @@ def run_detector(
         )
         for col, count_col in COLS:
             row = df_grp.iloc[0]
-            obs_w_sum = row[f"{col}_obs_w_sum"]
-            w_sum = row[f"{col}_w_sum"]
-            s_pos = row[f"{col}_s_pos"]
-            s_neg = row[f"{col}_s_neg"]
+            obs_w_sum = row.get(f"{col}_obs_w_sum", 0)
+            w_sum = row.get(f"{col}_w_sum", 0)
+            s_pos = row.get(f"{col}_s_pos", 0)
+            s_neg = row.get(f"{col}_s_neg", 0)
             detector = CusumDetector(edd=edd, obs_w_sum=obs_w_sum, w_sum=w_sum, s_pos=s_pos, s_neg=s_neg)
             c = detector.run(df_grp, col, count_col)
             changepoints += c
@@ -312,8 +327,16 @@ def run_detector(
         last_cusums.append(last_cusum)
 
     log.info(f"updating cusums table with last_cusums len={len(last_cusums)}")
-    db.insert_dataframe("INSERT INTO event_detector_cusums VALUES", pd.DataFrame(last_cusums))
+    db.insert_dataframe(
+        "INSERT INTO event_detector_cusums VALUES",
+        pd.DataFrame(last_cusums),
+        settings={"use_numpy": True},
+    )
 
     log.info(f"detected {len(changepoints)} changepoints")
     if len(changepoints) > 0:
-        db.insert_dataframe("INSERT INTO event_detector_changepoints VALUES", pd.DataFrame(changepoints))
+        db.insert_dataframe(
+            "INSERT INTO event_detector_changepoints VALUES",
+            pd.DataFrame(changepoints),
+            settings={"use_numpy": True},
+        )
