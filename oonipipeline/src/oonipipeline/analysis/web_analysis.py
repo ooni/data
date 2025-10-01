@@ -266,19 +266,8 @@ def format_query_analysis_web_fuzzy_logic(
     tcp_failure,
     tcp_t,
     http_failure,
-    dns_outcome.1 as dns_blocked,
-    dns_outcome.2 as dns_down,
-    dns_outcome.3 as dns_ok,
-
     tcp_failure,
-    tcp_outcome.1 as tcp_blocked,
-    tcp_outcome.2 as tcp_down,
-    tcp_outcome.3 as tcp_ok,
-
     tls_failure,
-    tls_outcome.1 as tls_blocked,
-    tls_outcome.2 as tls_down,
-    tls_outcome.3 as tls_ok
 
     SELECT
     -- We parse the domain from the input, like the current pipeline would.
@@ -300,21 +289,21 @@ def format_query_analysis_web_fuzzy_logic(
     anyHeavy(tcp_failure) as top_tcp_failure,
     anyHeavy(tls_failure) as top_tls_failure,
 
-    max(dns_blocked) as dns_blocked_max,
-    max(dns_down) as dns_down_max,
-    max(dns_ok) as dns_ok_max,
+    max(dns_outcome.1) as dns_blocked,
+    max(dns_outcome.2) as dns_down,
+    max(dns_outcome.3) as dns_ok,
     -- IF(
-    --     dns_blocked_max > (dns_down_max + dns_ok_max),
+    --     dns_blocked > (dns_down + dns_ok),
     --     concat('dns.', IF(top_dns_failure IS NOT NULL, top_dns_failure, 'none')
     -- ), ''),
 
-    max(tcp_blocked) as tcp_blocked_max,
-    max(tcp_down) as tcp_down_max,
-    max(tcp_ok) as tcp_ok_max,
+    max(tcp_outcome.1) as tcp_blocked,
+    max(tcp_outcome.2) as tcp_down,
+    max(tcp_outcome.3) as tcp_ok,
 
-    max(tls_blocked) as tls_blocked_max,
-    max(tls_down) as tls_down_max,
-    max(tls_ok) as tls_ok_max
+    max(tls_outcome.1) as tls_blocked,
+    max(tls_outcome.2) as tls_down,
+    max(tls_outcome.3) as tls_ok
 
     FROM (
         WITH

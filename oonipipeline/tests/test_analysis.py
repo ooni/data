@@ -157,7 +157,7 @@ def test_website_web_analysis_blocked(db, netinfodb, measurements):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_blocked_max"] > 0.9
+    assert analysis["dns_blocked"] > 0.9
 
 
 def test_website_web_analysis_plaintext_ok(db, netinfodb, measurements):
@@ -168,12 +168,12 @@ def test_website_web_analysis_plaintext_ok(db, netinfodb, measurements):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_blocked_max"] < 0.2
-    assert analysis["tcp_blocked_max"] < 0.2
-    assert analysis["tls_blocked_max"] < 0.2
-    # assert analysis["http_blocked_max"] < 0.5
-    assert analysis["dns_ok_max"] > 0.8
-    assert analysis["tcp_ok_max"] > 0.8
+    assert analysis["dns_blocked"] < 0.2
+    assert analysis["tcp_blocked"] < 0.2
+    assert analysis["tls_blocked"] < 0.2
+    # assert analysis["http_blocked"] < 0.5
+    assert analysis["dns_ok"] > 0.8
+    assert analysis["tcp_ok"] > 0.8
 
 
 def test_website_web_analysis_blocked_2(db, netinfodb, measurements):
@@ -184,8 +184,8 @@ def test_website_web_analysis_blocked_2(db, netinfodb, measurements):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_blocked_max"] > 0.8
-    assert analysis["dns_ok_max"] < 0.2
+    assert analysis["dns_blocked"] > 0.8
+    assert analysis["dns_ok"] < 0.2
 
 
 def test_website_dns_blocking_event(db, netinfodb, measurements):
@@ -196,8 +196,8 @@ def test_website_dns_blocking_event(db, netinfodb, measurements):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_blocked_max"] > 0.8
-    assert analysis["dns_ok_max"] < 0.2
+    assert analysis["dns_blocked"] > 0.8
+    assert analysis["dns_ok"] < 0.2
 
 
 def test_website_dns_blocking_event_2(db, netinfodb, measurements):
@@ -208,8 +208,8 @@ def test_website_dns_blocking_event_2(db, netinfodb, measurements):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_blocked_max"] > 0.6
-    assert analysis["dns_ok_max"] < 0.4
+    assert analysis["dns_blocked"] > 0.6
+    assert analysis["dns_ok"] < 0.4
 
 
 def test_website_dns_ok(db, netinfodb, measurements):
@@ -220,9 +220,9 @@ def test_website_dns_ok(db, netinfodb, measurements):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_ok_max"] == 1.0
-    assert analysis["tcp_ok_max"] == 1.0
-    assert analysis["tls_ok_max"] == 1.0
+    assert analysis["dns_ok"] == 1.0
+    assert analysis["tcp_ok"] == 1.0
+    assert analysis["tls_ok"] == 1.0
 
 
 # # Check this for wc 0.5 overwriting tls analsysis
@@ -235,10 +235,10 @@ def test_website_experiment_results(measurements, netinfodb, db):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_blocked_max"] < 0.5
-    assert analysis["tcp_blocked_max"] > 0.6
+    assert analysis["dns_blocked"] < 0.5
+    assert analysis["tcp_blocked"] > 0.6
     assert analysis["top_tcp_failure"] == "generic_timeout_error"
-    assert analysis["tls_blocked_max"] == 0.0
+    assert analysis["tls_blocked"] == 0.0
 
 
 def test_website_web_analysis_down(measurements, netinfodb, db):
@@ -249,10 +249,10 @@ def test_website_web_analysis_down(measurements, netinfodb, db):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_blocked_max"] < 0.5
-    assert analysis["tcp_down_max"] > 0.6
+    assert analysis["dns_blocked"] < 0.5
+    assert analysis["tcp_down"] > 0.6
     assert analysis["top_tcp_failure"] == "generic_timeout_error"
-    assert analysis["tls_blocked_max"] == 0.0
+    assert analysis["tls_blocked"] == 0.0
 
 
 def test_website_web_analysis_blocked_connect_reset(measurements, netinfodb, db):
@@ -263,9 +263,9 @@ def test_website_web_analysis_blocked_connect_reset(measurements, netinfodb, db)
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_blocked_max"] < 0.5
-    assert analysis["tcp_blocked_max"] < 0.5
-    assert analysis["tls_blocked_max"] > 0.7
+    assert analysis["dns_blocked"] < 0.5
+    assert analysis["tcp_blocked"] < 0.5
+    assert analysis["tls_blocked"] > 0.7
     assert analysis["top_tls_failure"] == "connection_reset"
 
 
@@ -277,7 +277,7 @@ def test_website_web_analysis_nxdomain_down(measurements, netinfodb, db):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_down_max"] > 0.6
+    assert analysis["dns_down"] > 0.6
     assert analysis["top_dns_failure"] == "dns_nxdomain_error"
 
 
@@ -289,7 +289,7 @@ def test_website_web_analysis_nxdomain_blocked(measurements, netinfodb, db):
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_blocked_max"] > 0.6
+    assert analysis["dns_blocked"] > 0.6
     assert analysis["top_dns_failure"] == "dns_nxdomain_error"
 
 
@@ -301,6 +301,6 @@ def test_website_web_analysis_blocked_inconsistent_country(measurements, netinfo
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    assert analysis["dns_ok_max"] < 0.3
-    assert analysis["dns_blocked_max"] > 0.5
+    assert analysis["dns_ok"] < 0.3
+    assert analysis["dns_blocked"] > 0.5
     assert analysis["top_dns_failure"] == None
