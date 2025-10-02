@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from oonipipeline.tasks.observations import (
     MakeObservationsParams,
     make_observations,
@@ -92,7 +92,8 @@ def test_observation_workflow_hourly(datadir, db):
 def test_event_detector(datadir, db):
     update_citizenlab_test_lists(db.clickhouse_url)
     for timestamp, _ in build_timestamps(
-        datetime(2025, 6, 23, 0, 0, 0), datetime(2025, 6, 30, 0, 0, 0)
+        datetime(2025, 6, 23, 0, 0, 0, tzinfo=timezone.utc),
+        datetime(2025, 6, 30, 0, 0, 0, tzinfo=timezone.utc),
     ):
         bucket_date = timestamp
         obs_params = MakeObservationsParams(
