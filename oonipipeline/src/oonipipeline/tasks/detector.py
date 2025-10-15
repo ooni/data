@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 
 from clickhouse_driver import Client as ClickhouseClient
 
-from ..analysis.detector import run_detector 
+from ..analysis.detector import run_detector
 from ..settings import config
 
 
@@ -19,10 +19,14 @@ class MakeDetectorParams:
 
 def make_detector(params: MakeDetectorParams):
     if "T" in params.timestamp:
-        start_hour = datetime.strptime(params.timestamp, "%Y-%m-%dT%H")
+        start_hour = (datetime.strptime(params.timestamp, "%Y-%m-%dT%H")).replace(
+            tzinfo=timezone.utc
+        )
         end_hour = start_hour + timedelta(hours=1)
     else:
-        start_hour = datetime.strptime(params.timestamp, "%Y-%m-%d")
+        start_hour = (datetime.strptime(params.timestamp, "%Y-%m-%d")).replace(
+            tzinfo=timezone.utc
+        )
         end_hour = start_hour + timedelta(days=1)
 
     run_detector(
