@@ -2,6 +2,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import (
+    Dict,
     Optional,
     List,
     Tuple,
@@ -388,3 +389,43 @@ class HTTPMiddleboxObservation:
     hfm_diff: Optional[str] = None
     hfm_failure: Optional[str] = None
     hfm_success: Optional[bool] = None
+
+
+@table_model(
+    table_name="obs_tunnel",
+    table_index=("measurement_uid", "observation_idx", "measurement_start_time"),
+)
+@dataclass
+class TunnelObservation:
+    measurement_meta: MeasurementMeta
+    probe_meta: ProbeMeta
+
+    observation_idx: int
+
+    ip: str
+    port: int
+    transport: str
+
+    # label can be a fqdn or a human readable lable used to group the endpoint
+    label: str
+
+    # definition of success will need to change when/if we're able to gather metrics
+    # through the tunnel.
+    success: bool
+    failure: Failure
+
+    protocol: str
+
+    # indicates obfuscation or modifications from the main protocol family.
+    variant: str = ""
+
+    # any metadata about the providers behind the endpoints.
+    provider: str = ""
+
+    # time it took to perform the bootstrap of the protocol
+    bootstrap_time: float = -1
+
+    # timing list
+    t0: float = -1
+    timing_map: Dict[str, float] = field(default_factory=dict)
+    failure_map: Dict[str, str] = field(default_factory=dict)

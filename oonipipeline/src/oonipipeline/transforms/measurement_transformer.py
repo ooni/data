@@ -24,6 +24,8 @@ from oonidata.models.dataformats import (
     NetworkEvent,
     TCPConnect,
     TLSHandshake,
+    OpenVPNHandshake,
+    OpenVPNNetworkEvent,
     maybe_binary_data_to_bytes,
 )
 from oonidata.models.nettests.base_measurement import BaseMeasurement
@@ -35,6 +37,7 @@ from oonidata.models.observations import (
     TCPObservation,
     TLSObservation,
     WebObservation,
+    TunnelObservation,
 )
 from oonidata.datautils import (
     InvalidCertificateChain,
@@ -747,7 +750,6 @@ def make_measurement_meta(msmt: BaseMeasurement, bucket_date: str) -> Measuremen
         measurement_start_time=measurement_start_time,
     )
 
-
 class MeasurementTransformer:
     """
     MeasurementTransformer is responsible for taking a measurement and
@@ -903,7 +905,7 @@ class MeasurementTransformer:
 
         It will attempt to map them via the transaction_id or ip:port tuple.
 
-        Any observation that cannot be mapped will be returned inside of it's
+        Any observation that cannot be mapped will be returned inside of its
         own WebObservation with all other columns set to None.
         """
         web_obs_list: List[WebObservation] = []
