@@ -11,6 +11,8 @@ authors = [{ name = "OONI", email = "contact@ooni.org" }]
 dependencies = [
   "boto3 ~= 1.24",
   "PyYAML ~= 6.0",
+  "pandas ~= 2.0.0",
+  "numpy < 2",
   "tqdm ~= 4.64",
   "lz4 ~= 4.0",
   "requests ~= 2.27",
@@ -36,7 +38,6 @@ dependencies = [
 [project.optional-dependencies]
 analysis = [
   "altair ~= 4.2.0",
-  "pandas ~= 2.0.0",
   "jupyterlab ~= 4.0.7",
   "bokeh ~= 3.5.2",
 ]

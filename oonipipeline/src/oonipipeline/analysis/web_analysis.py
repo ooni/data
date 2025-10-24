@@ -263,9 +263,9 @@ def format_query_analysis_web_fuzzy_logic(
     tcp_ipv6_failure_rate,
     tcp_ipv4_failure_rate,
     tcp_success,
-    tcp_failure,
     tcp_t,
     http_failure,
+
     dns_outcome.1 as dns_blocked,
     dns_outcome.2 as dns_down,
     dns_outcome.3 as dns_ok,
@@ -304,7 +304,7 @@ def format_query_analysis_web_fuzzy_logic(
     max(dns_down) as dns_down_max,
     max(dns_ok) as dns_ok_max,
     -- IF(
-    --     dns_blocked_max > (dns_down_max + dns_ok_max),
+    --     dns_blocked > (dns_down + dns_ok),
     --     concat('dns.', IF(top_dns_failure IS NOT NULL, top_dns_failure, 'none')
     -- ), ''),
 

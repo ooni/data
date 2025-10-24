@@ -197,9 +197,9 @@ def make_create_queries():
             `top_probe_analysis` Nullable(String),
             `top_dns_failure` Nullable(String),
             `top_tcp_failure` Nullable(String), `top_tls_failure` Nullable(String),
-            `dns_blocked_max` Float32, `dns_down_max` Float32, `dns_ok_max` Float32,
-            `tcp_blocked_max` Float32, `tcp_down_max` Float32, `tcp_ok_max` Float32,
-            `tls_blocked_max` Float32, `tls_down_max` Float32, `tls_ok_max` Float32
+            `dns_blocked` Float32, `dns_down` Float32, `dns_ok` Float32,
+            `tcp_blocked` Float32, `tcp_down` Float32, `tcp_ok` Float32,
+            `tls_blocked` Float32, `tls_down` Float32, `tls_ok` Float32
         )
         ENGINE = ReplacingMergeTree
         PRIMARY KEY measurement_uid
@@ -208,6 +208,82 @@ def make_create_queries():
         SETTINGS index_granularity = 8192
     """,
             "analysis_web_measurement",
+        ),
+        (
+            """
+        CREATE TABLE IF NOT EXISTS event_detector_changepoints (
+            `probe_asn` UInt32,
+            `probe_cc` String,
+            `domain` String,
+            `ts` DateTime64(3, 'UTC'),
+            `count_isp_resolver` Nullable(UInt32),
+            `count_other_resolver` Nullable(UInt32),
+            `count` Nullable(UInt32),
+            `dns_isp_blocked` Nullable(float),
+            `dns_other_blocked` Nullable(float),
+            `tcp_blocked` Nullable(float),
+            `tls_blocked` Nullable(float),
+            `last_ts` DateTime64(3, 'UTC'),
+            `dns_isp_blocked_obs_w_sum` Nullable(float),
+            `dns_isp_blocked_w_sum` Nullable(float),
+            `dns_isp_blocked_s_pos` Nullable(float),
+            `dns_isp_blocked_s_neg` Nullable(float),
+            `dns_other_blocked_obs_w_sum` Nullable(float),
+            `dns_other_blocked_w_sum` Nullable(float),
+            `dns_other_blocked_s_pos` Nullable(float),
+            `dns_other_blocked_s_neg` Nullable(float),
+            `tcp_blocked_obs_w_sum` Nullable(float),
+            `tcp_blocked_w_sum` Nullable(float),
+            `tcp_blocked_s_pos` Nullable(float),
+            `tcp_blocked_s_neg` Nullable(float),
+            `tls_blocked_obs_w_sum` Nullable(float),
+            `tls_blocked_w_sum` Nullable(float),
+            `tls_blocked_s_pos` Nullable(float),
+            `tls_blocked_s_neg` Nullable(float),
+            `change_dir` Nullable(Int8),
+            `s_pos` Nullable(float),
+            `s_neg` Nullable(float),
+            `current_mean` Nullable(float),
+            `h` Nullable(float)
+        )
+        ENGINE = ReplacingMergeTree
+        ORDER BY (probe_asn, probe_cc, ts, domain);
+
+            """,
+            "event_detector_changepoints",
+        ),
+        (
+            """
+        CREATE TABLE IF NOT EXISTS event_detector_cusums
+        (
+            `probe_asn` UInt32,
+            `probe_cc` String,
+            `domain` String,
+            `ts` DateTime64(3, 'UTC'),
+            `dns_isp_blocked_obs_w_sum` Nullable(Float64),
+            `dns_isp_blocked_w_sum` Nullable(Float64),
+            `dns_isp_blocked_s_pos` Nullable(Float64),
+            `dns_isp_blocked_s_neg` Nullable(Float64),
+
+            `dns_other_blocked_obs_w_sum` Nullable(Float64),
+            `dns_other_blocked_w_sum` Nullable(Float64),
+            `dns_other_blocked_s_pos` Nullable(Float64),
+            `dns_other_blocked_s_neg` Nullable(Float64),
+
+            `tcp_blocked_obs_w_sum` Nullable(Float64),
+            `tcp_blocked_w_sum` Nullable(Float64),
+            `tcp_blocked_s_pos` Nullable(Float64),
+            `tcp_blocked_s_neg` Nullable(Float64),
+
+            `tls_blocked_obs_w_sum` Nullable(Float64),
+            `tls_blocked_w_sum` Nullable(Float64),
+            `tls_blocked_s_pos` Nullable(Float64),
+            `tls_blocked_s_neg` Nullable(Float64)
+        )
+        ENGINE = ReplacingMergeTree
+        ORDER BY (probe_asn, probe_cc, domain);
+            """,
+            "event_detector_cusums",
         ),
     ]
     for model in table_models:
