@@ -128,15 +128,6 @@ class LastCuSum:
     tls_blocked_s_neg: Optional[float] = None
 
 
-@dataclass
-class ChangePoint:
-    direction: Change
-    s_pos: float
-    s_neg: float
-    current_mean: float
-    h: float
-
-
 # this is the main hyper-parameter
 # per-sample drift is estimated at v/2
 # so to determine the estimated detection delay we can use
