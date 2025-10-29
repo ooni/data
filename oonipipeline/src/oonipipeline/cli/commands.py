@@ -299,7 +299,7 @@ def check_duplicates(start_at: datetime, end_at: datetime, optimize: bool):
 @end_at_option
 @probe_cc_option
 def event_detector(start_at: datetime, end_at: datetime, probe_cc: List[str]):
-    if start_at < end_at:
+    if start_at > end_at:
         raise click.BadParameter(f"start_at ({start_at}) should be < end_at {end_at}")
 
     for start_dt, end_dt in tqdm(build_date_range(start_at, end_at, day_delta=10)):
