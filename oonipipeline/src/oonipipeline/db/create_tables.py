@@ -244,7 +244,8 @@ def make_create_queries():
             `s_pos` Nullable(float),
             `s_neg` Nullable(float),
             `current_mean` Nullable(float),
-            `h` Nullable(float)
+            `h` Nullable(float),
+            `block_type` String
         )
         ENGINE = ReplacingMergeTree
         ORDER BY (probe_asn, probe_cc, ts, domain);

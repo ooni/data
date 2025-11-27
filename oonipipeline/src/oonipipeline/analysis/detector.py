@@ -205,6 +205,7 @@ class CusumDetector:
                 row["s_neg"] = self.s_neg
                 row["current_mean"] = self.current_mean
                 row["h"] = self.h
+                row["block_type"] = col
                 changepoints.append(row)
                 self._reset()
 
