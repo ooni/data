@@ -62,7 +62,7 @@ def run_make_analysis(
     make_analysis(params)
 
 
-def run_make_event_detection(
+def run_make_event_detector(
     clickhouse_url: str, probe_cc: List[str], timestamp: str = "", ts: str = ""
 ):
     from oonipipeline.tasks.detector import MakeDetectorParams, make_detector
@@ -174,9 +174,9 @@ with DAG(
         system_site_packages=False,
     )
 
-    op_make_event_detection_hourly = PythonVirtualenvOperator(
-        task_id="make_event_detection",
-        python_callable=run_make_event_detection,
+    op_make_event_detector_hourly = PythonVirtualenvOperator(
+        task_id="make_event_detector",
+        python_callable=run_make_event_detector,
         op_kwargs={
             "probe_cc": dag_full.params["probe_cc"],
             "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
@@ -189,5 +189,5 @@ with DAG(
     (
         op_make_observations_hourly
         >> op_make_analysis_hourly
-        >> op_make_event_detection_hourly
+        >> op_make_event_detector_hourly
     )
