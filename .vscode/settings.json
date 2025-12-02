@@ -7,6 +7,5 @@
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter"
   },
-  "editor.formatOnSaveMode": "modifications",
-  "makefile.configureOnOpen": false
+  "editor.formatOnSaveMode": "modifications"
 }
