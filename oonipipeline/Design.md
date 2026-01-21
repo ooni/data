@@ -12,11 +12,11 @@ needed.
 
 ### Expose a queriable low level view on measurements
 
-Currently it's only possible to query measurement at a granuliaty which is as
-fine a measurement.
+Currently it's only possible to query measurement at a granularity which is as
+fine as a measurement.
 
 This means that it's only possible to answer questions which the original
-designer of the experiment had already throught of.
+designer of the experiment had already thought of.
 
 On the other hand the new pipeline breaks down measurements into distinct
 observations (think 1 DNS query and answer or 1 TLS handshake towards a
