@@ -1,7 +1,7 @@
 from multiprocessing import Process
 import os
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -137,21 +137,44 @@ def db(clickhouse_server):
     yield db
 
 @pytest.fixture(scope="function")
-def fastpath(clickhouse_server : ClickhouseClient):
-   clickhouse_server.execute(
+def fastpath(db):
+    db.execute(
     """
-    CREATE DATABASE IF NOT EXISTS fastpath (
+    CREATE TABLE IF NOT EXISTS fastpath (
         `measurement_uid` String,
-        `measurement_start_time` DateTime DEFAULT now(),
+        `measurement_start_time` DateTime,
         `probe_cc` String,
         `probe_asn` UInt32,
+        `engine_version` String,
+        `software_version` String,
+        `platform` String,
+        `architecture` String
     )
     ENGINE = ReplacingMergeTree
     ORDER BY (measurement_uid);
    """)
-   yield
-   # destroy table when the test it's done
-   clickhouse_server.execute("TRUNCATE TABLE fastpath")
+    yield
+    # destroy table when the test it's done
+    db.execute("DROP TABLE fastpath")
 
+@pytest.fixture(scope="function")
+def fastpath_data(fastpath, db):
+    """Insert test data into the fastpath table using actual measurement UID format."""
+    # All measurements in the same minute (13:01) to test volume threshold
+    test_data = [
+        ("20240628130155.362214_SN_webconnectivity_1cdfc7ded48bd59b", datetime(2024, 6, 28, 13, 1, 55, 362214), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240628130157.673872_SN_webconnectivity_c08cb8a0df1a6bf1", datetime(2024, 6, 28, 13, 1, 57, 673872), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240628130201.082107_SN_webconnectivity_b2d6f22ea40ba707", datetime(2024, 6, 28, 13, 2, 1, 82107), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240628130203.020440_SN_webconnectivity_9c4920ceeb73401c", datetime(2024, 6, 28, 13, 2, 3, 20440), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240628130206.619539_SN_webconnectivity_78408875967131b3", datetime(2024, 6, 28, 13, 2, 6, 619539), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240628130210.694404_SN_webconnectivity_0750895f63ba36df", datetime(2024, 6, 28, 13, 2, 10, 694404), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240628130212.457906_SN_webconnectivity_f3406b5b86ed4871", datetime(2024, 6, 28, 13, 2, 12, 457906), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240628130221.581233_SN_webconnectivity_1d72e6dcdaa7fa4d", datetime(2024, 6, 28, 13, 2, 21, 581233), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240628130224.025888_SN_webconnectivity_9e80883cdacd2f33", datetime(2024, 6, 28, 13, 2, 24, 25888), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240628130226.856424_SN_webconnectivity_8f1e20ab1f7adad2", datetime(2024, 6, 28, 13, 2, 26, 856424), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+    ]
 
+    column_names = ["measurement_uid", "measurement_start_time", "probe_cc", "probe_asn", "engine_version", "software_version", "platform", "architecture"]
+    db.write_rows("fastpath", test_data, column_names)
 
+    yield test_data

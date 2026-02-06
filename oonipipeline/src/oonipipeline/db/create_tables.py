@@ -290,7 +290,6 @@ def make_create_queries():
             """
         CREATE TABLE IF NOT EXISTS faulty_measurements
         (
-            `measurement_uid` String,
             `time` DateTime DEFAULT now(),
             `type` String,
             -- geoip lookup result for the probe IP
@@ -300,7 +299,7 @@ def make_create_queries():
             `details` String
         )
         ENGINE = ReplacingMergeTree
-        ORDER BY (measurement_uid);
+        ORDER BY (type, probe_cc, probe_asn);
             """,
             "event_detector_cusums",
         ),
