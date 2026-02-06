@@ -286,6 +286,24 @@ def make_create_queries():
             """,
             "event_detector_cusums",
         ),
+        (
+            """
+        CREATE TABLE IF NOT EXISTS faulty_measurements
+        (
+            `measurement_uid` String,
+            `time` DateTime DEFAULT now(),
+            `type` String,
+            -- geoip lookup result for the probe IP
+            `probe_cc` String,
+            `probe_asn` UInt32,
+            -- JSON-encoded details about the anomaly
+            `details` String
+        )
+        ENGINE = ReplacingMergeTree
+        ORDER BY (measurement_uid);
+            """,
+            "event_detector_cusums",
+        ),
     ]
     for model in table_models:
         table_name = model.__table_name__

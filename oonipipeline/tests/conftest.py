@@ -135,3 +135,23 @@ def db(clickhouse_server):
 
     config.clickhouse_url = db.clickhouse_url
     yield db
+
+@pytest.fixture(scope="function")
+def fastpath(clickhouse_server : ClickhouseClient):
+   clickhouse_server.execute(
+    """
+    CREATE DATABASE IF NOT EXISTS fastpath (
+        `measurement_uid` String,
+        `measurement_start_time` DateTime DEFAULT now(),
+        `probe_cc` String,
+        `probe_asn` UInt32,
+    )
+    ENGINE = ReplacingMergeTree
+    ORDER BY (measurement_uid);
+   """)
+   yield
+   # destroy table when the test it's done
+   clickhouse_server.execute("TRUNCATE TABLE fastpath")
+
+
+

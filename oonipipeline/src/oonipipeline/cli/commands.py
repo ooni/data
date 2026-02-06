@@ -67,7 +67,7 @@ end_at_option = click.option(
     type=click.DateTime(),
     callback=_to_utc,
     default=str(datetime.now(timezone.utc).date() + timedelta(days=1)),
-    help="""the timestamp of the day for which we should start processing data (inclusive). 
+    help="""the timestamp of the day for which we should start processing data (inclusive).
 
     Note: this is the upload date, which doesn't necessarily match the measurement date.
     """,
