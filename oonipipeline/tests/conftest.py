@@ -158,20 +158,22 @@ def fastpath(db):
     db.execute("DROP TABLE fastpath")
 
 @pytest.fixture(scope="function")
-def fastpath_data(fastpath, db):
-    """Insert test data into the fastpath table using actual measurement UID format."""
-    # All measurements in the same minute (13:01) to test volume threshold
+def fastpath_data_fake(fastpath, db):
+    """
+    Fake data used for testing high volume anomalies
+    """
+
     test_data = [
-        ("20240628130155.362214_SN_webconnectivity_1cdfc7ded48bd59b", datetime(2024, 6, 28, 13, 1, 55, 362214), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
-        ("20240628130157.673872_SN_webconnectivity_c08cb8a0df1a6bf1", datetime(2024, 6, 28, 13, 1, 57, 673872), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
-        ("20240628130201.082107_SN_webconnectivity_b2d6f22ea40ba707", datetime(2024, 6, 28, 13, 2, 1, 82107), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
-        ("20240628130203.020440_SN_webconnectivity_9c4920ceeb73401c", datetime(2024, 6, 28, 13, 2, 3, 20440), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
-        ("20240628130206.619539_SN_webconnectivity_78408875967131b3", datetime(2024, 6, 28, 13, 2, 6, 619539), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
-        ("20240628130210.694404_SN_webconnectivity_0750895f63ba36df", datetime(2024, 6, 28, 13, 2, 10, 694404), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
-        ("20240628130212.457906_SN_webconnectivity_f3406b5b86ed4871", datetime(2024, 6, 28, 13, 2, 12, 457906), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
-        ("20240628130221.581233_SN_webconnectivity_1d72e6dcdaa7fa4d", datetime(2024, 6, 28, 13, 2, 21, 581233), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
-        ("20240628130224.025888_SN_webconnectivity_9e80883cdacd2f33", datetime(2024, 6, 28, 13, 2, 24, 25888), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
-        ("20240628130226.856424_SN_webconnectivity_8f1e20ab1f7adad2", datetime(2024, 6, 28, 13, 2, 26, 856424), "SN", 37577, "3.20.0", "3.20.0", "android", "arm64"),
+        ("20240101000000.000000_VE_webconnectivity_aaaaaaaaaaaaaaaa", datetime(2024, 1, 1, 0, 0, 0), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000001.000000_VE_webconnectivity_bbbbbbbbbbbbbbbb", datetime(2024, 1, 1, 0, 0, 1), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000002.000000_VE_webconnectivity_cccccccccccccccc", datetime(2024, 1, 1, 0, 0, 2), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000003.000000_VE_webconnectivity_dddddddddddddddd", datetime(2024, 1, 1, 0, 0, 3), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000004.000000_VE_webconnectivity_eeeeeeeeeeeeeeee", datetime(2024, 1, 1, 0, 0, 4), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000005.000000_VE_webconnectivity_ffffffffffffffff", datetime(2024, 1, 1, 0, 0, 5), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000006.000000_VE_webconnectivity_1111111111111111", datetime(2024, 1, 1, 0, 0, 6), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000007.000000_VE_webconnectivity_2222222222222222", datetime(2024, 1, 1, 0, 0, 7), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000008.000000_VE_webconnectivity_3333333333333333", datetime(2024, 1, 1, 0, 0, 8), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000009.000000_VE_webconnectivity_4444444444444444", datetime(2024, 1, 1, 0, 0, 9), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
     ]
 
     column_names = ["measurement_uid", "measurement_start_time", "probe_cc", "probe_asn", "engine_version", "software_version", "platform", "architecture"]
