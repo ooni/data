@@ -11,14 +11,12 @@ def test_volume_basic(db, fastpath, fastpath_data_fake, clean_faulty_measurement
     """
     Test basic volume analysis with data that exceeds threshold.
     """
-    start_time = START_TIME
-    end_time = END_TIME
-    threshold = 5  # Should trigger some events
 
+    threshold=5  # Should trigger some events
     volume.run_volume_analysis(
         clickhouse_url=db.clickhouse_url,
-        start_time=start_time,
-        end_time=end_time,
+        start_time=START_TIME,
+        end_time=END_TIME,
         threshold=threshold
     )
 
@@ -43,15 +41,12 @@ def test_volume_no_anomalies(db, fastpath, fastpath_data_fake, clean_faulty_meas
     """
     Test volume analysis with threshold higher than data count.
     """
-    start_time = START_TIME
-    end_time = END_TIME
-    threshold = 100  # Higher than the 10 measurements we have
 
     volume.run_volume_analysis(
         clickhouse_url=db.clickhouse_url,
-        start_time=start_time,
-        end_time=end_time,
-        threshold=threshold
+        start_time=START_TIME,
+        end_time=END_TIME,
+        threshold=100  # Higher than the 10 measurements we have
     )
 
     # No anomalies expected
@@ -65,13 +60,12 @@ def test_volume_time_range_filtering(db, fastpath, fastpath_data_fake, clean_fau
     """
     start_time = END_TIME + timedelta(hours=1)
     end_time = start_time + timedelta(hours=1)
-    threshold = 1
 
     volume.run_volume_analysis(
         clickhouse_url=db.clickhouse_url,
         start_time=start_time,
         end_time=end_time,
-        threshold=threshold
+        threshold=1
     )
 
     # Check that no events were inserted
