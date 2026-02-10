@@ -223,5 +223,4 @@ with DAG(
         op_make_observations_hourly
         >> op_make_analysis_hourly
         >> op_make_event_detector_hourly
-        >> op_make_volume_analysis_hourly
     )
