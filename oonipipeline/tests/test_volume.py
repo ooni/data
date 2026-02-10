@@ -33,6 +33,7 @@ def test_volume_basic(db, fastpath, fastpath_data_fake, clean_faulty_measurement
         details = orjson.loads(details_str)
         assert "start_time" in details
         assert "end_time" in details
+        assert "software_name" in details
         assert "total" in details
         assert "threshold" in details
         assert details["threshold"] == threshold

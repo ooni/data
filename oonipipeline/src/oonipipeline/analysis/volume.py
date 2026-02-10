@@ -21,14 +21,14 @@ def run_volume_analysis(
     query = """
     SELECT
         probe_cc, probe_asn, engine_version,
-        software_version, platform, architecture,
+        software_name, software_version, platform, architecture,
         toStartOfMinute(measurement_start_time) as minute_start,
         count() as total
     FROM fastpath
     WHERE
         measurement_start_time >= %(start_time)s AND
         measurement_start_time < %(end_time)s
-    GROUP BY probe_cc, probe_asn, engine_version, software_version, platform, architecture, minute_start
+    GROUP BY probe_cc, probe_asn, engine_version, software_name, software_version, platform, architecture, minute_start
     HAVING total >= %(treshold)s
     """
 
@@ -56,6 +56,7 @@ def run_volume_analysis(
             probe_cc,
             probe_asn,
             engine_version,
+            software_name,
             software_version,
             platform,
             architecture,
@@ -70,6 +71,7 @@ def run_volume_analysis(
             "start_time": minute_start.isoformat(),
             "end_time": minute_end.isoformat(),
             "engine_version": engine_version,
+            "software_name": software_name,
             "software_version": software_version,
             "platform": platform,
             "architecture": architecture,
