@@ -174,6 +174,12 @@ def fastpath_data_fake(fastpath, db):
         ("20240101000007.000000_VE_webconnectivity_2222222222222222", datetime(2024, 1, 1, 0, 0, 7), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
         ("20240101000008.000000_VE_webconnectivity_3333333333333333", datetime(2024, 1, 1, 0, 0, 8), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
         ("20240101000009.000000_VE_webconnectivity_4444444444444444", datetime(2024, 1, 1, 0, 0, 9), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        # Another "probe"
+        ("20240101000010.000000_US_webconnectivity_5555555555555555", datetime(2024, 1, 1, 0, 0, 10), "US", 15169, "3.19.0", "3.19.0", "ios", "arm64"),
+        ("20240101000011.000000_US_webconnectivity_6666666666666666", datetime(2024, 1, 1, 0, 0, 11), "US", 15169, "3.19.0", "3.19.0", "ios", "arm64"),
+        # More 'VE' measurements in another minute
+        ("20240101000100.000000_VE_webconnectivity_7777777777777777", datetime(2024, 1, 1, 0, 1, 0), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
+        ("20240101000101.000000_VE_webconnectivity_8888888888888888", datetime(2024, 1, 1, 0, 1, 1), "VE", 8048, "4.20.0", "4.20.0", "android", "arm64"),
     ]
 
     column_names = ["measurement_uid", "measurement_start_time", "probe_cc", "probe_asn", "engine_version", "software_version", "platform", "architecture"]
