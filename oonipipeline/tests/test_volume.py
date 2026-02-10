@@ -1,15 +1,13 @@
 from oonipipeline.analysis import volume
-from datetime import datetime
+from datetime import datetime, timedelta
 import orjson
 
 START_TIME = datetime(2023, 12, 31, 23, 59, 0)
 END_TIME = datetime(2024, 1, 1, 0, 1, 0)
-OUTSIDE_START_TIME = datetime(2024, 1, 1, 1, 0, 0)
-OUTSIDE_END_TIME = datetime(2024, 1, 1, 2, 0, 0)
 EXTENDED_END_TIME = datetime(2024, 1, 1, 0, 2, 0)
 
 
-def test_volume_basic(db, fastpath, fastpath_data_fake):
+def test_volume_basic(db, fastpath, fastpath_data_fake, clean_faulty_measurements):
     """Test basic volume analysis with data that exceeds threshold."""
     start_time = START_TIME
     end_time = END_TIME
@@ -38,7 +36,7 @@ def test_volume_basic(db, fastpath, fastpath_data_fake):
         assert details["total"] >= threshold
 
 
-def test_volume_no_anomalies(db, fastpath, fastpath_data_fake):
+def test_volume_no_anomalies(db, fastpath, fastpath_data_fake, clean_faulty_measurements):
     """Test volume analysis with threshold higher than data count."""
     start_time = START_TIME
     end_time = END_TIME
@@ -57,11 +55,11 @@ def test_volume_no_anomalies(db, fastpath, fastpath_data_fake):
     assert len(result) == 0, "Expected no volume anomalies with high threshold"
 
 
-def test_volume_time_range_filtering(db, fastpath, fastpath_data_fake):
+def test_volume_time_range_filtering(db, fastpath, fastpath_data_fake, clean_faulty_measurements):
     """Test that we only considers measurements within time range."""
-    # Use a time range that excludes all our test data
-    start_time = OUTSIDE_START_TIME
-    end_time = OUTSIDE_END_TIME
+    # excludes all our test data
+    start_time = END_TIME + timedelta(hours=1)
+    end_time = start_time + timedelta(hours=1)
     threshold = 1
 
     # Run the analysis
@@ -77,7 +75,7 @@ def test_volume_time_range_filtering(db, fastpath, fastpath_data_fake):
     assert len(result) == 0, "Expected no volume anomalies outside time range"
 
 
-def test_volume_grouping_by_attributes(db, fastpath, fastpath_data_fake):
+def test_volume_grouping_by_attributes(db, fastpath, fastpath_data_fake, clean_faulty_measurements):
     """Test that groups by probe attributes correctly."""
     # Add some measurements with different attributes
     additional_data = [
@@ -112,7 +110,7 @@ def test_volume_grouping_by_attributes(db, fastpath, fastpath_data_fake):
     # But VE has 10 measurements, so should appear
 
 
-def test_volume_minute_grouping(db, fastpath, fastpath_data_fake):
+def test_volume_minute_grouping(db, fastpath, fastpath_data_fake, clean_faulty_measurements):
     """Test that volume analysis groups measurements by minute correctly."""
     # Add measurements in a different minute
     additional_data = [

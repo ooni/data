@@ -180,3 +180,17 @@ def fastpath_data_fake(fastpath, db):
     db.write_rows("fastpath", test_data, column_names)
 
     yield test_data
+
+@pytest.fixture(scope='function')
+def clean_faulty_measurements(db):
+    """
+    This fixture will clean the faulty measurements table after a test is finished
+    """
+
+    yield # Do nothing on start
+
+    # Clean table when test is fininshed
+    try:
+        db.execute("TRUNCATE TABLE faulty_measurements")
+    except Exception as _:
+        pass  # Can crash if table is not created, that's ok
