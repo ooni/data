@@ -12,15 +12,17 @@ def test_volume_basic(db, fastpath, fastpath_data_fake, clean_faulty_measurement
     Test basic volume analysis with data that exceeds threshold.
     """
 
-    threshold=5  # Should trigger some events
+    threshold = 5  # Should trigger some events
     volume.run_volume_analysis(
         clickhouse_url=db.clickhouse_url,
         start_time=START_TIME,
         end_time=END_TIME,
-        threshold=threshold
+        threshold=threshold,
     )
 
-    result = db.execute("SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'")
+    result = db.execute(
+        "SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'"
+    )
     assert len(result) > 0, "Missing volume anomalies"
 
     for row in result:
@@ -37,7 +39,9 @@ def test_volume_basic(db, fastpath, fastpath_data_fake, clean_faulty_measurement
         assert details["total"] >= threshold
 
 
-def test_volume_no_anomalies(db, fastpath, fastpath_data_fake, clean_faulty_measurements):
+def test_volume_no_anomalies(
+    db, fastpath, fastpath_data_fake, clean_faulty_measurements
+):
     """
     Test volume analysis with threshold higher than data count.
     """
@@ -46,7 +50,7 @@ def test_volume_no_anomalies(db, fastpath, fastpath_data_fake, clean_faulty_meas
         clickhouse_url=db.clickhouse_url,
         start_time=START_TIME,
         end_time=END_TIME,
-        threshold=100  # Higher than the 10 measurements we have
+        threshold=100,  # Higher than the 10 measurements we have
     )
 
     # No anomalies expected
@@ -54,7 +58,9 @@ def test_volume_no_anomalies(db, fastpath, fastpath_data_fake, clean_faulty_meas
     assert len(result) == 0, "Expected no volume anomalies with high threshold"
 
 
-def test_volume_time_range_filtering(db, fastpath, fastpath_data_fake, clean_faulty_measurements):
+def test_volume_time_range_filtering(
+    db, fastpath, fastpath_data_fake, clean_faulty_measurements
+):
     """
     Test that we only considers measurements within time range.
     """
@@ -65,7 +71,7 @@ def test_volume_time_range_filtering(db, fastpath, fastpath_data_fake, clean_fau
         clickhouse_url=db.clickhouse_url,
         start_time=start_time,
         end_time=end_time,
-        threshold=1
+        threshold=1,
     )
 
     # Check that no events were inserted
@@ -73,7 +79,9 @@ def test_volume_time_range_filtering(db, fastpath, fastpath_data_fake, clean_fau
     assert len(results) == 0, f"Too many results: {len(results)} - {results}"
 
 
-def test_volume_grouping_by_attributes(db, fastpath, fastpath_data_fake, clean_faulty_measurements):
+def test_volume_grouping_by_attributes(
+    db, fastpath, fastpath_data_fake, clean_faulty_measurements
+):
     """
     Test that groups by probe attributes correctly.
     """
@@ -83,11 +91,13 @@ def test_volume_grouping_by_attributes(db, fastpath, fastpath_data_fake, clean_f
         clickhouse_url=db.clickhouse_url,
         start_time=START_TIME,
         end_time=END_TIME,
-        threshold=threshold
+        threshold=threshold,
     )
 
     # Only one event for 'VE'
-    result = db.execute("SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'")
+    result = db.execute(
+        "SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'"
+    )
     assert len(result) == 1, f"Unexpected anomalies: {result}"
 
     # US only has 2 measurements, should not appear
@@ -96,7 +106,9 @@ def test_volume_grouping_by_attributes(db, fastpath, fastpath_data_fake, clean_f
     assert "VE" in probe_ccs, "Expected only VE probe anomalies"
 
 
-def test_volume_minute_grouping(db, fastpath, fastpath_data_fake, clean_faulty_measurements):
+def test_volume_minute_grouping(
+    db, fastpath, fastpath_data_fake, clean_faulty_measurements
+):
     """
     Test that volume analysis groups measurements by minute correctly
     """
@@ -105,10 +117,12 @@ def test_volume_minute_grouping(db, fastpath, fastpath_data_fake, clean_faulty_m
         clickhouse_url=db.clickhouse_url,
         start_time=START_TIME,
         end_time=EXTENDED_END_TIME,
-        threshold=5
+        threshold=5,
     )
 
-    result = db.execute("SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'")
+    result = db.execute(
+        "SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'"
+    )
     assert len(result) == 1, f"Unexpected rows: {result}"
 
     times = set()
@@ -122,4 +136,7 @@ def test_volume_minute_grouping(db, fastpath, fastpath_data_fake, clean_faulty_m
     # interval with 10 measurements
     expected_start_time = "2024-01-01T00:00:00"
     expected_end_time = "2024-01-01T00:01:00"
-    assert (expected_start_time, expected_end_time) in times, f"Expected time range ({expected_start_time}, {expected_end_time}) not in {times}"
+    assert (
+        expected_start_time,
+        expected_end_time,
+    ) in times, f"Expected time range ({expected_start_time}, {expected_end_time}) not in {times}"
