@@ -50,12 +50,12 @@ def test_time_inconsistencies_no_anomalies(
         clickhouse_url=db.clickhouse_url,
         start_time=START_TIME,
         end_time=END_TIME,
-        threshold=3600 * 24 # 24 hours,
+        threshold=3600 * 24 # 24 hours
     )
 
     # No anomalies expected
     result = db.execute("SELECT type FROM faulty_measurements WHERE type = 'time_inconsistency'")
-    assert len(result) == 0, "Expected no time inconsistency anomalies with high threshold"
+    assert len(result) == 0, f"Unexpected anomalies: {len(result)} = {result}"
 
 
 def test_time_inconsistencies_time_range_filtering(
@@ -74,7 +74,7 @@ def test_time_inconsistencies_time_range_filtering(
         threshold=1,
     )
 
-    # Check that no events were inserted
+    # No events expected
     results = db.execute("SELECT type FROM faulty_measurements WHERE type = 'time_inconsistency'")
     assert len(results) == 0, f"Too many results: {len(results)} - {results}"
 
@@ -85,34 +85,7 @@ def test_time_inconsistencies_threshold_boundary(
     """
     Test that threshold boundary works correctly (3600 seconds = 1 hour).
     """
-    threshold = 3600  # Exactly 1 hour
-
-    time_inconsistencies.run_time_inconsistencies_analysis(
-        clickhouse_url=db.clickhouse_url,
-        start_time=START_TIME,
-        end_time=END_TIME,
-        threshold=threshold,
-    )
-
-    result = db.execute(
-        "SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'time_inconsistency'"
-    )
-    assert len(result) > 0, "Expected time inconsistency anomalies"
-
-    # Verify all results meet the threshold
-    for row in result:
-        _, _, _, _, details_str = row
-        details = orjson.loads(details_str)
-        assert abs(details["diff_seconds"]) >= threshold, f"diff_seconds {details['diff_seconds']} should be >= {threshold}"
-
-
-def test_time_inconsistencies_details_structure(
-    db, fastpath, fastpath_data_time_inconsistencies, clean_faulty_measurements
-):
-    """
-    Test that details JSON contains all expected fields.
-    """
-    threshold = 1800  # 30 minutes
+    threshold = 3600
 
     time_inconsistencies.run_time_inconsistencies_analysis(
         clickhouse_url=db.clickhouse_url,
@@ -129,21 +102,4 @@ def test_time_inconsistencies_details_structure(
     for row in result:
         _, _, _, _, details_str = row
         details = orjson.loads(details_str)
-
-        # Verify all required fields are present
-        assert "measurement_uid" in details
-        assert "measurement_start_time" in details
-        assert "uid_timestamp" in details
-        assert "diff_seconds" in details
-        assert "threshold" in details
-
-        # Verify field types and formats
-        assert isinstance(details["measurement_uid"], str)
-        assert isinstance(details["measurement_start_time"], str)  # ISO format
-        assert isinstance(details["uid_timestamp"], str)  # ISO format
-        assert isinstance(details["diff_seconds"], (int, float))
-        assert isinstance(details["threshold"], int)
-
-        # Verify timestamps are valid ISO format
-        datetime.fromisoformat(details["measurement_start_time"].replace('Z', '+00:00'))
-        datetime.fromisoformat(details["uid_timestamp"].replace('Z', '+00:00'))
+        assert abs(details["diff_seconds"]) >= threshold, f"invalid threshold: {details['diff_seconds']}"

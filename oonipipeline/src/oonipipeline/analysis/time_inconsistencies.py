@@ -25,19 +25,19 @@ def run_time_inconsistencies_analysis(
 
     db = Clickhouse.from_url(clickhouse_url)
     query = """
-SELECT
-    probe_cc,
-    probe_asn,
-    measurement_uid,
-    measurement_start_time,
-    parseDateTimeBestEffort(substring(measurement_uid, 1, 15)) AS uid_timestamp,
-    dateDiff('second', parseDateTimeBestEffort(substring(measurement_uid, 1, 15)), measurement_start_time) AS diff_seconds
-FROM fastpath
-WHERE
-    measurement_start_time >= %(start_time)s AND
-    measurement_start_time < %(end_time)s AND
-    abs(dateDiff('second', parseDateTimeBestEffort(substring(measurement_uid, 1, 15)), measurement_start_time)) >= %(treshold)s
-ORDER BY diff_seconds DESC
+    SELECT
+        probe_cc,
+        probe_asn,
+        measurement_uid,
+        measurement_start_time,
+        parseDateTimeBestEffort(substring(measurement_uid, 1, 15)) AS uid_timestamp,
+        dateDiff('second', parseDateTimeBestEffort(substring(measurement_uid, 1, 15)), measurement_start_time) AS diff_seconds
+    FROM fastpath
+    WHERE
+        measurement_start_time >= %(start_time)s AND
+        measurement_start_time < %(end_time)s AND
+        abs(dateDiff('second', parseDateTimeBestEffort(substring(measurement_uid, 1, 15)), measurement_start_time)) >= %(treshold)s
+    ORDER BY diff_seconds DESC
     """
 
     rows = (
@@ -68,6 +68,9 @@ ORDER BY diff_seconds DESC
             diff_seconds,
         ) = row
 
+        # Note that:
+        #  diff_seconds < 0 => Measurement from the future
+        #  diff_seconds >= 0 => Measurement too far away in the past
         details = {
             "measurement_uid": measurement_uid,
             "measurement_start_time": measurement_start_time.isoformat(),
