@@ -195,7 +195,6 @@ def fastpath_data_time_inconsistencies(fastpath, db):
     Measurements where the UID timestamp doesn't match measurement_start_time.
     """
 
-    # UID timestamp: 2024-01-01 00:00:00, but measurement_start_time is different
     test_data = [
         # 2 hours difference
         ("20240101000000.000000_VE_webconnectivity_aaaaaaaaaaaaaaaa", datetime(2024, 1, 1, 2, 0, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
@@ -207,6 +206,8 @@ def fastpath_data_time_inconsistencies(fastpath, db):
         ("20240101000003.000000_VE_webconnectivity_dddddddddddddddd", datetime(2024, 1, 1, 0, 30, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
         # Negative difference
         ("20240101000004.000000_VE_webconnectivity_eeeeeeeeeeeeeeee", datetime(2023, 12, 31, 22, 0, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        # 1 hour negative difference
+        ("20240101003000.000000_VE_webconnectivity_ffffffffffffffff", datetime(2023, 12, 31, 23, 30, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
     ]
 
     column_names = ["measurement_uid", "measurement_start_time", "probe_cc", "probe_asn", "engine_version", "software_name", "software_version", "platform", "architecture"]

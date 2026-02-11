@@ -55,6 +55,8 @@ def run_time_inconsistencies_analysis(
     if len(rows) == 0:
         log.info("No time inconsistency anomalies where found")
         return
+    else:
+        log.info(f"Found {len(rows)} time inconsistencies from {start_time} to {end_time}")
 
     values = []
     for row in rows:
