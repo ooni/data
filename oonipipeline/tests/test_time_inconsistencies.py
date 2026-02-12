@@ -20,7 +20,7 @@ def test_time_inconsistencies_basic(db, fastpath, fastpath_data_time_inconsisten
     )
 
     result = db.execute(
-        "SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'time_inconsistency'"
+        "SELECT ts, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'time_inconsistency'"
     )
     assert len(result) > 0, "Missing time inconsistency anomalies"
 
@@ -95,7 +95,7 @@ def test_time_inconsistencies_threshold_boundary(
     )
 
     result = db.execute(
-        "SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'time_inconsistency'"
+        "SELECT ts, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'time_inconsistency'"
     )
     assert len(result) > 0, "Expected time inconsistency anomalies"
 
