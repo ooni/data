@@ -21,12 +21,12 @@ def test_volume_basic(db, fastpath, fastpath_data_fake, clean_faulty_measurement
     )
 
     result = db.execute(
-        "SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'"
+        "SELECT ts, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'"
     )
     assert len(result) > 0, "Missing volume anomalies"
 
     for row in result:
-        time, type_val, probe_cc, probe_asn, details_str = row
+        ts, type_val, probe_cc, probe_asn, details_str = row
         assert type_val == "volume"
         assert probe_cc == "VE"
         assert probe_asn == 8048
@@ -97,7 +97,7 @@ def test_volume_grouping_by_attributes(
 
     # Only one event for 'VE'
     result = db.execute(
-        "SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'"
+        "SELECT ts, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'"
     )
     assert len(result) == 1, f"Unexpected anomalies: {result}"
 
@@ -122,7 +122,7 @@ def test_volume_minute_grouping(
     )
 
     result = db.execute(
-        "SELECT time, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'"
+        "SELECT ts, type, probe_cc, probe_asn, details FROM faulty_measurements WHERE type = 'volume'"
     )
     assert len(result) == 1, f"Unexpected rows: {result}"
 
