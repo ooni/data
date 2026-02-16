@@ -1,7 +1,7 @@
 from multiprocessing import Process
 import os
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -135,3 +135,69 @@ def db(clickhouse_server):
 
     config.clickhouse_url = db.clickhouse_url
     yield db
+
+@pytest.fixture(scope="function")
+def fastpath(db):
+    db.execute(
+    """
+    CREATE TABLE IF NOT EXISTS fastpath (
+        `measurement_uid` String,
+        `measurement_start_time` DateTime,
+        `probe_cc` String,
+        `probe_asn` UInt32,
+        `engine_version` String,
+        `software_name` String,
+        `software_version` String,
+        `platform` String,
+        `architecture` String
+    )
+    ENGINE = ReplacingMergeTree
+    ORDER BY (measurement_uid);
+   """)
+    yield
+    # destroy table when the test it's done
+    db.execute("DROP TABLE fastpath")
+
+@pytest.fixture(scope="function")
+def fastpath_data_fake(fastpath, db):
+    """
+    Fake data used for testing high volume anomalies
+    """
+
+    test_data = [
+        ("20240101000000.000000_VE_webconnectivity_aaaaaaaaaaaaaaaa", datetime(2024, 1, 1, 0, 0, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000001.000000_VE_webconnectivity_bbbbbbbbbbbbbbbb", datetime(2024, 1, 1, 0, 0, 1), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000002.000000_VE_webconnectivity_cccccccccccccccc", datetime(2024, 1, 1, 0, 0, 2), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000003.000000_VE_webconnectivity_dddddddddddddddd", datetime(2024, 1, 1, 0, 0, 3), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000004.000000_VE_webconnectivity_eeeeeeeeeeeeeeee", datetime(2024, 1, 1, 0, 0, 4), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000005.000000_VE_webconnectivity_ffffffffffffffff", datetime(2024, 1, 1, 0, 0, 5), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000006.000000_VE_webconnectivity_1111111111111111", datetime(2024, 1, 1, 0, 0, 6), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000007.000000_VE_webconnectivity_2222222222222222", datetime(2024, 1, 1, 0, 0, 7), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000008.000000_VE_webconnectivity_3333333333333333", datetime(2024, 1, 1, 0, 0, 8), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000009.000000_VE_webconnectivity_4444444444444444", datetime(2024, 1, 1, 0, 0, 9), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        # Another "probe"
+        ("20240101000010.000000_US_webconnectivity_5555555555555555", datetime(2024, 1, 1, 0, 0, 10), "US", 15169, "3.19.0", "ooniprobe-ios", "3.19.0", "ios", "arm64"),
+        ("20240101000011.000000_US_webconnectivity_6666666666666666", datetime(2024, 1, 1, 0, 0, 11), "US", 15169, "3.19.0", "ooniprobe-ios", "3.19.0", "ios", "arm64"),
+        # More 'VE' measurements in another minute
+        ("20240101000100.000000_VE_webconnectivity_7777777777777777", datetime(2024, 1, 1, 0, 1, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        ("20240101000101.000000_VE_webconnectivity_8888888888888888", datetime(2024, 1, 1, 0, 1, 1), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+    ]
+
+    column_names = ["measurement_uid", "measurement_start_time", "probe_cc", "probe_asn", "engine_version", "software_name", "software_version", "platform", "architecture"]
+    db.write_rows("fastpath", test_data, column_names)
+
+    yield test_data
+
+@pytest.fixture(scope='function')
+def clean_faulty_measurements(db):
+    """
+    This fixture will clean the faulty measurements table after a test is finished
+    """
+
+    yield # Do nothing on start
+
+    # Clean table when test is fininshed
+    try:
+        db.execute("TRUNCATE TABLE faulty_measurements")
+    except Exception as _:
+        pass  # Can crash if table is not created, that's ok

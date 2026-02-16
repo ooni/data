@@ -76,6 +76,27 @@ def run_make_event_detector(
 
     make_detector(params)
 
+def run_make_volume_analysis(
+    clickhouse_url: str,
+    timestamp: str = "",
+    ts: str = "",
+    threshold: int = 200
+):
+    from oonipipeline.tasks.volume import MakeVolumeParams, make_volume_analysis
+
+    # We need to perform this transformation in here because the {{ ts }}
+    # parametrization is resolved at runtime
+    if timestamp == "":
+        timestamp = ts[:13]
+
+    params = MakeVolumeParams(
+        clickhouse_url=clickhouse_url,
+        timestamp=timestamp,
+        threshold=threshold
+    )
+
+    make_volume_analysis(params)
+
 
 REQUIREMENTS = [str((pathlib.Path(__file__).parent.parent / "oonipipeline").absolute())]
 
@@ -181,6 +202,18 @@ with DAG(
             "probe_cc": dag_full.params["probe_cc"],
             "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
             "ts": "{{ts}}",
+        },
+        requirements=REQUIREMENTS,
+        system_site_packages=False,
+    )
+
+    op_make_volume_analysis_hourly = PythonVirtualenvOperator(
+        task_id="make_volume_analysis",
+        python_callable=run_make_volume_analysis,
+        op_kwargs={
+            "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
+            "ts": "{{ ts }}",
+            "threshold": 200, # TODO adjust this parameter dynamically in the future
         },
         requirements=REQUIREMENTS,
         system_site_packages=False,

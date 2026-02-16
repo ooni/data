@@ -11,6 +11,10 @@ from oonipipeline.tasks.detector import (
     MakeDetectorParams,
     make_detector,
 )
+from oonipipeline.tasks.volume import (
+    MakeVolumeParams,
+    make_volume_analysis,
+)
 from oonipipeline.cli.utils import build_timestamps
 from oonipipeline.tasks.updaters.citizenlab_test_lists_updater import (
     update_citizenlab_test_lists,
@@ -120,3 +124,18 @@ def test_event_detector(datadir, db):
         )
     res = db.execute("SELECT COUNT() FROM event_detector_changepoints")
     print(res)
+
+
+def test_volume_analysis(db, fastpath_data_fake, clean_faulty_measurements):
+    """
+    Make sure you can run the volume analysis with the right parameters
+    """
+    make_volume_analysis(
+        MakeVolumeParams(
+            clickhouse_url=db.clickhouse_url,
+            timestamp=datetime(2024, 1, 1, 0, 0, 0).strftime("%Y-%m-%dT%H"),
+            threshold=5
+        )
+    )
+    res = db.execute("SELECT COUNT() FROM faulty_measurements WHERE type = 'volume'")
+    assert res == [(1,)], "There should be at the least one event"

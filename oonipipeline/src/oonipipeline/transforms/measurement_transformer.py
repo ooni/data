@@ -12,9 +12,7 @@ from typing import (
     List,
     Tuple,
     Union,
-    Dict,
 )
-from collections import defaultdict
 
 from oonidata.models.dataformats import (
     DNSAnswer,
