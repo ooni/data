@@ -248,7 +248,8 @@ with DAG(
         op_kwargs={
             "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
             "ts": "{{ ts }}",
-            "threshold": 3600, # 1 hour
+            "future_threshold": 3600, # 1 hour
+            "past_threshold": 3600, # 1 hour
         },
         requirements=REQUIREMENTS,
         system_site_packages=False,
