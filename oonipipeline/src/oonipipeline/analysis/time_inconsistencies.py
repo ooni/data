@@ -14,13 +14,18 @@ log = logging.getLogger(__name__)
 
 
 def run_time_inconsistencies_analysis(
-    clickhouse_url: str, start_time: datetime, end_time: datetime, threshold: int
+    clickhouse_url: str,
+    start_time: datetime,
+    end_time: datetime,
+    future_threshold: int,
+    past_threshold: int,
 ):
     """
     This function will measure the drift between the reported measurement_start_time
     and the time it was reported to the fastpath.
 
-    threshold: time in seconds to trigger an anomaly
+    future_threshold: time in seconds to trigger an anomaly for future measurements (diff_seconds < 0)
+    past_threshold: time in seconds to trigger an anomaly for past measurements (diff_seconds > 0)
     """
 
     db = Clickhouse.from_url(clickhouse_url)
@@ -30,13 +35,24 @@ def run_time_inconsistencies_analysis(
         probe_asn,
         measurement_uid,
         measurement_start_time,
-        parseDateTimeBestEffort(substring(measurement_uid, 1, 15)) AS uid_timestamp,
-        dateDiff('second', parseDateTimeBestEffort(substring(measurement_uid, 1, 15)), measurement_start_time) AS diff_seconds
-    FROM fastpath
+        uid_timestamp,
+        diff_seconds
+    FROM (
+        SELECT
+            probe_cc,
+            probe_asn,
+            measurement_uid,
+            measurement_start_time,
+            parseDateTimeBestEffort(substring(measurement_uid, 1, 15)) AS uid_timestamp,
+            dateDiff('second', parseDateTimeBestEffort(substring(measurement_uid, 1, 15)), measurement_start_time) AS diff_seconds
+        FROM fastpath
+        WHERE
+            measurement_start_time >= %(start_time)s AND
+            measurement_start_time < %(end_time)s
+    )
     WHERE
-        measurement_start_time >= %(start_time)s AND
-        measurement_start_time < %(end_time)s AND
-        abs(dateDiff('second', parseDateTimeBestEffort(substring(measurement_uid, 1, 15)), measurement_start_time)) >= %(treshold)s
+        (diff_seconds < 0 AND abs(diff_seconds) >= %(future_treshold)s) OR
+        (diff_seconds > 0 AND diff_seconds >= %(past_treshold)s)
     ORDER BY diff_seconds DESC
     """
 
@@ -46,7 +62,8 @@ def run_time_inconsistencies_analysis(
             params={
                 "start_time": start_time,
                 "end_time": end_time,
-                "treshold": threshold,
+                "future_treshold": future_threshold,
+                "past_treshold": past_threshold,
             },
         )
         or []
@@ -70,9 +87,16 @@ def run_time_inconsistencies_analysis(
             diff_seconds,
         ) = row
 
-        # Note that:
-        #  diff_seconds < 0 => Measurement from the future
-        #  diff_seconds >= 0 => Measurement too far away in the past
+        # Choose type and threshold based on whether measurement is from future or past
+        # diff_seconds < 0 => future
+        # diff_seconds >> 0 => Measurement too far away in the past
+        if diff_seconds < 0:
+            inconsistency_type = "time_inconsistency_future"
+            threshold = future_threshold
+        else:
+            inconsistency_type = "time_inconsistency_past"
+            threshold = past_threshold
+
         details = {
             "measurement_uid": measurement_uid,
             "measurement_start_time": measurement_start_time.isoformat(),
@@ -81,7 +105,7 @@ def run_time_inconsistencies_analysis(
             "threshold": threshold,
         }
 
-        values.append(("time_inconsistency", probe_cc, probe_asn, orjson.dumps(details).decode()))
+        values.append((inconsistency_type, probe_cc, probe_asn, orjson.dumps(details).decode()))
 
     db.execute(
         "INSERT INTO faulty_measurements (type, probe_cc, probe_asn, details) VALUES",

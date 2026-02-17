@@ -12,7 +12,8 @@ from ..analysis.time_inconsistencies import run_time_inconsistencies_analysis
 class MakeTimeInconsistenciesParams:
     clickhouse_url: str
     timestamp: str
-    threshold: int
+    future_threshold: int
+    past_threshold: int
 
 
 def make_time_inconsistencies_analysis(params: MakeTimeInconsistenciesParams):
@@ -31,5 +32,6 @@ def make_time_inconsistencies_analysis(params: MakeTimeInconsistenciesParams):
         clickhouse_url=params.clickhouse_url,
         start_time=start_time,
         end_time=end_time,
-        threshold=params.threshold,
+        future_threshold=params.future_threshold,
+        past_threshold=params.past_threshold,
     )

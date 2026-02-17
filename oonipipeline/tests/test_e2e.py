@@ -153,8 +153,9 @@ def test_time_inconsistencies_analysis(db, fastpath_data_time_inconsistencies, c
         MakeTimeInconsistenciesParams(
             clickhouse_url=db.clickhouse_url,
             timestamp=datetime(2023, 12, 31, 23, 0, 0).strftime("%Y-%m-%dT%H"),
-            threshold=3600
+            future_threshold=3600,
+            past_threshold=3600
         )
     )
-    res = db.execute("SELECT COUNT() FROM faulty_measurements WHERE type = 'time_inconsistency'")
+    res = db.execute("SELECT COUNT() FROM faulty_measurements WHERE type IN ('time_inconsistency_future', 'time_inconsistency_past')")
     assert res[0][0] > 0, "There should be at least one time inconsistency event"

@@ -100,7 +100,8 @@ def run_make_time_inconsistencies_analysis(
     clickhouse_url: str,
     timestamp: str = "",
     ts: str = "",
-    threshold: int = 3600
+    future_threshold: int = 3600,
+    past_threshold: int = 3600
 ):
     from oonipipeline.tasks.time_inconsistencies import (
         MakeTimeInconsistenciesParams,
@@ -113,7 +114,8 @@ def run_make_time_inconsistencies_analysis(
     params = MakeTimeInconsistenciesParams(
         clickhouse_url=clickhouse_url,
         timestamp=timestamp,
-        threshold=threshold
+        future_threshold=future_threshold,
+        past_threshold=past_threshold
     )
 
     make_time_inconsistencies_analysis(params)
