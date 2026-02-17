@@ -142,7 +142,7 @@ def test_volume_analysis(db, fastpath_data_fake, clean_faulty_measurements):
         )
     )
     res = db.execute("SELECT COUNT() FROM faulty_measurements WHERE type = 'volume'")
-    assert res == [(1,)], "There should be at the least one event"
+    assert res == [(1,)], "There should be exactly one event"
 
 
 def test_time_inconsistencies_analysis(db, fastpath_data_time_inconsistencies, clean_faulty_measurements):
