@@ -290,7 +290,7 @@ def make_create_queries():
             """
         CREATE TABLE IF NOT EXISTS faulty_measurements
         (
-            `ts` DateTime64(3, 'UTC'),
+            `ts` DateTime64(3, 'UTC') DEFAULT now64(),
             `type` String,
             `uid` UUID DEFAULT generateUUIDv4(),
             -- geoip lookup result for the probe IP
