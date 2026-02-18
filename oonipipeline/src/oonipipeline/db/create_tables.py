@@ -292,6 +292,7 @@ def make_create_queries():
         (
             `ts` DateTime64(3, 'UTC'),
             `type` String,
+            `uid` UUID DEFAULT generateUUIDv4(),
             -- geoip lookup result for the probe IP
             `probe_cc` String,
             `probe_asn` UInt32,
@@ -299,7 +300,7 @@ def make_create_queries():
             `details` String
         )
         ENGINE = ReplacingMergeTree
-        ORDER BY (type, probe_cc, probe_asn);
+        ORDER BY (ts, type, probe_cc, probe_asn, uid);
             """,
             "event_detector_cusums",
         ),
