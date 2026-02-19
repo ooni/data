@@ -37,6 +37,9 @@ def test_time_inconsistencies_basic(db, fastpath, fastpath_data_time_inconsisten
         assert "uid_timestamp" in details
         assert "diff_seconds" in details
         assert "threshold" in details
+        assert "software_name" in details
+        assert "software_version" in details
+        assert "platform" in details
         # Verify threshold matches the appropriate one based on type
         if type_val == "time_inconsistency_future":
             assert details["threshold"] == future_threshold

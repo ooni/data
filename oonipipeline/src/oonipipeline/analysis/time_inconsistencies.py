@@ -36,13 +36,19 @@ def run_time_inconsistencies_analysis(
         measurement_uid,
         measurement_start_time,
         uid_timestamp,
-        diff_seconds
+        diff_seconds,
+        software_name,
+        software_version,
+        platform
     FROM (
         SELECT
             probe_cc,
             probe_asn,
             measurement_uid,
             measurement_start_time,
+            software_name,
+            software_version,
+            platform,
             parseDateTimeBestEffort(substring(measurement_uid, 1, 15)) AS uid_timestamp,
             dateDiff('second', parseDateTimeBestEffort(substring(measurement_uid, 1, 15)), measurement_start_time) AS diff_seconds
         FROM fastpath
@@ -85,6 +91,9 @@ def run_time_inconsistencies_analysis(
             measurement_start_time,
             uid_timestamp,
             diff_seconds,
+            software_name,
+            software_version,
+            platform,
         ) = row
 
         # Choose type and threshold based on whether measurement is from future or past
@@ -103,6 +112,9 @@ def run_time_inconsistencies_analysis(
             "uid_timestamp": uid_timestamp.isoformat(),
             "diff_seconds": diff_seconds,
             "threshold": threshold,
+            "software_name": software_name,
+            "software_version": software_version,
+            "platform": platform,
         }
 
         values.append((inconsistency_type, probe_cc, probe_asn, orjson.dumps(details).decode()))
