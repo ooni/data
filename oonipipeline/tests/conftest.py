@@ -1,7 +1,6 @@
-from multiprocessing import Process
 import os
 from pathlib import Path
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import pytest
 
@@ -181,6 +180,33 @@ def fastpath_data_fake(fastpath, db):
         # More 'VE' measurements in another minute
         ("20240101000100.000000_VE_webconnectivity_7777777777777777", datetime(2024, 1, 1, 0, 1, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
         ("20240101000101.000000_VE_webconnectivity_8888888888888888", datetime(2024, 1, 1, 0, 1, 1), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+    ]
+
+    column_names = ["measurement_uid", "measurement_start_time", "probe_cc", "probe_asn", "engine_version", "software_name", "software_version", "platform", "architecture"]
+    db.write_rows("fastpath", test_data, column_names)
+
+    yield test_data
+
+@pytest.fixture(scope="function")
+def fastpath_data_time_inconsistencies(fastpath, db):
+    """
+    Test data for time inconsistencies analysis.
+    Measurements where the UID timestamp doesn't match measurement_start_time.
+    """
+
+    test_data = [
+        # 2 hours difference
+        ("20240101000000.000000_VE_webconnectivity_aaaaaaaaaaaaaaaa", datetime(2024, 1, 1, 2, 0, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        # 3 hours difference
+        ("20240101000001.000000_VE_webconnectivity_bbbbbbbbbbbbbbbb", datetime(2024, 1, 1, 3, 0, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        # 1 hour difference
+        ("20240101000002.000000_VE_webconnectivity_cccccccccccccccc", datetime(2024, 1, 1, 1, 0, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        # 30 minutes difference
+        ("20240101000003.000000_VE_webconnectivity_dddddddddddddddd", datetime(2024, 1, 1, 0, 30, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        # Negative difference
+        ("20240101000004.000000_VE_webconnectivity_eeeeeeeeeeeeeeee", datetime(2023, 12, 31, 22, 0, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
+        # 1 hour negative difference
+        ("20240101003000.000000_VE_webconnectivity_ffffffffffffffff", datetime(2023, 12, 31, 23, 30, 0), "VE", 8048, "4.20.0", "ooniprobe-android", "4.20.0", "android", "arm64"),
     ]
 
     column_names = ["measurement_uid", "measurement_start_time", "probe_cc", "probe_asn", "engine_version", "software_name", "software_version", "platform", "architecture"]

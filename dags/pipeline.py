@@ -84,8 +84,6 @@ def run_make_volume_analysis(
 ):
     from oonipipeline.tasks.volume import MakeVolumeParams, make_volume_analysis
 
-    # We need to perform this transformation in here because the {{ ts }}
-    # parametrization is resolved at runtime
     if timestamp == "":
         timestamp = ts[:13]
 
@@ -96,6 +94,31 @@ def run_make_volume_analysis(
     )
 
     make_volume_analysis(params)
+
+
+def run_make_time_inconsistencies_analysis(
+    clickhouse_url: str,
+    timestamp: str = "",
+    ts: str = "",
+    future_threshold: int = 3600,
+    past_threshold: int = 3600
+):
+    from oonipipeline.tasks.time_inconsistencies import (
+        MakeTimeInconsistenciesParams,
+        make_time_inconsistencies_analysis,
+    )
+
+    if timestamp == "":
+        timestamp = ts[:13]
+
+    params = MakeTimeInconsistenciesParams(
+        clickhouse_url=clickhouse_url,
+        timestamp=timestamp,
+        future_threshold=future_threshold,
+        past_threshold=past_threshold
+    )
+
+    make_time_inconsistencies_analysis(params)
 
 
 REQUIREMENTS = [str((pathlib.Path(__file__).parent.parent / "oonipipeline").absolute())]
@@ -214,6 +237,19 @@ with DAG(
             "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
             "ts": "{{ ts }}",
             "threshold": 200, # TODO adjust this parameter dynamically in the future
+        },
+        requirements=REQUIREMENTS,
+        system_site_packages=False,
+    )
+
+    op_make_time_inconsistencies_analysis_hourly = PythonVirtualenvOperator(
+        task_id="make_time_inconsistencies_analysis",
+        python_callable=run_make_time_inconsistencies_analysis,
+        op_kwargs={
+            "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
+            "ts": "{{ ts }}",
+            "future_threshold": 60 * 30, # 30 mins
+            "past_threshold": 2 * 3600, # 2 hour
         },
         requirements=REQUIREMENTS,
         system_site_packages=False,
