@@ -282,7 +282,7 @@ def make_create_queries():
             `tls_blocked_s_neg` Nullable(Float64)
         )
         ENGINE = ReplacingMergeTree
-        ORDER BY (probe_asn, probe_cc, domain);
+        ORDER BY (ts, probe_asn, probe_cc, domain);
             """,
             "event_detector_cusums",
         ),
@@ -301,7 +301,7 @@ def make_create_queries():
         ENGINE = ReplacingMergeTree
         ORDER BY (type, probe_cc, probe_asn);
             """,
-            "event_detector_cusums",
+            "faulty_measurements",
         ),
     ]
     for model in table_models:
