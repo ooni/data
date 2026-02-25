@@ -1,32 +1,32 @@
 import logging
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
-from datetime import date, timedelta, datetime, timezone
 
 import click
 from click_loglevel import LogLevel
+from tqdm import tqdm
 
-from oonipipeline.cli.utils import build_timestamps, build_date_range
+from oonipipeline.analysis.detector import run_detector
+from oonipipeline.cli.utils import build_date_range, build_timestamps
 from oonipipeline.db.maintenance import (
-    optimize_all_tables_by_partition,
-    list_partitions_to_delete,
     list_duplicates_in_buckets,
+    list_partitions_to_delete,
+    optimize_all_tables_by_partition,
+)
+from oonipipeline.tasks.analysis import (
+    MakeAnalysisParams,
+    make_analysis,
 )
 from oonipipeline.tasks.common import OptimizeTablesParams, optimize_tables
 from oonipipeline.tasks.observations import (
     MakeObservationsParams,
     make_observations,
 )
-from oonipipeline.tasks.analysis import (
-    MakeAnalysisParams,
-    make_analysis,
-)
-from oonipipeline.analysis.detector import run_detector
-from tqdm import tqdm
 
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
-from ..db.create_tables import make_create_queries, list_all_table_diffs
+from ..db.create_tables import list_all_table_diffs, make_create_queries
 from ..netinfo import NetinfoDB
 from ..settings import config
 
@@ -73,6 +73,7 @@ end_at_option = click.option(
     """,
 )
 start_workers_option = click.option("--start-workers/--no-start-workers", default=True)
+
 
 def maybe_create_delete_tables(
     clickhouse_url: str,
@@ -298,15 +299,46 @@ def check_duplicates(start_at: datetime, end_at: datetime, optimize: bool):
 @start_at_option
 @end_at_option
 @probe_cc_option
-def event_detector(start_at: datetime, end_at: datetime, probe_cc: List[str]):
+@click.option(
+    "--truncate-cusums/--no-truncate-cusums",
+    default=False,
+    help="if the event_detector_cusums table should be truncated prior to processing",
+)
+@click.option(
+    "--clear-changepoints/--no-clear-changepoints",
+    default=False,
+    help="if the event_detector_changepoints table should be cleared for the specified time range",
+)
+def event_detector(
+    start_at: datetime,
+    end_at: datetime,
+    probe_cc: List[str],
+    truncate_cusums: bool,
+    clear_changepoints: bool,
+):
     if start_at > end_at:
         raise click.BadParameter(f"start_at ({start_at}) should be < end_at {end_at}")
 
+    if truncate_cusums or clear_changepoints:
+        with ClickhouseConnection(config.clickhouse_url) as db:
+            if truncate_cusums:
+                click.echo("Truncating event_detector_cusums table...")
+                db.execute("TRUNCATE TABLE event_detector_cusums SYNC")
+            if clear_changepoints:
+                click.echo("Clearing event_detector_changepoints table...")
+                db.execute(
+                    "ALTER TABLE event_detector_changepoints DELETE WHERE ts >= %(start_at)s AND ts <= %(end_at)s",
+                    params={"start_at": start_at, "end_at": end_at},
+                )
+
     for start_dt, end_dt in tqdm(build_date_range(start_at, end_at, day_delta=10)):
         click.echo(f"Processing {start_dt} - {end_dt}")
-        run_detector(
+        changepoints, updated_cusums, _ = run_detector(
             clickhouse_url=config.clickhouse_url,
             start_time=start_dt,
             end_time=end_dt,
             probe_cc=probe_cc,
+        )
+        click.echo(
+            f"Found {len(changepoints)} changepoints and updated {len(updated_cusums)} cusums"
         )

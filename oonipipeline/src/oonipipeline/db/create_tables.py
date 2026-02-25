@@ -1,32 +1,30 @@
+import typing
+from dataclasses import Field, fields
 from datetime import datetime
-
 from types import NoneType
 from typing import (
+    Any,
+    Dict,
     Generator,
+    List,
+    Mapping,
     NamedTuple,
     Optional,
     Tuple,
-    List,
-    Any,
     Type,
-    Mapping,
-    Dict,
     Union,
 )
-from dataclasses import Field, fields
-import typing
 
 from oonidata.models.base import TableModelProtocol
 from oonidata.models.observations import (
+    HTTPMiddleboxObservation,
     MeasurementMeta,
     ProbeMeta,
     WebControlObservation,
     WebObservation,
-    HTTPMiddleboxObservation,
 )
 
 from .connections import ClickhouseConnection
-
 
 MAPPED_BASIC_TYPES = [str, int, bool, datetime, float, dict]
 BasicType = Union[str, int, bool, datetime, float, dict]
@@ -99,9 +97,9 @@ def typing_to_clickhouse(t: Any) -> str:
         target_type = parent_type
     target_origin = typing.get_origin(target_type)
     target_args = typing.get_args(target_type)
-    assert (
-        target_origin == tuple
-    ), f"{target_origin} is not tuple (target_args={target_args}, {target_type} {parent_type})"
+    assert target_origin == tuple, (
+        f"{target_origin} is not tuple (target_args={target_args}, {target_type} {parent_type})"
+    )
     tuple_args = ", ".join([python_basic_type_to_clickhouse(a) for a in target_args])
     if is_nullable:
         return f"Nullable(Tuple({tuple_args}))"
@@ -109,7 +107,7 @@ def typing_to_clickhouse(t: Any) -> str:
 
 
 def iter_table_fields(
-    field_tuple: Tuple[Field[Any], ...]
+    field_tuple: Tuple[Field[Any], ...],
 ) -> Generator[Tuple[Field, str], None, None]:
     for f in field_tuple:
         if f.name in ("__table_index__", "__table_name__"):
@@ -281,7 +279,7 @@ def make_create_queries():
             `tls_blocked_s_pos` Nullable(Float64),
             `tls_blocked_s_neg` Nullable(Float64)
         )
-        ENGINE = ReplacingMergeTree
+        ENGINE = ReplacingMergeTree(ts)
         ORDER BY (probe_asn, probe_cc, domain);
             """,
             "event_detector_cusums",
@@ -302,7 +300,7 @@ def make_create_queries():
         ENGINE = ReplacingMergeTree
         ORDER BY (ts, type, probe_cc, probe_asn, uid);
             """,
-            "event_detector_cusums",
+            "faulty_measurements",
         ),
     ]
     for model in table_models:
@@ -429,6 +427,7 @@ def list_all_table_diffs(db: ClickhouseConnection):
             print(f"# {table_name} diff")
             for cd in diff_orig:
                 print(cd.get_sql_migration())
+
 
 def main():
     for query, table_name in make_create_queries():
