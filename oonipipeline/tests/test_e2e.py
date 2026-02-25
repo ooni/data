@@ -15,6 +15,10 @@ from oonipipeline.tasks.volume import (
     MakeVolumeParams,
     make_volume_analysis,
 )
+from oonipipeline.tasks.time_inconsistencies import (
+    MakeTimeInconsistenciesParams,
+    make_time_inconsistencies_analysis,
+)
 from oonipipeline.cli.utils import build_timestamps
 from oonipipeline.tasks.updaters.citizenlab_test_lists_updater import (
     update_citizenlab_test_lists,
@@ -138,4 +142,20 @@ def test_volume_analysis(db, fastpath_data_fake, clean_faulty_measurements):
         )
     )
     res = db.execute("SELECT COUNT() FROM faulty_measurements WHERE type = 'volume'")
-    assert res == [(1,)], "There should be at the least one event"
+    assert res == [(1,)], "There should be exactly one event"
+
+
+def test_time_inconsistencies_analysis(db, fastpath_data_time_inconsistencies, clean_faulty_measurements):
+    """
+    Make sure you can run the time inconsistencies analysis with the right parameters
+    """
+    make_time_inconsistencies_analysis(
+        MakeTimeInconsistenciesParams(
+            clickhouse_url=db.clickhouse_url,
+            timestamp=datetime(2023, 12, 31, 23, 0, 0).strftime("%Y-%m-%dT%H"),
+            future_threshold=3600,
+            past_threshold=3600
+        )
+    )
+    res = db.execute("SELECT COUNT() FROM faulty_measurements WHERE type IN ('time_inconsistency_future', 'time_inconsistency_past')")
+    assert res[0][0] > 0, "There should be at least one time inconsistency event"
