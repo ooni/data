@@ -1,5 +1,4 @@
 import logging
-import math
 from datetime import datetime, timedelta
 from enum import Enum
 from itertools import groupby as itertools_groupby
@@ -238,7 +237,6 @@ class CusumDetector:
     ) -> None:
         self.mu_0 = mu_0
         self.mu_1 = mu_1
-        self.sample_variance = 0.1
 
         self.v = mu_1 - mu_0
         self.edd = edd
@@ -260,6 +258,7 @@ class CusumDetector:
         observations: List[Observation],
         col: str,
         count_col: str,
+        warmup: bool = False,
         trace: bool = False,
     ) -> Tuple[List[Changepoint], List[CusumStep]]:
         """
@@ -284,7 +283,7 @@ class CusumDetector:
         for obs in observations:
             y = obs[col]
             w = obs[count_col]
-            change = self._detect(y, w)
+            change = self._detect(y, w, warmup=warmup)
             is_changepoint = change != Change.NO
             if trace:
                 steps.append(
@@ -298,7 +297,6 @@ class CusumDetector:
                         weight=w,
                         s_pos=self.s_pos,
                         s_neg=self.s_neg,
-                        variance=self.sample_variance,
                         h=self.h,
                         current_mean=self.current_mean,
                         is_changepoint=is_changepoint,
@@ -317,31 +315,31 @@ class CusumDetector:
 
         return changepoints, steps
 
-    def _detect(self, y, w) -> Change:
+    def _detect(self, y, w, warmup) -> Change:
         self.current_obs = y
         self.current_obs_w_sum += y * w
         self.current_w_sum += w
-        if w > 0:
-            self.sample_variance += ((y - self.current_mean) * w) ** 2 / w
-        return self._detect_changepoint()
+        # If the current weight is zero, it means this observation is not significant
+        # and should be ignored.
+        if w == 0.0:
+            return Change.NO
+        self.current_mean = self.current_obs_w_sum / self.current_w_sum
+        return self._detect_changepoint(warmup)
 
     def _reset(self) -> None:
         self.current_obs = 0.0
         self.current_obs_w_sum = 0.0
         self.current_w_sum = 0.0
-        self.sample_variance = 0.1
 
         self.s_pos = 0.0
         self.s_neg = 0.0
 
-    def _detect_changepoint(self) -> Change:
-        # Special case when the weights are zero
-        if self.current_w_sum == 0:
-            return Change.NO
-        self.current_mean = self.current_obs_w_sum / self.current_w_sum
-        z = (self.current_obs - self.current_mean) / math.sqrt(self.sample_variance)
+    def _detect_changepoint(self, warmup) -> Change:
+        z = self.current_obs - self.current_mean
         self.s_pos = max(0.0, self.s_pos + z - self.v / 2.0)
         self.s_neg = max(0.0, self.s_neg - z - self.v / 2.0)
+        if warmup:
+            return Change.NO
         if self.s_pos > self.h:
             return Change.POS
         if self.s_neg > self.h:
@@ -362,12 +360,12 @@ def detect_changepoints(
     cusum_map: Dict[str, LastCusum],
     edd: int,
     analysis_columns: List[Tuple[str, str]] = ANALYSIS_COLS,
+    warmup: bool = False,
     trace: bool = False,
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     changepoints: List[Changepoint] = []
     updated_cusums: List[LastCusum] = []
     all_steps: List[CusumStep] = []
-    log.info("running with observations")
 
     def key_func(o):
         return (o["probe_cc"], o["probe_asn"], o["domain"])
@@ -389,9 +387,9 @@ def detect_changepoints(
                 s_pos=cusum[f"{col}_s_pos"],
                 s_neg=cusum[f"{col}_s_neg"],
             )
-            c, steps = detector.run(grp_obs, col, count_col, trace=trace)
-            log.info(f"Detector results for {col}: {grp_obs}")
-            log.info(f" {detector.s_neg}, {detector.s_pos}")
+            c, steps = detector.run(grp_obs, col, count_col, warmup=warmup, trace=trace)
+            log.debug(f"Detector results for {col} ({key})")
+            log.debug(f" {detector.s_neg}, {detector.s_pos}")
             changepoints += c
             all_steps += steps
             cusum[f"{col}_obs_w_sum"] = detector.current_obs_w_sum
@@ -449,6 +447,7 @@ def run_detector(
     end_time: datetime,
     probe_cc: List[str],
     edd: int = 10,
+    warmup: bool = False,
     trace: bool = False,
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     db = ClickhouseClient.from_url(clickhouse_url)
@@ -468,6 +467,7 @@ def run_detector(
         cusum_map=cusum_map,
         edd=edd,
         analysis_columns=ANALYSIS_COLS,
+        warmup=warmup,
         trace=trace,
     )
     update_tables(db, updated_cusums, changepoints)
@@ -480,33 +480,41 @@ def plot(steps: List[CusumStep], block_type: str):
     import pandas as pd
 
     df_steps = pd.DataFrame([s for s in steps if s["block_type"] == block_type])
+    df_last = df_steps.loc[[df_steps["ts"].idxmax()]]  # last row for label anchoring
 
     base = alt.Chart(df_steps).encode(x="ts:T")
+    base_last = alt.Chart(df_last).encode(x="ts:T")
+
+    def make_label(df, field, label, color):
+        return (
+            alt.Chart(df)
+            .mark_text(align="left", dx=5, fontSize=11, color=color)
+            .encode(
+                x="ts:T",
+                y=alt.Y(f"{field}:Q"),
+                text=alt.value(label),
+            )
+        )
 
     obs_line = base.mark_line(color="steelblue", opacity=0.5).encode(
         y=alt.Y("obs_value:Q", title="value"),
         tooltip=["ts:T", "obs_value:Q", "weight:Q", "last_cusum_ts:T"],
     )
-
     s_pos_line = base.mark_line(color="red").encode(
         y=alt.Y("s_pos:Q"),
         tooltip=["ts:T", "s_pos:Q"],
     )
-
     s_neg_line = base.mark_line(color="orange").encode(
         y=alt.Y("s_neg:Q"),
         tooltip=["ts:T", "s_neg:Q"],
     )
-
     variance = base.mark_line(color="grey").encode(
         y=alt.Y("variance:Q"),
         tooltip=["ts:T", "variance:Q"],
     )
-
     threshold = (
         alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
     )
-
     cp_points = (
         alt.Chart(df_steps[df_steps["is_changepoint"]])
         .mark_point(color="black", size=100, shape="diamond")
@@ -517,8 +525,32 @@ def plot(steps: List[CusumStep], block_type: str):
         )
     )
 
+    obs_label = make_label(df_last, "obs_value", "observed", "steelblue")
+    s_pos_label = make_label(df_last, "s_pos", "S+", "red")
+    s_neg_label = make_label(df_last, "s_neg", "S−", "orange")
+    variance_label = make_label(df_last, "variance", "variance", "grey")
+    # threshold label: anchor to a single-row df with the h value
+    df_h = df_last[["ts", "h"]].copy()
+    threshold_label = (
+        alt.Chart(df_h)
+        .mark_text(align="left", dx=5, fontSize=11, color="green")
+        .encode(x="ts:T", y="h:Q", text=alt.value("threshold (h)"))
+    )
+
     chart = (
-        (obs_line + s_pos_line + s_neg_line + variance + threshold + cp_points)
+        (
+            obs_line
+            + obs_label
+            + s_pos_line
+            + s_pos_label
+            + s_neg_line
+            + s_neg_label
+            + variance
+            + variance_label
+            + threshold
+            + threshold_label
+            + cp_points
+        )
         .properties(
             width=900,
             height=400,
@@ -526,5 +558,4 @@ def plot(steps: List[CusumStep], block_type: str):
         )
         .interactive()
     )
-
     chart.show()
