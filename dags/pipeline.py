@@ -1,10 +1,10 @@
-import pathlib
 import datetime
+import pathlib
 from typing import List
 
 from airflow import DAG
-from airflow.operators.python import PythonVirtualenvOperator
-from airflow.models import Variable, Param
+from airflow.models import Param, Variable
+from airflow.operators.python import PythonVirtualenvOperator, ShortCircuitOperator
 
 
 def run_make_observations(
@@ -76,11 +76,9 @@ def run_make_event_detector(
 
     make_detector(params)
 
+
 def run_make_volume_analysis(
-    clickhouse_url: str,
-    timestamp: str = "",
-    ts: str = "",
-    threshold: int = 200
+    clickhouse_url: str, timestamp: str = "", ts: str = "", threshold: int = 200
 ):
     from oonipipeline.tasks.volume import MakeVolumeParams, make_volume_analysis
 
@@ -88,9 +86,7 @@ def run_make_volume_analysis(
         timestamp = ts[:13]
 
     params = MakeVolumeParams(
-        clickhouse_url=clickhouse_url,
-        timestamp=timestamp,
-        threshold=threshold
+        clickhouse_url=clickhouse_url, timestamp=timestamp, threshold=threshold
     )
 
     make_volume_analysis(params)
@@ -101,7 +97,7 @@ def run_make_time_inconsistencies_analysis(
     timestamp: str = "",
     ts: str = "",
     future_threshold: int = 3600,
-    past_threshold: int = 3600
+    past_threshold: int = 3600,
 ):
     from oonipipeline.tasks.time_inconsistencies import (
         MakeTimeInconsistenciesParams,
@@ -115,7 +111,7 @@ def run_make_time_inconsistencies_analysis(
         clickhouse_url=clickhouse_url,
         timestamp=timestamp,
         future_threshold=future_threshold,
-        past_threshold=past_threshold
+        past_threshold=past_threshold,
     )
 
     make_time_inconsistencies_analysis(params)
@@ -218,6 +214,15 @@ with DAG(
         system_site_packages=False,
     )
 
+    op_gate_event_detector = ShortCircuitOperator(
+        task_id="gate_event_detector",
+        python_callable=lambda: Variable.get(
+            "enable_event_detector", default_var="true"
+        )
+        == "true",
+        ignore_downstream_trigger_rules=True,
+    )
+
     op_make_event_detector_hourly = PythonVirtualenvOperator(
         task_id="make_event_detector",
         python_callable=run_make_event_detector,
@@ -236,7 +241,7 @@ with DAG(
         op_kwargs={
             "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
             "ts": "{{ ts }}",
-            "threshold": 200, # TODO adjust this parameter dynamically in the future
+            "threshold": 200,  # TODO adjust this parameter dynamically in the future
         },
         requirements=REQUIREMENTS,
         system_site_packages=False,
@@ -248,8 +253,8 @@ with DAG(
         op_kwargs={
             "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
             "ts": "{{ ts }}",
-            "future_threshold": 60 * 30, # 30 mins
-            "past_threshold": 2 * 3600, # 2 hour
+            "future_threshold": 60 * 30,  # 30 mins
+            "past_threshold": 2 * 3600,  # 2 hour
         },
         requirements=REQUIREMENTS,
         system_site_packages=False,
@@ -258,5 +263,6 @@ with DAG(
     (
         op_make_observations_hourly
         >> op_make_analysis_hourly
+        >> op_gate_event_detector
         >> op_make_event_detector_hourly
     )

@@ -16,6 +16,9 @@ sudo -u airflow CONFIG_FILE=/etc/ooni/pipeline/oonipipeline-config.toml /opt/min
 
 The event detector runs in an online mode, so you need to first pause the airflow task before you start the backfilling process.
 If you don't stop it, the cusums table will be updated while you are backfilling, the rows will be deduplicated with new ones from the airflow task and it will not take the previous values from the backfill task.
+You can stop the execution of the event detector by going into
+`Admin->Variables` in airflow and setting the variable `enable_event_detector`
+to `false`.
 
 You may also want to clear the detected events table before backfilling, so as to avoid a conflict in the detected events.
 
