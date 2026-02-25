@@ -428,6 +428,7 @@ def list_all_table_diffs(db: ClickhouseConnection):
             for cd in diff_orig:
                 print(cd.get_sql_migration())
 
+
 def main():
     for query, table_name in make_create_queries():
         print(f"clickhouse-client -q 'DROP TABLE {table_name}';")

@@ -1,13 +1,8 @@
 from dataclasses import dataclass
-
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-
-from clickhouse_driver import Client as ClickhouseClient
-
 from ..analysis.detector import run_detector
-from ..settings import config
 
 
 @dataclass
