@@ -19,7 +19,7 @@ jobs:
       - name: Install hatch
         run: |
           pip install click==8.1.8
-          pip install hatch
+          pip install "hatch>=1.13" "virtualenv<21"
 
       - name: Set up datadir cache
         uses: actions/cache@v3
