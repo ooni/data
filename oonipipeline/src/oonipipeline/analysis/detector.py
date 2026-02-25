@@ -240,7 +240,7 @@ class CusumDetector:
         self.mu_1 = mu_1
         self.sample_variance = 0.1
 
-        self.v = 0.7
+        self.v = mu_1 - mu_0
         self.edd = edd
         self.h = self.edd * self.v / 2.0
 
