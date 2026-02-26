@@ -116,24 +116,36 @@ class LastCusum(dict):
     ts: datetime
 
     dns_isp_blocked_current_state: str
+    dns_isp_blocked_last_change: int
     dns_isp_blocked_s_pos: float
     dns_isp_blocked_s_neg: float
+    dns_isp_blocked_last_ts: Optional[datetime]
 
     dns_other_blocked_current_state: str
+    dns_other_blocked_last_change: int
     dns_other_blocked_s_pos: float
     dns_other_blocked_s_neg: float
+    dns_other_blocked_last_ts: Optional[datetime]
 
     tcp_blocked_current_state: str
+    tcp_blocked_last_change: int
     tcp_blocked_s_pos: float
     tcp_blocked_s_neg: float
+    tcp_blocked_last_ts: Optional[datetime]
 
     tls_blocked_current_state: str
+    tls_blocked_last_change: int
     tls_blocked_s_pos: float
     tls_blocked_s_neg: float
+    tls_blocked_last_ts: Optional[datetime]
 
     def __missing__(self, key):
         if isinstance(key, str) and key.endswith("_current_state"):
             return "unk"
+        if isinstance(key, str) and key.endswith("_last_ts"):
+            return None
+        if isinstance(key, str) and key.endswith("_last_change"):
+            return Change.NO.value
         return 0.0
 
 
@@ -158,17 +170,25 @@ def get_cusum_map(
     domain,
     max(ts) as max_ts,
     argMax(dns_isp_blocked_current_state, ts) as dns_isp_blocked_current_state,
+    argMax(dns_isp_blocked_last_change, ts) as dns_isp_blocked_last_change,
     argMax(dns_isp_blocked_s_pos, ts) as dns_isp_blocked_s_pos,
     argMax(dns_isp_blocked_s_neg, ts) as dns_isp_blocked_s_neg,
+    argMax(dns_isp_blocked_last_ts, ts) as dns_isp_blocked_last_ts,
     argMax(dns_other_blocked_current_state, ts) as dns_other_blocked_current_state,
+    argMax(dns_other_blocked_last_change, ts) as dns_other_blocked_last_change,
     argMax(dns_other_blocked_s_pos, ts) as dns_other_blocked_s_pos,
     argMax(dns_other_blocked_s_neg, ts) as dns_other_blocked_s_neg,
+    argMax(dns_other_blocked_last_ts, ts) as dns_other_blocked_last_ts,
     argMax(tcp_blocked_current_state, ts) as tcp_blocked_current_state,
+    argMax(tcp_blocked_last_change, ts) as tcp_blocked_last_change,
     argMax(tcp_blocked_s_pos, ts) as tcp_blocked_s_pos,
     argMax(tcp_blocked_s_neg, ts) as tcp_blocked_s_neg,
+    argMax(tcp_blocked_last_ts, ts) as tcp_blocked_last_ts,
     argMax(tls_blocked_current_state, ts) as tls_blocked_current_state,
+    argMax(tls_blocked_last_change, ts) as tls_blocked_last_change,
     argMax(tls_blocked_s_pos, ts) as tls_blocked_s_pos,
-    argMax(tls_blocked_s_neg, ts) as tls_blocked_s_neg
+    argMax(tls_blocked_s_neg, ts) as tls_blocked_s_neg,
+    argMax(tls_blocked_last_ts, ts) as tls_blocked_last_ts
 
     FROM event_detector_cusums
     {where}
@@ -207,8 +227,16 @@ class CusumDetector:
       s_neg accumulates deviations below mu_1 to detect BLK->OK transitions.
       s_pos is held at zero (inactive).
 
-    Zeroing the inactive accumulator prevents noise accumulated in one state
-    from causing spurious detections immediately after a state transition.
+    When in UNK state (initial or after stale resume):
+      Both accumulators run to determine the initial state. The first threshold
+      crossing silently establishes state without emitting a changepoint.
+
+    Gap decay:
+      When observations resume after a silence longer than ~24 hours, the
+      accumulators are exponentially decayed based on the gap duration.
+      After gap_halflife hours of silence the accumulators are halved,
+      preventing stale pre-gap accumulation from triggering spurious alerts
+      when measurements resume at a different level.
 
     No online mean estimation is performed. mu_0 and mu_1 are fixed a-priori
     parameters. For OONI data mu_0=0.0 (expected blocking rate when OK) and
@@ -223,18 +251,22 @@ class CusumDetector:
         mu_0: float = 0.0,  # a-priori mean for the OK state
         mu_1: float = 0.7,  # a-priori mean for the BLK state
         edd: int = 20,
+        gap_halflife: float = 48.0,  # hours — accumulators halve after this much silence
+        last_ts: Optional[datetime] = None,
     ) -> None:
         self.mu_0 = mu_0
         self.mu_1 = mu_1
         self.v = mu_1 - mu_0
         self.edd = edd
         self.h = self.edd * self.v / 2.0
+        self.gap_halflife = gap_halflife
 
         self.current_obs = 0.0
         self.current_state = current_state
         self.s_pos = s_pos or 0.0
         self.s_neg = s_neg or 0.0
         self.last_change: Change = Change.NO
+        self.last_ts: Optional[datetime] = last_ts
 
     def run(
         self,
@@ -262,7 +294,7 @@ class CusumDetector:
         for obs in observations:
             y = obs[col]
             w = obs[count_col]
-            change = self._detect(y, w, warmup=warmup)
+            change = self._detect(y, w, ts=obs["ts"], warmup=warmup)
             is_changepoint = change != Change.NO
             if trace:
                 steps.append(
@@ -291,7 +323,7 @@ class CusumDetector:
                 cp["h"] = self.h
                 cp["block_type"] = col
                 changepoints.append(cp)
-                self.last_change = change  # remember last emitted direction
+                self.last_change = change
                 if change == Change.POS:
                     self.current_state = "blk"
                 elif change == Change.NEG:
@@ -300,14 +332,32 @@ class CusumDetector:
 
         return changepoints, steps
 
-    def _detect(self, y, w, warmup) -> Change:
+    def _decay(self, ts: datetime) -> None:
+        """
+        Exponentially decay s_pos and s_neg based on the gap since the last
+        observation. After gap_halflife hours of silence the accumulators are
+        halved. At the limit (very long silence) they decay toward zero,
+        meaning the detector starts fresh with no memory of pre-gap state.
+        Only applied when the gap is meaningfully larger than one day
+        """
+        if self.last_ts is None:
+            self.last_ts = ts
+            return
+        gap_hours = (ts - self.last_ts).total_seconds() / 3600.0
+        if gap_hours > 24:
+            decay = 0.5 ** (gap_hours / self.gap_halflife)
+            self.s_pos *= decay
+            self.s_neg *= decay
+        self.last_ts = ts
+
+    def _detect(self, y, w, ts: datetime, warmup) -> Change:
         self.current_obs = y
         if w == 0.0:
             return Change.NO
+        self._decay(ts)
         return self._detect_changepoint(warmup)
 
     def _reset(self) -> None:
-        """Flip state and reset accumulators after a changepoint."""
         self.s_pos = 0.0
         self.s_neg = 0.0
 
@@ -331,12 +381,9 @@ class CusumDetector:
             self.s_pos = max(0.0, self.s_pos + z_pos - self.v / 2.0)
             self.s_neg = 0.0
             if not warmup and self.s_pos > self.h:
-                # Only emit if this is a different direction than last change
                 if self.last_change != Change.POS:
                     return Change.POS
-                else:
-                    # Same direction as last change — absorb and stay in state
-                    self._reset()
+                self._reset()
 
         elif self.current_state == "blk":
             self.s_neg = max(0.0, self.s_neg - z_neg - self.v / 2.0)
@@ -344,8 +391,7 @@ class CusumDetector:
             if not warmup and self.s_neg > self.h:
                 if self.last_change != Change.NEG:
                     return Change.NEG
-                else:
-                    self._reset()
+                self._reset()
 
         return Change.NO
 
@@ -362,6 +408,7 @@ def detect_changepoints(
     observations: Iterable[Observation],
     cusum_map: Dict[str, LastCusum],
     edd: int,
+    gap_halflife: float = 48.0,
     analysis_columns: List[Tuple[str, str]] = ANALYSIS_COLS,
     warmup: bool = False,
     trace: bool = False,
@@ -385,10 +432,13 @@ def detect_changepoints(
         for col, count_col in analysis_columns:
             detector = CusumDetector(
                 edd=edd,
+                gap_halflife=gap_halflife,
                 current_state=cusum[f"{col}_current_state"],
                 s_pos=cusum[f"{col}_s_pos"],
                 s_neg=cusum[f"{col}_s_neg"],
+                last_ts=cusum[f"{col}_last_ts"],
             )
+            detector.last_change = Change(cusum[f"{col}_last_change"])
             c, steps = detector.run(grp_obs, col, count_col, warmup=warmup, trace=trace)
             log.debug(
                 f"Detector results for {col} ({key}): "
@@ -399,8 +449,10 @@ def detect_changepoints(
             changepoints += c
             all_steps += steps
             cusum[f"{col}_current_state"] = detector.current_state
+            cusum[f"{col}_last_change"] = detector.last_change.value
             cusum[f"{col}_s_pos"] = detector.s_pos
             cusum[f"{col}_s_neg"] = detector.s_neg
+            cusum[f"{col}_last_ts"] = detector.last_ts
         cusum["ts"] = max_ts
         updated_cusums.append(cusum)
     return changepoints, updated_cusums, all_steps
@@ -452,6 +504,7 @@ def run_detector(
     end_time: datetime,
     probe_cc: List[str],
     edd: int = 10,
+    gap_halflife: float = 48.0,
     warmup: bool = False,
     trace: bool = False,
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
@@ -471,6 +524,7 @@ def run_detector(
         observations=observations,
         cusum_map=cusum_map,
         edd=edd,
+        gap_halflife=gap_halflife,
         analysis_columns=ANALYSIS_COLS,
         warmup=warmup,
         trace=trace,
@@ -484,8 +538,47 @@ def plot(steps: List[CusumStep], block_type: str):
     import altair as alt
     import pandas as pd
 
+    STATE_COLORS = {"ok": "#d4edda", "blk": "#f8d7da", "unk": "#fff3cd"}
+
     df_steps = pd.DataFrame([s for s in steps if s["block_type"] == block_type])
     df_last = df_steps.loc[[df_steps["ts"].idxmax()]]
+
+    # Build state background bands: one rect per contiguous run of the same state
+    df_steps["state_change"] = df_steps["current_state"].ne(
+        df_steps["current_state"].shift()
+    )
+    df_steps["state_group"] = df_steps["state_change"].cumsum()
+    df_bands = (
+        df_steps.groupby("state_group")
+        .agg(
+            state_start=("ts", "min"),
+            state_end=("ts", "max"),
+            current_state=("current_state", "first"),
+        )
+        .reset_index(drop=True)
+    )
+
+    state_bands = (
+        alt.Chart(df_bands)
+        .mark_rect(opacity=0.25)
+        .encode(
+            x=alt.X("state_start:T"),
+            x2=alt.X2("state_end:T"),
+            color=alt.Color(
+                "current_state:N",
+                scale=alt.Scale(
+                    domain=["ok", "blk", "unk"],
+                    range=[
+                        STATE_COLORS["ok"],
+                        STATE_COLORS["blk"],
+                        STATE_COLORS["unk"],
+                    ],
+                ),
+                legend=alt.Legend(title="State"),
+            ),
+            tooltip=["current_state:N", "state_start:T", "state_end:T"],
+        )
+    )
 
     base = alt.Chart(df_steps).encode(x="ts:T")
 
@@ -537,7 +630,8 @@ def plot(steps: List[CusumStep], block_type: str):
 
     chart = (
         (
-            obs_line
+            state_bands
+            + obs_line
             + obs_label
             + s_pos_line
             + s_pos_label
