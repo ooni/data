@@ -1,5 +1,4 @@
 import logging
-import math
 from datetime import datetime, timedelta
 from enum import Enum
 from itertools import groupby as itertools_groupby
@@ -235,6 +234,7 @@ class CusumDetector:
         self.current_state = current_state
         self.s_pos = s_pos or 0.0
         self.s_neg = s_neg or 0.0
+        self.last_change: Change = Change.NO
 
     def run(
         self,
@@ -281,6 +281,7 @@ class CusumDetector:
                         is_changepoint=is_changepoint,
                     )
                 )
+
             if is_changepoint:
                 cp = Changepoint(**obs)
                 cp["change_dir"] = change.value
@@ -290,6 +291,7 @@ class CusumDetector:
                 cp["h"] = self.h
                 cp["block_type"] = col
                 changepoints.append(cp)
+                self.last_change = change  # remember last emitted direction
                 if change == Change.POS:
                     self.current_state = "blk"
                 elif change == Change.NEG:
@@ -310,24 +312,41 @@ class CusumDetector:
         self.s_neg = 0.0
 
     def _detect_changepoint(self, warmup) -> Change:
-        # Watching for OK->BLK: accumulate deviations above mu_0
         z_pos = self.current_obs - self.mu_0
-        # Watching for BLK->OK: accumulate deviations below mu_1
         z_neg = self.current_obs - self.mu_1
 
-        self.s_pos = max(0.0, self.s_pos + z_pos - self.v / 2.0)
-        self.s_neg = max(0.0, self.s_neg - z_neg - self.v / 2.0)
-        if self.current_state == "ok":
-            # if we are in the OK state, ignore the negative accumulator
-            self.s_neg = 0.0
-        elif self.current_state == "blk":
-            # if we are in the BLK state, ignore the negative accumulator
-            self.s_pos = 0.0
+        if self.current_state == "unk":
+            # Run both accumulators to determine initial state — no changepoint emitted.
+            self.s_pos = max(0.0, self.s_pos + z_pos - self.v / 2.0)
+            self.s_neg = max(0.0, self.s_neg - z_neg - self.v / 2.0)
+            if self.s_pos > self.h:
+                self.current_state = "blk"
+                self._reset()
+            elif self.s_neg > self.h:
+                self.current_state = "ok"
+                self._reset()
+            return Change.NO
 
-        if not warmup and self.s_neg > self.h:
-            return Change.NEG
-        if not warmup and self.s_pos > self.h:
-            return Change.POS
+        if self.current_state == "ok":
+            self.s_pos = max(0.0, self.s_pos + z_pos - self.v / 2.0)
+            self.s_neg = 0.0
+            if not warmup and self.s_pos > self.h:
+                # Only emit if this is a different direction than last change
+                if self.last_change != Change.POS:
+                    return Change.POS
+                else:
+                    # Same direction as last change — absorb and stay in state
+                    self._reset()
+
+        elif self.current_state == "blk":
+            self.s_neg = max(0.0, self.s_neg - z_neg - self.v / 2.0)
+            self.s_pos = 0.0
+            if not warmup and self.s_neg > self.h:
+                if self.last_change != Change.NEG:
+                    return Change.NEG
+                else:
+                    self._reset()
+
         return Change.NO
 
 
