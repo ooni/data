@@ -134,7 +134,7 @@ class LastCusum(dict):
 
     def __missing__(self, key):
         if isinstance(key, str) and key.endswith("_current_state"):
-            return "ok"
+            return "unk"
         return 0.0
 
 
@@ -220,7 +220,7 @@ class CusumDetector:
         self,
         s_pos: float = 0.0,
         s_neg: float = 0.0,
-        current_state: str = "ok",
+        current_state: str = "unk",
         mu_0: float = 0.0,  # a-priori mean for the OK state
         mu_1: float = 0.7,  # a-priori mean for the BLK state
         edd: int = 20,
@@ -290,6 +290,10 @@ class CusumDetector:
                 cp["h"] = self.h
                 cp["block_type"] = col
                 changepoints.append(cp)
+                if change == Change.POS:
+                    self.current_state = "blk"
+                elif change == Change.NEG:
+                    self.current_state = "ok"
                 self._reset()
 
         return changepoints, steps
@@ -304,23 +308,26 @@ class CusumDetector:
         """Flip state and reset accumulators after a changepoint."""
         self.s_pos = 0.0
         self.s_neg = 0.0
-        self.current_state = "blk" if self.current_state == "ok" else "ok"
 
     def _detect_changepoint(self, warmup) -> Change:
+        # Watching for OK->BLK: accumulate deviations above mu_0
+        z_pos = self.current_obs - self.mu_0
+        # Watching for BLK->OK: accumulate deviations below mu_1
+        z_neg = self.current_obs - self.mu_1
+
+        self.s_pos = max(0.0, self.s_pos + z_pos - self.v / 2.0)
+        self.s_neg = max(0.0, self.s_neg - z_neg - self.v / 2.0)
         if self.current_state == "ok":
-            # Watching for OK->BLK: accumulate deviations above mu_0
-            z_pos = self.current_obs - self.mu_0
-            self.s_pos = max(0.0, self.s_pos + z_pos - self.v / 2.0)
-            self.s_neg = 0.0  # inactive in ok state
-            if not warmup and self.s_pos > self.h:
-                return Change.POS
-        else:
-            # Watching for BLK->OK: accumulate deviations below mu_1
-            z_neg = self.current_obs - self.mu_1
-            self.s_neg = max(0.0, self.s_neg - z_neg - self.v / 2.0)
-            self.s_pos = 0.0  # inactive in blk state
-            if not warmup and self.s_neg > self.h:
-                return Change.NEG
+            # if we are in the OK state, ignore the negative accumulator
+            self.s_neg = 0.0
+        elif self.current_state == "blk":
+            # if we are in the BLK state, ignore the negative accumulator
+            self.s_pos = 0.0
+
+        if not warmup and self.s_neg > self.h:
+            return Change.NEG
+        if not warmup and self.s_pos > self.h:
+            return Change.POS
         return Change.NO
 
 
