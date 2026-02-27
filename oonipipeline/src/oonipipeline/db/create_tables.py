@@ -243,19 +243,27 @@ def make_create_queries():
             `probe_cc` String,
             `domain` String,
             `ts` DateTime64(3, 'UTC'),
-            `dns_isp_blocked_current_state` String DEFAULT 'ok',
+            `dns_isp_blocked_current_state` String DEFAULT 'unk',
+            `dns_isp_blocked_last_state` String DEFAULT 'unk',
+            `dns_isp_blocked_last_ts` String DEFAULT 'unk',
             `dns_isp_blocked_s_pos` Nullable(Float64),
             `dns_isp_blocked_s_neg` Nullable(Float64),
 
-            `dns_other_blocked_current_state` String DEFAULT 'ok',
+            `dns_other_blocked_current_state` String DEFAULT 'unk',
+            `dns_other_blocked_last_state` String DEFAULT 'unk',
+            `dns_other_blocked_last_ts` String DEFAULT 'unk',
             `dns_other_blocked_s_pos` Nullable(Float64),
             `dns_other_blocked_s_neg` Nullable(Float64),
 
-            `tcp_blocked_current_state` String DEFAULT 'ok',
+            `tcp_blocked_current_state` String DEFAULT 'unk',
+            `tcp_blocked_last_state` String DEFAULT 'unk',
+            `tcp_blocked_last_ts` String DEFAULT 'unk',
             `tcp_blocked_s_pos` Nullable(Float64),
             `tcp_blocked_s_neg` Nullable(Float64),
 
-            `tls_blocked_current_state` String DEFAULT 'ok',
+            `tls_blocked_current_state` String DEFAULT 'unk',
+            `tls_blocked_last_state` String DEFAULT 'unk',
+            `tls_blocked_last_ts` String DEFAULT 'unk',
             `tls_blocked_s_pos` Nullable(Float64),
             `tls_blocked_s_neg` Nullable(Float64)
         )
