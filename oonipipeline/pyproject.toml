@@ -32,7 +32,8 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-grpc ~= 1.29.0",
   "uvicorn ~= 0.25.0",
   "pydantic-settings ~= 2.4.0",
-  "apache-airflow == 2.10.4"
+  "apache-airflow == 2.10.4",
+  "google-re2==1.1.20251105"
 ]
 
 [project.optional-dependencies]
