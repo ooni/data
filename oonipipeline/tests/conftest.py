@@ -21,6 +21,8 @@ from ._fixtures import SAMPLE_MEASUREMENTS
 FIXTURE_PATH = Path(os.path.dirname(os.path.realpath(__file__))) / "data"
 DATA_DIR = FIXTURE_PATH / "datadir"
 
+#invalidate cache
+
 
 def is_clickhouse_running(url):
     try:
