@@ -47,6 +47,9 @@ path = ".venv/"
 [tool.hatch.version]
 path = "src/oonidata/__about__.py"
 
+[project.scripts]
+oonidata = "oonidata.main:main"
+
 [tool.hatch.envs.default.scripts]
 oonidata = "python -m oonidata.main {args}"
 test = "pytest {args:tests}"
