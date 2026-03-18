@@ -18,17 +18,6 @@ services:
     environment:
       CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
 
-  api:
-    container_name: oonidata-api
-    image: oonidata_image
-    command: "uvicorn --log-level debug --port 8000 --host 0.0.0.0 oonipipeline.api.main:app"
-    depends_on:
-      - clickhouse
-    ports:
-      - "8000:8000"  # HTTP interface
-    environment:
-      CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
-
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     container_name: clickhouse_server

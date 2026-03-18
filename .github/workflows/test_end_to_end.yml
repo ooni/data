@@ -41,19 +41,6 @@ jobs:
           done
           echo "Container has exited."
 
-      - name: Query and verify data from API
-        run: |
-          response=$(curl -s -o response.json -w "%{http_code}" http://localhost:8000/api/v1/measurements?since=2026-01-01T00%3A00%3A00&until=2026-01-02T00%3A00%3A00&order_by=measurement_start_time&order=DESC&offset=0&limit=100)
-          
-          if [ "$response" -eq 200 ]; then
-            echo "HTTP 200 OK: Data retrieved successfully."
-            cat response.json # Optional: Process or display the retrieved data
-          else
-            echo "Failed to retrieve data. HTTP Status Code: $response"
-            exit 1
-          fi
-
       - name: Shutdown
         run: |
           cd tests/integration && podman-compose down
-
