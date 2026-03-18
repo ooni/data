@@ -31,5 +31,17 @@ services:
       CLICKHOUSE_PASSWORD: "testuser"
       CLICKHOUSE_DB: "ooni"
 
+  fastpath:
+    image: ooni/fastpath:latest
+    container_name: fastpath_feeder
+    volumes:
+      - ./data:/data
+      - ./fastpath:/etc/ooni:Z
+    command: >
+      bash -c "sleep 10 && ./run_fastpath --debug --clickhouse-url "clickhouse://testuser:testuser@clickhouse:9000/ooni" --stdout"
+    depends_on:
+      - clickhouse
+      - downloader
+
 volumes:
   clickhouse_data:
