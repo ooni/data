@@ -32,7 +32,7 @@ jobs:
         run: |
           cd tests/integration && podman-compose up -d
 
-      - name: Wait for Downlaoder Container to Exit
+      - name: Wait for Downloader Container to Exit
         run: |
           # Replace `your_container_name` with the name of your container
           while [ $(podman ps -q -f name=oonidata-pipeline | wc -l) -gt 0 ]; do
