@@ -24,8 +24,8 @@ services:
     ports:
       - "8123:8123"  # HTTP interface
       - "9000:9000"  # Native interface
-    #volumes:
-    #  - clickhouse_data:/var/lib/clickhouse
+    volumes:
+      - ./clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql:Z
     environment:
       CLICKHOUSE_USER: "testuser"
       CLICKHOUSE_PASSWORD: "testuser"
