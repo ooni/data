@@ -1,5 +1,4 @@
 import logging
-import math
 from datetime import datetime, timedelta
 from enum import Enum
 from itertools import groupby as itertools_groupby
@@ -30,7 +29,7 @@ class Changepoint(dict):
     change_dir: int
     s_pos: float
     s_neg: float
-    current_mean: float
+    current_state: str
     h: float
     block_type: str
 
@@ -46,8 +45,7 @@ class CusumStep(dict):
     s_pos: float
     s_neg: float
     h: float
-    variance: float
-    current_mean: float
+    current_state: str
     is_changepoint: bool
 
 
@@ -95,11 +93,8 @@ def get_observations(
         countIf(is_isp_resolver = 0) as count_other_resolver,
         COUNT() as count,
         quantileIf(0.5)(dns_blocked, is_isp_resolver = 1) AS dns_isp_blocked,
-
         quantileIf(0.5)(dns_blocked, is_isp_resolver = 0) AS dns_other_blocked,
-
         quantile(0.5)(tcp_blocked) AS tcp_blocked,
-
         quantile(0.5)(tls_blocked) AS tls_blocked
 
     FROM analysis_web_measurement
@@ -120,28 +115,37 @@ class LastCusum(dict):
     domain: str
     ts: datetime
 
-    dns_isp_blocked_obs_w_sum: float = 0
-    dns_isp_blocked_w_sum: float = 0
-    dns_isp_blocked_s_pos: float = 0
-    dns_isp_blocked_s_neg: float = 0
+    dns_isp_blocked_current_state: str
+    dns_isp_blocked_last_change: int
+    dns_isp_blocked_s_pos: float
+    dns_isp_blocked_s_neg: float
+    dns_isp_blocked_last_ts: Optional[datetime]
 
-    dns_other_blocked_obs_w_sum: float = 0
-    dns_other_blocked_w_sum: float = 0
-    dns_other_blocked_s_pos: float = 0
-    dns_other_blocked_s_neg: float = 0
+    dns_other_blocked_current_state: str
+    dns_other_blocked_last_change: int
+    dns_other_blocked_s_pos: float
+    dns_other_blocked_s_neg: float
+    dns_other_blocked_last_ts: Optional[datetime]
 
-    tcp_blocked_obs_w_sum: float = 0
-    tcp_blocked_w_sum: float = 0
-    tcp_blocked_s_pos: float = 0
-    tcp_blocked_s_neg: float = 0
+    tcp_blocked_current_state: str
+    tcp_blocked_last_change: int
+    tcp_blocked_s_pos: float
+    tcp_blocked_s_neg: float
+    tcp_blocked_last_ts: Optional[datetime]
 
-    tls_blocked_obs_w_sum: float = 0
-    tls_blocked_w_sum: float = 0
-    tls_blocked_s_pos: float = 0
-    tls_blocked_s_neg: float = 0
+    tls_blocked_current_state: str
+    tls_blocked_last_change: int
+    tls_blocked_s_pos: float
+    tls_blocked_s_neg: float
+    tls_blocked_last_ts: Optional[datetime]
 
-    def __missing__(self, key) -> float:
-        # used to return 0.0 for when the dns_,tcp_,tls_ keys are not set
+    def __missing__(self, key):
+        if isinstance(key, str) and key.endswith("_current_state"):
+            return "unk"
+        if isinstance(key, str) and key.endswith("_last_ts"):
+            return None
+        if isinstance(key, str) and key.endswith("_last_change"):
+            return Change.NO.value
         return 0.0
 
 
@@ -153,10 +157,9 @@ def get_cusum_map(
 ) -> Dict[str, LastCusum]:
     fresh_ts = start_time - freshness
     where = "WHERE ts < %(start_time)s AND ts > %(fresh_ts)s"
-    # Workaround for timezone aware bug
     params: Dict[str, Any] = {"start_time": start_time, "fresh_ts": fresh_ts}
     if probe_cc:
-        where += "AND probe_cc IN %(probe_cc)s"
+        where += " AND probe_cc IN %(probe_cc)s"
         params["probe_cc"] = probe_cc
 
     data, columns = db.execute(
@@ -166,22 +169,26 @@ def get_cusum_map(
     probe_cc,
     domain,
     max(ts) as max_ts,
-    argMax(dns_isp_blocked_obs_w_sum, ts) as dns_isp_blocked_obs_w_sum,
-    argMax(dns_isp_blocked_w_sum, ts) as dns_isp_blocked_w_sum,
+    argMax(dns_isp_blocked_current_state, ts) as dns_isp_blocked_current_state,
+    argMax(dns_isp_blocked_last_change, ts) as dns_isp_blocked_last_change,
     argMax(dns_isp_blocked_s_pos, ts) as dns_isp_blocked_s_pos,
     argMax(dns_isp_blocked_s_neg, ts) as dns_isp_blocked_s_neg,
-    argMax(dns_other_blocked_obs_w_sum, ts) as dns_other_blocked_obs_w_sum,
-    argMax(dns_other_blocked_w_sum, ts) as dns_other_blocked_w_sum,
+    argMax(dns_isp_blocked_last_ts, ts) as dns_isp_blocked_last_ts,
+    argMax(dns_other_blocked_current_state, ts) as dns_other_blocked_current_state,
+    argMax(dns_other_blocked_last_change, ts) as dns_other_blocked_last_change,
     argMax(dns_other_blocked_s_pos, ts) as dns_other_blocked_s_pos,
     argMax(dns_other_blocked_s_neg, ts) as dns_other_blocked_s_neg,
-    argMax(tcp_blocked_obs_w_sum, ts) as tcp_blocked_obs_w_sum,
-    argMax(tcp_blocked_w_sum, ts) as tcp_blocked_w_sum,
+    argMax(dns_other_blocked_last_ts, ts) as dns_other_blocked_last_ts,
+    argMax(tcp_blocked_current_state, ts) as tcp_blocked_current_state,
+    argMax(tcp_blocked_last_change, ts) as tcp_blocked_last_change,
     argMax(tcp_blocked_s_pos, ts) as tcp_blocked_s_pos,
     argMax(tcp_blocked_s_neg, ts) as tcp_blocked_s_neg,
-    argMax(tls_blocked_obs_w_sum, ts) as tls_blocked_obs_w_sum,
-    argMax(tls_blocked_w_sum, ts) as tls_blocked_w_sum,
+    argMax(tcp_blocked_last_ts, ts) as tcp_blocked_last_ts,
+    argMax(tls_blocked_current_state, ts) as tls_blocked_current_state,
+    argMax(tls_blocked_last_change, ts) as tls_blocked_last_change,
     argMax(tls_blocked_s_pos, ts) as tls_blocked_s_pos,
-    argMax(tls_blocked_s_neg, ts) as tls_blocked_s_neg
+    argMax(tls_blocked_s_neg, ts) as tls_blocked_s_neg,
+    argMax(tls_blocked_last_ts, ts) as tls_blocked_last_ts
 
     FROM event_detector_cusums
     {where}
@@ -193,7 +200,6 @@ def get_cusum_map(
     assert isinstance(columns, list)
 
     last_cusum = {}
-    # rename max_ts to ts
     cols: List[str] = ["ts" if name == "max_ts" else name for name, _ in columns]
     for d in data:
         lcsm = LastCusum(**dict(zip(cols, d)))
@@ -203,79 +209,83 @@ def get_cusum_map(
     return last_cusum
 
 
-# this is the main hyper-parameter
-# per-sample drift is estimated at v/2
-# so to determine the estimated detection delay we can use
-# the formula h = edd * v/2
-# EDD hence becomes a hyperparameter
 class CusumDetector:
     """
     Implements a two-sided CUSUM detector as per 2.2.5 from
-    Detection of Abrupt Changes: Theory and Application, M. Basseville, 1993 (
-    https://people.irisa.fr/Michele.Basseville/kniga/kniga.pdf).
+    Detection of Abrupt Changes: Theory and Application, M. Basseville, 1993
+    (https://people.irisa.fr/Michele.Basseville/kniga/kniga.pdf).
 
-    Some nuances specific to the OONI dataset are applied.
+    The detector is state-aware: it tracks whether the process is currently in
+    an OK or BLK state and uses the appropriate fixed reference mean for each
+    state when computing the CUSUM innovation z.
 
-    These are:
+    When in OK state:
+      s_pos accumulates deviations above mu_0 to detect OK->BLK transitions.
+      s_neg is held at zero (inactive).
 
-    * We take the median of the values for the hourly aggregations to control for outliers
-    * The Estimated Detection Delay (EDD) is used to determine the h value by
-      canceling out the multiplicative term mu1-mu0/stddev^2
-    * The v value is estimated a-priori by making the assumption that mean for
-      the control process for an OK state is 0.0 (mu0), while the BLK state is
-      0.7 (mu1)
+    When in BLK state:
+      s_neg accumulates deviations below mu_1 to detect BLK->OK transitions.
+      s_pos is held at zero (inactive).
+
+    When in UNK state (initial or after stale resume):
+      Both accumulators run to determine the initial state. The first threshold
+      crossing silently establishes state without emitting a changepoint.
+
+    Gap decay:
+      When observations resume after a silence longer than ~24 hours, the
+      accumulators are exponentially decayed based on the gap duration.
+      After gap_halflife hours of silence the accumulators are halved,
+      preventing stale pre-gap accumulation from triggering spurious alerts
+      when measurements resume at a different level.
+
+    No online mean estimation is performed. mu_0 and mu_1 are fixed a-priori
+    parameters. For OONI data mu_0=0.0 (expected blocking rate when OK) and
+    mu_1=0.7 (expected blocking rate when BLK) are reasonable defaults.
     """
 
     def __init__(
         self,
-        obs_w_sum=0.0,
-        w_sum=0.0,
-        s_pos=0.0,
-        s_neg=0.0,
-        mu_0=0.0,  # a-priori estimated parameter for the mean of the OK state
-        mu_1=0.7,  # a-priori estimated parameter for the mean of the BLK state
-        edd=20,  #
+        s_pos: float = 0.0,
+        s_neg: float = 0.0,
+        current_state: str = "unk",
+        mu_0: float = 0.0,  # a-priori mean for the OK state
+        mu_1: float = 0.7,  # a-priori mean for the BLK state
+        edd: int = 20,
+        gap_halflife: float = 48.0,  # hours — accumulators halve after this much silence
+        last_ts: Optional[datetime] = None,
     ) -> None:
         self.mu_0 = mu_0
         self.mu_1 = mu_1
-        self.sample_variance = 0.1
-
         self.v = mu_1 - mu_0
         self.edd = edd
         self.h = self.edd * self.v / 2.0
+        self.gap_halflife = gap_halflife
 
-        # These can be initialized to existing values
-        self.current_obs_w_sum = obs_w_sum or 0.0
-        self.current_w_sum = w_sum or 0.0
-
-        # default to prevent linter complaining
         self.current_obs = 0.0
-        self.current_mean = 0.0
-
+        self.current_state = current_state
         self.s_pos = s_pos or 0.0
         self.s_neg = s_neg or 0.0
+        self.last_change: Change = Change.NO
+        self.last_ts: Optional[datetime] = last_ts
 
     def run(
         self,
         observations: List[Observation],
         col: str,
         count_col: str,
+        warmup: bool = False,
         trace: bool = False,
     ) -> Tuple[List[Changepoint], List[CusumStep]]:
         """
         Run the detector against a list of Observation dicts.
 
-        The following assumptions are made:
-        1. We only have metrics for the same probe_cc, probe_asn, domain tuple
-        2. The list is already sorted by timestamp
+        Assumptions:
+        1. Observations are for the same (probe_cc, probe_asn, domain) tuple.
+        2. The list is already sorted by timestamp.
 
-        col is a string that specifies which column we should be performing
-        detection on.
-
-        count_col: is a column which we use to derive weights to apply to the
-        col value. In practice this will be a count so that we can calculate the
-        mean value to use in the cusum that's weighed by the count of each
-        observation window.
+        col: the signal column to run detection on.
+        count_col: used to determine observation weight; w==0 means no
+                   measurements in that window and the observation is skipped.
 
         When trace=True, records per-step detector state for debugging.
         """
@@ -284,7 +294,7 @@ class CusumDetector:
         for obs in observations:
             y = obs[col]
             w = obs[count_col]
-            change = self._detect(y, w)
+            change = self._detect(y, w, ts=obs["ts"], warmup=warmup)
             is_changepoint = change != Change.NO
             if trace:
                 steps.append(
@@ -298,54 +308,91 @@ class CusumDetector:
                         weight=w,
                         s_pos=self.s_pos,
                         s_neg=self.s_neg,
-                        variance=self.sample_variance,
                         h=self.h,
-                        current_mean=self.current_mean,
+                        current_state=self.current_state,
                         is_changepoint=is_changepoint,
                     )
                 )
+
             if is_changepoint:
                 cp = Changepoint(**obs)
                 cp["change_dir"] = change.value
                 cp["s_pos"] = self.s_pos
                 cp["s_neg"] = self.s_neg
-                cp["current_mean"] = self.current_mean
+                cp["current_state"] = self.current_state
                 cp["h"] = self.h
                 cp["block_type"] = col
                 changepoints.append(cp)
+                self.last_change = change
+                if change == Change.POS:
+                    self.current_state = "blk"
+                elif change == Change.NEG:
+                    self.current_state = "ok"
                 self._reset()
 
         return changepoints, steps
 
-    def _detect(self, y, w) -> Change:
+    def _decay(self, ts: datetime) -> None:
+        """
+        Exponentially decay s_pos and s_neg based on the gap since the last
+        observation. After gap_halflife hours of silence the accumulators are
+        halved. At the limit (very long silence) they decay toward zero,
+        meaning the detector starts fresh with no memory of pre-gap state.
+        Only applied when the gap is meaningfully larger than one day
+        """
+        if self.last_ts is None:
+            self.last_ts = ts
+            return
+        gap_hours = (ts - self.last_ts).total_seconds() / 3600.0
+        if gap_hours > 24:
+            decay = 0.5 ** (gap_hours / self.gap_halflife)
+            self.s_pos *= decay
+            self.s_neg *= decay
+        self.last_ts = ts
+
+    def _detect(self, y, w, ts: datetime, warmup) -> Change:
         self.current_obs = y
-        self.current_obs_w_sum += y * w
-        self.current_w_sum += w
-        if w > 0:
-            self.sample_variance += ((y - self.current_mean) * w) ** 2 / w
-        return self._detect_changepoint()
+        if w == 0.0:
+            return Change.NO
+        self._decay(ts)
+        return self._detect_changepoint(warmup)
 
     def _reset(self) -> None:
-        self.current_obs = 0.0
-        self.current_obs_w_sum = 0.0
-        self.current_w_sum = 0.0
-        self.sample_variance = 0.1
-
         self.s_pos = 0.0
         self.s_neg = 0.0
 
-    def _detect_changepoint(self) -> Change:
-        # Special case when the weights are zero
-        if self.current_w_sum == 0:
+    def _detect_changepoint(self, warmup) -> Change:
+        z_pos = self.current_obs - self.mu_0
+        z_neg = self.current_obs - self.mu_1
+
+        if self.current_state == "unk":
+            # Run both accumulators to determine initial state — no changepoint emitted.
+            self.s_pos = max(0.0, self.s_pos + z_pos - self.v / 2.0)
+            self.s_neg = max(0.0, self.s_neg - z_neg - self.v / 2.0)
+            if self.s_pos > self.h:
+                self.current_state = "blk"
+                self._reset()
+            elif self.s_neg > self.h:
+                self.current_state = "ok"
+                self._reset()
             return Change.NO
-        self.current_mean = self.current_obs_w_sum / self.current_w_sum
-        z = (self.current_obs - self.current_mean) / math.sqrt(self.sample_variance)
-        self.s_pos = max(0.0, self.s_pos + z - self.v / 2.0)
-        self.s_neg = max(0.0, self.s_neg - z - self.v / 2.0)
-        if self.s_pos > self.h:
-            return Change.POS
-        if self.s_neg > self.h:
-            return Change.NEG
+
+        if self.current_state == "ok":
+            self.s_pos = max(0.0, self.s_pos + z_pos - self.v / 2.0)
+            self.s_neg = 0.0
+            if not warmup and self.s_pos > self.h:
+                if self.last_change != Change.POS:
+                    return Change.POS
+                self._reset()
+
+        elif self.current_state == "blk":
+            self.s_neg = max(0.0, self.s_neg - z_neg - self.v / 2.0)
+            self.s_pos = 0.0
+            if not warmup and self.s_neg > self.h:
+                if self.last_change != Change.NEG:
+                    return Change.NEG
+                self._reset()
+
         return Change.NO
 
 
@@ -361,13 +408,14 @@ def detect_changepoints(
     observations: Iterable[Observation],
     cusum_map: Dict[str, LastCusum],
     edd: int,
+    gap_halflife: float = 48.0,
     analysis_columns: List[Tuple[str, str]] = ANALYSIS_COLS,
+    warmup: bool = False,
     trace: bool = False,
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     changepoints: List[Changepoint] = []
     updated_cusums: List[LastCusum] = []
     all_steps: List[CusumStep] = []
-    log.info("running with observations")
 
     def key_func(o):
         return (o["probe_cc"], o["probe_asn"], o["domain"])
@@ -384,20 +432,27 @@ def detect_changepoints(
         for col, count_col in analysis_columns:
             detector = CusumDetector(
                 edd=edd,
-                obs_w_sum=cusum[f"{col}_obs_w_sum"],
-                w_sum=cusum[f"{col}_w_sum"],
+                gap_halflife=gap_halflife,
+                current_state=cusum[f"{col}_current_state"],
                 s_pos=cusum[f"{col}_s_pos"],
                 s_neg=cusum[f"{col}_s_neg"],
+                last_ts=cusum[f"{col}_last_ts"],
             )
-            c, steps = detector.run(grp_obs, col, count_col, trace=trace)
-            log.info(f"Detector results for {col}: {grp_obs}")
-            log.info(f" {detector.s_neg}, {detector.s_pos}")
+            detector.last_change = Change(cusum[f"{col}_last_change"])
+            c, steps = detector.run(grp_obs, col, count_col, warmup=warmup, trace=trace)
+            log.debug(
+                f"Detector results for {col} ({key}): "
+                f"state={detector.current_state} "
+                f"s_pos={detector.s_pos:.3f} "
+                f"s_neg={detector.s_neg:.3f}"
+            )
             changepoints += c
             all_steps += steps
-            cusum[f"{col}_obs_w_sum"] = detector.current_obs_w_sum
-            cusum[f"{col}_w_sum"] = detector.current_w_sum
+            cusum[f"{col}_current_state"] = detector.current_state
+            cusum[f"{col}_last_change"] = detector.last_change.value
             cusum[f"{col}_s_pos"] = detector.s_pos
             cusum[f"{col}_s_neg"] = detector.s_neg
+            cusum[f"{col}_last_ts"] = detector.last_ts
         cusum["ts"] = max_ts
         updated_cusums.append(cusum)
     return changepoints, updated_cusums, all_steps
@@ -449,6 +504,8 @@ def run_detector(
     end_time: datetime,
     probe_cc: List[str],
     edd: int = 10,
+    gap_halflife: float = 48.0,
+    warmup: bool = False,
     trace: bool = False,
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     db = ClickhouseClient.from_url(clickhouse_url)
@@ -467,7 +524,9 @@ def run_detector(
         observations=observations,
         cusum_map=cusum_map,
         edd=edd,
+        gap_halflife=gap_halflife,
         analysis_columns=ANALYSIS_COLS,
+        warmup=warmup,
         trace=trace,
     )
     update_tables(db, updated_cusums, changepoints)
@@ -479,46 +538,109 @@ def plot(steps: List[CusumStep], block_type: str):
     import altair as alt
     import pandas as pd
 
+    STATE_COLORS = {"ok": "#d4edda", "blk": "#f8d7da", "unk": "#fff3cd"}
+
     df_steps = pd.DataFrame([s for s in steps if s["block_type"] == block_type])
+    df_last = df_steps.loc[[df_steps["ts"].idxmax()]]
+
+    # Build state background bands: one rect per contiguous run of the same state
+    df_steps["state_change"] = df_steps["current_state"].ne(
+        df_steps["current_state"].shift()
+    )
+    df_steps["state_group"] = df_steps["state_change"].cumsum()
+    df_bands = (
+        df_steps.groupby("state_group")
+        .agg(
+            state_start=("ts", "min"),
+            state_end=("ts", "max"),
+            current_state=("current_state", "first"),
+        )
+        .reset_index(drop=True)
+    )
+
+    state_bands = (
+        alt.Chart(df_bands)
+        .mark_rect(opacity=0.25)
+        .encode(
+            x=alt.X("state_start:T"),
+            x2=alt.X2("state_end:T"),
+            color=alt.Color(
+                "current_state:N",
+                scale=alt.Scale(
+                    domain=["ok", "blk", "unk"],
+                    range=[
+                        STATE_COLORS["ok"],
+                        STATE_COLORS["blk"],
+                        STATE_COLORS["unk"],
+                    ],
+                ),
+                legend=alt.Legend(title="State"),
+            ),
+            tooltip=["current_state:N", "state_start:T", "state_end:T"],
+        )
+    )
 
     base = alt.Chart(df_steps).encode(x="ts:T")
 
+    def make_label(df, field, label, color):
+        return (
+            alt.Chart(df)
+            .mark_text(align="left", dx=5, fontSize=11, color=color)
+            .encode(
+                x="ts:T",
+                y=alt.Y(f"{field}:Q"),
+                text=alt.value(label),
+            )
+        )
+
     obs_line = base.mark_line(color="steelblue", opacity=0.5).encode(
         y=alt.Y("obs_value:Q", title="value"),
-        tooltip=["ts:T", "obs_value:Q", "weight:Q", "last_cusum_ts:T"],
+        tooltip=["ts:T", "obs_value:Q", "weight:Q", "current_state:N"],
     )
-
     s_pos_line = base.mark_line(color="red").encode(
         y=alt.Y("s_pos:Q"),
         tooltip=["ts:T", "s_pos:Q"],
     )
-
     s_neg_line = base.mark_line(color="orange").encode(
         y=alt.Y("s_neg:Q"),
         tooltip=["ts:T", "s_neg:Q"],
     )
-
-    variance = base.mark_line(color="grey").encode(
-        y=alt.Y("variance:Q"),
-        tooltip=["ts:T", "variance:Q"],
-    )
-
     threshold = (
         alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
     )
-
     cp_points = (
         alt.Chart(df_steps[df_steps["is_changepoint"]])
         .mark_point(color="black", size=100, shape="diamond")
         .encode(
             x="ts:T",
             y=alt.Y("obs_value:Q"),
-            tooltip=["ts:T", "obs_value:Q", "s_pos:Q", "s_neg:Q"],
+            tooltip=["ts:T", "obs_value:Q", "s_pos:Q", "s_neg:Q", "current_state:N"],
         )
     )
 
+    obs_label = make_label(df_last, "obs_value", "observed", "steelblue")
+    s_pos_label = make_label(df_last, "s_pos", "S+", "red")
+    s_neg_label = make_label(df_last, "s_neg", "S−", "orange")
+    df_h = df_last[["ts", "h"]].copy()
+    threshold_label = (
+        alt.Chart(df_h)
+        .mark_text(align="left", dx=5, fontSize=11, color="green")
+        .encode(x="ts:T", y="h:Q", text=alt.value("threshold (h)"))
+    )
+
     chart = (
-        (obs_line + s_pos_line + s_neg_line + variance + threshold + cp_points)
+        (
+            state_bands
+            + obs_line
+            + obs_label
+            + s_pos_line
+            + s_pos_label
+            + s_neg_line
+            + s_neg_label
+            + threshold
+            + threshold_label
+            + cp_points
+        )
         .properties(
             width=900,
             height=400,
@@ -526,5 +648,4 @@ def plot(steps: List[CusumStep], block_type: str):
         )
         .interactive()
     )
-
     chart.show()
