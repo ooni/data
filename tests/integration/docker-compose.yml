@@ -68,7 +68,7 @@ services:
     image: ooni/api-oonimeasurements:latest
     container_name: oonimeasurements
     environment:
-      VALKEY_URL: redis://valkey:6379
+      VALKEY_URL: valkey://valkey:6379
       POSTGRESQL_URL: "postgresql://postgres:postgres@postgres:5432/ooni"
       JWT_ENCRYPTION_KEY: "0123456789abcdef"
       PROMETHEUS_METRICS_PASSWORD: "testme"
