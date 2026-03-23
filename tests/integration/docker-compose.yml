@@ -31,6 +31,16 @@ services:
       CLICKHOUSE_PASSWORD: "testuser"
       CLICKHOUSE_DB: "ooni"
 
+  postgres:
+    image: docker.io/library/postgres:latest
+    container_name: postgres_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ooni
+
   fastpath:
     image: ooni/fastpath:latest
     container_name: fastpath_feeder
@@ -41,7 +51,37 @@ services:
       bash -c "sleep 10 && ./run_fastpath --debug --clickhouse-url "clickhouse://testuser:testuser@clickhouse:9000/ooni" --stdout"
     depends_on:
       - clickhouse
+      - postgres
       - downloader
+
+  valkey:
+    image: valkey/valkey:latest
+    container_name: valkey_cache
+    ports:
+      - "6379:6379"
+    #volumes:
+    #  - valkey_data:/data
+    command: valkey-server --appendonly yes
+    restart: unless-stopped
+
+  api:
+    image: ooni/api-oonimeasurements:latest
+    container_name: oonimeasurements
+    environment:
+      VALKEY_URL: redis://valkey:6379
+      POSTGRESQL_URL: "postgresql://postgres:postgres@postgres:5432/ooni"
+      JWT_ENCRYPTION_KEY: "0123456789abcdef"
+      PROMETHEUS_METRICS_PASSWORD: "testme"
+      CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
+      ACCOUNT_ID_HASHING_KEY: "0123456789abcdef"
+    ports:
+      - "8080:80"
+
+    depends_on:
+      - clickhouse
+      - postgres
+      - valkey
 
 volumes:
   clickhouse_data:
+  valkey-data:
