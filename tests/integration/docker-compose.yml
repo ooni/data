@@ -54,8 +54,10 @@ services:
     volumes:
       - ./data:/data
       - ./fastpath:/etc/ooni:Z
+    environment:
+      CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
     command: >
-      bash -c "sleep 10 && ./run_fastpath --debug --clickhouse-url "clickhouse://testuser:testuser@clickhouse:9000/ooni" --stdout"
+      bash -c "./run_fastpath --debug --clickhouse-url $CLICKHOUSE_URL  --stdout"
     depends_on:
       clickhouse:
         condition: service_healthy
