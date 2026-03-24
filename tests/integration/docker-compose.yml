@@ -14,7 +14,8 @@ services:
       bash -c "oonidata sync --output-dir . --probe-cc IT --start-day 2026-01-01 --end-day 2026-01-02 --test-name webconnectivity &&
       oonipipeline run --create-tables --probe-cc IT --test-name signal --workflow-name observations --start-at 2026-01-01 --end-at 2026-01-02"
     depends_on:
-      - clickhouse
+      clickhouse:
+        condition: service_healthy
     environment:
       CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
 
@@ -30,6 +31,12 @@ services:
       CLICKHOUSE_USER: "testuser"
       CLICKHOUSE_PASSWORD: "testuser"
       CLICKHOUSE_DB: "ooni"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "-u", "testuser", "--password", "testuser", "-q", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   postgres:
     image: docker.io/library/postgres:latest
@@ -50,9 +57,12 @@ services:
     command: >
       bash -c "sleep 10 && ./run_fastpath --debug --clickhouse-url "clickhouse://testuser:testuser@clickhouse:9000/ooni" --stdout"
     depends_on:
-      - clickhouse
-      - postgres
-      - downloader
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+      downloader:
+        condition: service_completed_successfully
 
   valkey:
     image: valkey/valkey:latest
