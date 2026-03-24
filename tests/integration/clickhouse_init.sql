@@ -77,6 +77,6 @@ CREATE TABLE ooni.fastpath
     INDEX fastpath_rid_idx report_id TYPE minmax GRANULARITY 1,
     INDEX measurement_uid_idx measurement_uid TYPE minmax GRANULARITY 8
 )
-ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/ooni/fastpath/{shard}', '{replica}', update_time)
+ENGINE = ReplacingMergeTree(update_time)
 ORDER BY (measurement_start_time, report_id, input, measurement_uid)
 SETTINGS index_granularity = 8192;
