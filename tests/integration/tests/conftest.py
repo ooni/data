@@ -93,12 +93,12 @@ def client_with_admin_role(client):
 
 @pytest.fixture
 def params_since_and_until_with_two_days():
-    return set_since_and_until_params(since="2024-11-01", until="2024-11-02")
+    return set_since_and_until_params(since="2026-01-01", until="2026-01-02")
 
 
 @pytest.fixture
 def params_since_and_until_with_ten_days():
-    return set_since_and_until_params(since="2024-11-01", until="2024-11-10")
+    return set_since_and_until_params(since="2026-01-01", until="2026-01-02")
 
 
 def set_since_and_until_params(since, until):
