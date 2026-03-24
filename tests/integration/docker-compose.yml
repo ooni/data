@@ -99,9 +99,14 @@ services:
       - "8080:80"
 
     depends_on:
-      - clickhouse
-      - postgres
-      - valkey
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+      valkey:
+        condition: service_started
+      downloader:
+        condition: service_completed_successfully
 
 volumes:
   clickhouse_data:
