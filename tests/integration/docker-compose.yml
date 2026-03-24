@@ -108,6 +108,21 @@ services:
       downloader:
         condition: service_completed_successfully
 
-volumes:
-  clickhouse_data:
-  valkey-data:
+  # replace this with a pytest suite that verifies results
+  verify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: verifier
+    container_name: verifier
+
+    working_dir: /app
+    volumes:
+      - ./tests:/app:Z
+    environment:
+      API_URL: http://api:80
+    command: >
+      pytest -v
+    depends_on:
+      api:
+        condition: service_healthy
