@@ -86,6 +86,14 @@ services:
       PROMETHEUS_METRICS_PASSWORD: "testme"
       CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
       ACCOUNT_ID_HASHING_KEY: "0123456789abcdef"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
     ports:
       - "8080:80"
 
