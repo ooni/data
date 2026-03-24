@@ -2,8 +2,8 @@ import pytest
 import os
 
 route = "/api/v1/aggregation/analysis"
-since = "2024-11-01"
-until = "2024-11-10"
+since = "2026-01-01"
+until = "2026-01-02"
 
 
 def test_oonidata_aggregation_analysis(client):
