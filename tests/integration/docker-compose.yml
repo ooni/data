@@ -107,6 +107,8 @@ services:
         condition: service_started
       downloader:
         condition: service_completed_successfully
+      fastpath:
+        condition: service_completed_successfully
 
   # replace this with a pytest suite that verifies results
   verify:
