@@ -3,7 +3,7 @@ import os
 
 route = "/api/v1/aggregation/analysis"
 since = "2026-01-01"
-until = "2026-01-02"
+until = "2026-01-10"
 
 
 def test_oonidata_aggregation_analysis(client):

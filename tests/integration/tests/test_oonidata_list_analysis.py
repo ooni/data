@@ -2,7 +2,7 @@ import pytest
 
 route = "/api/v1/analysis"
 since = "2026-01-01"
-until = "2026-01-02"
+until = "2026-01-10"
 
 
 def test_oonidata_list_analysis(client):
