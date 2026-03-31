@@ -32,7 +32,7 @@ def test_oonidata_aggregation_analysis_with_since_and_until(
     [
         ("domain", "zh.wikipedia.org"),
         ("probe_cc", "IR"),
-        ("probe_asn", 45758),
+        ("probe_asn", 1267),
         ("test_name", "whatsapp"),
         ("input", "stun://stun.voys.nl:3478"),
     ],

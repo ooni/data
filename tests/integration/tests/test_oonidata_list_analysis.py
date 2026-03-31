@@ -31,9 +31,9 @@ def test_oonidata_list_analysis_with_since_and_until(
     [
         (
             "measurement_uid",
-            "20241101233756.866609_TH_webconnectivity_1bf55fb5699c39ec",
+            "20260102000000.504120_IT_webconnectivity_9de2bdd30c705f7a",
         ),
-        ("probe_asn", 45758),
+        ("probe_asn", 1267),
         ("probe_cc", "IT"),
         ("test_name", "web_connectivity"),
     ],
@@ -57,7 +57,7 @@ def test_oonidata_list_analysis_filtering_by_probe_asn_as_a_string_with_since_an
     client, params_since_and_until_with_two_days
 ):
     params = params_since_and_until_with_two_days
-    probe_asn = 45758
+    probe_asn = 1267
     params["probe_asn"] = "AS" + str(probe_asn)
 
     response = client.get(route, params=params)

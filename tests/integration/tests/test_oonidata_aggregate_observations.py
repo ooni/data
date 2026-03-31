@@ -29,8 +29,8 @@ def test_oonidata_aggregation_observations_with_since_and_until(
     "filter_name, filter_value",
     [
         ("probe_cc", "IT"),
-        ("probe_asn", 45758),
-        ("probe_asn", [45758, 5650]),
+        ("probe_asn", 1267),
+        ("probe_asn", [1267, 5650]),
         ("test_name", "whatsapp"),
         ("hostname", "www.on-instant.com"),
         ("ip", "64.233.190.139"),

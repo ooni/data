@@ -27,14 +27,14 @@ def test_oonidata_list_observations_with_since_and_until(
 @pytest.mark.parametrize(
     "filter_name, filter_value",
     [
-        ("report_id", "20241101T233351Z_webconnectivity_DE_3209_n1_I7QVY7IdnaSfYmsb"),
-        ("probe_asn", 45758),
+        ("report_id", "20260101T235954Z_webconnectivity_IT_1267_n4_ozfKmtNGTeLyiVbE"),
+        ("probe_asn", 1267),
         ("probe_cc", "IT"),
-        ("software_name", "ooniprobe-cli"),
-        ("software_version", "3.20.0"),
+        ("software_name", "ooniprobe-android-unattended"),
+        ("software_version", "5.3.0"),
         ("test_name", "web_connectivity"),
         ("test_version", "0.4.3"),
-        ("engine_version", "3.20.0"),
+        ("engine_version", "3.28.0"),
     ],
 )
 def test_oonidata_list_observations_with_filters(
@@ -56,7 +56,7 @@ def test_oonidata_list_observations_filtering_by_probe_asn_as_a_string_with_sinc
     client, params_since_and_until_with_two_days
 ):
     params = params_since_and_until_with_two_days
-    probe_asn = 45758
+    probe_asn = 1267
     params["probe_asn"] = "AS" + str(probe_asn)
 
     response = client.get(route, params=params)
