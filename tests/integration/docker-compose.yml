@@ -52,8 +52,8 @@ services:
     image: ooni/fastpath:latest
     container_name: fastpath_feeder
     volumes:
-      - ./data:/data
-      - ./fastpath:/etc/ooni:Z
+      - ./fastpath/etc:/etc/ooni:Z
+      - ./fastpath/lib:/var/lib/fastpath:Z
     environment:
       CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
     command: >
