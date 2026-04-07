@@ -56,7 +56,7 @@ def test_oonidata_aggregation_analysis_filtering_by_probe_asn_as_a_string_with_s
     client, params_since_and_until_with_ten_days
 ):
     params = params_since_and_until_with_ten_days
-    probe_asn = 45758
+    probe_asn = 12874
     params["probe_asn"] = "AS" + str(probe_asn)
 
     response = client.get(route, params=params)
