@@ -20,7 +20,7 @@ services:
       CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
 
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: docker.io/clickhouse/clickhouse-server:latest
     container_name: clickhouse_server
     ports:
       - "8123:8123"  # HTTP interface
@@ -49,7 +49,7 @@ services:
       POSTGRES_DB: ooni
 
   fastpath:
-    image: ooni/fastpath:latest
+    image: docker.io/ooni/fastpath:latest
     container_name: fastpath_feeder
     volumes:
       - ./fastpath/etc:/etc/ooni:Z
@@ -67,7 +67,7 @@ services:
         condition: service_completed_successfully
 
   valkey:
-    image: valkey/valkey:latest
+    image: docker.io/valkey/valkey:latest
     container_name: valkey_cache
     ports:
       - "6379:6379"
@@ -77,7 +77,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: ooni/api-oonimeasurements:latest
+    image: docker.io/ooni/api-oonimeasurements:latest
     container_name: oonimeasurements
     environment:
       VALKEY_URL: valkey://valkey:6379
