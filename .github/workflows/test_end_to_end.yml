@@ -27,7 +27,7 @@ jobs:
       - name: Run Docker Compose (detached)
         run: |
           cd tests/integration
-          docker compose up -d
+          docker compose up &
           docker compose ps --all
           docker compose logs --no-color --timestamps --tail=200 &
 
