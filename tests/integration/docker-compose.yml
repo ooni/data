@@ -59,8 +59,6 @@ services:
         condition: service_healthy
       postgres:
         condition: service_started
-      downloader:
-        condition: service_completed_successfully
 
   valkey:
     image: docker.io/valkey/valkey:latest
