@@ -28,6 +28,8 @@ jobs:
         run: |
           cd tests/integration
           docker compose up -d
+          docker compose ps --all
+          docker compose logs --no-color --timestamps --tail=200 &
 
       - name: Wait for verifier to start
         run: |
