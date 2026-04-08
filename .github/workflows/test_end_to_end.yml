@@ -27,7 +27,7 @@ jobs:
       - name: Install Podman
         run: |
           sudo apt update
-          sudo apt install -y podman podman-compose podman-docker
+          sudo apt install -y podman podman-compose
 
       - name: Run Docker Compose with Podman (detached)
         run: |
