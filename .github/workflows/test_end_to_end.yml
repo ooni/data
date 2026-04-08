@@ -22,25 +22,63 @@ jobs:
             data-cache-
           path: |
             tests/integration/data
+            tests/integration/fastpath
 
       - name: Install Podman
         run: |
           sudo apt update
           sudo apt install -y podman podman-compose podman-docker
 
-      - name: Run Docker Compose with Podman
+      - name: Run Docker Compose with Podman (detached)
         run: |
-          cd tests/integration && podman-compose up -d
+          cd tests/integration
+          podman-compose up -d
 
-      - name: Wait for Downloader Container to Exit
+      - name: Wait for verifier to start
         run: |
-          # Replace `your_container_name` with the name of your container
-          while [ $(podman ps -q -f name=oonidata-pipeline | wc -l) -gt 0 ]; do
-            echo "Container is still running..."
-            sleep 5 # Wait for 5 seconds before checking again
+          cd tests/integration
+          for i in $(seq 1 60); do
+            if podman ps --format "{{.Names}}" | grep -q '^verifier$'; then
+              echo "verifier started"
+              exit 0
+            fi
+            sleep 10
           done
-          echo "Container has exited."
+          echo "verifier did not start within timeout" >&2
+          podman ps -a
+          exit 1
 
-      - name: Shutdown
+      - name: Stream verifier logs until it exits
         run: |
-          cd tests/integration && podman-compose down
+          cd tests/integration
+          # Start streaming logs; podman logs --follow will exit when the container stops.
+          podman logs --follow verifier & LOG_PID=$!
+          # Wait for verifier container to stop, with a timeout (360*5s = 30 minutes).
+          for i in $(seq 1 360); do
+            if ! podman ps --format "{{.Names}}" | grep -q '^verifier$'; then
+              echo "verifier exited"
+              break
+            fi
+            sleep 5
+          done
+          # If still running after timeout, show debugging info and fail.
+          if podman ps --format "{{.Names}}" | grep -q '^verifier$'; then
+            echo "verifier did not finish within timeout" >&2
+            podman ps -a
+            podman logs verifier || true
+            if ps -p $LOG_PID > /dev/null; then
+              kill $LOG_PID || true
+            fi
+            exit 1
+          fi
+          # Wait for the logs follower to finish and show final logs if any.
+          if ps -p $LOG_PID > /dev/null; then
+            wait $LOG_PID || true
+          fi
+          podman ps -a --filter name=verifier --format "Container: {{.Names}} Status: {{.Status}}"
+          podman logs verifier || true
+
+      - name: Shutdown remaining services
+        run: |
+          cd tests/integration
+          podman-compose down --remove-orphans
