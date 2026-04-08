@@ -34,7 +34,7 @@ jobs:
           cd tests/integration
           export PODMAN_HOST=unix:///run/user/$(id -u)/podman/podman.sock
           podman system service -t0 &
-          podman compose up -d
+          podman compose up
 
       - name: Wait for verifier to start
         run: |
