@@ -32,7 +32,7 @@ jobs:
       - name: Run Docker Compose with Podman (detached)
         run: |
           cd tests/integration
-          podman-compose up -d
+          podman compose up -d
 
       - name: Wait for verifier to start
         run: |
