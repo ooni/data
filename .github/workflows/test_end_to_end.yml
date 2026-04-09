@@ -51,7 +51,7 @@ jobs:
         run: |
           cd tests/integration
           for i in $(seq 1 60); do
-            if docker ps --format "{{.Names}}" | grep -q '^verifier$'; then
+            if docker ps --format "{{.Names}}" | grep -q 'integration-verify'; then
               echo "verifier started"
               exit 0
             fi
@@ -68,7 +68,7 @@ jobs:
           docker logs --follow verifier & LOG_PID=$!
           # Wait for verifier container to stop, with a timeout (360*5s = 30 minutes).
           for i in $(seq 1 360); do
-            if ! docker ps --format "{{.Names}}" | grep -q '^verifier$'; then
+            if ! docker ps --format "{{.Names}}" | grep -q 'integration-verify'; then
               echo "verifier exited"
               break
             fi
