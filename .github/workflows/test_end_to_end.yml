@@ -30,6 +30,10 @@ jobs:
             tests/integration/data
             tests/integration/fastpath
 
+      - name: change permission of fastpath cache for container read/write
+        run: |
+          chmod 0777 tests/integration/fastpath/lib/cache
+
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled }}
