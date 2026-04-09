@@ -52,8 +52,9 @@ services:
       - ./fastpath/lib:/var/lib/fastpath:Z
     environment:
       CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
-    command: >
-      bash -c "./run_fastpath --debug --clickhouse-url $CLICKHOUSE_URL --keep-s3-cache --write-to-disk --stdout --ccs IT,IR --start-day 2026-01-01 --end-day 2026-01-10 --noapi"
+    command: [ "./run_fastpath", "--debug", "--clickhouse-url", "$CLICKHOUSE_URL",
+               "--keep-s3-cache", "--write-to-disk", "--stdout", "--ccs", "IT,IR",
+               "--start-day", "2026-01-01", "--end-day", "2026-01-02", "--noapi" ]
     depends_on:
       clickhouse:
         condition: service_healthy
