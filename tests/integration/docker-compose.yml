@@ -51,7 +51,7 @@ services:
       - ./fastpath/etc:/etc/ooni:Z
       - ./fastpath/lib:/var/lib/fastpath:Z
     environment:
-      CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
+      CLICKHOUSE_URL: "clickhouse://testuser:testuser@clickhouse:9000/ooni"
     command: [ "./run_fastpath", "--debug", "--clickhouse-url", "$CLICKHOUSE_URL",
                "--keep-s3-cache", "--write-to-disk", "--stdout", "--ccs", "IT,IR",
                "--start-day", "2026-01-01", "--end-day", "2026-01-02", "--noapi" ]
