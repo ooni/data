@@ -65,7 +65,7 @@ jobs:
         run: |
           cd tests/integration
           # Start streaming logs; docker logs --follow will exit when the container stops.
-          docker logs --follow verifier & LOG_PID=$!
+          docker logs --follow integration-verify-1 & LOG_PID=$!
           # Wait for verifier container to stop, with a timeout (360*5s = 30 minutes).
           for i in $(seq 1 360); do
             if ! docker ps --format "{{.Names}}" | grep -q 'integration-verify'; then
@@ -75,10 +75,10 @@ jobs:
             sleep 5
           done
           # If still running after timeout, show debugging info and fail.
-          if docker ps --format "{{.Names}}" | grep -q '^verifier$'; then
+          if docker ps --format "{{.Names}}" | grep -q 'integration-verify'; then
             echo "verifier did not finish within timeout" >&2
             docker ps -a
-            docker logs verifier || true
+            docker logs integration-verify-1 || true
             if ps -p $LOG_PID > /dev/null; then
               kill $LOG_PID || true
             fi
@@ -88,8 +88,8 @@ jobs:
           if ps -p $LOG_PID > /dev/null; then
             wait $LOG_PID || true
           fi
-          docker ps -a --filter name=verifier --format "Container: {{.Names}} Status: {{.Status}}"
-          docker logs verifier || true
+          docker ps -a --filter name=verify --format "Container: {{.Names}} Status: {{.Status}}"
+          docker logs integration-verify-1 || true
 
       - name: Shutdown remaining services
         run: |
