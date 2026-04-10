@@ -32,7 +32,7 @@ jobs:
 
       - name: change permission of fastpath cache for container read/write
         run: |
-          chmod 0777 tests/integration/fastpath/lib/cache
+          chmod 0777 -R tests/integration/fastpath/lib/cache
 
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
