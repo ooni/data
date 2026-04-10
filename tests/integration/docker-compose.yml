@@ -10,8 +10,8 @@ services:
       - ./data:/data:Z
     working_dir: /data
     command: >
-      bash -c "oonidata sync --output-dir . --probe-cc IT,IR --start-day 2026-01-01 --end-day 2026-01-02 &&
-      oonipipeline run --create-tables --probe-cc IT,IR --workflow-name observations --start-at 2026-01-01 --end-at 2026-01-02"
+      bash -c "oonidata sync --output-dir . --probe-cc IT,IR --start-day 2026-01-01 --end-day 2026-01-10 &&
+      oonipipeline run --create-tables --probe-cc IT,IR --workflow-name observations --start-at 2026-01-01 --end-at 2026-01-10"
     depends_on:
       clickhouse:
         condition: service_healthy
