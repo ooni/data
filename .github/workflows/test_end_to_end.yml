@@ -90,6 +90,11 @@ jobs:
           fi
           docker ps -a --filter name=verify --format "Container: {{.Names}} Status: {{.Status}}"
           docker logs integration-verify-1 || true
+          EXIT_CODE=$(docker inspect --format='{{.State.ExitCode}}' integration-verify-1)
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo "Container exited with code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
 
       - name: Shutdown remaining services
         run: |
