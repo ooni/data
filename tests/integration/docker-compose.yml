@@ -10,8 +10,8 @@ services:
       - ./data:/data:Z
     working_dir: /data
     command: >
-      bash -c "oonidata sync --output-dir . --probe-cc IT,IR --start-day 2026-01-01 --end-day 2026-01-10 &&
-      oonipipeline run --create-tables --probe-cc IT,IR --workflow-name observations --start-at 2026-01-01 --end-at 2026-01-10"
+      bash -c "oonidata sync --output-dir . --probe-cc IT,IR --start-day 2026-01-01 --end-day 2026-01-03 &&
+      oonipipeline run --create-tables --probe-cc IT,IR --workflow-name observations --start-at 2026-01-01 --end-at 2026-01-03"
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -53,7 +53,7 @@ services:
     command: [ "./run_fastpath", "--debug", "--clickhouse-url",
                "clickhouse://testuser:testuser@clickhouse:9000/ooni",
                "--keep-s3-cache", "--write-to-disk", "--stdout", "--ccs", "IT,IR",
-               "--start-day", "2026-01-01", "--end-day", "2026-01-02", "--noapi" ]
+               "--start-day", "2026-01-01", "--end-day", "2026-01-03" ]
     depends_on:
       clickhouse:
         condition: service_healthy

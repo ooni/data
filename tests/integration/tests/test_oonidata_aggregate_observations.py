@@ -37,9 +37,9 @@ def test_oonidata_aggregation_observations_with_since_and_until(
     ],
 )
 def test_oonidata_aggregation_observations_with_filters(
-    client, filter_name, filter_value, params_since_and_until_with_ten_days
+    client, filter_name, filter_value, params_since_and_until_with_three_days
 ):
-    params = params_since_and_until_with_ten_days
+    params = params_since_and_until_with_three_days
     params[filter_name] = filter_value
 
     response = client.get(route, params=params)
@@ -66,9 +66,9 @@ def test_oonidata_aggregation_observations_with_filters(
     ],
 )
 def test_oonidata_aggregation_observations_time_grain(
-    client, time_grain, total, params_since_and_until_with_ten_days
+    client, time_grain, total, params_since_and_until_with_three_days
 ):
-    params = params_since_and_until_with_ten_days
+    params = params_since_and_until_with_three_days
     params["group_by"] = "timestamp"
     params["time_grain"] = time_grain
 

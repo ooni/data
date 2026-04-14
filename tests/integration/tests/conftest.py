@@ -97,8 +97,8 @@ def params_since_and_until_with_two_days():
 
 
 @pytest.fixture
-def params_since_and_until_with_ten_days():
-    return set_since_and_until_params(since="2026-01-01", until="2026-01-10")
+def params_since_and_until_with_three_days():
+    return set_since_and_until_params(since="2026-01-01", until="2026-01-03")
 
 
 def set_since_and_until_params(since, until):

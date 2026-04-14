@@ -38,9 +38,9 @@ def test_oonidata_aggregation_analysis_with_since_and_until(
     ],
 )
 def test_oonidata_aggregation_analysis_with_filters(
-    client, filter_param, filter_value, params_since_and_until_with_ten_days
+    client, filter_param, filter_value, params_since_and_until_with_three_days
 ):
-    params = params_since_and_until_with_ten_days
+    params = params_since_and_until_with_three_days
     params[filter_param] = filter_value
 
     response = client.get(route, params=params)
@@ -53,9 +53,9 @@ def test_oonidata_aggregation_analysis_with_filters(
 
 
 def test_oonidata_aggregation_analysis_filtering_by_probe_asn_as_a_string_with_since_and_until(
-    client, params_since_and_until_with_ten_days
+    client, params_since_and_until_with_three_days
 ):
-    params = params_since_and_until_with_ten_days
+    params = params_since_and_until_with_three_days
     probe_asn = 12874
     params["probe_asn"] = "AS" + str(probe_asn)
 
@@ -80,9 +80,9 @@ def test_oonidata_aggregation_analysis_filtering_by_probe_asn_as_a_string_with_s
     ],
 )
 def test_oonidata_aggregation_analysis_with_axis_x(
-    client, field, params_since_and_until_with_ten_days
+    client, field, params_since_and_until_with_three_days
 ):
-    params = params_since_and_until_with_ten_days
+    params = params_since_and_until_with_three_days
     params["axis_x"] = field
 
     response = client.get(route, params=params)
@@ -106,9 +106,9 @@ def test_oonidata_aggregation_analysis_with_axis_x(
     ],
 )
 def test_oonidata_aggregation_analysis_axis_y(
-    client, field, params_since_and_until_with_ten_days
+    client, field, params_since_and_until_with_three_days
 ):
-    params = params_since_and_until_with_ten_days
+    params = params_since_and_until_with_three_days
     params["axis_y"] = field
 
     response = client.get(route, params=params)
@@ -132,9 +132,9 @@ def test_oonidata_aggregation_analysis_axis_y(
     ],
 )
 def test_oonidata_aggregation_analysis_time_grain(
-    client, time_grain, total, params_since_and_until_with_ten_days
+    client, time_grain, total, params_since_and_until_with_three_days
 ):
-    params = params_since_and_until_with_ten_days
+    params = params_since_and_until_with_three_days
     params["group_by"] = "timestamp"
     params["time_grain"] = time_grain
 
