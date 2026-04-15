@@ -53,12 +53,30 @@ services:
     command: [ "./run_fastpath", "--debug", "--clickhouse-url",
                "clickhouse://testuser:testuser@clickhouse:9000/ooni",
                "--keep-s3-cache", "--write-to-disk", "--stdout", "--ccs", "IT,IR",
-               "--start-day", "2026-01-01", "--end-day", "2026-01-03" ]
+               "--start-day", "2026-01-01", "--end-day", "2026-01-03", "--noapi" ]
     depends_on:
       clickhouse:
         condition: service_healthy
       postgres:
         condition: service_started
+
+  fastpath2:
+    image: docker.io/ooni/fastpath:latest
+    volumes:
+      - ./fastpath2/data:/data:Z
+      - ./fastpath2/etc:/etc/ooni:Z
+      - ./fastpath2/lib:/var/lib/fastpath:Z
+
+    command: [ "./run_fastpath", "--debug", "--clickhouse-url",
+               "clickhouse://testuser:testuser@clickhouse:9000/ooni",
+               "--keep-s3-cache", "--write-to-disk", "--stdout" ]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+    ports:
+      - "8472:8472"
 
   valkey:
     image: docker.io/valkey/valkey:latest
