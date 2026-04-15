@@ -8,7 +8,7 @@ WORKDIR /app
 COPY ./tests ./app
 
 # Install dependencies for both projects
-RUN pip install pytest httpx jwt
+RUN pip install pytest httpx jwt requests
 
 # Set the default command for the container
 CMD ["/bin/bash"]
