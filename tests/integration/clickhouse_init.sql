@@ -69,11 +69,7 @@ CREATE TABLE ooni.fastpath
     `test_helper_address` LowCardinality(String),
     `test_helper_type` LowCardinality(String),
     `ooni_run_link_id` Nullable(UInt64),
-    `is_verified` Int8 DEFAULT 0,
-    `nym` String DEFAULT '',
-    `zkp_request` String DEFAULT '',
-    `age_range` String DEFAULT '',
-    `msm_range` String DEFAULT '',
+    `is_verified` LowCardinality(String) DEFAULT 'u',
     INDEX fastpath_rid_idx report_id TYPE minmax GRANULARITY 1,
     INDEX measurement_uid_idx measurement_uid TYPE minmax GRANULARITY 8
 )
