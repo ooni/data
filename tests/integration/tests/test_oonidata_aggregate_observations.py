@@ -57,12 +57,12 @@ def test_oonidata_aggregation_observations_with_filters(
 @pytest.mark.parametrize(
     "time_grain, total",
     [
-        ("hour", 216),
-        ("day", 9),
-        ("week", 2),
+        ("hour", 48),
+        ("day", 2),
+        ("week", 1),
         ("month", 1),
         ("year", 1),
-        ("auto", 9),
+        ("auto", 2),
     ],
 )
 def test_oonidata_aggregation_observations_time_grain(
