@@ -4,13 +4,13 @@ jobs:
   run_tests:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       # Contrary to oonidata, which is a tool for end users, oonipipeline
       # targets a single python version to minimize the likelyhood of breakage
       # in production.
       - name: Set up Python 3.11
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: 3.11
 
@@ -26,13 +26,13 @@ jobs:
           key: oonipipeline-tests-data-datadir
 
       - name: Set up measurements cache
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: oonipipeline/tests/data/measurements/
           key: oonipipeline-tests-data-measurements
 
       - name: Set up raw_measurements cache
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: oonipipeline/tests/data/raw_measurements/
           key: oonipipeline-tests-data-raw_measurements-${{ hashFiles('tests/conftest.py') }}
@@ -51,7 +51,7 @@ jobs:
         working-directory: ./oonipipeline/
 
       - name: Upload coverage to codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v6
         with:
           flags: oonipipeline
           working-directory: ./oonipipeline/
