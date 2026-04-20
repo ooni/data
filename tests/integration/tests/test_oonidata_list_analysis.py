@@ -31,7 +31,7 @@ def test_oonidata_list_analysis_with_since_and_until(
     [
         (
             "measurement_uid",
-            "20260102000000.504120_IT_webconnectivity_9de2bdd30c705f7a",
+            "20260420103917.422836_IT_webconnectivity_c8519b14b448dbe4",
         ),
         ("probe_asn", 1267),
         ("probe_cc", "IT"),
