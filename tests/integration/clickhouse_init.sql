@@ -115,3 +115,34 @@ CREATE TABLE ooni.obs_openvpn
 ENGINE = ReplacingMergeTree(measurement_start_time)
 ORDER BY (measurement_start_time, report_id, input)
 SETTINGS index_granularity = 8;
+
+CREATE TABLE ooni.event_detector_cusums
+(
+    `probe_asn` UInt32,
+    `probe_cc` String,
+    `domain` String,
+    `ts` DateTime64(3, 'UTC'),
+    `dns_isp_blocked_current_state` String DEFAULT 'ok',
+    `dns_isp_blocked_s_pos` Nullable(Float64),
+    `dns_isp_blocked_s_neg` Nullable(Float64),
+    `dns_other_blocked_current_state` String DEFAULT 'ok',
+    `dns_other_blocked_s_pos` Nullable(Float64),
+    `dns_other_blocked_s_neg` Nullable(Float64),
+    `tcp_blocked_current_state` String DEFAULT 'ok',
+    `tcp_blocked_s_pos` Nullable(Float64),
+    `tcp_blocked_s_neg` Nullable(Float64),
+    `tls_blocked_current_state` String DEFAULT 'ok',
+    `tls_blocked_s_pos` Nullable(Float64),
+    `tls_blocked_s_neg` Nullable(Float64),
+    `dns_isp_blocked_last_change` Int8 DEFAULT 0,
+    `dns_isp_blocked_last_ts` Nullable(DateTime64(3, 'UTC')),
+    `dns_other_blocked_last_change` Int8 DEFAULT 0,
+    `dns_other_blocked_last_ts` Nullable(DateTime64(3, 'UTC')),
+    `tcp_blocked_last_change` Int8 DEFAULT 0,
+    `tcp_blocked_last_ts` Nullable(DateTime64(3, 'UTC')),
+    `tls_blocked_last_change` Int8 DEFAULT 0,
+    `tls_blocked_last_ts` Nullable(DateTime64(3, 'UTC'))
+)
+ENGINE = ReplacingMergeTree(ts)
+ORDER BY (probe_asn, probe_cc, domain)
+SETTINGS index_granularity = 8192;
