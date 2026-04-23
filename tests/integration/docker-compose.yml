@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  downloader:
+    build:
+      context: ../../
+      dockerfile: Dockerfile
+    image: oonidata_image
+    container_name: oonidata-pipeline
+    volumes:
+      - ./data:/data:Z
+    working_dir: /data
+    command: >
+      bash -c "oonidata sync --output-dir . --probe-cc IT --start-day 2026-01-01 --end-day 2026-01-02 --test-name webconnectivity &&
+      oonipipeline run --create-tables --probe-cc IT --test-name signal --workflow-name observations --start-at 2026-01-01 --end-at 2026-01-02"
+    depends_on:
+      - clickhouse
+    environment:
+      CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse_server
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native interface
+    volumes:
+      - ./clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql:Z
+    environment:
+      CLICKHOUSE_USER: "testuser"
+      CLICKHOUSE_PASSWORD: "testuser"
+      CLICKHOUSE_DB: "ooni"
+
+  fastpath:
+    image: ooni/fastpath:latest
+    container_name: fastpath_feeder
+    volumes:
+      - ./data:/data
+      - ./fastpath:/etc/ooni:Z
+    command: >
+      bash -c "sleep 10 && ./run_fastpath --debug --clickhouse-url "clickhouse://testuser:testuser@clickhouse:9000/ooni" --stdout"
+    depends_on:
+      - clickhouse
+      - downloader
+
+volumes:
+  clickhouse_data:
