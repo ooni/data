@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from itertools import groupby as itertools_groupby
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+import requests
 
 from clickhouse_driver import Client as ClickhouseClient
 
@@ -649,3 +650,33 @@ def plot(steps: List[CusumStep], block_type: str):
         .interactive()
     )
     chart.show()
+
+def notify_slack(db : ClickhouseClient, changepoints: list[Changepoint], slack_webhook : str):
+    """
+    Notifies that there was a change in blocking state of a relevant target
+    """
+
+    if len(changepoints) == 0:
+        return
+
+    message = """
+    **NEW EVENTS DETECTED**
+
+    We just detected the following blocking events:
+    """
+
+    change_dir_str = {
+        -1 : "is unblocked :arrow_down: :large_green_circle:",
+        0 : "0? :thinking_face:",
+        1 : "is blocked :arrow_up: :red_circle:"
+    }
+
+    for cp in changepoints:
+        message = message + f"""
+        \t- :flag-{cp.probe_cc.lower()}:[{cp.probe_cc}/AS{cp.probe_asn}] **{cp.domain}** {change_dir_str[cp.change_dir]} - `{cp.block_type}`
+        """
+
+    # Send message to slack
+    requests.post(slack_webhook, json = {
+        "text" : message
+    })
