@@ -532,6 +532,8 @@ def run_detector(
     )
     update_tables(db, updated_cusums, changepoints)
 
+    notify_slack(db, changepoints)
+
     return changepoints, updated_cusums, steps
 
 
@@ -660,7 +662,7 @@ def notify_slack(db : ClickhouseClient, changepoints: list[Changepoint], slack_w
         return
 
     message = """
-    **NEW EVENTS DETECTED**
+    *NEW EVENTS DETECTED*
 
     We just detected the following blocking events:
     """
@@ -671,12 +673,40 @@ def notify_slack(db : ClickhouseClient, changepoints: list[Changepoint], slack_w
         1 : "is blocked :arrow_up: :red_circle:"
     }
 
+    # Divide the message in several parts
+
     for cp in changepoints:
+        explorer = get_explorer_url(cp)
         message = message + f"""
-        \t- :flag-{cp.probe_cc.lower()}:[{cp.probe_cc}/AS{cp.probe_asn}] **{cp.domain}** {change_dir_str[cp.change_dir]} - `{cp.block_type}`
+        \t- :flag-{cp.probe_cc.lower()}:[{cp.probe_cc}/AS{cp.probe_asn}] *{cp.domain}* {change_dir_str[cp.change_dir]} - `{cp.block_type}` | <{explorer}|explorer>
         """
 
     # Send message to slack
     requests.post(slack_webhook, json = {
         "text" : message
     })
+
+def send_to_slack(webhook : str, message: str):
+    requests.post(webhook, json = {
+        "text" : message
+    }).raise_for_status()
+
+def get_explorer_url(changepoint: Changepoint, base_url: str = "https://explorer.ooni.org/") -> str:
+    start_time = changepoint.ts - timedelta(days=5)
+    end_time = changepoint.ts + timedelta(days=5)
+
+    def to_s(dt: datetime):
+        return datetime.strftime(dt, "%Y-%m-%d")
+
+    from urllib.parse import urlencode
+
+    params = {
+        "domain": changepoint.domain,
+        "probe_cc": changepoint.probe_cc,
+        "probe_asn": changepoint.probe_asn,
+        "since": to_s(start_time),
+        "until": to_s(end_time),
+        "axis_x": "measurement_start_day",
+    }
+    url = f"{base_url}/chart/mat?{urlencode(params)}"
+    return url
