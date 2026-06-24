@@ -682,9 +682,7 @@ def notify_slack(db : ClickhouseClient, changepoints: list[Changepoint], slack_w
         """
 
     # Send message to slack
-    requests.post(slack_webhook, json = {
-        "text" : message
-    })
+    send_to_slack(slack_webhook, message)
 
 def send_to_slack(webhook : str, message: str):
     requests.post(webhook, json = {
