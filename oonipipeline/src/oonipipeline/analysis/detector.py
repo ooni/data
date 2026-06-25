@@ -508,7 +508,8 @@ def run_detector(
     gap_halflife: float = 48.0,
     warmup: bool = False,
     trace: bool = False,
-    slack_webhook: str | None = None
+    slack_webhook: str | None = None,
+    explorer_base_url: str = "https://explorer.ooni.org/"
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     db = ClickhouseClient.from_url(clickhouse_url)
     domains = get_domain_list(db)
@@ -534,7 +535,7 @@ def run_detector(
     update_tables(db, updated_cusums, changepoints)
 
     if slack_webhook is not None:
-        notify_slack(db, changepoints, slack_webhook)
+        notify_slack(db, changepoints, slack_webhook, explorer_base_url)
 
     return changepoints, updated_cusums, steps
 
@@ -655,7 +656,12 @@ def plot(steps: List[CusumStep], block_type: str):
     )
     chart.show()
 
-def notify_slack(db : ClickhouseClient, changepoints: list[Changepoint], slack_webhook : str):
+def notify_slack(
+    db: ClickhouseClient,
+    changepoints: list[Changepoint],
+    slack_webhook: str,
+    explorer_base_url: str = "https://explorer.ooni.org/",
+):
     """
     Notifies that there was a change in blocking state of a relevant target
     """
@@ -672,8 +678,8 @@ def notify_slack(db : ClickhouseClient, changepoints: list[Changepoint], slack_w
     }
 
     messages = []
-    for (i,cp) in enumerate(changepoints):
-        explorer = get_explorer_url(cp)
+    for (i, cp) in enumerate(changepoints):
+        explorer = get_explorer_url(cp, explorer_base_url)
         message += (
             f"• :flag-{cp['probe_cc'].lower()}: [{cp['probe_cc']}/AS{cp['probe_asn']}] "
             f"*{cp['domain']}* {change_dir_str[cp['change_dir']]} - `{cp['block_type']}` "
