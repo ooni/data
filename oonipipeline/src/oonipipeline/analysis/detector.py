@@ -672,11 +672,11 @@ def notify_slack(db : ClickhouseClient, changepoints: list[Changepoint], slack_w
     }
 
     messages = []
-    for (i ,cp) in enumerate(changepoints):
+    for (i,cp) in enumerate(changepoints):
         explorer = get_explorer_url(cp)
         message += (
-            f"• :flag-{cp.probe_cc.lower()}: [{cp.probe_cc}/AS{cp.probe_asn}] "
-            f"*{cp.domain}* {change_dir_str[cp.change_dir]} - `{cp.block_type}` "
+            f"• :flag-{cp['probe_cc'].lower()}: [{cp['probe_cc']}/AS{cp['probe_asn']}] "
+            f"*{cp['domain']}* {change_dir_str[cp['change_dir']]} - `{cp['block_type']}` "
             f"| <{explorer}|explorer>\n"
         )
 
@@ -698,8 +698,8 @@ def send_to_slack(webhook : str, message: str):
     }).raise_for_status()
 
 def get_explorer_url(changepoint: Changepoint, base_url: str = "https://explorer.ooni.org/") -> str:
-    start_time = changepoint.ts - timedelta(days=5)
-    end_time = changepoint.ts + timedelta(days=5)
+    start_time = changepoint['ts'] - timedelta(days=5)
+    end_time = changepoint['ts'] + timedelta(days=5)
 
     def to_s(dt: datetime):
         return datetime.strftime(dt, "%Y-%m-%d")
@@ -707,9 +707,9 @@ def get_explorer_url(changepoint: Changepoint, base_url: str = "https://explorer
     from urllib.parse import urlencode
 
     params = {
-        "domain": changepoint.domain,
-        "probe_cc": changepoint.probe_cc,
-        "probe_asn": changepoint.probe_asn,
+        "domain": changepoint['domain'],
+        "probe_cc": changepoint['probe_cc'],
+        "probe_asn": changepoint['probe_asn'],
         "since": to_s(start_time),
         "until": to_s(end_time),
         "axis_x": "measurement_start_day",

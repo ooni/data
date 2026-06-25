@@ -63,7 +63,7 @@ def run_make_analysis(
 
 
 def run_make_event_detector(
-    clickhouse_url: str, probe_cc: List[str], timestamp: str = "", ts: str = ""
+    clickhouse_url: str, probe_cc: List[str], timestamp: str = "", ts: str = "", slack_webhook : str | None = None
 ):
     from oonipipeline.tasks.detector import MakeDetectorParams, make_detector
 
@@ -71,7 +71,8 @@ def run_make_event_detector(
         timestamp = ts[:13]
 
     params = MakeDetectorParams(
-        clickhouse_url=clickhouse_url, probe_cc=probe_cc, timestamp=timestamp
+        clickhouse_url=clickhouse_url, probe_cc=probe_cc, timestamp=timestamp,
+        slack_webhook=slack_webhook
     )
 
     make_detector(params)
@@ -229,6 +230,7 @@ with DAG(
         op_kwargs={
             "probe_cc": dag_full.params["probe_cc"],
             "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
+            "slack_webhook": Variable.get("slack_webhook", default_var=None),
             "ts": "{{ts}}",
         },
         requirements=REQUIREMENTS,
