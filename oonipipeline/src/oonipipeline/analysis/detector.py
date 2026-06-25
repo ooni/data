@@ -508,6 +508,7 @@ def run_detector(
     gap_halflife: float = 48.0,
     warmup: bool = False,
     trace: bool = False,
+    slack_webhook: str | None = None
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     db = ClickhouseClient.from_url(clickhouse_url)
     domains = get_domain_list(db)
@@ -532,7 +533,8 @@ def run_detector(
     )
     update_tables(db, updated_cusums, changepoints)
 
-    notify_slack(db, changepoints)
+    if slack_webhook is not None:
+        notify_slack(db, changepoints, slack_webhook)
 
     return changepoints, updated_cusums, steps
 
@@ -661,11 +663,7 @@ def notify_slack(db : ClickhouseClient, changepoints: list[Changepoint], slack_w
     if len(changepoints) == 0:
         return
 
-    message = """
-    *NEW EVENTS DETECTED*
-
-    We just detected the following blocking events:
-    """
+    message = "*NEW EVENTS DETECTED*\n\nWe just detected the following blocking events:\n"
 
     change_dir_str = {
         -1 : "is unblocked :arrow_down: :large_green_circle:",
@@ -673,16 +671,26 @@ def notify_slack(db : ClickhouseClient, changepoints: list[Changepoint], slack_w
         1 : "is blocked :arrow_up: :red_circle:"
     }
 
-    # Divide the message in several parts
-
-    for cp in changepoints:
+    messages = []
+    for (i ,cp) in enumerate(changepoints):
         explorer = get_explorer_url(cp)
-        message = message + f"""
-        \t- :flag-{cp.probe_cc.lower()}:[{cp.probe_cc}/AS{cp.probe_asn}] *{cp.domain}* {change_dir_str[cp.change_dir]} - `{cp.block_type}` | <{explorer}|explorer>
-        """
+        message += (
+            f"• :flag-{cp.probe_cc.lower()}: [{cp.probe_cc}/AS{cp.probe_asn}] "
+            f"*{cp.domain}* {change_dir_str[cp.change_dir]} - `{cp.block_type}` "
+            f"| <{explorer}|explorer>\n"
+        )
 
-    # Send message to slack
-    send_to_slack(slack_webhook, message)
+        # Send messages in 10 entries batches to avoid max message size limit
+        if (i+1) % 10 == 0:
+            messages.append(message)
+            message = ""
+
+    if message != "":
+        messages.append(message)
+
+    # Send messages to slack
+    for msg in messages:
+        send_to_slack(slack_webhook, msg)
 
 def send_to_slack(webhook : str, message: str):
     requests.post(webhook, json = {
