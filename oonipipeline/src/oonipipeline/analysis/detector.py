@@ -535,7 +535,7 @@ def run_detector(
     update_tables(db, updated_cusums, changepoints)
 
     if slack_webhook is not None:
-        notify_slack(db, changepoints, slack_webhook, explorer_base_url)
+        notify_slack( changepoints, slack_webhook, explorer_base_url)
 
     return changepoints, updated_cusums, steps
 
@@ -657,7 +657,6 @@ def plot(steps: List[CusumStep], block_type: str):
     chart.show()
 
 def notify_slack(
-    db: ClickhouseClient,
     changepoints: list[Changepoint],
     slack_webhook: str,
     explorer_base_url: str = "https://explorer.ooni.org/",
