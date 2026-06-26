@@ -717,7 +717,6 @@ def get_explorer_url(
     def to_s(dt: datetime):
         return datetime.strftime(dt, "%Y-%m-%d")
 
-
     params = {
         "domain": changepoint["domain"],
         "probe_cc": changepoint["probe_cc"],
