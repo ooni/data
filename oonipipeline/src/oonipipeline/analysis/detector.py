@@ -509,7 +509,7 @@ def run_detector(
     warmup: bool = False,
     trace: bool = False,
     slack_webhook: str | None = None,
-    explorer_base_url: str = "https://explorer.ooni.org/"
+    explorer_base_url: str = "https://explorer.ooni.org/",
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     db = ClickhouseClient.from_url(clickhouse_url)
     domains = get_domain_list(db)
@@ -535,7 +535,7 @@ def run_detector(
     update_tables(db, updated_cusums, changepoints)
 
     if slack_webhook is not None:
-        notify_slack( changepoints, slack_webhook, explorer_base_url)
+        notify_slack(changepoints, slack_webhook, explorer_base_url)
 
     return changepoints, updated_cusums, steps
 
@@ -656,6 +656,7 @@ def plot(steps: List[CusumStep], block_type: str):
     )
     chart.show()
 
+
 def notify_slack(
     changepoints: list[Changepoint],
     slack_webhook: str,
@@ -669,20 +670,19 @@ def notify_slack(
     if len(changepoints) == 0:
         return
 
-    message = "*NEW EVENTS DETECTED*\n\nWe just detected the following blocking events:\n"
+    message = (
+        "*NEW EVENTS DETECTED*\n\nWe just detected the following blocking events:\n"
+    )
 
-    def dir_to_str(dir : int) -> str:
+    def dir_to_str(dir: int) -> str:
         to_str = {
-            -1 : "is unblocked :arrow_down: :large_green_circle:",
-            1 : "is blocked :arrow_up: :red_circle:"
+            -1: "is unblocked :arrow_down: :large_green_circle:",
+            1: "is blocked :arrow_up: :red_circle:",
         }
-        return to_str.get(
-            dir,
-            f"Unknown direction change value: {dir} :thinking_face:"
-        )
+        return to_str.get(dir, f"Unknown direction change value: {dir} :thinking_face:")
 
     messages = []
-    for (i, cp) in enumerate(changepoints):
+    for i, cp in enumerate(changepoints):
         explorer = get_explorer_url(cp, explorer_base_url)
         message += (
             f"• :flag-{cp['probe_cc'].lower()}: [{cp['probe_cc']}/AS{cp['probe_asn']}] "
@@ -691,7 +691,7 @@ def notify_slack(
         )
 
         # Send messages in 10 entries batches to avoid max message size limit
-        if (i+1) % 10 == 0:
+        if (i + 1) % 10 == 0:
             messages.append(message)
             message = ""
 
@@ -702,14 +702,16 @@ def notify_slack(
     for msg in messages:
         send_to_slack(slack_webhook, msg)
 
-def send_to_slack(webhook : str, message: str):
-    requests.post(webhook, json = {
-        "text" : message
-    }).raise_for_status()
 
-def get_explorer_url(changepoint: Changepoint, base_url: str = "https://explorer.ooni.org/") -> str:
-    start_time = changepoint['ts'] - timedelta(days=5)
-    end_time = changepoint['ts'] + timedelta(days=5)
+def send_to_slack(webhook: str, message: str):
+    requests.post(webhook, json={"text": message}).raise_for_status()
+
+
+def get_explorer_url(
+    changepoint: Changepoint, base_url: str = "https://explorer.ooni.org/"
+) -> str:
+    start_time = changepoint["ts"] - timedelta(days=5)
+    end_time = changepoint["ts"] + timedelta(days=5)
 
     def to_s(dt: datetime):
         return datetime.strftime(dt, "%Y-%m-%d")
@@ -717,9 +719,9 @@ def get_explorer_url(changepoint: Changepoint, base_url: str = "https://explorer
     from urllib.parse import urlencode
 
     params = {
-        "domain": changepoint['domain'],
-        "probe_cc": changepoint['probe_cc'],
-        "probe_asn": changepoint['probe_asn'],
+        "domain": changepoint["domain"],
+        "probe_cc": changepoint["probe_cc"],
+        "probe_asn": changepoint["probe_asn"],
         "since": to_s(start_time),
         "until": to_s(end_time),
         "axis_x": "measurement_start_day",
