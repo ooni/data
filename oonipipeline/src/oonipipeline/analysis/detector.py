@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from itertools import groupby as itertools_groupby
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from urllib.parse import urlencode
 import requests
 
 from clickhouse_driver import Client as ClickhouseClient
@@ -716,7 +717,6 @@ def get_explorer_url(
     def to_s(dt: datetime):
         return datetime.strftime(dt, "%Y-%m-%d")
 
-    from urllib.parse import urlencode
 
     params = {
         "domain": changepoint["domain"],
