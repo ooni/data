@@ -662,7 +662,8 @@ def notify_slack(
     explorer_base_url: str = "https://explorer.ooni.org/",
 ):
     """
-    Notifies that there was a change in blocking state of a relevant target
+    Sends a message to slack with a list of all changepoints that were detected
+    in the last run
     """
 
     if len(changepoints) == 0:
@@ -670,18 +671,22 @@ def notify_slack(
 
     message = "*NEW EVENTS DETECTED*\n\nWe just detected the following blocking events:\n"
 
-    change_dir_str = {
-        -1 : "is unblocked :arrow_down: :large_green_circle:",
-        0 : "0? :thinking_face:",
-        1 : "is blocked :arrow_up: :red_circle:"
-    }
+    def dir_to_str(dir : int) -> str:
+        to_str = {
+            -1 : "is unblocked :arrow_down: :large_green_circle:",
+            1 : "is blocked :arrow_up: :red_circle:"
+        }
+        return to_str.get(
+            dir,
+            f"Unknown direction change value: {dir} :thinking_face:"
+        )
 
     messages = []
     for (i, cp) in enumerate(changepoints):
         explorer = get_explorer_url(cp, explorer_base_url)
         message += (
             f"• :flag-{cp['probe_cc'].lower()}: [{cp['probe_cc']}/AS{cp['probe_asn']}] "
-            f"*{cp['domain']}* {change_dir_str[cp['change_dir']]} - `{cp['block_type']}` "
+            f"*{cp['domain']}* {dir_to_str(cp['change_dir'])} - `{cp['block_type']}` "
             f"| <{explorer}|explorer>\n"
         )
 
