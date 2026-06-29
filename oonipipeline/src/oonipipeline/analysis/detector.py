@@ -711,8 +711,8 @@ def send_to_slack(webhook: str, message: str):
 def get_explorer_url(
     changepoint: Changepoint, base_url: str = "https://explorer.ooni.org/"
 ) -> str:
-    start_time = changepoint["ts"] - timedelta(days=5)
-    end_time = changepoint["ts"] + timedelta(days=5)
+    start_time = changepoint["ts"] - timedelta(days=13)
+    end_time = changepoint["ts"] + timedelta(days=2)
 
     def to_s(dt: datetime):
         return datetime.strftime(dt, "%Y-%m-%d")
