@@ -685,10 +685,12 @@ def notify_slack(
     messages = []
     for i, cp in enumerate(changepoints):
         explorer = get_explorer_url(cp, explorer_base_url)
+        # Alerts panel not yet deployed to prod, we use the test one for now
+        alerts = get_alert_page_url(cp, "https://explorer.test.ooni.org/")
         message += (
             f"• :flag-{cp['probe_cc'].lower()}: [{cp['probe_cc']}/AS{cp['probe_asn']}] "
             f"*{cp['domain']}* {dir_to_str(cp['change_dir'])} - `{cp['block_type']}` "
-            f"| <{explorer}|explorer>\n"
+            f"| <{explorer}|explorer> | <{alerts}|alerts>\n"
         )
 
         # Send messages in 10 entries batches to avoid max message size limit
@@ -726,4 +728,23 @@ def get_explorer_url(
         "axis_x": "measurement_start_day",
     }
     url = f"{base_url}/chart/mat?{urlencode(params)}"
+    return url
+
+def get_alert_page_url(
+    changepoint: Changepoint, base_url: str = "https://explorer.ooni.org/"
+) -> str:
+    start_time = changepoint["ts"] - timedelta(days=13)
+    end_time = changepoint["ts"] + timedelta(days=2)
+
+    def to_s(dt: datetime):
+        return datetime.strftime(dt, "%Y-%m-%d")
+
+    params = {
+        "domain": changepoint["domain"],
+        "probe_cc": changepoint["probe_cc"],
+        "probe_asn": changepoint["probe_asn"],
+        "since": to_s(start_time),
+        "until": to_s(end_time),
+    }
+    url = f"{base_url}/chart/alerts?{urlencode(params)}"
     return url
