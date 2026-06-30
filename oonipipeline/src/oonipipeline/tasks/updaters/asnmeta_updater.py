@@ -39,7 +39,13 @@ def fetch_data() -> List[dict]:
     for asn, history in j.items():
         asn = int(asn)
         for v in history:
-            changed = datetime.strptime(v[2], "%Y%m%d").date()
+            try:
+                changed = datetime.strptime(v[2], "%Y%m%d").date()
+            except ValueError:
+                if v == "latest":
+                    changed = v
+                else:
+                    raise
             rows.append(
                 {
                     "asn": asn,
