@@ -42,6 +42,8 @@ def fetch_data() -> List[dict]:
             try:
                 changed = datetime.strptime(v[2], "%Y%m%d").date()
             except ValueError:
+                # Accept "latest" for changed
+                # fixes https://github.com/ooni/data/issues/164
                 if v == "latest":
                     changed = v
                 else:
