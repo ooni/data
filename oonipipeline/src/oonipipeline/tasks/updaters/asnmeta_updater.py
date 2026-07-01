@@ -45,7 +45,7 @@ def fetch_data() -> List[dict]:
                 # Accept "latest" for changed
                 # fixes https://github.com/ooni/data/issues/164
                 if v[2] == "latest":
-                    changed = v
+                    changed = v[2]
                 else:
                     raise
             rows.append(
