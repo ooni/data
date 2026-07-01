@@ -44,7 +44,7 @@ def fetch_data() -> List[dict]:
             except ValueError:
                 # Accept "latest" for changed
                 # fixes https://github.com/ooni/data/issues/164
-                if v == "latest":
+                if v[2] == "latest":
                     changed = v
                 else:
                     raise
