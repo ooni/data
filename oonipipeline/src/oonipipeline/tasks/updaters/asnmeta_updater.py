@@ -42,12 +42,7 @@ def fetch_data() -> List[dict]:
             try:
                 changed = datetime.strptime(v[2], "%Y%m%d").date()
             except ValueError:
-                # Accept "latest" for changed
-                # fixes https://github.com/ooni/data/issues/164
-                if v[2] == "latest":
-                    changed = v[2]
-                else:
-                    raise
+                changed = None
             rows.append(
                 {
                     "asn": asn,
