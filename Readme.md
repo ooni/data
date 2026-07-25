@@ -1,4 +1,4 @@
-There are different ways to access OONI data, wether that is via: [OONI
+https://github.com/ooni/data/edit/main/Readme.md=44227bee-1b42-a127-1853324.png (600×800).close;=0There are different ways to access OONI data, wether that is via: [OONI
 Explorer](https://explorer.ooni.org/), the [OONI API](https://api.ooni.io/) or
 clickhouse table dumps.
 
