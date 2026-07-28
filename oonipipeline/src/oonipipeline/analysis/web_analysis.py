@@ -111,7 +111,14 @@ def format_query_analysis_web_fuzzy_logic(
 
     expected_countries,
     dns_blocking_scope,
-    has(expected_countries, probe_cc) as dns_blocking_country_consistent,
+    -- A 'fp' scope marks a fingerprint that is known to produce false
+    -- positives, so matching one is evidence *against* blocking and must not
+    -- trigger the blockpage rule. The DNS fingerprint set happens to carry no
+    -- 'fp' rows today, but the HTTP set does and the schema permits them here.
+    -- On a LEFT JOIN miss dns_blocking_scope is '' and expected_countries is
+    -- empty, so the has() below is false either way.
+    dns_blocking_scope != 'fp'
+        AND has(expected_countries, probe_cc) as dns_blocking_country_consistent,
 
     -- Possibility distributions of states (blocking, down, ok). The rule set and
     -- its weights live in analysis/rules.py; the cascade below is generated from
@@ -257,10 +264,30 @@ def format_query_analysis_web_fuzzy_logic(
 
     LEFT OUTER JOIN (
         SELECT
-        groupArray(expected_countries) as expected_countries,
+        -- expected_countries is a comma-separated string upstream, documented
+        -- with a space after the comma (e.g. "IT, IR"). groupArray alone would
+        -- produce ['IT, IR'], against which has(..., 'IR') is false — so split
+        -- and trim before the membership test. Every current DNS fingerprint
+        -- names a single country, which is why this has not bitten yet.
+        arrayDistinct(
+            arrayFlatten(
+                groupArray(
+                    arrayMap(
+                        c -> trim(BOTH ' ' FROM c),
+                        splitByChar(',', expected_countries)
+                    )
+                )
+            )
+        ) as expected_countries,
         pattern,
         any(scope) as dns_blocking_scope
         FROM fingerprints_dns
+        -- The join below is an equality match, which only implements
+        -- pattern_type = 'full'. Restricting here keeps that explicit rather
+        -- than silently never matching a 'prefix'/'contains'/'regexp' row.
+        -- All 227 current DNS fingerprints are 'full'; tests/test_fingerprints.py
+        -- fails if upstream introduces a type this query cannot evaluate.
+        WHERE pattern_type = 'full'
         GROUP BY pattern
     ) as fingerprints_dns
     ON fingerprints_dns.pattern = experiment.dns_answer
