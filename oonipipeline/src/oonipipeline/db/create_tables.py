@@ -267,6 +267,44 @@ def make_create_queries():
         ),
         (
             """
+        CREATE TABLE IF NOT EXISTS obs_web_ctrl_rollup
+        (
+            `hostname` String,
+            `ts_hour` DateTime('UTC'),
+            `ip` String,
+            `ip_asn` UInt32,
+
+            -- Counts from obs_web_ctrl (the web_connectivity test helper).
+            -- DNS failures carry no address, so they land on the ip = '' row.
+            `dns_success_count` UInt32,
+            `dns_failure_count` UInt32,
+            `tcp_success_count` UInt32,
+            `tcp_failure_count` UInt32,
+            `tls_success_count` UInt32,
+            `tls_failure_count` UInt32,
+            -- TLS failures that are specifically certificate errors (ssl_*),
+            -- which the DNS rules treat differently from generic failures.
+            `tls_inconsistent_count` UInt32,
+
+            -- Count from obs_web, not obs_web_ctrl: probes that got a valid
+            -- certificate for this hostname on this address. Unioned with the
+            -- helper's own TLS successes to decide whether an answer is
+            -- TLS-consistent.
+            `tls_consistent_probe_count` UInt32
+        )
+        -- Replacing rather than Summing: one write produces the final counts
+        -- for a key, so re-running a window replaces its rows instead of
+        -- accumulating onto them. Readers must use FINAL, since replacement is
+        -- only applied at merge time.
+        ENGINE = ReplacingMergeTree
+        ORDER BY (hostname, ts_hour, ip, ip_asn)
+        PARTITION BY toYYYYMM(ts_hour)
+        SETTINGS index_granularity = 8192
+    """,
+            "obs_web_ctrl_rollup",
+        ),
+        (
+            """
         CREATE TABLE IF NOT EXISTS event_detector_changepoints (
             `probe_asn` UInt32,
             `probe_cc` String,

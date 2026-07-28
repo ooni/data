@@ -129,3 +129,97 @@ ALTER TABLE analysis_web_measurement
     DROP COLUMN IF EXISTS `top_tcp_rule_id`,
     DROP COLUMN IF EXISTS `top_tls_rule_id`;
 ```
+
+---
+
+## 3. Create `obs_web_ctrl_rollup` and backfill it
+
+**Introduced by:** "Precompute the control baseline into an hourly rollup"
+
+### Background
+
+The analysis query derives its control by aggregating a full day of
+`obs_web_ctrl` plus a second full-day scan of `obs_web`, on every hourly run.
+That is ~24x redundant work, and it makes scoring depend on *when the job ran*:
+the 01:00 run sees roughly an hour of control data and the 23:00 run sees
+twenty-three, so `ctrl_dns_success_rate > 0.5` is a threshold over very
+different sample sizes depending on time of day. Re-running a backfill
+therefore produced different scores than the original run, and because
+`analysis_web_measurement` is a `ReplacingMergeTree` keyed on
+`measurement_uid`, the newer value silently won.
+
+This step adds the rollup table and starts populating it. **The analysis query
+does not read it yet** — that is a separate change, gated on comparing the two
+paths on real data.
+
+### Apply
+
+The table is created by `make_create_queries()`, so
+`oonipipeline checkdb --create-tables` (or the normal deploy path) will add it.
+To create it by hand:
+
+```sql
+CREATE TABLE IF NOT EXISTS obs_web_ctrl_rollup
+(
+    `hostname` String,
+    `ts_hour` DateTime('UTC'),
+    `ip` String,
+    `ip_asn` UInt32,
+    `dns_success_count` UInt32,
+    `dns_failure_count` UInt32,
+    `tcp_success_count` UInt32,
+    `tcp_failure_count` UInt32,
+    `tls_success_count` UInt32,
+    `tls_failure_count` UInt32,
+    `tls_inconsistent_count` UInt32,
+    `tls_consistent_probe_count` UInt32
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (hostname, ts_hour, ip, ip_asn)
+PARTITION BY toYYYYMM(ts_hour)
+SETTINGS index_granularity = 8192;
+```
+
+### Backfill
+
+The rollup only covers windows that have been written. Before anything reads
+it, backfill at least `DEFAULT_CTRL_LOOKBACK` (24h) further back than the
+earliest window you intend to analyse — a control window that starts before the
+rollup does will silently see a partial baseline, which is the failure mode
+this change exists to remove.
+
+Per-hour, via the task:
+
+```bash
+python -c "
+from oonipipeline.tasks.ctrl_rollup import MakeCtrlRollupParams, make_ctrl_rollup
+make_ctrl_rollup(MakeCtrlRollupParams(clickhouse_url='<URL>', timestamp='2026-07-27T13'))
+"
+```
+
+`write_ctrl_rollup` is idempotent — one row per key per write into a
+`ReplacingMergeTree` — so re-running a window replaces it rather than
+accumulating. Re-running a backfill is safe.
+
+### Verify
+
+```sql
+SELECT toDate(ts_hour) AS d, count() AS rows, uniqExact(hostname) AS hostnames
+FROM obs_web_ctrl_rollup FINAL
+GROUP BY d ORDER BY d DESC LIMIT 10;
+```
+
+Expect one row per (hostname, hour, ip). Query it with `FINAL`: replacement is
+applied at merge time, so without it a re-run that has not merged yet is
+counted twice.
+
+### Rollback
+
+Nothing reads the table yet, so dropping it only loses the backfill:
+
+```sql
+DROP TABLE IF EXISTS obs_web_ctrl_rollup;
+```
+
+Also revert the `make_ctrl_rollup` task from the hourly DAG and the CLI `run`
+loop, or they will fail on the missing table.
