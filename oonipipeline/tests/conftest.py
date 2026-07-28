@@ -125,8 +125,13 @@ def db_notruncate(clickhouse_server):
 def db(clickhouse_server):
     db = create_db_for_fixture(clickhouse_server)
     for _, table_name in make_create_queries():
-        # Ignore the fingerprints_dns table, since it's a remote table
-        if table_name in ["fingerprints_dns", "analysis_web_measurements"]:
+        # The fingerprint tables are EmbeddedRocksDB and owned by the
+        # fingerprints updater, not by the pipeline under test.
+        if table_name in [
+            "fingerprints_dns",
+            "fingerprints_http",
+            "analysis_web_measurements",
+        ]:
             continue
         db.execute(f"TRUNCATE TABLE {table_name};")
 

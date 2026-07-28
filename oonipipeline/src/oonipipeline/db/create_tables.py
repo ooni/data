@@ -29,6 +29,55 @@ from .connections import ClickhouseConnection
 MAPPED_BASIC_TYPES = [str, int, bool, datetime, float, dict]
 BasicType = Union[str, int, bool, datetime, float, dict]
 
+# Canonical DDL for the blocking-fingerprint tables.
+#
+# These are owned by tasks.updaters.fingerprints_updater, which recreates a
+# _tmp table and EXCHANGEs it in. Both the updater and make_create_queries()
+# below build their DDL from here so there is exactly one definition of the
+# schema: previously create_tables.py declared fingerprints_dns as an
+# ENGINE = URL(...) table with all-String columns while the updater declared it
+# as EmbeddedRocksDB with typed enums, and since both used
+# CREATE TABLE IF NOT EXISTS whichever ran first on a given deployment won.
+# That made the analysis query's behaviour deployment-dependent.
+#
+# The DNS and HTTP tables differ only in the scope enum: the HTTP fingerprint
+# set additionally uses 'injb' (injected block) and 'prov' (provider).
+FINGERPRINT_SCOPES_DNS = ["nat", "isp", "prod", "inst", "vbw", "fp"]
+FINGERPRINT_SCOPES_HTTP = FINGERPRINT_SCOPES_DNS + ["injb", "prov"]
+
+FINGERPRINT_COLUMN_NAMES = [
+    "name",
+    "scope",
+    "other_names",
+    "location_found",
+    "pattern_type",
+    "pattern",
+    "confidence_no_fp",
+    "expected_countries",
+    "source",
+    "exp_url",
+    "notes",
+]
+
+
+def format_fingerprints_create_query(table_name: str, scopes: List[str]) -> str:
+    scope_enum = ", ".join(f"'{s}' = {i}" for i, s in enumerate(scopes, start=1))
+    return f"""
+    CREATE TABLE IF NOT EXISTS {table_name} (
+        name String,
+        scope Enum({scope_enum}),
+        other_names String,
+        location_found String,
+        pattern_type Enum('full' = 1, 'prefix' = 2, 'contains' = 3, 'regexp' = 4),
+        pattern String,
+        confidence_no_fp UInt8,
+        expected_countries String,
+        source String,
+        exp_url String,
+        notes String
+    ) ENGINE = EmbeddedRocksDB PRIMARY KEY(name)
+    """
+
 
 def python_basic_type_to_clickhouse(t: BasicType) -> str:
     if t == str:
@@ -170,13 +219,16 @@ table_models = [
 def make_create_queries():
     create_queries = [
         (
-            """
-        CREATE TABLE IF NOT EXISTS fingerprints_dns (
-            `name` String, `scope` String, `other_names` String, `location_found` String, `pattern_type` String,
-            `pattern` String, `confidence_no_fp` String, `expected_countries` String, `source` String, `exp_url` String, `notes` String
-        ) ENGINE = URL('https://raw.githubusercontent.com/ooni/blocking-fingerprints/main/fingerprints_dns.csv', 'CSV')
-        """,
+            format_fingerprints_create_query(
+                "fingerprints_dns", FINGERPRINT_SCOPES_DNS
+            ),
             "fingerprints_dns",
+        ),
+        (
+            format_fingerprints_create_query(
+                "fingerprints_http", FINGERPRINT_SCOPES_HTTP
+            ),
+            "fingerprints_http",
         ),
         (
             """
