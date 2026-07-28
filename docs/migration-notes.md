@@ -183,10 +183,11 @@ SETTINGS index_granularity = 8192;
 ### Backfill
 
 The rollup only covers windows that have been written. Before anything reads
-it, backfill at least `DEFAULT_CTRL_LOOKBACK` (24h) further back than the
-earliest window you intend to analyse — a control window that starts before the
-rollup does will silently see a partial baseline, which is the failure mode
-this change exists to remove.
+it, backfill further back than the earliest window you intend to analyse by at
+least `DEFAULT_CTRL_LOOKBACK` (see `analysis/ctrl_rollup.py` for the current
+value) — a control window that starts before the rollup does will silently see
+a partial baseline, which is the failure mode this change exists to remove.
+Backfilling further than the minimum is cheap and harmless, so err wide.
 
 Per-hour, via the task:
 

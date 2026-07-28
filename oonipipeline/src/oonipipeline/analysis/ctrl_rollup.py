@@ -21,9 +21,11 @@ than "whatever has landed for today so far", which makes scoring reproducible:
 re-running hour H at any later date reads exactly the same buckets.
 
 The rollup is long-form — one row per address rather than a Map per hostname —
-because SummingMergeTree can then merge partial writes for free, and because
-the two sources (obs_web_ctrl and obs_web) can be written independently and
-summed together at merge time.
+so that the grain is explicit and a future dimension costs a column rather than
+a renamed metric. Both sources (obs_web_ctrl and obs_web) are unioned and
+aggregated in a single pass, so one write produces the final row for a key;
+that is what lets the table be a ReplacingMergeTree and makes re-running a
+window a replacement rather than an accumulation.
 """
 
 import logging
@@ -33,9 +35,8 @@ from typing import Any, Dict, Tuple
 log = logging.getLogger(__name__)
 
 # How far back a consumer looks when assembling the control for a given
-# analysis window. One day matches the granularity the previous same-day
-# aggregation effectively had, without the partial-day dependence on run time.
-DEFAULT_CTRL_LOOKBACK = timedelta(days=1)
+# analysis window.
+DEFAULT_CTRL_LOOKBACK = timedelta(hours=1)
 
 
 def _floor_hour(ts: datetime) -> datetime:
