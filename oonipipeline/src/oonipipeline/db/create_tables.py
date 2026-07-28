@@ -249,7 +249,13 @@ def make_create_queries():
             `top_tcp_failure` Nullable(String), `top_tls_failure` Nullable(String),
             `dns_blocked` Float32, `dns_down` Float32, `dns_ok` Float32,
             `tcp_blocked` Float32, `tcp_down` Float32, `tcp_ok` Float32,
-            `tls_blocked` Float32, `tls_down` Float32, `tls_ok` Float32
+            `tls_blocked` Float32, `tls_down` Float32, `tls_ok` Float32,
+            -- Which rule in analysis/rules.py produced the score above. Appended
+            -- last because the writer uses a positional INSERT .. SELECT, and
+            -- ALTER TABLE ADD COLUMN appends here too.
+            `top_dns_rule_id` LowCardinality(String),
+            `top_tcp_rule_id` LowCardinality(String),
+            `top_tls_rule_id` LowCardinality(String)
         )
         ENGINE = ReplacingMergeTree
         PRIMARY KEY measurement_uid
