@@ -3,6 +3,7 @@ from oonidata.models.nettests import FacebookMessenger
 from oonidata.models.observations import WebObservation
 
 from ..measurement_transformer import MeasurementTransformer
+from ...targets import assign_target_ids
 
 
 class FacebookMessengerTransformer(MeasurementTransformer):
@@ -10,9 +11,9 @@ class FacebookMessengerTransformer(MeasurementTransformer):
         dns_observations = self.make_dns_observations(msmt.test_keys.queries)
         tcp_observations = self.make_tcp_observations(msmt.test_keys.tcp_connect)
 
-        return (
-            self.consume_web_observations(
-                dns_observations=dns_observations,
-                tcp_observations=tcp_observations,
-            ),
+        web_observations = self.consume_web_observations(
+            dns_observations=dns_observations,
+            tcp_observations=tcp_observations,
         )
+        assign_target_ids("facebook_messenger", web_observations)
+        return (web_observations,)

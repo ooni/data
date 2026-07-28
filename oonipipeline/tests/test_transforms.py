@@ -1,5 +1,7 @@
 from typing import List
 
+import pytest
+
 from oonidata.dataclient import load_measurement
 from oonidata.models.nettests.dnscheck import DNSCheck
 from oonidata.models.nettests.echcheck import ECHCheck
@@ -508,3 +510,130 @@ def test_scrubbed_ip(netinfodb, measurements):
     web_obs = obs_tup[0]
     assert len(web_obs) == 31
     assert len(ctrl_obs) == 5
+
+
+# --- target_id tagging for the IM tests -------------------------------------
+#
+# These tests probe fixed, named platform endpoints rather than a per-measurement
+# URL, so their observations carry no `input` to group by. WebObservation.target_id
+# is what identifies the endpoint; assert it is populated and that tagging did not
+# perturb the observation counts asserted above.
+
+IM_EXPECTED_TARGETS = {
+    "20230427235943.206438_US_telegram_ac585306869eca7b": (
+        "telegram",
+        {"telegram/dc_pool", "telegram/web"},
+    ),
+    "20210926222047.205897_UZ_signal_95fab4a2e669573f": (
+        "signal",
+        {
+            "signal/chat",
+            "signal/directory",
+            "signal/cdn",
+            "signal/sfu",
+            "signal/storage",
+            "signal/uptime",
+        },
+    ),
+    "20211018232506.972850_IN_whatsapp_44970a56806dbfb3": (
+        "whatsapp",
+        {"whatsapp/endpoints", "whatsapp/registration", "whatsapp/web"},
+    ),
+    "20220124235953.650143_ES_facebookmessenger_0e048a26b89a9d70": (
+        "facebook_messenger",
+        {
+            "facebook_messenger/star",
+            "facebook_messenger/b_api",
+            "facebook_messenger/b_graph",
+            "facebook_messenger/edge",
+            "facebook_messenger/external_cdn",
+            "facebook_messenger/scontent_cdn",
+            "facebook_messenger/stun",
+        },
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "measurement_uid,platform,expected_targets",
+    [(uid, p, t) for uid, (p, t) in IM_EXPECTED_TARGETS.items()],
+    ids=[p for _, (p, _) in IM_EXPECTED_TARGETS.items()],
+)
+def test_im_observations_are_tagged_with_targets(
+    netinfodb, measurements, measurement_uid, platform, expected_targets
+):
+    from oonipipeline.targets import TARGETS_BY_ID
+
+    msmt = load_measurement(msmt_path=measurements[measurement_uid])
+    web_obs = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)[0]
+
+    seen = {wo.target_id for wo in web_obs if wo.target_id}
+    assert seen == expected_targets
+
+    # Every tagged id must be a declared target, so a typo in a transformer
+    # can't invent one.
+    for target_id in seen:
+        assert target_id in TARGETS_BY_ID
+        assert TARGETS_BY_ID[target_id].platform == platform
+
+    # Every observation that identifies an endpoint gets tagged. Rows with
+    # neither a hostname nor an IP carry no endpoint identity and are exempt.
+    untagged = [wo for wo in web_obs if not wo.target_id and (wo.hostname or wo.ip)]
+    assert not untagged, (
+        f"{len(untagged)} observations identify an endpoint but got no "
+        f"target_id, e.g. hostname={untagged[0].hostname!r} ip={untagged[0].ip!r}"
+    )
+
+
+IM_PLATFORM_BY_FIXTURE_TOKEN = {
+    "_telegram_": "telegram",
+    "_signal_": "signal",
+    "_whatsapp_": "whatsapp",
+    "_facebookmessenger_": "facebook_messenger",
+}
+
+
+def _im_fixture_uids():
+    from ._fixtures import SAMPLE_MEASUREMENTS
+
+    for uid in SAMPLE_MEASUREMENTS:
+        for token, platform in IM_PLATFORM_BY_FIXTURE_TOKEN.items():
+            if token in uid:
+                yield uid, platform
+
+
+@pytest.mark.parametrize(
+    "measurement_uid,platform", list(_im_fixture_uids()), ids=lambda v: str(v)
+)
+def test_every_im_endpoint_resolves_to_a_target(
+    netinfodb, measurements, measurement_uid, platform
+):
+    """
+    Drift canary across every IM fixture, not just the representative ones.
+
+    The platforms rename endpoints — Signal moved chat from
+    textsecure-service.whispersystems.org to chat.signal.org and directory from
+    api.directory.signal.org to cdsi.signal.org, and both eras are in the
+    archive. An unrecognised hostname silently produces an untagged observation
+    that then drops out of any target-keyed analysis, so fail loudly here
+    instead and add the hostname to oonipipeline/targets.py.
+    """
+    msmt = load_measurement(msmt_path=measurements[measurement_uid])
+    web_obs = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)[0]
+
+    unresolved = sorted(
+        {
+            endpoint
+            for wo in web_obs
+            if not wo.target_id
+            for endpoint in [wo.hostname or wo.ip]
+            # OONI's PII scrubbing substitutes the literal string "scrubbed"
+            # for an address it redacted, so these rows carry no endpoint
+            # identity to resolve. Not a missing mapping.
+            if endpoint and endpoint != "scrubbed"
+        }
+    )
+    assert not unresolved, (
+        f"{platform} fixture {measurement_uid} has endpoints with no target "
+        f"mapping: {unresolved}"
+    )
