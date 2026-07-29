@@ -27,8 +27,8 @@ Both used `CREATE TABLE IF NOT EXISTS`, so whichever ran first on a given
 deployment won, and the analysis query's join behaviour differed accordingly.
 The `EmbeddedRocksDB` definition is now the only one.
 
-A deployment that ended up with the `URL` variant will keep working — the join
-still resolves — but every query against it performs a live HTTPS fetch from
+A deployment that ended up with the `URL` variant will keep working, the join
+still resolves, but every query against it performs a live HTTPS fetch from
 raw.githubusercontent.com, and the untyped columns compare differently. It must
 be rebuilt.
 
@@ -59,7 +59,7 @@ SHOW CREATE TABLE fingerprints_dns;
 SELECT count() FROM fingerprints_dns;
 ```
 
-Expect `EmbeddedRocksDB` and a row count between 100 and 50,000 — the updater
+Expect `EmbeddedRocksDB` and a row count between 100 and 50,000, the updater
 asserts this range itself, so a failure there means the upstream CSV is
 malformed and the old table should be left in place.
 
@@ -97,7 +97,7 @@ ALTER TABLE analysis_web_measurement
 `ADD COLUMN` appends, which matches where they sit in `make_create_queries()`
 and in the query's projection. Do not insert them mid-table: the positional
 insert relies on the order agreeing. `tests/test_rules.py` asserts the two
-stay in sync, but only for a freshly created table — it cannot see a live
+stay in sync, but only for a freshly created table. It cannot see a live
 schema that drifted.
 
 Existing rows backfill as `''`, which is distinguishable from the `'none'`
@@ -112,7 +112,7 @@ GROUP BY top_dns_rule_id ORDER BY count() DESC;
 ```
 
 This is the distribution that was previously unknowable. Expect
-`answer_unmatched` to be a large share of non-zero `dns_blocked` rows — that
+`answer_unmatched` to be a large share of non-zero `dns_blocked` rows, that
 catch-all scores 0.75 blocked and is the main suspected false-positive source.
 Confirming or refuting that is the point of the column.
 
@@ -120,7 +120,7 @@ Confirming or refuting that is the point of the column.
 
 The columns are additive and unused by the detector and the API. Reverting the
 code without dropping them is safe: the old writer projects fewer columns than
-the table has, which `INSERT .. SELECT` rejects — so roll back the DDL too if
+the table has, which `INSERT .. SELECT` rejects, so roll back the DDL too if
 reverting.
 
 ```sql
@@ -149,7 +149,7 @@ therefore produced different scores than the original run, and because
 `measurement_uid`, the newer value silently won.
 
 This step adds the rollup table and starts populating it. **The analysis query
-does not read it yet** — that is a separate change, gated on comparing the two
+does not read it yet**, that is a separate change, gated on comparing the two
 paths on real data.
 
 ### Apply
@@ -185,7 +185,7 @@ SETTINGS index_granularity = 8192;
 The rollup only covers windows that have been written. Before anything reads
 it, backfill further back than the earliest window you intend to analyse by at
 least `DEFAULT_CTRL_LOOKBACK` (see `analysis/ctrl_rollup.py` for the current
-value) — a control window that starts before the rollup does will silently see
+value), a control window that starts before the rollup does will silently see
 a partial baseline, which is the failure mode this change exists to remove.
 Backfilling further than the minimum is cheap and harmless, so err wide.
 
@@ -198,8 +198,8 @@ make_ctrl_rollup(MakeCtrlRollupParams(clickhouse_url='<URL>', timestamp='2026-07
 "
 ```
 
-`write_ctrl_rollup` is idempotent — one row per key per write into a
-`ReplacingMergeTree` — so re-running a window replaces it rather than
+`write_ctrl_rollup` is idempotent, one row per key per write into a
+`ReplacingMergeTree`, so re-running a window replaces it rather than
 accumulating. Re-running a backfill is safe.
 
 ### Verify
