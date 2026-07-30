@@ -188,3 +188,80 @@ To restore it, recover the implementation from commit `b02923b` and re-apply
 the create and backfill it documented. Do that only with evidence that a wider
 control window improves scoring, per
 [implementation-plan.md](implementation-plan.md) §3.3.
+
+---
+
+## 4. Add `probe_id` columns
+
+**Introduced by:** "Extract probe_id from measurements"
+
+### Background
+
+Measurements now carry a top-level `probe_id`: a pseudonymous probe identifier
+issued via anonymous credentials, so repeated measurements from one probe can be
+linked without identifying it. The pipeline extracts it onto every observation
+(via `ProbeMeta`) and carries it through to `analysis_web_measurement`, which is
+what lets consumers count distinct probes instead of using `uniq(report_id)` as
+a proxy.
+
+Every measurement collected before the scheme shipped omits the key. It
+normalises to `''`, which means **unknown**, not "one probe". Queries must
+exclude it: `uniqIf(probe_id, probe_id != '')`.
+
+### Fix
+
+Two independent changes. **Apply the `analysis_web_measurement` one before
+deploying**, because that writer uses a positional `INSERT .. SELECT` and will
+fail on a column-count mismatch.
+
+```sql
+-- Observation tables. Inserts name their columns, so these are not
+-- order-sensitive and can be applied at any point.
+ALTER TABLE obs_web            ADD COLUMN IF NOT EXISTS `probe_id` String;
+ALTER TABLE obs_http_middlebox ADD COLUMN IF NOT EXISTS `probe_id` String;
+
+-- Judgment table. Order-sensitive: must be appended last, matching where it
+-- sits in make_create_queries() and in the query's projection.
+ALTER TABLE analysis_web_measurement ADD COLUMN IF NOT EXISTS `probe_id` String;
+```
+
+`obs_web_ctrl` does **not** get the column. It records the test helper's view,
+which has no probe, and `WebControlObservation` carries no `ProbeMeta`.
+
+Note the generated DDL places `probe_id` inside the `ProbeMeta` block, in the
+middle of the observation tables, while `ADD COLUMN` appends it at the end. That
+divergence is harmless because observation inserts name their columns, but a
+freshly created table and a migrated one will differ in column order.
+
+### Verify
+
+```sql
+SELECT table, name, type FROM system.columns
+WHERE database = currentDatabase() AND name = 'probe_id' ORDER BY table;
+```
+
+Expect `obs_web`, `obs_http_middlebox` and `analysis_web_measurement`. After the
+next analysis run, coverage should start appearing on recent measurements only:
+
+```sql
+SELECT toStartOfDay(measurement_start_time) AS d,
+       countIf(probe_id != '') AS with_id, count() AS total
+FROM analysis_web_measurement
+WHERE measurement_start_time > now() - INTERVAL 7 DAY
+GROUP BY d ORDER BY d;
+```
+
+Old buckets are legitimately all-empty; only measurements collected after probes
+began sending the field will populate it.
+
+### Rollback
+
+Revert the code first, then drop. Reverting the code without dropping leaves the
+analysis writer projecting one column fewer than the table has, which
+`INSERT .. SELECT` rejects.
+
+```sql
+ALTER TABLE obs_web                  DROP COLUMN IF EXISTS `probe_id`;
+ALTER TABLE obs_http_middlebox       DROP COLUMN IF EXISTS `probe_id`;
+ALTER TABLE analysis_web_measurement DROP COLUMN IF EXISTS `probe_id`;
+```

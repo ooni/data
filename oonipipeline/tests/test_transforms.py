@@ -637,3 +637,55 @@ def test_every_im_endpoint_resolves_to_a_target(
         f"{platform} fixture {measurement_uid} has endpoints with no target "
         f"mapping: {unresolved}"
     )
+
+
+# --- probe_id extraction ----------------------------------------------------
+
+
+def _load_with(measurement_uid, measurements, **overrides):
+    import orjson
+
+    raw = orjson.loads(measurements[measurement_uid].read_bytes())
+    raw.update(overrides)
+    return load_measurement(msmt=raw)
+
+
+def test_probe_id_is_extracted_onto_observations(netinfodb, measurements):
+    """
+    probe_id is a pseudonymous identifier issued via anonymous credentials,
+    carried as a top-level key on the measurement. It lets consumers count
+    distinct probes rather than using uniq(report_id) as a proxy.
+    """
+    uid = "20220608132401.787399_AM_webconnectivity_2285fc373f62729e"
+    msmt = _load_with(uid, measurements, probe_id="anoncred-v1-9f2c4a7b")
+    assert msmt.probe_id == "anoncred-v1-9f2c4a7b"
+
+    web_obs, ctrl_obs = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)
+    assert web_obs
+    for o in web_obs:
+        assert o.probe_meta.probe_id == "anoncred-v1-9f2c4a7b"
+
+
+def test_probe_id_absent_normalises_to_empty_string(netinfodb, measurements):
+    """
+    Every measurement collected before the scheme shipped omits the key. It must
+    normalise to "" rather than None, so that "unknown probe" is a single value
+    and the ClickHouse column stays non-nullable.
+    """
+    uid = "20220608132401.787399_AM_webconnectivity_2285fc373f62729e"
+    msmt = load_measurement(msmt_path=measurements[uid])
+    assert msmt.probe_id is None
+
+    web_obs, _ = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)
+    assert web_obs
+    for o in web_obs:
+        assert o.probe_meta.probe_id == ""
+
+
+def test_probe_id_extracted_for_non_web_nettests(netinfodb, measurements):
+    """The field is on BaseMeasurement, so every nettest inherits it."""
+    uid = "20210926222047.205897_UZ_signal_95fab4a2e669573f"
+    msmt = _load_with(uid, measurements, probe_id="anoncred-v1-deadbeef")
+    web_obs = measurement_to_observations(msmt=msmt, netinfodb=netinfodb)[0]
+    assert web_obs
+    assert {o.probe_meta.probe_id for o in web_obs} == {"anoncred-v1-deadbeef"}

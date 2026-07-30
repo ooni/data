@@ -255,7 +255,11 @@ def make_create_queries():
             -- ALTER TABLE ADD COLUMN appends here too.
             `top_dns_rule_id` LowCardinality(String),
             `top_tcp_rule_id` LowCardinality(String),
-            `top_tls_rule_id` LowCardinality(String)
+            `top_tls_rule_id` LowCardinality(String),
+            -- Pseudonymous probe identifier, "" when the measurement predates
+            -- the anonymous-credential scheme. Lets consumers count distinct
+            -- probes instead of using uniq(report_id) as a proxy.
+            `probe_id` String
         )
         ENGINE = ReplacingMergeTree
         PRIMARY KEY measurement_uid

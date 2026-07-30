@@ -196,6 +196,7 @@ def test_generated_query_select_list_matches_table_column_count():
         "measurement_start_time",
         "measurement_uid",
         "ooni_run_link_id",
+        "probe_id",
     ]
     projected = len(aliases) + len(plain) - 1  # 'domain' is both plain and an alias
 

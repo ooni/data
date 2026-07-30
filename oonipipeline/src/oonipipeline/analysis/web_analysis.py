@@ -199,7 +199,11 @@ def format_query_analysis_web_fuzzy_logic(
     -- specifically. Ties (e.g. all-zero rows) resolve arbitrarily.
     argMax(dns_rule_id, dns_blocked) as top_dns_rule_id,
     argMax(tcp_rule_id, tcp_blocked) as top_tcp_rule_id,
-    argMax(tls_rule_id, tls_blocked) as top_tls_rule_id
+    argMax(tls_rule_id, tls_blocked) as top_tls_rule_id,
+
+    -- Constant within a measurement, so it rides along in the GROUP BY rather
+    -- than needing an aggregate.
+    probe_id
 
     FROM (
         WITH
@@ -213,6 +217,7 @@ def format_query_analysis_web_fuzzy_logic(
         hostname,
         input,
         probe_asn, probe_as_org_name, probe_cc, resolver_asn, resolver_as_cc, network_type,
+        probe_id,
         measurement_start_time, test_name,
         toStartOfDay(measurement_start_time) as measurement_day,
 
@@ -419,7 +424,8 @@ def format_query_analysis_web_fuzzy_logic(
     network_type, test_name,
     measurement_start_time,
     measurement_uid,
-    ooni_run_link_id
+    ooni_run_link_id,
+    probe_id
     SETTINGS join_algorithm = 'grace_hash', grace_hash_join_initial_buckets = 8
     """
     return SQL, q_params
