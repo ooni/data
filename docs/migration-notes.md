@@ -138,19 +138,24 @@ ALTER TABLE analysis_web_measurement
 
 ### Background
 
-The analysis query derives its control by aggregating a full day of
-`obs_web_ctrl` plus a second full-day scan of `obs_web`, on every hourly run.
-That is ~24x redundant work, and it makes scoring depend on *when the job ran*:
-the 01:00 run sees roughly an hour of control data and the 23:00 run sees
-twenty-three, so `ctrl_dns_success_rate > 0.5` is a threshold over very
-different sample sizes depending on time of day. Re-running a backfill
-therefore produced different scores than the original run, and because
-`analysis_web_measurement` is a `ReplacingMergeTree` keyed on
-`measurement_uid`, the newer value silently won.
+The analysis query derives its control inline, aggregating `obs_web_ctrl` plus a
+second scan of `obs_web` for TLS-consistent addresses. This step precomputes
+that baseline into an hourly rollup so consumers can read a cheap aggregate over
+an arbitrary trailing window instead of scanning raw observations.
 
-This step adds the rollup table and starts populating it. **The analysis query
-does not read it yet**, that is a separate change, gated on comparing the two
-paths on real data.
+**Correction to the original rationale.** This was scoped on a belief that the
+inline derivation was non-deterministic and ~24x redundant. Re-reading the
+generated SQL showed both claims were wrong: the control subqueries bind the
+same `start_time`/`end_time` as the experiment, so each run scans exactly its
+own hour and re-running an hour reproduces the same control. The `toStartOfDay`
+grouping is a join key, not a window.
+
+The rollup is therefore **not** currently on a delivery path. It is populated,
+harmless, and remains the right substrate if a genuinely wider baseline
+(trailing 24h or 7d) is wanted later. See
+[implementation-plan.md](implementation-plan.md) §4.
+
+**The analysis query does not read it**, and nothing in the MVP will.
 
 ### Apply
 
