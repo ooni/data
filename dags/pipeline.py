@@ -62,27 +62,6 @@ def run_make_analysis(
     make_analysis(params)
 
 
-def run_make_ctrl_rollup(
-    clickhouse_url: str,
-    timestamp: str = "",
-    ts: str = "",
-):
-    from oonipipeline.tasks.ctrl_rollup import (
-        MakeCtrlRollupParams,
-        make_ctrl_rollup,
-    )
-
-    if timestamp == "":
-        timestamp = ts[:13]
-
-    make_ctrl_rollup(
-        MakeCtrlRollupParams(
-            clickhouse_url=clickhouse_url,
-            timestamp=timestamp[:13],
-        )
-    )
-
-
 def run_make_event_detector(
     clickhouse_url: str,
     probe_cc: List[str],
@@ -231,17 +210,6 @@ with DAG(
         system_site_packages=False,
     )
 
-    op_make_ctrl_rollup_hourly = PythonVirtualenvOperator(
-        task_id="make_ctrl_rollup",
-        python_callable=run_make_ctrl_rollup,
-        op_kwargs={
-            "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
-            "ts": "{{ ts }}",
-        },
-        requirements=REQUIREMENTS,
-        system_site_packages=False,
-    )
-
     op_make_analysis_hourly = PythonVirtualenvOperator(
         task_id="make_analysis",
         python_callable=run_make_analysis,
@@ -307,7 +275,6 @@ with DAG(
 
     (
         op_make_observations_hourly
-        >> op_make_ctrl_rollup_hourly
         >> op_make_analysis_hourly
         >> op_gate_event_detector
         >> op_make_event_detector_hourly

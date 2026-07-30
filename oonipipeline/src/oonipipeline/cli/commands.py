@@ -20,10 +20,6 @@ from oonipipeline.tasks.analysis import (
     make_analysis,
 )
 from oonipipeline.tasks.common import OptimizeTablesParams, optimize_tables
-from oonipipeline.tasks.ctrl_rollup import (
-    MakeCtrlRollupParams,
-    make_ctrl_rollup,
-)
 from oonipipeline.tasks.observations import (
     MakeObservationsParams,
     make_observations,
@@ -179,17 +175,6 @@ def run(
             click.echo("finished running make_observations")
 
         if not only_observations:
-            # Must run after observations and before analysis: it reads
-            # obs_web_ctrl/obs_web for this window and is what the analysis
-            # control will be assembled from.
-            make_ctrl_rollup(
-                MakeCtrlRollupParams(
-                    clickhouse_url=config.clickhouse_url,
-                    timestamp=timestamp,
-                )
-            )
-            click.echo("finished running make_ctrl_rollup")
-
             make_analysis(
                 MakeAnalysisParams(
                     clickhouse_url=config.clickhouse_url,

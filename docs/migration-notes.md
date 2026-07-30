@@ -132,100 +132,59 @@ ALTER TABLE analysis_web_measurement
 
 ---
 
-## 3. Create `obs_web_ctrl_rollup` and backfill it
+## 3. Drop `obs_web_ctrl_rollup` if it was ever created
 
-**Introduced by:** "Precompute the control baseline into an hourly rollup"
+**Introduced by:** "Revert the control baseline rollup"
 
 ### Background
 
-The analysis query derives its control inline, aggregating `obs_web_ctrl` plus a
-second scan of `obs_web` for TLS-consistent addresses. This step precomputes
-that baseline into an hourly rollup so consumers can read a cheap aggregate over
-an arbitrary trailing window instead of scanning raw observations.
+An earlier step created `obs_web_ctrl_rollup`, a precomputed hourly control
+baseline, along with a writer task in the hourly DAG and in the CLI `run` loop.
+**That work has been reverted in full**: the table is no longer in
+`make_create_queries()`, and nothing writes to or reads from it.
 
-**Correction to the original rationale.** This was scoped on a belief that the
-inline derivation was non-deterministic and ~24x redundant. Re-reading the
-generated SQL showed both claims were wrong: the control subqueries bind the
-same `start_time`/`end_time` as the experiment, so each run scans exactly its
-own hour and re-running an hour reproduces the same control. The `toStartOfDay`
-grouping is a join key, not a window.
+It was built to fix a determinism and cost problem in the inline control
+derivation. Re-reading the generated SQL showed that problem did not exist:
+both control subqueries bind the same `start_time`/`end_time` as the experiment,
+so each run already scans exactly its own hour and re-running an hour reproduces
+the same control. The real defect is that the window is too *narrow*, which is
+being fixed in the rule set instead. See
+[implementation-plan.md](implementation-plan.md) §3.3.
 
-The rollup is therefore **not** currently on a delivery path. It is populated,
-harmless, and remains the right substrate if a genuinely wider baseline
-(trailing 24h or 7d) is wanted later. See
-[implementation-plan.md](implementation-plan.md) §4.
+### Check whether it exists
 
-**The analysis query does not read it**, and nothing in the MVP will.
-
-### Apply
-
-The table is created by `make_create_queries()`, so
-`oonipipeline checkdb --create-tables` (or the normal deploy path) will add it.
-To create it by hand:
+The table was only ever created by an explicit run of the step below, or by
+`checkdb --create-tables` while the reverted code was deployed. Many
+deployments will never have had it.
 
 ```sql
-CREATE TABLE IF NOT EXISTS obs_web_ctrl_rollup
-(
-    `hostname` String,
-    `ts_hour` DateTime('UTC'),
-    `ip` String,
-    `ip_asn` UInt32,
-    `dns_success_count` UInt32,
-    `dns_failure_count` UInt32,
-    `tcp_success_count` UInt32,
-    `tcp_failure_count` UInt32,
-    `tls_success_count` UInt32,
-    `tls_failure_count` UInt32,
-    `tls_inconsistent_count` UInt32,
-    `tls_consistent_probe_count` UInt32
-)
-ENGINE = ReplacingMergeTree
-ORDER BY (hostname, ts_hour, ip, ip_asn)
-PARTITION BY toYYYYMM(ts_hour)
-SETTINGS index_granularity = 8192;
+EXISTS TABLE obs_web_ctrl_rollup;
 ```
 
-### Backfill
+### Fix
 
-The rollup only covers windows that have been written. Before anything reads
-it, backfill further back than the earliest window you intend to analyse by at
-least `DEFAULT_CTRL_LOOKBACK` (see `analysis/ctrl_rollup.py` for the current
-value), a control window that starts before the rollup does will silently see
-a partial baseline, which is the failure mode this change exists to remove.
-Backfilling further than the minimum is cheap and harmless, so err wide.
-
-Per-hour, via the task:
-
-```bash
-python -c "
-from oonipipeline.tasks.ctrl_rollup import MakeCtrlRollupParams, make_ctrl_rollup
-make_ctrl_rollup(MakeCtrlRollupParams(clickhouse_url='<URL>', timestamp='2026-07-27T13'))
-"
-```
-
-`write_ctrl_rollup` is idempotent, one row per key per write into a
-`ReplacingMergeTree`, so re-running a window replaces it rather than
-accumulating. Re-running a backfill is safe.
-
-### Verify
-
-```sql
-SELECT toDate(ts_hour) AS d, count() AS rows, uniqExact(hostname) AS hostnames
-FROM obs_web_ctrl_rollup FINAL
-GROUP BY d ORDER BY d DESC LIMIT 10;
-```
-
-Expect one row per (hostname, hour, ip). Query it with `FINAL`: replacement is
-applied at merge time, so without it a re-run that has not merged yet is
-counted twice.
-
-### Rollback
-
-Nothing reads the table yet, so dropping it only loses the backfill:
+Nothing read the table, so dropping it loses only its own contents. Deploy the
+revert **first**, so the DAG and CLI stop referencing the writer, then:
 
 ```sql
 DROP TABLE IF EXISTS obs_web_ctrl_rollup;
 ```
 
-Also revert the `make_ctrl_rollup` task from the hourly DAG and the CLI `run`
-loop, or they will fail on the missing table.
+If the reverted code is still deployed when you drop it, the hourly
+`make_ctrl_rollup` task will fail on the missing table. Order matters.
+
+### Verify
+
+```sql
+EXISTS TABLE obs_web_ctrl_rollup;   -- expect 0
+```
+
+Confirm the hourly DAG no longer has a `make_ctrl_rollup` task and that
+`make_observations` runs straight into `make_analysis`.
+
+### Rollback
+
+To restore it, recover the implementation from commit `b02923b` and re-apply
+the create and backfill it documented. Do that only with evidence that a wider
+control window improves scoring, per
+[implementation-plan.md](implementation-plan.md) §3.3.
