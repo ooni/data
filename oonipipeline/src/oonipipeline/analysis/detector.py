@@ -540,8 +540,47 @@ def run_detector(
 
     return changepoints, updated_cusums, steps
 
+def run_detector_for(
+    clickhouse_url: str,
+    start_time: datetime,
+    end_time: datetime,
+    probe_cc: str,
+    domains: List[str],
+    edd: int = 10,
+    gap_halflife: float = 48.0,
+    warmup: bool = True,
+    trace: bool = True,
+) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
+    """
+    Runs the detector for a specific probe_cc, asn, domain, returning the
+    results without saving it to database.
+    """
+    db = ClickhouseClient.from_url(clickhouse_url)
+
+    observations = get_observations(
+        db,
+        start_time=start_time,
+        end_time=end_time,
+        probe_cc=[probe_cc],
+        domains=domains,
+    )
+
+    changepoints, updated_cusums, steps = detect_changepoints(
+        observations=observations,
+        cusum_map={},
+        edd=edd,
+        gap_halflife=gap_halflife,
+        analysis_columns=ANALYSIS_COLS,
+        warmup=warmup,
+        trace=trace,
+    )
+
+    return changepoints, updated_cusums, steps
 
 def plot(steps: List[CusumStep], block_type: str):
+    make_cusums_chart(steps, block_type).show()
+
+def make_cusums_chart(steps: List[CusumStep], block_type: str):
     import altair as alt
     import pandas as pd
 
@@ -655,8 +694,7 @@ def plot(steps: List[CusumStep], block_type: str):
         )
         .interactive()
     )
-    chart.show()
-
+    return chart
 
 def notify_slack(
     changepoints: list[Changepoint],

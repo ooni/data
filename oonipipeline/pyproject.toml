@@ -40,6 +40,7 @@ analysis = [
   "altair ~= 4.2.0",
   "jupyterlab ~= 4.0.7",
   "bokeh ~= 3.5.2",
+  "streamlit",
 ]
 
 [tool.hatch.build.targets.sdist]
