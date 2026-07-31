@@ -7,14 +7,6 @@ import pandas as pd
 
 log = logging.getLogger(__name__)
 
-
-def sample(lst: list, n: int):
-    if n >= len(lst):
-        return lst
-    step = len(lst) / n
-    return [lst[int(i * step)] for i in range(n)]
-
-
 def to_datetime(d: date):
     return datetime(year=d.year, month=d.month, day=d.day, hour=0, tzinfo=timezone.utc)
 
@@ -106,7 +98,7 @@ def detector_panel():
         st.warning(f"No cusum steps found for ASN {selected_asn}")
         return
 
-    st.altair_chart(make_cusums_chart(sample(chart_steps, 1000), block_type))
+    st.altair_chart(make_cusums_chart(chart_steps, block_type))
 
     if asns:
         df = pd.DataFrame({"ASN": list(asns.keys()), "total": list(asns.values())})
