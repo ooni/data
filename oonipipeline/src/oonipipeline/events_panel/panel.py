@@ -23,6 +23,7 @@ def to_datetime(d: date):
 def run_detector_cached(*args, **kwargs):
     return run_detector_for(*args, **kwargs)
 
+st.set_page_config(layout="wide")
 
 def detector_panel():
     st.write(
@@ -106,14 +107,15 @@ def detector_panel():
         st.warning(f"No cusum steps found for ASN {selected_asn}")
         return
 
-    st.altair_chart(make_cusums_chart(sample(chart_steps, 1000), "dns_isp_blocked"))
+    c1, c2 = st.columns([3,1])
+    c1.altair_chart(make_cusums_chart(sample(chart_steps, 1000), "dns_isp_blocked"))
 
     if asns:
         df = pd.DataFrame({"ASN": list(asns.keys()), "total": list(asns.values())})
         df = df.sort_values("total", ascending=False).reset_index(drop=True)
         df["ASN"] = df["ASN"].astype(str)
 
-        event = st.dataframe(
+        event = c2.dataframe(
             df,
             hide_index=True,
             on_select="rerun",
