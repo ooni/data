@@ -1,6 +1,6 @@
 from collections import defaultdict
 import streamlit as st
-from oonipipeline.analysis.detector import make_cusums_chart, run_detector_for
+from oonipipeline.analysis.detector import make_cusums_chart, run_detector_for, ANALYSIS_COLS
 from datetime import datetime, timezone, timedelta, date
 import logging
 import pandas as pd
@@ -58,7 +58,7 @@ def detector_panel():
         submitted = st.form_submit_button("Run detector")
 
     # Only recompute on submit; store in session_state so results survive
-    # the rerun triggered by clicking a table row.
+    # reruns triggered by the selectboxes below.
     if submitted:
         changepoints, _, cusum_steps = run_detector_cached(
             clickhouse_url,
@@ -72,7 +72,6 @@ def detector_panel():
         )
         st.session_state["changepoints"] = changepoints
         st.session_state["cusum_steps"] = cusum_steps
-        st.session_state["selected_asn"] = None  # reset selection on new run
 
     if "cusum_steps" not in st.session_state:
         return
@@ -94,40 +93,26 @@ def detector_panel():
     c1.write(f"Changepoints: **{len(changepoints)}**")
     c2.write(f"Cusum steps: **{len(cusum_steps)}**")
 
-    # Which ASN to filter the chart by: selected row takes priority,
-    # else default to the ASN with the highest count.
-    selected_asn = st.session_state.get("selected_asn") or max(asns, key=asns.get)
+    c1, c2 = st.columns(2)
+    block_type = c1.selectbox("Block type", [c[0] for c in ANALYSIS_COLS])
 
-    st.write(f"**Filtering chart by ASN: {selected_asn}**")
-    chart_steps = [
-        s for s in cusum_steps if str(s["probe_asn"]) == str(selected_asn)
-    ]
+    asn_list = list(asns.keys())
+    asn_list.sort(key=lambda k: asns[k], reverse=True)
+    selected_asn = c2.selectbox("ASN", asn_list, format_func=lambda k: f"{k} ({asns[k]})")
+
+    chart_steps = [s for s in cusum_steps if s["probe_asn"] == selected_asn]
 
     if len(chart_steps) == 0:
         st.warning(f"No cusum steps found for ASN {selected_asn}")
         return
 
-    c1, c2 = st.columns([3,1])
-    c1.altair_chart(make_cusums_chart(sample(chart_steps, 1000), "dns_isp_blocked"))
+    st.altair_chart(make_cusums_chart(sample(chart_steps, 1000), block_type))
 
     if asns:
         df = pd.DataFrame({"ASN": list(asns.keys()), "total": list(asns.values())})
         df = df.sort_values("total", ascending=False).reset_index(drop=True)
         df["ASN"] = df["ASN"].astype(str)
-
-        event = c2.dataframe(
-            df,
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row",
-            key="asn_table",
-        )
-
-        if event.selection.rows:
-            row = df.iloc[event.selection.rows[0]]
-            if st.session_state.get("selected_asn") != row["ASN"]:
-                st.session_state["selected_asn"] = row["ASN"]
-                st.rerun()
+        st.dataframe(df, hide_index=True)
 
 
 detector_panel()
