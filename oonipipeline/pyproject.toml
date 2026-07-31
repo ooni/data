@@ -41,6 +41,7 @@ analysis = [
   "jupyterlab ~= 4.0.7",
   "bokeh ~= 3.5.2",
   "streamlit",
+  "pyarrow < 19", # fixes segfault with streamlit
 ]
 
 [tool.hatch.build.targets.sdist]
