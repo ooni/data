@@ -8,8 +8,10 @@ from .rules import (
     DNS_RULES,
     TCP_RULES,
     TLS_RULES,
+    render_evidence_multiif,
     render_outcome_multiif,
     render_rule_id_multiif,
+    render_top_rule_argmax,
 )
 
 log = logging.getLogger(__name__)
@@ -121,17 +123,22 @@ def format_query_analysis_web_fuzzy_logic(
         AND has(expected_countries, probe_cc) as dns_blocking_country_consistent,
 
     -- Possibility distributions of states (blocking, down, ok). The rule set and
-    -- its weights live in analysis/rules.py; the cascade below is generated from
-    -- there, as is the matching *_rule_id cascade, so a row's rule id always
-    -- names the rule that produced its score.
+    -- its weights live in analysis/rules.py; all three cascades below are
+    -- generated from there off the same conditions in the same order, so a row's
+    -- rule id and evidence level always belong to the rule that scored it.
+    -- *_evidence says whether the layer produced data at all, which the (0, 0, 0)
+    -- outcome cannot distinguish from a clean result.
     {render_outcome_multiif(DNS_RULES)} as dns_outcome,
     {render_rule_id_multiif(DNS_RULES)} as dns_rule_id,
+    {render_evidence_multiif(DNS_RULES)} as dns_evidence,
 
     {render_outcome_multiif(TCP_RULES)} as tcp_outcome,
     {render_rule_id_multiif(TCP_RULES)} as tcp_rule_id,
+    {render_evidence_multiif(TCP_RULES)} as tcp_evidence,
 
     {render_outcome_multiif(TLS_RULES)} as tls_outcome,
     {render_rule_id_multiif(TLS_RULES)} as tls_rule_id,
+    {render_evidence_multiif(TLS_RULES)} as tls_evidence,
 
     ip,
     ip_asn,
@@ -194,12 +201,12 @@ def format_query_analysis_web_fuzzy_logic(
     max(tls_down) as tls_down_max,
     max(tls_ok) as tls_ok_max,
 
-    -- The rule that drove this measurement's headline score. argMax over the
-    -- blocked possibility rather than anyHeavy, so the id explains *_blocked_max
-    -- specifically. Ties (e.g. all-zero rows) resolve arbitrarily.
-    argMax(dns_rule_id, dns_blocked) as top_dns_rule_id,
-    argMax(tcp_rule_id, tcp_blocked) as top_tcp_rule_id,
-    argMax(tls_rule_id, tls_blocked) as top_tls_rule_id,
+    -- The rule that drove this measurement's verdict, ranked so that the rows
+    -- carrying no data for a layer cannot outrank the rows that do. See
+    -- render_top_rule_argmax.
+    {render_top_rule_argmax("dns")},
+    {render_top_rule_argmax("tcp")},
+    {render_top_rule_argmax("tls")},
 
     -- Constant within a measurement, so it rides along in the GROUP BY rather
     -- than needing an aggregate.

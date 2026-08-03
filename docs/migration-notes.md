@@ -204,3 +204,40 @@ ALTER TABLE obs_web  ON CLUSTER oonidata_cluster                DROP COLUMN IF E
 ALTER TABLE obs_http_middlebox ON CLUSTER oonidata_cluster      DROP COLUMN IF EXISTS `probe_id`;
 ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster DROP COLUMN IF EXISTS `probe_id`;
 ```
+
+## 4. Reprocess `top_*_rule_id`
+
+**Introduced by:** "Rank the top rule on evidence before score"
+
+### Background
+
+`top_*_rule_id` was `argMax(rule_id, blocked)`. On a measurement that is not
+blocked the key is 0 on every row, so `argMax` kept whichever row it saw first.
+Every web_connectivity measurement carries one row per resolved IP plus one per
+redirect hop, and the redirect rows hold only HTTP, so they score `no_tls_data`
+and were winning that tie. The recorded values are wrong for a large share of
+rows, skewed toward the `no_*_data` ids.
+
+No DDL: the columns and their types are unchanged, only the expression filling
+them. Nothing reads these columns yet, so the reprocess can run behind the live
+pipeline.
+
+### Verify
+
+`no_*_data` should now appear only where the measurement genuinely had no data
+at that layer:
+
+```sql
+SELECT top_tls_rule_id, count() AS n,
+       countIf(greatest(tls_ok_max, tls_blocked_max, tls_down_max) > 0) AS with_verdict
+FROM analysis_web_measurement
+WHERE measurement_start_time > now() - INTERVAL 1 DAY
+GROUP BY top_tls_rule_id ORDER BY n DESC;
+```
+
+Any `no_*_data` row with `with_verdict > 0` means a row carrying no data still
+outranked one that did, so the evidence levels in `analysis/rules.py` are wrong.
+
+### Rollback
+
+Revert the code. Both versions write valid ids from the same vocabulary.
