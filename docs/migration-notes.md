@@ -88,7 +88,7 @@ will fail with a column-count mismatch. **Apply this before deploying.**
 ### Fix
 
 ```sql
-ALTER TABLE analysis_web_measurement
+ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster
     ADD COLUMN IF NOT EXISTS `top_dns_rule_id` LowCardinality(String),
     ADD COLUMN IF NOT EXISTS `top_tcp_rule_id` LowCardinality(String),
     ADD COLUMN IF NOT EXISTS `top_tls_rule_id` LowCardinality(String);
@@ -124,7 +124,7 @@ the table has, which `INSERT .. SELECT` rejects, so roll back the DDL too if
 reverting.
 
 ```sql
-ALTER TABLE analysis_web_measurement
+ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster
     DROP COLUMN IF EXISTS `top_dns_rule_id`,
     DROP COLUMN IF EXISTS `top_tcp_rule_id`,
     DROP COLUMN IF EXISTS `top_tls_rule_id`;
@@ -217,12 +217,12 @@ fail on a column-count mismatch.
 ```sql
 -- Observation tables. Inserts name their columns, so these are not
 -- order-sensitive and can be applied at any point.
-ALTER TABLE obs_web            ADD COLUMN IF NOT EXISTS `probe_id` String;
-ALTER TABLE obs_http_middlebox ADD COLUMN IF NOT EXISTS `probe_id` String;
+ALTER TABLE obs_web ON CLUSTER oonidata_cluster          ADD COLUMN IF NOT EXISTS `probe_id` String;
+ALTER TABLE obs_http_middlebox ON CLUSTER oonidata_cluster ADD COLUMN IF NOT EXISTS `probe_id` String;
 
 -- Judgment table. Order-sensitive: must be appended last, matching where it
 -- sits in make_create_queries() and in the query's projection.
-ALTER TABLE analysis_web_measurement ADD COLUMN IF NOT EXISTS `probe_id` String;
+ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster ADD COLUMN IF NOT EXISTS `probe_id` String;
 ```
 
 `obs_web_ctrl` does **not** get the column. It records the test helper's view,
@@ -261,7 +261,7 @@ analysis writer projecting one column fewer than the table has, which
 `INSERT .. SELECT` rejects.
 
 ```sql
-ALTER TABLE obs_web                  DROP COLUMN IF EXISTS `probe_id`;
-ALTER TABLE obs_http_middlebox       DROP COLUMN IF EXISTS `probe_id`;
-ALTER TABLE analysis_web_measurement DROP COLUMN IF EXISTS `probe_id`;
+ALTER TABLE obs_web  ON CLUSTER oonidata_cluster                DROP COLUMN IF EXISTS `probe_id`;
+ALTER TABLE obs_http_middlebox ON CLUSTER oonidata_cluster      DROP COLUMN IF EXISTS `probe_id`;
+ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster DROP COLUMN IF EXISTS `probe_id`;
 ```
