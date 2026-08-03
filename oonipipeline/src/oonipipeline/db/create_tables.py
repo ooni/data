@@ -163,7 +163,13 @@ def iter_table_fields(
             continue
         if f.name == "probe_meta":
             for f in fields(ProbeMeta):
-                type_str = typing_to_clickhouse(f.type)
+                # Pseudonymous probe identifier: fixed-width credential hash,
+                # not a variable-length String. Kept in sync with the literal
+                # FixedString(64) on analysis_web_measurement below.
+                if f.name == "probe_id":
+                    type_str = "FixedString(64)"
+                else:
+                    type_str = typing_to_clickhouse(f.type)
                 yield f, type_str
             continue
         if f.name == "measurement_meta":
@@ -259,7 +265,7 @@ def make_create_queries():
             -- Pseudonymous probe identifier, "" when the measurement predates
             -- the anonymous-credential scheme. Lets consumers count distinct
             -- probes instead of using uniq(report_id) as a proxy.
-            `probe_id` String
+            `probe_id` FixedString(64)
         )
         ENGINE = ReplacingMergeTree
         PRIMARY KEY measurement_uid

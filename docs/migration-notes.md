@@ -130,68 +130,7 @@ ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster
     DROP COLUMN IF EXISTS `top_tls_rule_id`;
 ```
 
----
-
-## 3. Drop `obs_web_ctrl_rollup` if it was ever created
-
-**Introduced by:** "Revert the control baseline rollup"
-
-### Background
-
-An earlier step created `obs_web_ctrl_rollup`, a precomputed hourly control
-baseline, along with a writer task in the hourly DAG and in the CLI `run` loop.
-**That work has been reverted in full**: the table is no longer in
-`make_create_queries()`, and nothing writes to or reads from it.
-
-It was built to fix a determinism and cost problem in the inline control
-derivation. Re-reading the generated SQL showed that problem did not exist:
-both control subqueries bind the same `start_time`/`end_time` as the experiment,
-so each run already scans exactly its own hour and re-running an hour reproduces
-the same control. The real defect is that the window is too *narrow*, which is
-being fixed in the rule set instead. See
-[implementation-plan.md](implementation-plan.md) §3.3.
-
-### Check whether it exists
-
-The table was only ever created by an explicit run of the step below, or by
-`checkdb --create-tables` while the reverted code was deployed. Many
-deployments will never have had it.
-
-```sql
-EXISTS TABLE obs_web_ctrl_rollup;
-```
-
-### Fix
-
-Nothing read the table, so dropping it loses only its own contents. Deploy the
-revert **first**, so the DAG and CLI stop referencing the writer, then:
-
-```sql
-DROP TABLE IF EXISTS obs_web_ctrl_rollup;
-```
-
-If the reverted code is still deployed when you drop it, the hourly
-`make_ctrl_rollup` task will fail on the missing table. Order matters.
-
-### Verify
-
-```sql
-EXISTS TABLE obs_web_ctrl_rollup;   -- expect 0
-```
-
-Confirm the hourly DAG no longer has a `make_ctrl_rollup` task and that
-`make_observations` runs straight into `make_analysis`.
-
-### Rollback
-
-To restore it, recover the implementation from commit `b02923b` and re-apply
-the create and backfill it documented. Do that only with evidence that a wider
-control window improves scoring, per
-[implementation-plan.md](implementation-plan.md) §3.3.
-
----
-
-## 4. Add `probe_id` columns
+## 3. Add `probe_id` columns
 
 **Introduced by:** "Extract probe_id from measurements"
 
@@ -217,12 +156,12 @@ fail on a column-count mismatch.
 ```sql
 -- Observation tables. Inserts name their columns, so these are not
 -- order-sensitive and can be applied at any point.
-ALTER TABLE obs_web ON CLUSTER oonidata_cluster          ADD COLUMN IF NOT EXISTS `probe_id` String;
-ALTER TABLE obs_http_middlebox ON CLUSTER oonidata_cluster ADD COLUMN IF NOT EXISTS `probe_id` String;
+ALTER TABLE obs_web ON CLUSTER oonidata_cluster          ADD COLUMN IF NOT EXISTS `probe_id` FixedString(64);
+ALTER TABLE obs_http_middlebox ON CLUSTER oonidata_cluster ADD COLUMN IF NOT EXISTS `probe_id` FixedString(64);
 
 -- Judgment table. Order-sensitive: must be appended last, matching where it
 -- sits in make_create_queries() and in the query's projection.
-ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster ADD COLUMN IF NOT EXISTS `probe_id` String;
+ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster ADD COLUMN IF NOT EXISTS `probe_id` FixedString(64);
 ```
 
 `obs_web_ctrl` does **not** get the column. It records the test helper's view,
