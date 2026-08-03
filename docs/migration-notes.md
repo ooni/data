@@ -329,17 +329,18 @@ WHERE query LIKE '%INSERT INTO analysis_web_measurement%';
 ones. Set the divisor to the number of hours in your range (720 for 30 days):
 
 ```sql
+WITH extract(query, 'measurement_start_time > \'([^\']+)\'') as mt
 SELECT
     count() AS windows_done,
     round(100 * count() / 720, 1) AS pct,
-    max(parseDateTimeBestEffort(
-        extract(query, 'measurement_start_time > \'([^\']+)\''))) AS latest_window,
+    max(parseDateTimeBestEffort(mt)) AS latest_window,
     round(avg(query_duration_ms) / 1000, 1) AS avg_secs,
     formatReadableTimeDelta((720 - count()) * avg(query_duration_ms) / 1000) AS eta
 FROM system.query_log
 WHERE type = 'QueryFinish'
   AND event_time > now() - INTERVAL 12 HOUR
-  AND query LIKE '%INSERT INTO analysis_web_measurement%';
+  AND query LIKE '%INSERT INTO analysis_web_measurement%'
+  AND mt != '';
 ```
 
 `query_log` is per node. Wrap it in
