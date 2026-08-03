@@ -329,18 +329,33 @@ WHERE query LIKE '%INSERT INTO analysis_web_measurement%';
 ones. Set the divisor to the number of hours in your range (720 for 30 days):
 
 ```sql
-WITH extract(query, 'measurement_start_time > \'([^\']+)\'') as mt
+WITH
+    toDateTime('2026-07-04 00:00:00') AS range_start,
+    toDateTime('2026-08-03 00:00:00') AS range_end
 SELECT
-    count() AS windows_done,
-    round(100 * count() / 720, 1) AS pct,
-    max(parseDateTimeBestEffort(mt)) AS latest_window,
-    round(avg(query_duration_ms) / 1000, 1) AS avg_secs,
-    formatReadableTimeDelta((720 - count()) * avg(query_duration_ms) / 1000) AS eta
-FROM system.query_log
-WHERE type = 'QueryFinish'
-  AND event_time > now() - INTERVAL 12 HOUR
-  AND query LIKE '%INSERT INTO analysis_web_measurement%'
-  AND mt != '';
+    count()                                      AS windows_done,
+    dateDiff('hour', range_start, range_end)     AS windows_total,
+    round(100 * windows_done / windows_total, 1) AS pct,
+    argMax(window_start, finished_at)            AS current_window,
+    max(window_start)                            AS furthest_window,
+    max(finished_at)                             AS last_activity,
+    round(avg(ms) / 1000, 1)                     AS avg_secs,
+    formatReadableTimeDelta((windows_total - windows_done) * avg(ms) / 1000) AS eta
+FROM (
+    -- One row per distinct window, keeping its most recent completion.
+    SELECT
+        parseDateTimeBestEffortOrNull(
+            extract(query, 'measurement_start_time > \'([^\']+)\'')) AS window_start,
+        max(event_time)                       AS finished_at,
+        argMax(query_duration_ms, event_time) AS ms
+    FROM system.query_log
+    WHERE type = 'QueryFinish'
+      AND is_initial_query
+      AND event_time > now() - INTERVAL 36 HOUR
+      AND query LIKE '%INSERT INTO analysis_web_measurement%'
+    GROUP BY window_start
+    HAVING window_start >= range_start AND window_start < range_end
+) Format Vertical
 ```
 
 `query_log` is per node. Wrap it in
