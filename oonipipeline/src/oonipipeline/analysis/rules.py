@@ -1,31 +1,33 @@
 """
 The fuzzy-logic rule set used to score web observations.
 
-Previously these rules lived as literal ``multiIf`` cascades inside the analysis
-query's f-string, which had two consequences:
+Previously these rules lived as literal ``multiIf`` cascades inside the analysis query's f-string,
+which had two consequences:
 
-1. The only way to exercise a rule was to stand up ClickHouse, write a fixture
-   measurement and run the whole query. The rules themselves had no unit tests.
-2. The output recorded *what score* a row got but not *which rule produced it*,
-   so the distribution of rule firings was unknowable, weights could not be
-   attributed to outcomes, and re-scoring required reprocessing observations.
+1. The only way to exercise a rule was to stand up ClickHouse, write a fixture measurement and run
+    the whole query. The rules themselves had no unit tests.
+2. The output recorded *what score* a row got but not *which rule produced it*, so the distribution
+    of rule firings was unknowable, weights could not be attributed to outcomes, and re-scoring
+    required reprocessing observations.
 
-Representing them as data fixes both. The SQL is generated from the tables
-below, so the outcome cascade and the rule-id cascade are guaranteed to share
-the same conditions in the same order — a row's ``*_rule_id`` always names the
-rule that produced its score. The semantics of existing rules should not be changed, but one should rather
-create a new `rule_id` with the new semantics.
+Representing them as data fixes both. The SQL is generated from the tables below, so the outcome
+cascade and the rule-id cascade are guaranteed to share the same conditions in the same order — a
+row's ``*_rule_id`` always names the rule that produced its score. The semantics of existing rules
+should not be changed, but one should rather create a new `rule_id` with the new semantics.
 
-Rule ordering is significant: ``multiIf`` takes the first match, so a rule only
-fires when every rule above it did not. This is a decision tree whose leaves are
-hand-set, and the conditions are not mutually exclusive on their own.
+Rule ordering is significant: ``multiIf`` takes the first match, so a rule only fires when every
+rule above it did not. This is a decision tree whose leaves are hand-set, and the conditions are not
+mutually exclusive on their own.
 
-Outcome triples are ``(blocked, down, ok)``. They do not all sum to 1 —
-``answer_matches_ctrl`` sums to 0.9 and the masking rules sum to 0. That 0 is
-overloaded: it covers "no observation here", "observed but discarded" and
-"observed, nothing wrong" alike. Each rule therefore also carries an
-``Evidence`` level saying which of those it means, so aggregates do not have to
-infer it from the numbers. Read the level, never ``blocked == 0``.
+Outcome triples are ``(blocked, down, ok)``. They do not all sum to 1 necessarily.
+Masking rules sum to 0. That 0 is overloaded: it covers "no observation here", "observed but
+discarded" and "observed, nothing wrong" alike.
+
+Each rule therefore also carries an ``Evidence`` level saying which of those it means, so aggregates
+do not have to infer it from the numbers. Read the level, never ``blocked == 0``.
+
+TODO(art): the Evidence label carries with it a similar meaning to the Masking rules and should
+eventually be consolidated.
 """
 
 from dataclasses import dataclass
@@ -430,16 +432,7 @@ def render_top_rule_argmax(layer: str) -> str:
     unblocked measurement, which is nearly all of them, and the winner then
     comes down to row order.
 
-    So rank on evidence first, and only then on blocked. Ties on both are
-    broken by rule_id, which is arbitrary but stable — the replay determinism
-    the versioned-inputs work needs cannot be built on a coin flip.
-
-    Deliberately not ranked on `down` and `ok`: lexicographic ordering across
-    the triple only makes sense while the components are hand-set constants in
-    [0, 1]. When they become fitted log-likelihood ratios, `blocked` stays the
-    component `*_blocked_max` reports and argMax over it stays coherent with
-    max over it, while evidence and rule_id are unaffected. This expression
-    should survive that change untouched.
+    So rank on evidence first, and only then on blocked.
     """
     return (
         f"argMax({layer}_rule_id, ({layer}_evidence, {layer}_blocked, "
