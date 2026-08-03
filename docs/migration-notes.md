@@ -283,28 +283,8 @@ columns to differ after any rerun, on rows whose verdict did not change. Only
 
 Re-run analysis alone, one hour at a time. Observations are untouched.
 
-Directly, from a host with ClickHouse access, is the faster route: 30 days is
-720 hourly buckets, and the Airflow path builds a fresh virtualenv per task
-instance at `max_active_tasks=2`.
-
-```python
-from datetime import datetime, timedelta
-from oonipipeline.settings import config
-from oonipipeline.tasks.analysis import MakeAnalysisParams, make_analysis
-
-t, end = datetime(2026, 7, 4), datetime(2026, 8, 3)
-while t < end:
-    make_analysis(MakeAnalysisParams(
-        clickhouse_url=config.clickhouse_url,
-        probe_cc=[], test_name=["web_connectivity"],
-        timestamp=t.strftime("%Y-%m-%dT%H"),   # hourly, matching production
-    ))
-    t += timedelta(hours=1)
-```
-
-Through Airflow instead, if you want the run recorded. This reruns existing DAG
-runs only; the hourly DAG has `catchup=False`, so an hour it never ran will not
-be created by a clear:
+This reruns existing DAG runs only; the hourly DAG has `catchup=False`, so an
+hour it never ran will not be created by a clear:
 
 ```bash
 airflow tasks clear hourly_batch_measurement_processing --task-regex make_analysis --start-date 2026-07-04 --end-date 2026-08-03 --yes
@@ -328,6 +308,59 @@ oonipipeline check-duplicates --start-at 2026-07-04 --end-at 2026-08-03
 For a single measurement, `write_analysis_web_fuzzy_logic` takes a
 `measurement_uid` argument, which is the cheapest way to test the change before
 committing to the range.
+
+### Monitor
+
+**Which window is running right now.** `clickhouse_driver` substitutes bound
+parameters client side, so the server receives literal datetimes and the running
+query names its own window:
+
+```sql
+SELECT
+    extract(query, 'measurement_start_time > \'([^\']+)\'') AS window_start,
+    round(elapsed) AS secs,
+    formatReadableQuantity(read_rows) AS read_rows,
+    formatReadableSize(memory_usage) AS mem
+FROM system.processes
+WHERE query LIKE '%INSERT INTO analysis_web_measurement%';
+```
+
+**How far along, and how much longer.** `system.query_log` holds the finished
+ones. Set the divisor to the number of hours in your range (720 for 30 days):
+
+```sql
+SELECT
+    count() AS windows_done,
+    round(100 * count() / 720, 1) AS pct,
+    max(parseDateTimeBestEffort(
+        extract(query, 'measurement_start_time > \'([^\']+)\''))) AS latest_window,
+    round(avg(query_duration_ms) / 1000, 1) AS avg_secs,
+    formatReadableTimeDelta((720 - count()) * avg(query_duration_ms) / 1000) AS eta
+FROM system.query_log
+WHERE type = 'QueryFinish'
+  AND event_time > now() - INTERVAL 12 HOUR
+  AND query LIKE '%INSERT INTO analysis_web_measurement%';
+```
+
+`query_log` is per node. Wrap it in
+`clusterAllReplicas('oonidata_cluster', system.query_log)` if the work is spread
+across the cluster, and swap `QueryFinish` for `ExceptionWhileProcessing` to
+find buckets that failed.
+
+**From Airflow.** There is no CLI that shows task state across a date range —
+use the Grid view, or these for a coarse read. Clearing a task instance puts its
+DAG run back into `running`:
+
+```bash
+airflow dags list-runs -d hourly_batch_measurement_processing --state running -o plain
+airflow dags list-runs -d hourly_batch_measurement_processing --state queued -o plain | wc -l
+airflow tasks states-for-dag-run hourly_batch_measurement_processing <run_id>
+```
+
+The last one needs a single run id, so it drills into one hour rather than
+summarising the range. Per-bucket logs are the task instance's own logs;
+`make_analysis` itself logs nothing, so a bucket that is working looks identical
+to one that is hung. Use `system.processes` above to tell them apart.
 
 ### Verify
 
