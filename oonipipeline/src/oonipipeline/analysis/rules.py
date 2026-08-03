@@ -13,7 +13,8 @@ query's f-string, which had two consequences:
 Representing them as data fixes both. The SQL is generated from the tables
 below, so the outcome cascade and the rule-id cascade are guaranteed to share
 the same conditions in the same order — a row's ``*_rule_id`` always names the
-rule that produced its score.
+rule that produced its score. The semantics of existing rules should not be changed, but one should rather
+create a new `rule_id` with the new semantics.
 
 Rule ordering is significant: ``multiIf`` takes the first match, so a rule only
 fires when every rule above it did not. This is a decision tree whose leaves are
