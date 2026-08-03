@@ -5,6 +5,7 @@ from oonidata.models.nettests import Signal
 from oonidata.models.observations import WebObservation
 
 from ..measurement_transformer import MeasurementTransformer
+from ...targets import assign_target_ids
 
 
 SIGNAL_ROOT_CA_OLD = """-----BEGIN CERTIFICATE-----
@@ -87,11 +88,11 @@ class SignalTransformer(MeasurementTransformer):
         )
         http_observations = self.make_http_observations(msmt.test_keys.requests)
 
-        return (
-            self.consume_web_observations(
-                dns_observations=dns_observations,
-                tcp_observations=tcp_observations,
-                tls_observations=tls_observations,
-                http_observations=http_observations,
-            ),
+        web_observations = self.consume_web_observations(
+            dns_observations=dns_observations,
+            tcp_observations=tcp_observations,
+            tls_observations=tls_observations,
+            http_observations=http_observations,
         )
+        assign_target_ids("signal", web_observations)
+        return (web_observations,)

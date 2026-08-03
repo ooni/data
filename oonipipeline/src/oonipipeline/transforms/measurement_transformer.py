@@ -718,6 +718,10 @@ def make_probe_meta(msmt: BaseMeasurement, netinfodb: NetinfoDB) -> ProbeMeta:
         resolver_asn_probe=resolver_asn_probe,
         resolver_as_org_name_probe=resolver_as_org_name_probe,
         resolver_is_scrubbed=resolver_is_scrubbed,
+        # Top-level key, present only on measurements collected after the
+        # anonymous-credential scheme shipped. Normalised to "" when absent so
+        # that "unknown probe" is one value rather than a mix of None and "".
+        probe_id=msmt.probe_id or "",
     )
 
 

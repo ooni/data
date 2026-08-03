@@ -13,6 +13,13 @@ import csv
 
 from clickhouse_driver import Client as Clickhouse
 
+from ...db.create_tables import (
+    FINGERPRINT_COLUMN_NAMES,
+    FINGERPRINT_SCOPES_DNS,
+    FINGERPRINT_SCOPES_HTTP,
+    format_fingerprints_create_query,
+)
+
 # from analysis.metrics import setup_metrics
 
 BASE_URL = "https://raw.githubusercontent.com/"
@@ -43,135 +50,44 @@ def fetch_csv(url):
     return [r for r in rows]
 
 
+def _fill_tmp_table(click, table_name: str, scopes: list, url: str) -> None:
+    """
+    Recreate {table_name}_tmp and fill it from url. The live table is left
+    untouched until the caller EXCHANGEs it in.
+    """
+    # Make sure the live table exists so the later EXCHANGE has something to
+    # swap against on a first-ever run.
+    click.execute(format_fingerprints_create_query(table_name, scopes))
+
+    click.execute(f"DROP TABLE IF EXISTS {table_name}_tmp")
+    click.execute(format_fingerprints_create_query(f"{table_name}_tmp", scopes))
+    progress(f"{table_name}_tmp recreated")
+
+    log.info(f"Ingesting {url}")
+    data = fetch_csv(url)
+    for row in data:
+        row["confidence_no_fp"] = int(row["confidence_no_fp"])
+    progress("CSV data fetched")
+
+    col_str = ", ".join(FINGERPRINT_COLUMN_NAMES)
+    click.execute(f"INSERT INTO {table_name}_tmp ({col_str}) VALUES", data)
+    progress(f"{table_name}_tmp filled")
+
+    r = click.execute(f"SELECT count() FROM {table_name}_tmp")
+    row_cnt = r[0][0]
+    assert isinstance(row_cnt, int)
+    assert 100 < row_cnt < 50_000
+
+
 def update_fingerprints(clickhouse_url: str) -> None:
     progress("starting")
     # assert not conf.dry_run, "Dry run mode not supported"
     click = Clickhouse.from_url(clickhouse_url)
-    q = """
-    CREATE TABLE IF NOT EXISTS fingerprints_dns (
-        name String,
-        scope Enum('nat' = 1, 'isp' = 2, 'prod' = 3, 'inst' = 4, 'vbw' = 5, 'fp' = 6),
-        other_names String,
-        location_found String,
-        pattern_type Enum('full' = 1, 'prefix' = 2, 'contains' = 3, 'regexp' = 4),
-        pattern String,
-        confidence_no_fp UInt8,
-        expected_countries String,
-        source String,
-        exp_url String,
-        notes String
-    ) ENGINE = EmbeddedRocksDB PRIMARY KEY(name)
-    """
-    click.execute(q)
 
-    q = "DROP TABLE IF EXISTS fingerprints_dns_tmp"
-    click.execute(q)
+    _fill_tmp_table(click, "fingerprints_dns", FINGERPRINT_SCOPES_DNS, DNS_URL)
+    _fill_tmp_table(click, "fingerprints_http", FINGERPRINT_SCOPES_HTTP, HTTP_URL)
 
-    q = """
-    CREATE TABLE fingerprints_dns_tmp (
-        name String,
-        scope Enum('nat' = 1, 'isp' = 2, 'prod' = 3, 'inst' = 4, 'vbw' = 5, 'fp' = 6),
-        other_names String,
-        location_found String,
-        pattern_type Enum('full' = 1, 'prefix' = 2, 'contains' = 3, 'regexp' = 4),
-        pattern String,
-        confidence_no_fp UInt8,
-        expected_countries String,
-        source String,
-        exp_url String,
-        notes String
-    ) ENGINE = EmbeddedRocksDB PRIMARY KEY(name)
-    """
-    click.execute(q)
-    progress("fingerprints_dns_tmp recreated")
-
-    log.info(f"Ingesting {DNS_URL}")
-    data = fetch_csv(DNS_URL)
-    for row in data:
-        row["confidence_no_fp"] = int(row["confidence_no_fp"])
-    progress("CSV data fetched")
-
-    q = """
-    INSERT INTO fingerprints_dns_tmp
-        (name, scope, other_names, location_found, pattern_type, pattern,
-        confidence_no_fp, expected_countries, source, exp_url, notes)
-    VALUES
-    """
-    click.execute(q, data)
-    # click.execute(q, data, types_check=True)
-    progress("fingerprints_dns_tmp filled")
-
-    r = click.execute("SELECT count() FROM fingerprints_dns_tmp")
-    row_cnt = r[0][0]
-    assert isinstance(row_cnt, int)
-    # metrics.gauge("fingerprints_dns_tmp_len", row_cnt)
-    assert 100 < row_cnt < 50_000
-
-    q = """
-    CREATE TABLE IF NOT EXISTS fingerprints_http(
-        name String,
-        scope Enum('nat' = 1, 'isp' = 2, 'prod' = 3, 'inst' = 4, 'vbw' = 5, 'fp' = 6, 'injb' = 7, 'prov' = 8),
-        other_names String,
-        location_found String,
-        pattern_type Enum('full' = 1, 'prefix' = 2, 'contains' = 3, 'regexp' = 4),
-        pattern String,
-        confidence_no_fp UInt8,
-        expected_countries String,
-        source String,
-        exp_url String,
-        notes String
-    ) ENGINE = EmbeddedRocksDB PRIMARY KEY(name)
-    """
-    click.execute(q)
-
-    q = "DROP TABLE IF EXISTS fingerprints_http_tmp"
-    click.execute(q)
-
-    q = """
-    CREATE TABLE fingerprints_http_tmp (
-        name String,
-        scope Enum('nat' = 1, 'isp' = 2, 'prod' = 3, 'inst' = 4, 'vbw' = 5, 'fp' = 6, 'injb' = 7, 'prov' = 8),
-        other_names String,
-        location_found String,
-        pattern_type Enum('full' = 1, 'prefix' = 2, 'contains' = 3, 'regexp' = 4),
-        pattern String,
-        confidence_no_fp UInt8,
-        expected_countries String,
-        source String,
-        exp_url String,
-        notes String
-    ) ENGINE = EmbeddedRocksDB PRIMARY KEY(name)
-    """
-    click.execute(q)
-    progress("fingerprints_http_tmp recreated")
-
-    log.info(f"Ingesting {HTTP_URL}")
-    data = fetch_csv(HTTP_URL)
-    for row in data:
-        row["confidence_no_fp"] = int(row["confidence_no_fp"])
-    progress("CSV data fetched")
-
-    q = """
-    INSERT INTO fingerprints_http_tmp
-        (name, scope, other_names, location_found, pattern_type, pattern,
-        confidence_no_fp, expected_countries, source, exp_url, notes)
-    VALUES
-    """
-    click.execute(q, data)
-    progress("fingerprints_http_tmp filled")
-
-    r = click.execute("SELECT count() FROM fingerprints_http_tmp")
-    row_cnt = r[0][0]
-    # metrics.gauge("fingerprints_http_tmp_len", row_cnt)
-    assert isinstance(row_cnt, int)
-    assert 100 < row_cnt < 50_000
-
-    log.info("Swapping tables")
-    q = "EXCHANGE TABLES fingerprints_dns_tmp AND fingerprints_dns"
-    click.execute(q)
-    progress("fingerprints_dns ready")
-
-    log.info("Swapping tables")
-    q = "EXCHANGE TABLES fingerprints_http_tmp AND fingerprints_http"
-    click.execute(q)
-    progress("fingerprints_http ready")
+    for table_name in ("fingerprints_dns", "fingerprints_http"):
+        log.info("Swapping tables")
+        click.execute(f"EXCHANGE TABLES {table_name}_tmp AND {table_name}")
+        progress(f"{table_name} ready")

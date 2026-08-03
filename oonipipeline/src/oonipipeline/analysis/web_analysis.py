@@ -4,6 +4,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..db.connections import ClickhouseConnection
+from .rules import (
+    DNS_RULES,
+    TCP_RULES,
+    TLS_RULES,
+    render_outcome_multiif,
+    render_rule_id_multiif,
+)
 
 log = logging.getLogger(__name__)
 
@@ -104,156 +111,27 @@ def format_query_analysis_web_fuzzy_logic(
 
     expected_countries,
     dns_blocking_scope,
-    has(expected_countries, probe_cc) as dns_blocking_country_consistent,
+    -- A 'fp' scope marks a fingerprint that is known to produce false
+    -- positives, so matching one is evidence *against* blocking and must not
+    -- trigger the blockpage rule. The DNS fingerprint set happens to carry no
+    -- 'fp' rows today, but the HTTP set does and the schema permits them here.
+    -- On a LEFT JOIN miss dns_blocking_scope is '' and expected_countries is
+    -- empty, so the has() below is false either way.
+    dns_blocking_scope != 'fp'
+        AND has(expected_countries, probe_cc) as dns_blocking_country_consistent,
 
-    -- Possibility distributions of states (blocking, down, ok) is 0, 0, 0
-    -- (i.e. we don't know anything)
-    multiIf(
-        -- We are dealing with a row that doesn't have any DNS data associated to it,
-        -- most likely a HTTP(s) only observation row.
-        -- We set the mask to False so that this can be excluded from any aggregate
-        -- analysis.
-        length(dns_answers) = 0 AND dns_failure IS NULL,
-        tuple(0.0, 0.0, 0.0),
+    -- Possibility distributions of states (blocking, down, ok). The rule set and
+    -- its weights live in analysis/rules.py; the cascade below is generated from
+    -- there, as is the matching *_rule_id cascade, so a row's rule id always
+    -- names the rule that produced its score.
+    {render_outcome_multiif(DNS_RULES)} as dns_outcome,
+    {render_rule_id_multiif(DNS_RULES)} as dns_rule_id,
 
-        -- We matched a country blockpage, our possibility of blocking is 1.
-        dns_blocking_country_consistent,
-        tuple(1.0, 0.0, 0.0),
+    {render_outcome_multiif(TCP_RULES)} as tcp_outcome,
+    {render_rule_id_multiif(TCP_RULES)} as tcp_rule_id,
 
-        -- We got a TLS consistent inside of DNS, this is a very strong signal that
-        -- the answer is good.
-        dns_tls_consistent > 0,
-        tuple(0.0, 0.0, 1.0),
-
-        -- We got a bogon that we didn't see inside of the control. This is quite likely a
-        -- sign of blocking.
-        dns_answers_contain_bogon > 0 AND dns_answer_matches_ctrl = 0,
-        tuple(0.95, 0.05, 0.0),
-
-        -- We got a bogon, but it's also inside the control. This is a DNS misconfiguration
-        -- so we mark it as down being more possible than blocked.
-        dns_answers_contain_bogon > 0 AND dns_answer_matches_ctrl > 0,
-        tuple(0.1, 0.9, 0.0),
-
-        -- We got a TLS inconsistent answer (ie. certificates are failing) and this
-        -- specific answer was never seen inside of the control.
-        -- This signifies that we are most likely dealing with a case of true blocking.
-        dns_tls_inconsistent > 0 AND dns_answer_matches_ctrl = 0,
-        tuple(0.9, 0.05, 0.05),
-
-        -- We got a direct match for an answer in the control. This is also a strong signal
-        -- that we got something good.
-        dns_answer_matches_ctrl > 0,
-        tuple(0.0, 0.0, 0.9),
-
-        -- The DNS answers contain a matching ASN comparing experiment and control.
-        -- Usually this is a sign that it's a valid answer, especially if we didn't trigger
-        -- the previous checks.
-        dns_answer_asn_matches_ctrl > 0,
-        tuple(0.2, 0.0, 0.8),
-
-        -- DNS is failing, but it's also failing a lot in the control. There is likely some kind of issue
-        -- with the DNS configuration of the fqdn (eg. it doesn't exist and we are getting NXDOMAIN)
-        dns_failure IS NOT NULL AND ctrl_dns_success_rate <= 0.5,
-        tuple(0.1, 0.9, 0.0),
-
-        -- DNS is failing,  but it's suceeding inside our control. This is likely a case of true blocking.
-        dns_failure IS NOT NULL AND ctrl_dns_success_rate > 0.5,
-        tuple(0.9, 0.1, 0.0),
-
-        dns_failure IS NOT NULL,
-        tuple(0.5, 0.5, 0),
-
-        dns_failure IS NULL,
-        tuple(0.75, 0, 0.25),
-
-        tuple(0.0, 0.0, 0.0)
-
-    ) as dns_outcome,
-
-    multiIf(
-        -- We are dealing with a row that doesn't have any TCP data associated to it,
-        -- most likely a HTTP(s) only observation row.
-        -- We set the mask to False so that this can be excluded from any aggregate
-        -- analysis.
-        tcp_success != 1 AND tcp_failure IS NULL,
-        tuple(0, 0, 0),
-
-        -- We can connect, so there is nothing to see here.
-        tcp_failure IS NULL AND tcp_success = 1,
-        tuple(0, 0, 1.0),
-
-        -- We are seeing some failure, DNS was OK, yet the target address is IPv6 and we are seeing a lot of
-        -- failing IPv6 on the whole report_id set. This likely means that the probe has a broken IPv6 configuration.
-        -- We therefore set the mask to False so we exclude it from analysis.
-        tcp_failure IS NOT NULL AND ip_is_v6 = 1 AND tcp_ipv6_failure_rate > 0.5,
-        tuple(0, 0, 0),
-
-        -- We got a failure, yet this particular address is mostly succeeding in control.
-        -- Let's mark it as blocked.
-        tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 AND ctrl_tcp_success_count > 0,
-        tuple(0.75, 0.25, 0),
-
-        -- We didn't get a good DNS answer, so we can't do much to analyze this result set since we
-        -- can't trust what we saw in DNS, so we just return early and ignore this from the perspective of
-        -- a TCP analysis
-
-        -- TODO(art): since this being applied after the first check for success, we
-        -- run the risk of marking as OK TCP instances where we were able to connect to the blockpage.
-        -- It it correct to do so?
-        dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down),
-        tuple(0, 0, 0),
-
-        -- We got a failure, however control is also failing a lot. Let's mark it as down
-        tcp_failure IS NOT NULL AND ctrl_tcp_success_rate <= 0.5 AND ctrl_tcp_failing_count > 0,
-        tuple(0.25, 0.75, 0),
-
-        tuple(0, 0, 0)
-    ) as tcp_outcome,
-
-    multiIf(
-        -- # We are dealing with a row that doesn't have any TLS data associated to it,
-        -- # most likely a HTTP(s) only observation row.
-        -- # We set the mask to False so that this can be excluded from any aggregate
-        -- # analysis.
-        tls_is_certificate_valid IS NULL AND tls_failure IS NULL,
-        tuple(0, 0, 0),
-
-        -- # We get a valid certificate, so there is nothing to see here.
-        tls_is_certificate_valid = 1,
-        tuple(0, 0, 1.0),
-
-        -- # We got a failure, yet this particular address is mostly succeeding in control.
-        -- # Let's mark it as blocked.
-        tls_failure IS NOT NULL AND ctrl_tls_success_rate > 0.5 AND ctrl_tls_success_count > 0,
-        multiIf(
-            -- SSL related errors are more suspicious than others
-            startsWith(tls_failure, 'ssl_'),
-            tuple(0.9, 0.1, 0),
-            -- Connection reset carries more weight than timeouts and similar
-            tls_failure = 'connection_reset',
-            tuple(0.8, 0.2, 0),
-            tuple(0.7, 0.3, 0)
-        ),
-
-        -- We didn't get a good DNS answer, so we can't do much to analyze this result set since we
-        -- can't trust what we saw in DNS, so we just return early and ignore this from the perspective of
-        -- a TCP analysis
-        dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down),
-        tuple(0, 0, 0),
-
-        -- # The TCP analysis told us that this particular address is TCP blocked,
-        -- # therefore it's likely blocked via TCP and the TLS analysis should be
-        -- # thrown out.
-        tcp_blocked > 0 AND tcp_ok <= (tcp_blocked + tcp_down),
-        tuple(0, 0, 0),
-
-        -- # We got a failure, however control is also failing a lot. Let's mark it as down.
-        tls_failure IS NOT NULL AND ctrl_tls_success_rate <= 0.5 AND ctrl_tls_failing_count > 0,
-        tuple(0.2, 0.8, 0),
-
-        tuple(0, 0, 0)
-    ) as tls_outcome,
+    {render_outcome_multiif(TLS_RULES)} as tls_outcome,
+    {render_rule_id_multiif(TLS_RULES)} as tls_rule_id,
 
     ip,
     ip_asn,
@@ -314,7 +192,18 @@ def format_query_analysis_web_fuzzy_logic(
 
     max(tls_blocked) as tls_blocked_max,
     max(tls_down) as tls_down_max,
-    max(tls_ok) as tls_ok_max
+    max(tls_ok) as tls_ok_max,
+
+    -- The rule that drove this measurement's headline score. argMax over the
+    -- blocked possibility rather than anyHeavy, so the id explains *_blocked_max
+    -- specifically. Ties (e.g. all-zero rows) resolve arbitrarily.
+    argMax(dns_rule_id, dns_blocked) as top_dns_rule_id,
+    argMax(tcp_rule_id, tcp_blocked) as top_tcp_rule_id,
+    argMax(tls_rule_id, tls_blocked) as top_tls_rule_id,
+
+    -- Constant within a measurement, so it rides along in the GROUP BY rather
+    -- than needing an aggregate.
+    probe_id
 
     FROM (
         WITH
@@ -328,6 +217,7 @@ def format_query_analysis_web_fuzzy_logic(
         hostname,
         input,
         probe_asn, probe_as_org_name, probe_cc, resolver_asn, resolver_as_cc, network_type,
+        probe_id,
         measurement_start_time, test_name,
         toStartOfDay(measurement_start_time) as measurement_day,
 
@@ -379,10 +269,30 @@ def format_query_analysis_web_fuzzy_logic(
 
     LEFT OUTER JOIN (
         SELECT
-        groupArray(expected_countries) as expected_countries,
+        -- expected_countries is a comma-separated string upstream, documented
+        -- with a space after the comma (e.g. "IT, IR"). groupArray alone would
+        -- produce ['IT, IR'], against which has(..., 'IR') is false — so split
+        -- and trim before the membership test. Every current DNS fingerprint
+        -- names a single country, which is why this has not bitten yet.
+        arrayDistinct(
+            arrayFlatten(
+                groupArray(
+                    arrayMap(
+                        c -> trim(BOTH ' ' FROM c),
+                        splitByChar(',', expected_countries)
+                    )
+                )
+            )
+        ) as expected_countries,
         pattern,
         any(scope) as dns_blocking_scope
         FROM fingerprints_dns
+        -- The join below is an equality match, which only implements
+        -- pattern_type = 'full'. Restricting here keeps that explicit rather
+        -- than silently never matching a 'prefix'/'contains'/'regexp' row.
+        -- All 227 current DNS fingerprints are 'full'; tests/test_fingerprints.py
+        -- fails if upstream introduces a type this query cannot evaluate.
+        WHERE pattern_type = 'full'
         GROUP BY pattern
     ) as fingerprints_dns
     ON fingerprints_dns.pattern = experiment.dns_answer
@@ -514,7 +424,8 @@ def format_query_analysis_web_fuzzy_logic(
     network_type, test_name,
     measurement_start_time,
     measurement_uid,
-    ooni_run_link_id
+    ooni_run_link_id,
+    probe_id
     SETTINGS join_algorithm = 'grace_hash', grace_hash_join_initial_buckets = 8
     """
     return SQL, q_params

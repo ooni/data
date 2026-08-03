@@ -169,7 +169,7 @@ with DAG(
             "probe_cc": dag_full.params["probe_cc"],
             "test_name": dag_full.params["test_name"],
             "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
-            "day": start_day,
+            "timestamp": start_day,
         },
         requirements=REQUIREMENTS,
         system_site_packages=False,
