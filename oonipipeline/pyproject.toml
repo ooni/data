@@ -80,3 +80,7 @@ test = "pytest {args:tests}"
 test-cov = "pytest --cov=./ --cov-report=xml --cov-report=html --cov-report=term {args:tests}"
 cov-report = ["coverage report"]
 cov = ["test-cov", "cov-report"]
+
+[tool.hatch.envs.analysis]
+template = "default"
+features = ["analysis"]
