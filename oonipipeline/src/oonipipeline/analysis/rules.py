@@ -29,6 +29,7 @@ and should eventually become an explicit column rather than a sentinel triple.
 from dataclasses import dataclass
 from typing import List, Tuple
 
+RULES_VERSION = 1
 
 @dataclass(frozen=True)
 class Rule:
