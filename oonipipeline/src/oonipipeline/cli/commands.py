@@ -1,10 +1,10 @@
 import logging
-from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import click
 from click_loglevel import LogLevel
+from clickhouse_driver import Client as ClickhouseClient
 from tqdm import tqdm
 
 from oonipipeline.analysis.detector import run_detector
@@ -27,7 +27,6 @@ from oonipipeline.tasks.observations import (
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
 from ..db.create_tables import list_all_table_diffs, make_create_queries
-from ..netinfo import NetinfoDB
 from ..settings import config
 
 
@@ -309,18 +308,24 @@ def check_duplicates(start_at: datetime, end_at: datetime, optimize: bool):
     default=False,
     help="if the event_detector_changepoints table should be cleared for the specified time range",
 )
+@click.option(
+    "--warmup/--no-warmup",
+    default=False,
+    help="if we should warmup the event_detector_cusums table",
+)
 def event_detector(
     start_at: datetime,
     end_at: datetime,
     probe_cc: List[str],
     truncate_cusums: bool,
     clear_changepoints: bool,
+    warmup: bool,
 ):
     if start_at > end_at:
         raise click.BadParameter(f"start_at ({start_at}) should be < end_at {end_at}")
 
     if truncate_cusums or clear_changepoints:
-        with ClickhouseConnection(config.clickhouse_url) as db:
+        with ClickhouseClient.from_url(config.clickhouse_url) as db:
             if truncate_cusums:
                 click.echo("Truncating event_detector_cusums table...")
                 db.execute("TRUNCATE TABLE event_detector_cusums SYNC")
@@ -330,6 +335,15 @@ def event_detector(
                     "ALTER TABLE event_detector_changepoints DELETE WHERE ts >= %(start_at)s AND ts <= %(end_at)s",
                     params={"start_at": start_at, "end_at": end_at},
                 )
+
+    if warmup:
+        click.echo("Warming up event_detector_cusums table...")
+        changepoints, updated_cusums, _ = run_detector(
+            clickhouse_url=config.clickhouse_url,
+            start_time=start_at - timedelta(days=30),
+            end_time=start_at,
+            probe_cc=probe_cc,
+        )
 
     for start_dt, end_dt in tqdm(build_date_range(start_at, end_at, day_delta=10)):
         click.echo(f"Processing {start_dt} - {end_dt}")
@@ -342,3 +356,25 @@ def event_detector(
         click.echo(
             f"Found {len(changepoints)} changepoints and updated {len(updated_cusums)} cusums"
         )
+
+@cli.command()
+@click.option("--port", default=8501, help="Port the web server will listen to")
+def events_panel(port: int):
+    """
+    Starts a streamlit web app with the events detector debugging panel
+    """
+    try:
+        from streamlit.web import bootstrap
+    except ImportError:
+        click.echo("Streamlit not available. Install with oonipipeline[analysis]")
+        return
+
+    import importlib.util
+
+    spec = importlib.util.find_spec("oonipipeline.events_panel.panel")
+    assert spec is not None, "Unable to find events panel module"
+    panel_path = spec.origin  # file path, no execution
+
+    flag_options = {"server.port": port}
+    bootstrap.load_config_options(flag_options=flag_options)
+    bootstrap.run(panel_path, is_hello=False, args=[], flag_options=flag_options)

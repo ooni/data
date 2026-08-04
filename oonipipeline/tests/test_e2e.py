@@ -123,7 +123,7 @@ def test_event_detector(datadir, db):
         )
         make_detector(
             MakeDetectorParams(
-                clickhouse_url=db.clickhouse_url, probe_cc=["TG"], timestamp=timestamp
+                clickhouse_url=db.clickhouse_url, probe_cc=["TG"], timestamp=timestamp, slack_webhook=None
             )
         )
     res = db.execute("SELECT COUNT() FROM event_detector_changepoints")

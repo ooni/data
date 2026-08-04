@@ -45,3 +45,9 @@ class BaseMeasurement(BaseModel):
     test_helpers: Optional[Dict] = None
     data_format_version: Optional[str] = None
     measurement_uid: Optional[str] = None
+
+    # Pseudonymous probe identifier, issued via anonymous credentials so that
+    # repeated measurements from one probe can be linked without identifying
+    # it. Absent from every measurement collected before the scheme shipped,
+    # so consumers must treat "" as unknown rather than as a distinct probe.
+    probe_id: Optional[str] = None

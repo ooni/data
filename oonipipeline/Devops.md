@@ -1,9 +1,8 @@
 ## Upgrading oonipipeline version on clickhouse cluster
 
-Login to `clickhouse1.prod.ooni.io`, then run:
-
+Run the ansible command:
 ```
-cd /opt/miniconda && sudo -u miniconda /opt/miniconda/bin/pip install -e 'git+https://github.com/ooni/data@v5-rc1#egg=oonipipeline&subdirectory=oonipipeline'
+./play -i inventory -l data1.htz-fsn.prod.ooni.nu deploy-airflow.yml -t oonipipeline --diff
 ```
 
 ## Run commands
