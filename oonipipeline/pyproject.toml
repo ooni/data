@@ -40,6 +40,8 @@ analysis = [
   "altair ~= 4.2.0",
   "jupyterlab ~= 4.0.7",
   "bokeh ~= 3.5.2",
+  "streamlit",
+  "pyarrow < 19", # fixes segfault with streamlit
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -78,3 +80,7 @@ test = "pytest {args:tests}"
 test-cov = "pytest --cov=./ --cov-report=xml --cov-report=html --cov-report=term {args:tests}"
 cov-report = ["coverage report"]
 cov = ["test-cov", "cov-report"]
+
+[tool.hatch.envs.analysis]
+template = "default"
+features = ["analysis"]

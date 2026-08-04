@@ -29,6 +29,55 @@ from .connections import ClickhouseConnection
 MAPPED_BASIC_TYPES = [str, int, bool, datetime, float, dict]
 BasicType = Union[str, int, bool, datetime, float, dict]
 
+# Canonical DDL for the blocking-fingerprint tables.
+#
+# These are owned by tasks.updaters.fingerprints_updater, which recreates a
+# _tmp table and EXCHANGEs it in. Both the updater and make_create_queries()
+# below build their DDL from here so there is exactly one definition of the
+# schema: previously create_tables.py declared fingerprints_dns as an
+# ENGINE = URL(...) table with all-String columns while the updater declared it
+# as EmbeddedRocksDB with typed enums, and since both used
+# CREATE TABLE IF NOT EXISTS whichever ran first on a given deployment won.
+# That made the analysis query's behaviour deployment-dependent.
+#
+# The DNS and HTTP tables differ only in the scope enum: the HTTP fingerprint
+# set additionally uses 'injb' (injected block) and 'prov' (provider).
+FINGERPRINT_SCOPES_DNS = ["nat", "isp", "prod", "inst", "vbw", "fp"]
+FINGERPRINT_SCOPES_HTTP = FINGERPRINT_SCOPES_DNS + ["injb", "prov"]
+
+FINGERPRINT_COLUMN_NAMES = [
+    "name",
+    "scope",
+    "other_names",
+    "location_found",
+    "pattern_type",
+    "pattern",
+    "confidence_no_fp",
+    "expected_countries",
+    "source",
+    "exp_url",
+    "notes",
+]
+
+
+def format_fingerprints_create_query(table_name: str, scopes: List[str]) -> str:
+    scope_enum = ", ".join(f"'{s}' = {i}" for i, s in enumerate(scopes, start=1))
+    return f"""
+    CREATE TABLE IF NOT EXISTS {table_name} (
+        name String,
+        scope Enum({scope_enum}),
+        other_names String,
+        location_found String,
+        pattern_type Enum('full' = 1, 'prefix' = 2, 'contains' = 3, 'regexp' = 4),
+        pattern String,
+        confidence_no_fp UInt8,
+        expected_countries String,
+        source String,
+        exp_url String,
+        notes String
+    ) ENGINE = EmbeddedRocksDB PRIMARY KEY(name)
+    """
+
 
 def python_basic_type_to_clickhouse(t: BasicType) -> str:
     if t == str:
@@ -114,7 +163,13 @@ def iter_table_fields(
             continue
         if f.name == "probe_meta":
             for f in fields(ProbeMeta):
-                type_str = typing_to_clickhouse(f.type)
+                # Pseudonymous probe identifier: fixed-width credential hash,
+                # not a variable-length String. Kept in sync with the literal
+                # FixedString(64) on analysis_web_measurement below.
+                if f.name == "probe_id":
+                    type_str = "FixedString(64)"
+                else:
+                    type_str = typing_to_clickhouse(f.type)
                 yield f, type_str
             continue
         if f.name == "measurement_meta":
@@ -170,13 +225,16 @@ table_models = [
 def make_create_queries():
     create_queries = [
         (
-            """
-        CREATE TABLE IF NOT EXISTS fingerprints_dns (
-            `name` String, `scope` String, `other_names` String, `location_found` String, `pattern_type` String,
-            `pattern` String, `confidence_no_fp` String, `expected_countries` String, `source` String, `exp_url` String, `notes` String
-        ) ENGINE = URL('https://raw.githubusercontent.com/ooni/blocking-fingerprints/main/fingerprints_dns.csv', 'CSV')
-        """,
+            format_fingerprints_create_query(
+                "fingerprints_dns", FINGERPRINT_SCOPES_DNS
+            ),
             "fingerprints_dns",
+        ),
+        (
+            format_fingerprints_create_query(
+                "fingerprints_http", FINGERPRINT_SCOPES_HTTP
+            ),
+            "fingerprints_http",
         ),
         (
             """
@@ -197,7 +255,17 @@ def make_create_queries():
             `top_tcp_failure` Nullable(String), `top_tls_failure` Nullable(String),
             `dns_blocked` Float32, `dns_down` Float32, `dns_ok` Float32,
             `tcp_blocked` Float32, `tcp_down` Float32, `tcp_ok` Float32,
-            `tls_blocked` Float32, `tls_down` Float32, `tls_ok` Float32
+            `tls_blocked` Float32, `tls_down` Float32, `tls_ok` Float32,
+            -- Which rule in analysis/rules.py produced the score above. Appended
+            -- last because the writer uses a positional INSERT .. SELECT, and
+            -- ALTER TABLE ADD COLUMN appends here too.
+            `top_dns_rule_id` LowCardinality(String),
+            `top_tcp_rule_id` LowCardinality(String),
+            `top_tls_rule_id` LowCardinality(String),
+            -- Pseudonymous probe identifier, "" when the measurement predates
+            -- the anonymous-credential scheme. Lets consumers count distinct
+            -- probes instead of using uniq(report_id) as a proxy.
+            `probe_id` FixedString(64)
         )
         ENGINE = ReplacingMergeTree
         PRIMARY KEY measurement_uid
@@ -221,27 +289,11 @@ def make_create_queries():
             `dns_other_blocked` Nullable(float),
             `tcp_blocked` Nullable(float),
             `tls_blocked` Nullable(float),
-            `last_ts` DateTime64(3, 'UTC'),
-            `dns_isp_blocked_obs_w_sum` Nullable(float),
-            `dns_isp_blocked_w_sum` Nullable(float),
-            `dns_isp_blocked_s_pos` Nullable(float),
-            `dns_isp_blocked_s_neg` Nullable(float),
-            `dns_other_blocked_obs_w_sum` Nullable(float),
-            `dns_other_blocked_w_sum` Nullable(float),
-            `dns_other_blocked_s_pos` Nullable(float),
-            `dns_other_blocked_s_neg` Nullable(float),
-            `tcp_blocked_obs_w_sum` Nullable(float),
-            `tcp_blocked_w_sum` Nullable(float),
-            `tcp_blocked_s_pos` Nullable(float),
-            `tcp_blocked_s_neg` Nullable(float),
-            `tls_blocked_obs_w_sum` Nullable(float),
-            `tls_blocked_w_sum` Nullable(float),
-            `tls_blocked_s_pos` Nullable(float),
-            `tls_blocked_s_neg` Nullable(float),
+
             `change_dir` Nullable(Int8),
             `s_pos` Nullable(float),
             `s_neg` Nullable(float),
-            `current_mean` Nullable(float),
+            `current_state` String,
             `h` Nullable(float),
             `block_type` String
         )
@@ -253,31 +305,33 @@ def make_create_queries():
         ),
         (
             """
+
         CREATE TABLE IF NOT EXISTS event_detector_cusums
         (
             `probe_asn` UInt32,
             `probe_cc` String,
             `domain` String,
             `ts` DateTime64(3, 'UTC'),
-            `dns_isp_blocked_obs_w_sum` Nullable(Float64),
-            `dns_isp_blocked_w_sum` Nullable(Float64),
+            `dns_isp_blocked_current_state` String DEFAULT 'ok',
             `dns_isp_blocked_s_pos` Nullable(Float64),
             `dns_isp_blocked_s_neg` Nullable(Float64),
-
-            `dns_other_blocked_obs_w_sum` Nullable(Float64),
-            `dns_other_blocked_w_sum` Nullable(Float64),
+            `dns_other_blocked_current_state` String DEFAULT 'ok',
             `dns_other_blocked_s_pos` Nullable(Float64),
             `dns_other_blocked_s_neg` Nullable(Float64),
-
-            `tcp_blocked_obs_w_sum` Nullable(Float64),
-            `tcp_blocked_w_sum` Nullable(Float64),
+            `tcp_blocked_current_state` String DEFAULT 'ok',
             `tcp_blocked_s_pos` Nullable(Float64),
             `tcp_blocked_s_neg` Nullable(Float64),
-
-            `tls_blocked_obs_w_sum` Nullable(Float64),
-            `tls_blocked_w_sum` Nullable(Float64),
+            `tls_blocked_current_state` String DEFAULT 'ok',
             `tls_blocked_s_pos` Nullable(Float64),
-            `tls_blocked_s_neg` Nullable(Float64)
+            `tls_blocked_s_neg` Nullable(Float64),
+            `dns_isp_blocked_last_change` Int8 DEFAULT 0,
+            `dns_isp_blocked_last_ts` Nullable(DateTime64(3, 'UTC')),
+            `dns_other_blocked_last_change` Int8 DEFAULT 0,
+            `dns_other_blocked_last_ts` Nullable(DateTime64(3, 'UTC')),
+            `tcp_blocked_last_change` Int8 DEFAULT 0,
+            `tcp_blocked_last_ts` Nullable(DateTime64(3, 'UTC')),
+            `tls_blocked_last_change` Int8 DEFAULT 0,
+            `tls_blocked_last_ts` Nullable(DateTime64(3, 'UTC'))
         )
         ENGINE = ReplacingMergeTree(ts)
         ORDER BY (probe_asn, probe_cc, domain);

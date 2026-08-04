@@ -62,6 +62,12 @@ class ProbeMeta:
     resolver_asn_probe: int
     resolver_as_org_name_probe: str
 
+    # Pseudonymous probe identifier from the measurement's top-level probe_id.
+    # Empty string when the measurement predates the scheme or omits it; see
+    # docs/ontology.md. Defaulted so older callers constructing a ProbeMeta
+    # keep working.
+    probe_id: str = ""
+
 
 @dataclass
 class HTTPObservation:

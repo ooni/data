@@ -31,9 +31,31 @@ def is_clickhouse_running(url):
         return False
 
 
+# Point this at an already-running ClickHouse to skip the docker-compose fixture
+# entirely, e.g.
+#   OONIPIPELINE_TEST_CLICKHOUSE_URL=clickhouse://test:test@127.0.0.1:19000/default
+# Useful where docker isn't available; the tests otherwise all skip and the
+# suite looks green while covering nothing.
+TEST_CLICKHOUSE_URL_ENV = "OONIPIPELINE_TEST_CLICKHOUSE_URL"
+
+
 @pytest.fixture(scope="session")
-def clickhouse_server(docker_ip, docker_services):
+def clickhouse_server(request):
     """Ensure that HTTP service is up and responsive."""
+    url = os.environ.get(TEST_CLICKHOUSE_URL_ENV)
+    if url:
+        if not is_clickhouse_running(url):
+            pytest.fail(
+                f"{TEST_CLICKHOUSE_URL_ENV} is set to {url} but nothing is "
+                "listening there. Unset it to fall back to docker-compose."
+            )
+        yield url
+        return
+
+    # Request the docker fixtures lazily so an explicit URL doesn't require
+    # docker to be installed at all.
+    docker_ip = request.getfixturevalue("docker_ip")
+    docker_services = request.getfixturevalue("docker_services")
     port = docker_services.port_for("clickhouse", 9000)
     url = "clickhouse://test:test@{}:{}/default".format(docker_ip, port)
     docker_services.wait_until_responsive(
@@ -125,8 +147,13 @@ def db_notruncate(clickhouse_server):
 def db(clickhouse_server):
     db = create_db_for_fixture(clickhouse_server)
     for _, table_name in make_create_queries():
-        # Ignore the fingerprints_dns table, since it's a remote table
-        if table_name in ["fingerprints_dns", "analysis_web_measurements"]:
+        # The fingerprint tables are EmbeddedRocksDB and owned by the
+        # fingerprints updater, not by the pipeline under test.
+        if table_name in [
+            "fingerprints_dns",
+            "fingerprints_http",
+            "analysis_web_measurements",
+        ]:
             continue
         db.execute(f"TRUNCATE TABLE {table_name};")
 
