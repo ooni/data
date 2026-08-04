@@ -1,6 +1,5 @@
 import logging
-from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import click
@@ -28,7 +27,6 @@ from oonipipeline.tasks.observations import (
 from ..__about__ import VERSION
 from ..db.connections import ClickhouseConnection
 from ..db.create_tables import list_all_table_diffs, make_create_queries
-from ..netinfo import NetinfoDB
 from ..settings import config
 
 
@@ -358,3 +356,25 @@ def event_detector(
         click.echo(
             f"Found {len(changepoints)} changepoints and updated {len(updated_cusums)} cusums"
         )
+
+@cli.command()
+@click.option("--port", default=8501, help="Port the web server will listen to")
+def events_panel(port: int):
+    """
+    Starts a streamlit web app with the events detector debugging panel
+    """
+    try:
+        from streamlit.web import bootstrap
+    except ImportError:
+        click.echo("Streamlit not available. Install with oonipipeline[analysis]")
+        return
+
+    import importlib.util
+
+    spec = importlib.util.find_spec("oonipipeline.events_panel.panel")
+    assert spec is not None, "Unable to find events panel module"
+    panel_path = spec.origin  # file path, no execution
+
+    flag_options = {"server.port": port}
+    bootstrap.load_config_options(flag_options=flag_options)
+    bootstrap.run(panel_path, is_hello=False, args=[], flag_options=flag_options)

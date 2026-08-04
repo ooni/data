@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from itertools import groupby as itertools_groupby
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from urllib.parse import urlencode
+import requests
 
 from clickhouse_driver import Client as ClickhouseClient
 
@@ -507,6 +509,8 @@ def run_detector(
     gap_halflife: float = 48.0,
     warmup: bool = False,
     trace: bool = False,
+    slack_webhook: str | None = None,
+    explorer_base_url: str = "https://explorer.ooni.org/",
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     db = ClickhouseClient.from_url(clickhouse_url)
     domains = get_domain_list(db)
@@ -531,10 +535,52 @@ def run_detector(
     )
     update_tables(db, updated_cusums, changepoints)
 
+    if slack_webhook is not None:
+        notify_slack(changepoints, slack_webhook, explorer_base_url)
+
     return changepoints, updated_cusums, steps
 
+def run_detector_for(
+    clickhouse_url: str,
+    start_time: datetime,
+    end_time: datetime,
+    probe_cc: str,
+    domains: List[str],
+    edd: int = 10,
+    gap_halflife: float = 48.0,
+    warmup: bool = True,
+    trace: bool = True,
+) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
+    """
+    Runs the detector for a specific probe_cc, asn, domain, returning the
+    results without saving it to database.
+    """
+    db = ClickhouseClient.from_url(clickhouse_url)
+
+    observations = get_observations(
+        db,
+        start_time=start_time,
+        end_time=end_time,
+        probe_cc=[probe_cc],
+        domains=domains,
+    )
+
+    changepoints, updated_cusums, steps = detect_changepoints(
+        observations=observations,
+        cusum_map={},
+        edd=edd,
+        gap_halflife=gap_halflife,
+        analysis_columns=ANALYSIS_COLS,
+        warmup=warmup,
+        trace=trace,
+    )
+
+    return changepoints, updated_cusums, steps
 
 def plot(steps: List[CusumStep], block_type: str):
+    make_cusums_chart(steps, block_type).show()
+
+def make_cusums_chart(steps: List[CusumStep], block_type: str):
     import altair as alt
     import pandas as pd
 
@@ -648,4 +694,95 @@ def plot(steps: List[CusumStep], block_type: str):
         )
         .interactive()
     )
-    chart.show()
+    return chart
+
+def notify_slack(
+    changepoints: list[Changepoint],
+    slack_webhook: str,
+    explorer_base_url: str = "https://explorer.ooni.org/",
+):
+    """
+    Sends a message to slack with a list of all changepoints that were detected
+    in the last run
+    """
+
+    if len(changepoints) == 0:
+        return
+
+    message = (
+        "*NEW EVENTS DETECTED*\n\nWe just detected the following blocking events:\n"
+    )
+
+    def dir_to_str(dir: int) -> str:
+        to_str = {
+            -1: "is unblocked :arrow_down: :large_green_circle:",
+            1: "is blocked :arrow_up: :red_circle:",
+        }
+        return to_str.get(dir, f"Unknown direction change value: {dir} :thinking_face:")
+
+    messages = []
+    for i, cp in enumerate(changepoints):
+        explorer = get_explorer_url(cp, explorer_base_url)
+        # Alerts panel not yet deployed to prod, we use the test one for now
+        alerts = get_alert_page_url(cp, "https://explorer.test.ooni.org/")
+        message += (
+            f"• :flag-{cp['probe_cc'].lower()}: [{cp['probe_cc']}/AS{cp['probe_asn']}] "
+            f"*{cp['domain']}* {dir_to_str(cp['change_dir'])} - `{cp['block_type']}` "
+            f"| <{explorer}|explorer> | <{alerts}|alerts>\n"
+        )
+
+        # Send messages in 10 entries batches to avoid max message size limit
+        if (i + 1) % 10 == 0:
+            messages.append(message)
+            message = ""
+
+    if message != "":
+        messages.append(message)
+
+    # Send messages to slack
+    for msg in messages:
+        send_to_slack(slack_webhook, msg)
+
+
+def send_to_slack(webhook: str, message: str):
+    requests.post(webhook, json={"text": message}).raise_for_status()
+
+
+def get_explorer_url(
+    changepoint: Changepoint, base_url: str = "https://explorer.ooni.org/"
+) -> str:
+    start_time = changepoint["ts"] - timedelta(days=13)
+    end_time = changepoint["ts"] + timedelta(days=2)
+
+    def to_s(dt: datetime):
+        return datetime.strftime(dt, "%Y-%m-%d")
+
+    params = {
+        "domain": changepoint["domain"],
+        "probe_cc": changepoint["probe_cc"],
+        "probe_asn": changepoint["probe_asn"],
+        "since": to_s(start_time),
+        "until": to_s(end_time),
+        "axis_x": "measurement_start_day",
+    }
+    url = f"{base_url}/chart/mat?{urlencode(params)}"
+    return url
+
+def get_alert_page_url(
+    changepoint: Changepoint, base_url: str = "https://explorer.ooni.org/"
+) -> str:
+    start_time = changepoint["ts"] - timedelta(days=13)
+    end_time = changepoint["ts"] + timedelta(days=2)
+
+    def to_s(dt: datetime):
+        return datetime.strftime(dt, "%Y-%m-%d")
+
+    params = {
+        "domain": changepoint["domain"],
+        "probe_cc": changepoint["probe_cc"],
+        "probe_asn": changepoint["probe_asn"],
+        "since": to_s(start_time),
+        "until": to_s(end_time),
+    }
+    url = f"{base_url}/chart/alerts?{urlencode(params)}"
+    return url

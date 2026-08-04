@@ -10,6 +10,8 @@ class MakeDetectorParams:
     clickhouse_url: str
     probe_cc: List[str]
     timestamp: str
+    slack_webhook: str | None = None
+    explorer_base_url: str = "https://explorer.ooni.org/"
 
 
 def make_detector(params: MakeDetectorParams):
@@ -29,4 +31,6 @@ def make_detector(params: MakeDetectorParams):
         start_time=start_hour,
         end_time=end_hour,
         probe_cc=params.probe_cc,
+        slack_webhook=params.slack_webhook,
+        explorer_base_url=params.explorer_base_url,
     )
