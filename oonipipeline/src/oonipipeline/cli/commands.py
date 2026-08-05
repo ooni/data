@@ -378,3 +378,44 @@ def events_panel(port: int):
     flag_options = {"server.port": port}
     bootstrap.load_config_options(flag_options=flag_options)
     bootstrap.run(panel_path, is_hello=False, args=[], flag_options=flag_options)
+
+
+@cli.command()
+@click.argument("events_path", type=click.Path(exists=True))
+@click.option("--tolerance-hours", default=24, show_default=True,
+              help="How far outside the onset bracket a changepoint still counts as a hit")
+@click.option("--lead-days", default=14, show_default=True,
+              help="Quiet window before the bracket, used for the false-alarm rate")
+@click.option("--edd", default=10, show_default=True, help="CUSUM expected detection delay")
+@click.option("--gap-halflife", default=48.0, show_default=True)
+@click.option("--json-out", type=click.Path(), default=None,
+              help="Write the per-event results, for diffing two configurations")
+def event_eval(events_path, tolerance_hours, lead_days, edd, gap_halflife, json_out):
+    """
+    Score a detector configuration against the adjudicated event corpus.
+
+    Takes an event-grain export from the event labeller. Prints the scorecard
+    and exits non-zero if any event fails, so it can gate a detector change.
+    """
+    import json as _json
+    from dataclasses import asdict
+
+    from ..analysis.event_eval import run_harness
+
+    card = run_harness(
+        clickhouse_url=config.clickhouse_url,
+        events_path=events_path,
+        tolerance_hours=tolerance_hours,
+        lead_days=lead_days,
+        edd=edd,
+        gap_halflife=gap_halflife,
+    )
+    click.echo(card.format())
+    if json_out:
+        with open(json_out, "w") as fh:
+            _json.dump([asdict(r) for r in card.results], fh, indent=2)
+        click.echo(f"wrote {json_out}")
+
+    failed = [r for r in card.results if not r.passed]
+    if failed:
+        raise SystemExit(1)
