@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OONI verdict presentation: design mockup</title>
+<style>
+/* ------------------------------------------------------------------
+   Design mockup for the verdict presentation layer.
+   Companion to docs/user-guide.md §7 and docs/ontology.md §6.3.
+   Self-contained, no network access, no build step. Open in a browser.
+
+   Palette is Okabe-Ito (colourblind-safe). Deliberately NOT red/green:
+   red-green deficiency is the common one. Every state also carries a
+   glyph and a text label, so colour is never the only carrier.
+   ------------------------------------------------------------------ */
+:root {
+  --bg:#fbfbfc; --panel:#fff; --ink:#1a1c1e; --muted:#5f6570; --line:#dfe2e7;
+  --ok:#009E73; --down:#56B4E9; --impaired:#E69F00;
+  --likely:#D55E00; --blocked:#8c3000; --none:#aeb4bd;
+  --accent:#0072B2;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#15171a; --panel:#1d2024; --ink:#e8eaed; --muted:#9aa1ab; --line:#31363d;
+          --ok:#2ec49b; --down:#7cc8f2; --impaired:#f0b74a; --likely:#f2723a;
+          --blocked:#c94a1a; --none:#5a6069; --accent:#4aa3dd; }
+}
+:root[data-theme="dark"] {
+  --bg:#15171a; --panel:#1d2024; --ink:#e8eaed; --muted:#9aa1ab; --line:#31363d;
+  --ok:#2ec49b; --down:#7cc8f2; --impaired:#f0b74a; --likely:#f2723a;
+  --blocked:#c94a1a; --none:#5a6069; --accent:#4aa3dd;
+}
+:root[data-theme="light"] {
+  --bg:#fbfbfc; --panel:#fff; --ink:#1a1c1e; --muted:#5f6570; --line:#dfe2e7;
+  --ok:#009E73; --down:#56B4E9; --impaired:#E69F00;
+  --likely:#D55E00; --blocked:#8c3000; --none:#aeb4bd; --accent:#0072B2;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:28px 20px 80px}
+h1{font-size:22px;margin:0 0 4px} h2{font-size:16px;margin:34px 0 10px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 22px}
+.note{border-left:3px solid var(--accent);padding:8px 0 8px 12px;color:var(--muted);
+  font-size:13.5px;margin:10px 0 18px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:18px;margin-bottom:18px}
+.controls{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
+.ctl{display:flex;flex-direction:column;gap:5px;min-width:190px;flex:1}
+label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+select{font:inherit;padding:7px 9px;border-radius:7px;border:1px solid var(--line);
+  background:var(--bg);color:var(--ink);width:100%}
+.ladder{font-size:11.5px;color:var(--muted);margin-top:3px}
+.ladder b{color:var(--accent)}
+
+.headline{display:flex;gap:14px;align-items:flex-start;margin-bottom:6px}
+.glyph{font-size:26px;line-height:1.1;width:32px;text-align:center;flex:none}
+.hl-title{font-size:19px;font-weight:650;margin:0}
+.hl-sub{color:var(--muted);font-size:13.5px;margin:2px 0 0}
+.artefact{border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:7px;padding:12px 14px;margin:14px 0}
+.artefact p{margin:0 0 8px} .artefact p:last-child{margin:0}
+.basis{font-size:13.5px;color:var(--muted)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;
+  background:color-mix(in srgb,var(--ink) 8%,transparent);padding:1px 5px;border-radius:4px}
+.means{background:color-mix(in srgb,var(--accent) 8%,transparent);
+  border-radius:7px;padding:11px 14px;margin:12px 0;font-size:14px}
+.means b{display:block;font-size:11.5px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--muted);margin-bottom:3px}
+.method{font-size:13px;color:var(--muted);margin-top:10px}
+
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+td.st{text-align:center;width:74px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;
+  padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:9px}
+.hatch{background-image:repeating-linear-gradient(45deg,var(--none) 0 3px,transparent 3px 6px);
+  border-radius:3px}
+svg{max-width:100%;height:auto;display:block}
+.axis{font-size:10px;fill:var(--muted)}
+.scroll{overflow-x:auto}
+footer{color:var(--muted);font-size:12.5px;margin-top:34px;border-top:1px solid var(--line);padding-top:14px}
+button.theme{position:fixed;top:12px;right:12px;font:inherit;font-size:12px;padding:6px 11px;
+  border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+</style>
+</head>
+<body>
+<button class="theme" id="themeBtn" type="button">Toggle theme</button>
+<div class="wrap">
+
+<h1>Verdict presentation: a design mockup</h1>
+<p class="sub">
+  Illustrates <a href="user-guide.md">user-guide.md</a> §7 and
+  <a href="ontology.md">ontology.md</a> §6.3. Nothing here is implemented; the
+  data below is fabricated to demonstrate the encoding rules. Every state
+  carries a glyph, a label and a colour, so colour is never load-bearing.
+</p>
+
+<h2>1. The query surface</h2>
+<div class="note">
+  Move <b>Location</b> from a single network up to the country and watch the
+  headline flip from “no” to “yes” while the denominator grows. That is
+  <code>max</code> being monotone in selection size: widening can only raise the
+  answer, which is why the count and the argmax are not optional decoration.
+</div>
+
+<div class="panel">
+  <div class="controls">
+    <div class="ctl">
+      <label for="loc">Location</label>
+      <select id="loc">
+        <option value="as45678">AS45678 · Fourth ISP</option>
+        <option value="as12345">AS12345 · Example Telecom</option>
+        <option value="as56789">AS56789 · Fifth ISP (thin data)</option>
+        <option value="it" selected>Italy · all networks</option>
+      </select>
+      <div class="ladder" id="ladder-loc"></div>
+    </div>
+    <div class="ctl">
+      <label for="tgt">Target</label>
+      <select id="tgt">
+        <option value="mfacebook">m.facebook.com</option>
+        <option value="facebook" selected>Facebook (group, 7 endpoints)</option>
+        <option value="social">Social media (category)</option>
+      </select>
+      <div class="ladder" id="ladder-tgt"></div>
+    </div>
+    <div class="ctl">
+      <label for="time">Time contour</label>
+      <select id="time">
+        <option value="24h">Last 24 hours</option>
+        <option value="14d" selected>1–14 March 2026</option>
+      </select>
+      <div class="ladder" id="ladder-time"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="answer"></div>
+
+<h2>2. A single finding, artefact first</h2>
+<div class="note">
+  The state label is present but subordinate. The sentence a reader repeats to
+  someone else is the artefact sentence, and it is the one that survives contact
+  with the operator being described. Mechanism confidence routinely exceeds
+  blocking confidence, so the mechanism leads.
+</div>
+
+<div class="panel">
+  <div class="headline">
+    <div class="glyph" style="color:var(--blocked)" aria-hidden="true">▲</div>
+    <div>
+      <p class="hl-title">Blocked</p>
+      <p class="hl-sub">m.facebook.com · AS12345 Example Telecom · Italy · 1–14 Mar 2026</p>
+    </div>
+  </div>
+
+  <div class="artefact">
+    <p>DNS resolution for <code>m.facebook.com</code> returned
+       <code>10.10.34.36</code>, an address inside the provider's own network
+       that does not host the site.</p>
+    <p class="basis">Seen in <b>37 of 42</b> measurements from this network over 14 days.
+       Confirmed by a matching blockpage fingerprint (<code>it_isp_blockpage_v2</code>).</p>
+  </div>
+
+  <div class="means">
+    <b>What this means for you</b>
+    Your provider's DNS is returning a false address. A different resolver, or
+    encrypted DNS, may reach the site.
+  </div>
+
+  <div class="method">
+    Method <code>bogon_not_in_ctrl</code> · rule fired at
+    <b>your provider's resolver</b> · taxonomy v1 ·
+    rule <code>country_consistent_blockpage</code>
+  </div>
+</div>
+
+<div class="note">
+  Contrast the same layout when the evidence is thin. The state <em>changes</em>
+  rather than carrying a confidence caveat, because readers keep labels and
+  discard qualifiers.
+</div>
+
+<div class="panel">
+  <div class="headline">
+    <div class="glyph" style="color:var(--none)" aria-hidden="true">▨</div>
+    <div>
+      <p class="hl-title">Not enough data</p>
+      <p class="hl-sub">m.facebook.com · AS56789 Fifth ISP · Italy · 1–14 Mar 2026</p>
+    </div>
+  </div>
+  <div class="artefact">
+    <p class="basis">3 measurements over 14 days, from 1 probe. Below the
+      threshold needed to distinguish blocking from an outage.</p>
+  </div>
+  <div class="means">
+    <b>What this means for you</b>
+    We cannot say. This is not evidence that the site is reachable.
+  </div>
+</div>
+
+<h2>3. State vocabulary</h2>
+<div class="note">
+  Seven states, matching the focal elements in <a href="ontology.md">ontology.md</a> §6.3
+  exactly, so the model and the interface share one vocabulary. “Not enough
+  data” is hatched rather than tinted, because rendering an empty cell as a pale
+  positive is the most damaging default available here. “Blocked on some
+  networks” is the aggregate-only state: it is the lattice join for a selection
+  containing both blocked and reachable cells, and it exists so that aggregation
+  never has to emit an incoherent <code>(1, 0, 1)</code> triple.
+</div>
+<div class="panel legend" id="legend"></div>
+
+<h2>4. Time series</h2>
+<div class="note">
+  Three rules encoded below: gaps in coverage are drawn as gaps and never
+  interpolated across; the measurement count is always visible as a strip under
+  the axis; and changepoints are marked on the series with their mechanism
+  rather than filed in a separate list. The band is a 90% credible interval, so
+  its width falls out of the measurement count instead of being chosen.
+</div>
+<div class="panel scroll">
+  <svg viewBox="0 0 920 330" role="img"
+       aria-label="Blocking of m.facebook.com on AS12345, hourly, with 90 percent credible interval. A gap in coverage on 8 March is hatched. A changepoint is marked on 10 March.">
+    <defs>
+      <pattern id="nodata" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <rect width="6" height="6" fill="transparent"/>
+        <line x1="0" y1="0" x2="0" y2="6" stroke="var(--none)" stroke-width="3"/>
+      </pattern>
+    </defs>
+
+    <!-- y axis -->
+    <g class="axis">
+      <text x="8" y="34">1.0</text><text x="8" y="94">0.8</text>
+      <text x="8" y="154">0.6</text><text x="8" y="214">0.4</text>
+      <text x="14" y="264">0</text>
+    </g>
+    <g stroke="var(--line)" stroke-width="1">
+      <line x1="44" y1="30" x2="900" y2="30"/><line x1="44" y1="90" x2="900" y2="90"/>
+      <line x1="44" y1="150" x2="900" y2="150"/><line x1="44" y1="210" x2="900" y2="210"/>
+      <line x1="44" y1="260" x2="900" y2="260"/>
+    </g>
+
+    <!-- no-data span -->
+    <rect x="44" y="30" width="150" height="230" fill="url(#nodata)" opacity=".55"/>
+    <text class="axis" x="70" y="150" fill="var(--muted)">no coverage</text>
+
+    <!-- credible band, widening backwards where n is small -->
+    <path d="M194,236 L280,214 L370,150 L470,96 L570,72 L670,64 L780,58 L900,56
+             L900,84 L780,88 L670,96 L570,108 L470,140 L370,196 L280,246 L194,258 Z"
+          fill="var(--likely)" opacity=".20"/>
+    <!-- point estimate -->
+    <path d="M194,247 L280,230 L370,173 L470,118 L570,90 L670,80 L780,73 L900,70"
+          fill="none" stroke="var(--likely)" stroke-width="2.5"/>
+
+    <!-- changepoint -->
+    <line x1="370" y1="30" x2="370" y2="260" stroke="var(--blocked)" stroke-width="1" stroke-dasharray="4 4"/>
+    <polygon points="370,22 364,34 376,34" fill="var(--blocked)"/>
+    <text class="axis" x="380" y="24" fill="var(--blocked)">changepoint · dns.injection.blockpage</text>
+
+    <!-- n strip -->
+    <text class="axis" x="8" y="292">n</text>
+    <rect x="44" y="280" width="150" height="16" fill="url(#nodata)" opacity=".55"/>
+    <g fill="var(--accent)" opacity=".65">
+      <rect x="200" y="280" width="72" height="16"/><rect x="280" y="280" width="82" height="16"/>
+      <rect x="370" y="280" width="94" height="16"/><rect x="470" y="280" width="94" height="16"/>
+      <rect x="570" y="280" width="94" height="16"/><rect x="670" y="280" width="104" height="16"/>
+      <rect x="780" y="280" width="118" height="16"/>
+    </g>
+    <g class="axis">
+      <text x="96" y="292" fill="var(--muted)">0</text>
+      <text x="228" y="292">12</text><text x="312" y="292">31</text><text x="406" y="292">44</text>
+      <text x="506" y="292">38</text><text x="606" y="292">41</text><text x="712" y="292">39</text>
+      <text x="826" y="292">45</text>
+    </g>
+    <g class="axis">
+      <text x="100" y="316">Mar 08</text><text x="280" y="316">Mar 09</text>
+      <text x="370" y="316">Mar 10</text><text x="470" y="316">Mar 11</text>
+      <text x="570" y="316">Mar 12</text><text x="670" y="316">Mar 13</text>
+      <text x="800" y="316">Mar 14</text>
+    </g>
+    <g class="axis" transform="translate(700,180)">
+      <rect x="0" y="-9" width="22" height="11" fill="var(--likely)" opacity=".20"/>
+      <text x="28" y="0">90% credible interval</text>
+    </g>
+  </svg>
+</div>
+
+<h2>5. Network × layer matrix</h2>
+<div class="note">
+  The default view for any multi-network selection. Method and locus vary by ISP
+  within a country, and that variation is usually the finding; collapsing it to
+  one national label destroys it. The HTTP column is hatched throughout because
+  there is no HTTP verdict implemented yet, which is the honest rendering of a
+  missing layer rather than an absent one.
+</div>
+<div class="panel scroll">
+  <table>
+    <thead><tr><th>Network</th><th class="st">DNS</th><th class="st">TCP</th>
+      <th class="st">TLS</th><th class="st">HTTP</th><th>Method</th></tr></thead>
+    <tbody id="matrix"></tbody>
+  </table>
+</div>
+
+<footer>
+  Mockup only. Thresholds mapping evidence mass to these states are
+  <b>provisional</b> until a labelled corpus exists. See
+  <a href="implementation-plan.md">implementation-plan.md</a> §3.8. Attribution
+  wording (“your provider's resolver”) is gated on locus inference; until that
+  ships, phrase it as “the resolver used by this probe” and name no operator.
+</footer>
+</div>
+
+<script>
+const STATES = {
+  ok:          {g:"●", label:"Reachable",                         c:"var(--ok)"},
+  insufficient:{g:"▨", label:"Not enough data",                   c:"var(--none)"},
+  down:        {g:"○", label:"Not working, no sign of blocking",  c:"var(--down)"},
+  impaired:    {g:"◐", label:"Not working, cause unclear",        c:"var(--impaired)"},
+  likely:      {g:"△", label:"Consistent with blocking",          c:"var(--likely)"},
+  blocked:     {g:"▲", label:"Blocked",                           c:"var(--blocked)"},
+  // Aggregate cells only: the join in the subset lattice when a selection
+  // contains both blocked and reachable networks. Replaces the incoherent
+  // componentwise triple (1,0,1). See ontology.md §9.
+  mixed:       {g:"◭", label:"Blocked on some networks",            c:"var(--impaired)"},  // aggregate view only
+};
+
+// Fabricated. n = measurements behind the cell.
+const NETWORKS = [
+  {asn:"AS12345", name:"Example Telecom", dns:"blocked", tcp:"ok", tls:"ok", n:42,
+   method:"dns.injection.blockpage · resolver"},
+  {asn:"AS23456", name:"Second ISP",      dns:"likely",  tcp:"ok", tls:"ok", n:31,
+   method:"dns.nxdomain · unknown locus"},
+  {asn:"AS34567", name:"Third ISP",       dns:"ok", tcp:"blocked", tls:"ok", n:28,
+   method:"tcp.reset.sni · isp_middlebox"},
+  {asn:"AS45678", name:"Fourth ISP",      dns:"ok", tcp:"ok", tls:"ok", n:37, method:"n/a"},
+  {asn:"AS56789", name:"Fifth ISP",       dns:"insufficient", tcp:"insufficient",
+   tls:"insufficient", n:3, method:"n/a"},
+];
+
+const SCENARIOS = {
+  "as45678|facebook":  {state:"ok", nets:1, affected:0, thin:0, msmt:37,
+    line:"No interference observed on this network.",
+    detail:"All 7 Facebook endpoints resolved and connected normally."},
+  "as12345|facebook":  {state:"blocked", nets:1, affected:1, thin:0, msmt:42,
+    line:"Yes, on this network.",
+    detail:"m.facebook.com returned an address inside the provider's own network in 37 of 42 measurements."},
+  "as56789|facebook":  {state:"insufficient", nets:1, affected:0, thin:1, msmt:3,
+    line:"Not enough data to say.",
+    detail:"3 measurements from 1 probe over 14 days. This is not evidence that the site is reachable."},
+  "it|facebook":       {state:"mixed", nets:41, affected:3, thin:6, msmt:1204,
+    line:"Yes, on 3 of 41 networks measured.",
+    detail:"Strongest case: AS12345 (Example Telecom), where m.facebook.com returned an address inside the provider's own network in 37 of 42 measurements."},
+  "it|mfacebook":      {state:"mixed", nets:41, affected:2, thin:8, msmt:388,
+    line:"Yes, on 2 of 41 networks measured.",
+    detail:"Strongest case: AS12345 (Example Telecom), 37 of 42 measurements returned a provider-internal address."},
+  "it|social":         {state:"mixed", nets:41, affected:7, thin:5, msmt:9153,
+    line:"Yes, on 7 of 41 networks measured.",
+    detail:"Strongest case: AS12345 (Example Telecom) blocking m.facebook.com. 4 distinct targets affected across the category."},
+};
+
+function key(){ return document.getElementById("loc").value + "|" + document.getElementById("tgt").value; }
+
+function fallback(){
+  const t = document.getElementById("tgt").value;
+  return SCENARIOS["it|"+t] || SCENARIOS["it|facebook"];
+}
+
+const LADDERS = {
+  loc:  {rungs:["endpoint","ASN","country","region"],
+         sel:{as45678:"ASN", as12345:"ASN", as56789:"ASN", it:"country"}},
+  tgt:  {rungs:["URL","domain","group","category"],
+         sel:{mfacebook:"domain", facebook:"group", social:"category"}},
+  time: {rungs:["hour","day","range"],
+         sel:{"24h":"day", "14d":"range"}},
+};
+
+function drawLadders(){
+  for (const [id, cfg] of Object.entries(LADDERS)) {
+    const at = cfg.sel[document.getElementById(id).value];
+    document.getElementById("ladder-"+id).innerHTML =
+      cfg.rungs.map(r => r === at ? `<b>${r}</b>` : r).join(" · ");
+  }
+}
+
+function render(){
+  drawLadders();
+  const s = SCENARIOS[key()] || fallback();
+  const st = STATES[s.state];
+  const thin = s.thin ? `${s.thin} network${s.thin>1?"s":""} had too little data to assess.` : "";
+  document.getElementById("answer").innerHTML = `
+    <div class="headline">
+      <div class="glyph" style="color:${st.c}" aria-hidden="true">${st.g}</div>
+      <div>
+        <p class="hl-title">${s.line}</p>
+        <p class="hl-sub">${st.label}</p>
+      </div>
+    </div>
+    <div class="artefact">
+      <p>${s.detail}</p>
+      <p class="basis">Based on <b>${s.msmt.toLocaleString()}</b> measurements
+         from ${s.nets} network${s.nets>1?"s":""}. ${thin}</p>
+    </div>`;
+}
+
+document.getElementById("legend").innerHTML = Object.values(STATES).map(s =>
+  `<span class="pill" style="color:${s.c}"><span aria-hidden="true">${s.g}</span>
+   <span style="color:var(--ink)">${s.label}</span></span>`).join("");
+
+document.getElementById("matrix").innerHTML = NETWORKS.map(n => {
+  const cell = k => {
+    const s = STATES[n[k]];
+    return n[k] === "insufficient"
+      ? `<td class="st"><span class="hatch" style="display:inline-block;width:22px;height:14px"
+           title="Not enough data"></span><span class="sr" style="position:absolute;left:-9999px">Not enough data</span></td>`
+      : `<td class="st" style="color:${s.c}" title="${s.label}">${s.g}</td>`;
+  };
+  return `<tr><td>${n.asn} <span style="color:var(--muted)">${n.name}</span><br>
+    <span style="color:var(--muted);font-size:12px">n=${n.n}</span></td>
+    ${cell("dns")}${cell("tcp")}${cell("tls")}
+    <td class="st"><span class="hatch" style="display:inline-block;width:22px;height:14px"
+      title="No HTTP verdict implemented"></span></td>
+    <td style="color:var(--muted);font-size:12.5px">${n.method}</td></tr>`;
+}).join("") + `<tr><td colspan="6" style="color:var(--muted)">… 36 more networks</td></tr>`;
+
+["loc","tgt","time"].forEach(id => document.getElementById(id).addEventListener("change", render));
+render();
+
+document.getElementById("themeBtn").addEventListener("click", () => {
+  const r = document.documentElement;
+  const cur = r.getAttribute("data-theme")
+    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  r.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+});
+</script>
+</body>
+</html>
