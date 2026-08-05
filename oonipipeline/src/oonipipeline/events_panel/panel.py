@@ -52,6 +52,10 @@ def detector_panel():
     # Only recompute on submit; store in session_state so results survive
     # reruns triggered by the selectboxes below.
     if submitted:
+        # Drop any cusum-related state left over from a previous submission
+        for key in ("changepoints", "cusum_steps", "block_type_select", "asn_select"):
+            st.session_state.pop(key, None)
+
         changepoints, _, cusum_steps = run_detector_cached(
             clickhouse_url,
             to_datetime(start_time),
@@ -86,11 +90,15 @@ def detector_panel():
     c2.write(f"Cusum steps: **{len(cusum_steps)}**")
 
     c1, c2 = st.columns(2)
-    block_type = c1.selectbox("Block type", [c[0] for c in ANALYSIS_COLS])
+    block_type = c1.selectbox(
+        "Block type", [c[0] for c in ANALYSIS_COLS], key="block_type_select"
+    )
 
     asn_list = list(asns.keys())
     asn_list.sort(key=lambda k: asns[k], reverse=True)
-    selected_asn = c2.selectbox("ASN", asn_list, format_func=lambda k: f"{k} ({asns[k]})")
+    selected_asn = c2.selectbox(
+        "ASN", asn_list, format_func=lambda k: f"{k} ({asns[k]})", key="asn_select"
+    )
 
     chart_steps = [s for s in cusum_steps if s["probe_asn"] == selected_asn]
 
