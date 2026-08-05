@@ -8,8 +8,10 @@ from .rules import (
     DNS_RULES,
     TCP_RULES,
     TLS_RULES,
+    render_evidence_multiif,
     render_outcome_multiif,
     render_rule_id_multiif,
+    render_top_rule_argmax,
 )
 
 log = logging.getLogger(__name__)
@@ -109,6 +111,25 @@ def format_query_analysis_web_fuzzy_logic(
     --ctrl_tcp_success_rates,
     ctrl_tcp_success_rates[ip] as ctrl_tcp_success_rate,
 
+    -- Is the address in THIS row a real address for this hostname?
+    --
+    -- The TCP and TLS cascades need this to decide whether a result is
+    -- interpretable. Connecting to a censor's blockpage address tells you
+    -- nothing about TCP reachability of the target, and a handshake against it
+    -- tells you nothing about TLS interference -- but that is a property of the
+    -- ADDRESS, not of the measurement. web_connectivity 0.5 tests endpoints
+    -- obtained from resolvers other than the system one, so a poisoned system
+    -- lookup no longer implies every address tested was poisoned.
+    --
+    -- Both signals are independent of whichever resolver produced the address:
+    -- the control resolved it too, or somebody completed a valid handshake for
+    -- the expected name on it. Deliberately NOT including an ASN-level match:
+    -- answer_asn_matches_ctrl is only worth 0.8 ok in the DNS rules, so it is
+    -- not strong enough to license interpreting a failure as censorship.
+    has(mapKeys(ctrl_dns_answers), ip) as ip_in_ctrl_answers,
+    has(union_tls_consistent_ips, ip) as ip_tls_consistent,
+    (ip_in_ctrl_answers OR ip_tls_consistent) as ip_trusted,
+
     expected_countries,
     dns_blocking_scope,
     -- A 'fp' scope marks a fingerprint that is known to produce false
@@ -121,17 +142,22 @@ def format_query_analysis_web_fuzzy_logic(
         AND has(expected_countries, probe_cc) as dns_blocking_country_consistent,
 
     -- Possibility distributions of states (blocking, down, ok). The rule set and
-    -- its weights live in analysis/rules.py; the cascade below is generated from
-    -- there, as is the matching *_rule_id cascade, so a row's rule id always
-    -- names the rule that produced its score.
+    -- its weights live in analysis/rules.py; all three cascades below are
+    -- generated from there off the same conditions in the same order, so a row's
+    -- rule id and evidence level always belong to the rule that scored it.
+    -- *_evidence says whether the layer produced data at all, which the (0, 0, 0)
+    -- outcome cannot distinguish from a clean result.
     {render_outcome_multiif(DNS_RULES)} as dns_outcome,
     {render_rule_id_multiif(DNS_RULES)} as dns_rule_id,
+    {render_evidence_multiif(DNS_RULES)} as dns_evidence,
 
     {render_outcome_multiif(TCP_RULES)} as tcp_outcome,
     {render_rule_id_multiif(TCP_RULES)} as tcp_rule_id,
+    {render_evidence_multiif(TCP_RULES)} as tcp_evidence,
 
     {render_outcome_multiif(TLS_RULES)} as tls_outcome,
     {render_rule_id_multiif(TLS_RULES)} as tls_rule_id,
+    {render_evidence_multiif(TLS_RULES)} as tls_evidence,
 
     ip,
     ip_asn,
@@ -194,12 +220,12 @@ def format_query_analysis_web_fuzzy_logic(
     max(tls_down) as tls_down_max,
     max(tls_ok) as tls_ok_max,
 
-    -- The rule that drove this measurement's headline score. argMax over the
-    -- blocked possibility rather than anyHeavy, so the id explains *_blocked_max
-    -- specifically. Ties (e.g. all-zero rows) resolve arbitrarily.
-    argMax(dns_rule_id, dns_blocked) as top_dns_rule_id,
-    argMax(tcp_rule_id, tcp_blocked) as top_tcp_rule_id,
-    argMax(tls_rule_id, tls_blocked) as top_tls_rule_id,
+    -- The rule that drove this measurement's verdict, ranked so that the rows
+    -- carrying no data for a layer cannot outrank the rows that do. See
+    -- render_top_rule_argmax.
+    {render_top_rule_argmax("dns")},
+    {render_top_rule_argmax("tcp")},
+    {render_top_rule_argmax("tls")},
 
     -- Constant within a measurement, so it rides along in the GROUP BY rather
     -- than needing an aggregate.
@@ -228,12 +254,24 @@ def format_query_analysis_web_fuzzy_logic(
         dns_failure,
         dns_answer,
 
-        -- We limit this to only the system resolver
-        -- TODO: in order to fully support web_connectivity 0.5 we should ideally
-        -- parse this as well.
-        groupArrayIf(dns_answer, dns_engine IN ('getaddrinfo', 'system')) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers,
-        groupArrayIf(ip_asn, dns_engine IN ('getaddrinfo', 'system')) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_asns,
-        maxIf(ip_is_bogon, dns_engine IN ('getaddrinfo', 'system')) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_contain_bogon,
+        -- Each resolver's answers are scored on their own merits, so the
+        -- partition carries the resolver's identity.
+        --
+        -- This used to be restricted to the system resolver and partitioned
+        -- without it, which had two consequences. Answers from the extension
+        -- resolvers web_connectivity 0.5 uses (DNS-over-UDP, DoH, the TH) were
+        -- excluded from DNS scoring entirely; and because a window covers every
+        -- row in its partition, every DNS signal was constant across the
+        -- measurement, so a row whose address came from an untainted resolver
+        -- inherited the system resolver's verdict and was masked with it.
+        --
+        -- groupArray drops NULLs, so a row with no DNS observation at all (an
+        -- HTTP-only redirect hop, or a TH-supplied address) now lands in its own
+        -- partition with an empty answer set and scores no_dns_data, instead of
+        -- borrowing the DNS verdict of a lookup it was not party to.
+        groupArray(dns_answer) over (partition by measurement_uid, hostname, ip_is_v6, dns_engine, dns_engine_resolver_address) as dns_answers,
+        groupArray(ip_asn) over (partition by measurement_uid, hostname, ip_is_v6, dns_engine, dns_engine_resolver_address) as dns_answers_asns,
+        max(ip_is_bogon) over (partition by measurement_uid, hostname, ip_is_v6, dns_engine, dns_engine_resolver_address) as dns_answers_contain_bogon,
 
         countIf(ip_asn IN %(cloud_provider_asns)s) over (partition by measurement_uid) as dns_answers_cloud,
 

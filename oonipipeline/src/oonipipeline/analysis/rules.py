@@ -20,17 +20,35 @@ Rule ordering is significant: ``multiIf`` takes the first match, so a rule only
 fires when every rule above it did not. This is a decision tree whose leaves are
 hand-set, and the conditions are not mutually exclusive on their own.
 
-Outcome triples are ``(blocked, down, ok)``. Note they do not all sum to 1 —
-``answer_matches_ctrl`` sums to 0.9 and the "no data" rules sum to 0. The 0 case
-is an overloaded mask meaning "this row has no observation at this layer, do not
-include it in aggregates", which is distinct from "observed but inconclusive"
-and should eventually become an explicit column rather than a sentinel triple.
+Outcome triples are ``(blocked, down, ok)``. They do not all sum to 1 —
+``answer_matches_ctrl`` sums to 0.9 and the masking rules sum to 0. That 0 is
+overloaded: it covers "no observation here", "observed but discarded" and
+"observed, nothing wrong" alike. Each rule therefore also carries an
+``Evidence`` level saying which of those it means, so aggregates do not have to
+infer it from the numbers. Read the level, never ``blocked == 0``.
 """
 
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import List, Tuple
 
-RULES_VERSION = 1
+RULES_VERSION = 2
+
+
+class Evidence(IntEnum):
+    """How much a row has to say about its layer, independent of the score.
+
+    The triple cannot answer this: a rule scores (0, 0, 0) whether the layer
+    was never exercised, or was exercised and then discarded because an
+    earlier layer was untrustworthy. Both are "no verdict", but only the
+    second one names a cause, and neither is "we looked and found nothing
+    wrong". Ordered, so aggregates can prefer the row that saw the most.
+    """
+
+    NONE = 0  # layer produced no data on this row
+    DISCARDED = 1  # observed, but an earlier layer makes it uninterpretable
+    SCORED = 2  # observed and scored
+
 
 @dataclass(frozen=True)
 class Rule:
@@ -46,15 +64,17 @@ class Rule:
     down: float
     ok: float
     comment: str
+    evidence: Evidence = Evidence.SCORED
 
     @property
     def outcome(self) -> Tuple[float, float, float]:
         return (self.blocked, self.down, self.ok)
 
 
-# The rule id used when no condition matched. Shares the (0, 0, 0) outcome with
-# the explicit "no data" rules.
+# The rule id used when no condition matched. Nothing was established, so it
+# carries Evidence.NONE along with the (0, 0, 0) outcome.
 NO_MATCH_RULE_ID = "none"
+NO_MATCH_EVIDENCE = Evidence.NONE
 
 
 DNS_RULES: List[Rule] = [
@@ -68,6 +88,7 @@ DNS_RULES: List[Rule] = [
             "Row has no DNS data attached, most likely an HTTP(s)-only "
             "observation. Masked out of aggregate analysis."
         ),
+        evidence=Evidence.NONE,
     ),
     Rule(
         rule_id="country_consistent_blockpage",
@@ -188,6 +209,7 @@ TCP_RULES: List[Rule] = [
         down=0.0,
         ok=0.0,
         comment="Row has no TCP data attached. Masked out of aggregate analysis.",
+        evidence=Evidence.NONE,
     ),
     Rule(
         rule_id="connect_ok",
@@ -207,6 +229,7 @@ TCP_RULES: List[Rule] = [
             "Failure against an IPv6 target while IPv6 is failing broadly for "
             "this report_id — the probe most likely has broken IPv6. Masked."
         ),
+        evidence=Evidence.DISCARDED,
     ),
     Rule(
         rule_id="failure_ctrl_ok",
@@ -219,18 +242,29 @@ TCP_RULES: List[Rule] = [
         ok=0.0,
         comment="Failure against an address that mostly succeeds in the control.",
     ),
+    # Replaces dns_untrusted, which masked on the measurement's DNS verdict and
+    # so discarded every address once any lookup looked poisoned. The question
+    # is about the address, not the measurement: an address the control also
+    # returned, or one that completed a valid handshake, is worth connecting to
+    # whatever the system resolver did. Strictly narrower than the old rule, so
+    # it can only unmask rows, never mask new ones.
     Rule(
-        rule_id="dns_untrusted",
-        condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
+        rule_id="endpoint_untrusted",
+        condition=(
+            "NOT ip_trusted AND dns_blocked > 0 "
+            "AND dns_ok <= (dns_blocked + dns_down)"
+        ),
         blocked=0.0,
         down=0.0,
         ok=0.0,
         comment=(
-            "DNS was not trustworthy, so the addresses we connected to cannot "
-            "be trusted either. Masked."
+            "The address came from a lookup that looks poisoned and nothing "
+            "independent vouches for it, so connecting to it says nothing "
+            "about the target. Masked."
             # TODO(art): this sits below connect_ok, so a successful connection
             # to a blockpage address is still scored as OK. Is that right?
         ),
+        evidence=Evidence.DISCARDED,
     ),
     Rule(
         rule_id="failure_ctrl_also_failing",
@@ -259,6 +293,7 @@ TLS_RULES: List[Rule] = [
         down=0.0,
         ok=0.0,
         comment="Row has no TLS data attached. Masked out of aggregate analysis.",
+        evidence=Evidence.NONE,
     ),
     Rule(
         rule_id="certificate_valid",
@@ -298,13 +333,24 @@ TLS_RULES: List[Rule] = [
         ok=0.0,
         comment="Failure where the control succeeds, with a less specific error.",
     ),
+    # See the TCP rule of the same name. Note this sits BELOW the
+    # failure_ctrl_ok_* rules, so a TLS failure against an address the control
+    # succeeds on is already scored as blocking before we get here.
     Rule(
-        rule_id="dns_untrusted",
-        condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
+        rule_id="endpoint_untrusted",
+        condition=(
+            "NOT ip_trusted AND dns_blocked > 0 "
+            "AND dns_ok <= (dns_blocked + dns_down)"
+        ),
         blocked=0.0,
         down=0.0,
         ok=0.0,
-        comment="DNS was not trustworthy, so this result cannot be either. Masked.",
+        comment=(
+            "The address came from a lookup that looks poisoned and nothing "
+            "independent vouches for it, so the handshake result is not about "
+            "the target. Masked."
+        ),
+        evidence=Evidence.DISCARDED,
     ),
     Rule(
         rule_id="tcp_blocked",
@@ -316,6 +362,7 @@ TLS_RULES: List[Rule] = [
             "TCP analysis says this address is blocked, so the TLS result is "
             "downstream of that. Masked."
         ),
+        evidence=Evidence.DISCARDED,
     ),
     Rule(
         rule_id="failure_ctrl_also_failing",
@@ -374,3 +421,47 @@ def render_rule_id_multiif(rules: List[Rule]) -> str:
     parts.append(_indent(f"'{NO_MATCH_RULE_ID}'"))
     parts.append(_indent(")", level=4))
     return "\n".join(parts)
+
+
+def render_evidence_multiif(rules: List[Rule]) -> str:
+    """
+    Render the Evidence cascade for a layer.
+
+    Same conditions in the same order as the other two cascades, so a row's
+    evidence level is the one belonging to the rule that scored it.
+    """
+    parts = ["multiIf("]
+    for rule in rules:
+        parts.append(_indent(f"{rule.condition},"))
+        parts.append(_indent(f"{int(rule.evidence)},"))
+    parts.append(_indent(f"{int(NO_MATCH_EVIDENCE)}"))
+    parts.append(_indent(")", level=4))
+    return "\n".join(parts)
+
+
+def render_top_rule_argmax(layer: str) -> str:
+    """
+    Render the aggregate picking the rule that drove a measurement's verdict.
+
+    A measurement has one row per resolved IP plus one per redirect hop, and
+    the redirect rows carry only HTTP, so at the DNS/TCP/TLS layers they score
+    Evidence.NONE. Ranking those rows against real observations is what has to
+    be avoided: `argMax(rule_id, blocked)` alone ties them at 0 on every
+    unblocked measurement, which is nearly all of them, and the winner then
+    comes down to row order.
+
+    So rank on evidence first, and only then on blocked. Ties on both are
+    broken by rule_id, which is arbitrary but stable — the replay determinism
+    the versioned-inputs work needs cannot be built on a coin flip.
+
+    Deliberately not ranked on `down` and `ok`: lexicographic ordering across
+    the triple only makes sense while the components are hand-set constants in
+    [0, 1]. When they become fitted log-likelihood ratios, `blocked` stays the
+    component `*_blocked_max` reports and argMax over it stays coherent with
+    max over it, while evidence and rule_id are unaffected. This expression
+    should survive that change untouched.
+    """
+    return (
+        f"argMax({layer}_rule_id, ({layer}_evidence, {layer}_blocked, "
+        f"{layer}_rule_id)) as top_{layer}_rule_id"
+    )
