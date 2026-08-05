@@ -204,3 +204,113 @@ ALTER TABLE obs_web  ON CLUSTER oonidata_cluster                DROP COLUMN IF E
 ALTER TABLE obs_http_middlebox ON CLUSTER oonidata_cluster      DROP COLUMN IF EXISTS `probe_id`;
 ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster DROP COLUMN IF EXISTS `probe_id`;
 ```
+
+## 4. Reprocess `top_*_rule_id`
+
+**Introduced by:** "Rank the top rule on evidence before score"
+
+### Background
+
+`top_*_rule_id` was `argMax(rule_id, blocked)`. On a measurement that is not
+blocked the key is 0 on every row, so `argMax` kept whichever row it saw first.
+Every web_connectivity measurement carries one row per resolved IP plus one per
+redirect hop, and the redirect rows hold only HTTP, so they score `no_tls_data`
+and were winning that tie. The recorded values are wrong for a large share of
+rows, skewed toward the `no_*_data` ids.
+
+No DDL: the columns and their types are unchanged, only the expression filling
+them. Nothing reads these columns yet, so the reprocess can run behind the live
+pipeline.
+
+### Verify
+
+`no_*_data` should now appear only where the measurement had no data
+at that layer:
+
+```sql
+SELECT top_tls_rule_id, count() AS n,
+       countIf(greatest(tls_ok_max, tls_blocked_max, tls_down_max) > 0) AS with_verdict
+FROM analysis_web_measurement
+WHERE measurement_start_time > now() - INTERVAL 1 DAY
+GROUP BY top_tls_rule_id ORDER BY n DESC;
+```
+
+Any `no_*_data` row with `with_verdict > 0` means a row carrying no data still
+outranked one that did, so the evidence levels in `analysis/rules.py` are wrong.
+
+### Rollback
+
+Revert the code. Both versions write valid ids from the same vocabulary.
+
+## 5. Reprocess after the per-endpoint trust change
+
+**Introduced by:** "Gate TCP and TLS on the endpoint, not the DNS verdict"
+
+### Background
+
+DNS scoring was restricted to the system resolver and its window partitioned
+without the resolver, so every DNS signal was constant across a measurement. A
+row whose address came from another resolver inherited the system resolver's
+verdict and was masked with it. `dns_untrusted` is replaced by
+`endpoint_untrusted`, which additionally requires that nothing independent
+vouches for the address.
+
+No DDL. `RULES_VERSION` goes to 2, and the rule id changes, so rows written
+before and after are distinguishable in `top_{dns,tcp,tls}_rule_id`.
+
+### What to expect
+
+Measured over a 10-minute production window (9,731 measurements), rescoring
+with the new code against the old:
+
+- **no change to any `*_blocked` score**
+- 3 rule-id changes, all `tcp: endpoint_untrusted -> none`
+
+That is the designed outcome: the new condition is strictly narrower than the
+one it replaces, so it can only unmask rows, never mask new ones. It is close
+to a no-op on today's data because no web_connectivity 0.5 measurements are in
+the pipeline yet: every row still comes from the system resolver. The change
+matters when 0.5 arrives, and it is safe to land first.
+
+The 3 rows that moved to `none` expose a pre-existing gap rather than a new
+one: the TCP cascade has no equivalent of DNS's `failure_no_ctrl`, so a TCP
+failure against an endpoint with no control data matches nothing. It was
+already reachable whenever `dns_blocked` was 0; it now also catches these.
+`none` runs at 0.03% of measurements, so this is a cleanup, not a blocker.
+
+### Reprocess
+
+Same procedure as section 4, including the detector pause and the OPTIMIZE.
+Because scores do not move, the detector will see no changepoints from this;
+the reprocess is for rule-id attribution only and can run at low priority.
+
+### Refit the calibration afterwards
+
+`Calibration` in the API service's `scoring.py` was fitted against a corpus
+scored under `RULES_VERSION = 1`. Scores are unchanged here, so the fit remains
+valid and `SCORING_VERSION` does not strictly need to move, but check it
+rather than assume: re-run the fit cell in `analysis-evaluation.ipynb` after
+reprocessing and confirm INTERCEPT and SLOPE land inside their recorded
+intervals. If they do not, the reprocess changed more than this note predicts.
+
+### Verify
+
+`dns_untrusted` should disappear entirely, and no row should carry a DNS
+verdict it did not earn:
+
+```sql
+SELECT top_tcp_rule_id, top_tls_rule_id, count()
+FROM analysis_web_measurement
+WHERE measurement_start_time > now() - INTERVAL 1 DAY
+  AND (top_tcp_rule_id = 'dns_untrusted' OR top_tls_rule_id = 'dns_untrusted')
+GROUP BY 1, 2;
+```
+
+Expect zero rows once the range is fully reprocessed.
+
+### Rollback
+
+Revert the code and reprocess. Both rule sets write valid ids; a partially
+reprocessed range carries a mix of `dns_untrusted` and `endpoint_untrusted`,
+which is inconsistent but not corrupt, and the `RULES_VERSION` on each row says
+which is which.
