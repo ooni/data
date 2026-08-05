@@ -34,7 +34,23 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import List, Tuple
 
-RULES_VERSION = 1
+RULES_VERSION = 2
+
+
+class Evidence(IntEnum):
+    """How much a row has to say about its layer, independent of the score.
+
+    The triple cannot answer this: a rule scores (0, 0, 0) whether the layer
+    was never exercised, or was exercised and then discarded because an
+    earlier layer was untrustworthy. Both are "no verdict", but only the
+    second one names a cause, and neither is "we looked and found nothing
+    wrong". Ordered, so aggregates can prefer the row that saw the most.
+    """
+
+    NONE = 0  # layer produced no data on this row
+    DISCARDED = 1  # observed, but an earlier layer makes it uninterpretable
+    SCORED = 2  # observed and scored
+
 
 
 class Evidence(IntEnum):
@@ -244,15 +260,25 @@ TCP_RULES: List[Rule] = [
         ok=0.0,
         comment="Failure against an address that mostly succeeds in the control.",
     ),
+    # Replaces dns_untrusted, which masked on the measurement's DNS verdict and
+    # so discarded every address once any lookup looked poisoned. The question
+    # is about the address, not the measurement: an address the control also
+    # returned, or one that completed a valid handshake, is worth connecting to
+    # whatever the system resolver did. Strictly narrower than the old rule, so
+    # it can only unmask rows, never mask new ones.
     Rule(
-        rule_id="dns_untrusted",
-        condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
+        rule_id="endpoint_untrusted",
+        condition=(
+            "NOT ip_trusted AND dns_blocked > 0 "
+            "AND dns_ok <= (dns_blocked + dns_down)"
+        ),
         blocked=0.0,
         down=0.0,
         ok=0.0,
         comment=(
-            "DNS was not trustworthy, so the addresses we connected to cannot "
-            "be trusted either. Masked."
+            "The address came from a lookup that looks poisoned and nothing "
+            "independent vouches for it, so connecting to it says nothing "
+            "about the target. Masked."
             # TODO(art): this sits below connect_ok, so a successful connection
             # to a blockpage address is still scored as OK. Is that right?
         ),
@@ -325,13 +351,23 @@ TLS_RULES: List[Rule] = [
         ok=0.0,
         comment="Failure where the control succeeds, with a less specific error.",
     ),
+    # See the TCP rule of the same name. Note this sits BELOW the
+    # failure_ctrl_ok_* rules, so a TLS failure against an address the control
+    # succeeds on is already scored as blocking before we get here.
     Rule(
-        rule_id="dns_untrusted",
-        condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
+        rule_id="endpoint_untrusted",
+        condition=(
+            "NOT ip_trusted AND dns_blocked > 0 "
+            "AND dns_ok <= (dns_blocked + dns_down)"
+        ),
         blocked=0.0,
         down=0.0,
         ok=0.0,
-        comment="DNS was not trustworthy, so this result cannot be either. Masked.",
+        comment=(
+            "The address came from a lookup that looks poisoned and nothing "
+            "independent vouches for it, so the handshake result is not about "
+            "the target. Masked."
+        ),
         evidence=Evidence.DISCARDED,
     ),
     Rule(
