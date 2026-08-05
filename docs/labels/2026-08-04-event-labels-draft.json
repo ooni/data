@@ -1,0 +1,3088 @@
+{
+  "export_version": "1",
+  "grain": "event",
+  "exported_at": "2026-08-04T12:19:35",
+  "adjudicator": "",
+  "note": "Draft events imported from OONI published incidents. Every row needs mechanisms and a coverage check before it can be scored; see needs_review.",
+  "events": [
+    {
+      "event_id": "35c77230-6bc8-5edd-95b6-32a85a137b4a",
+      "incident_id": "348668101300",
+      "slug": "2026-spain-blocks-access-to-reproductive-rights-website-women-on",
+      "title": "Spain blocks access to reproductive rights website Women on Web",
+      "probe_cc": "ES",
+      "asn_scope": [
+        3352,
+        6739,
+        12334,
+        12430,
+        12479,
+        15704
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.womenonweb.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2020-02-01T00:00:00",
+      "onset_latest": "2020-02-02T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/348668101300"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the ongoing blocking of reproductive rights website Women on Web in Spain.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "afe2ea04-77bb-51b2-b44e-db67598182e3",
+      "incident_id": "279953403000",
+      "slug": "2025-tanzania-blocked-proton-vpn",
+      "title": "Tanzania blocked Proton VPN",
+      "probe_cc": "TZ",
+      "asn_scope": [
+        33765,
+        36908,
+        37084,
+        37133,
+        37349,
+        327885
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "api.protonvpn.ch",
+        "protonvpn.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2022-08-08T00:00:00",
+      "onset_latest": "2022-08-09T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/279953403000"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Proton VPN in Tanzania in August 2022.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "9d282d93-d054-558b-9250-9b5420b3e957",
+      "incident_id": "73767321701",
+      "slug": "",
+      "title": "Pakistan started blocking Deutsche Welle (DW)",
+      "probe_cc": "PK",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "www.dw.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-01-16T00:00:00",
+      "onset_latest": "2023-01-17T00:00:00",
+      "resolution_earliest": "2023-03-23T00:00:00",
+      "resolution_latest": "2023-03-24T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/73767321701"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Deutsche Welle (DW) in Pakistan.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "f94c709d-e169-56f0-a599-762e14fdb011",
+      "incident_id": "352315080001",
+      "slug": "",
+      "title": "Pakistan blocked Wikipedia",
+      "probe_cc": "PK",
+      "asn_scope": [
+        9541,
+        17557,
+        23674,
+        59257,
+        136525
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.wikipedia.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-02-01T00:00:00",
+      "onset_latest": "2023-02-02T00:00:00",
+      "resolution_earliest": "2023-02-06T00:00:00",
+      "resolution_latest": "2023-02-07T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/352315080001"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the temporary blocking of Wikipedia in Pakistan in February 2023.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "5aea15e5-0f1c-52c8-aa36-49551c09cd63",
+      "incident_id": "279627325801",
+      "slug": "",
+      "title": "Turkey blocked Twitter following deadly earthquake",
+      "probe_cc": "TR",
+      "asn_scope": [
+        15897,
+        34984,
+        202561
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "twitter.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-02-08T00:00:00",
+      "onset_latest": "2023-02-09T00:00:00",
+      "resolution_earliest": "2023-02-09T00:00:00",
+      "resolution_latest": "2023-02-10T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/279627325801"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the throttling and DNS-based blocking of Twitter in Turkey on 8th February 2023, following a deadly earthquake.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "bb46d80d-3ee9-5670-b5ef-56e2550b51b1",
+      "incident_id": "186069533301",
+      "slug": "",
+      "title": "Ethiopia blocked social media amid church split tensions",
+      "probe_cc": "ET",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "telegram.org",
+        "www.facebook.com",
+        "www.tiktok.com",
+        "www.youtube.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-02-09T00:00:00",
+      "onset_latest": "2023-02-10T00:00:00",
+      "resolution_earliest": "2023-07-17T00:00:00",
+      "resolution_latest": "2023-07-18T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/186069533301"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of social media platforms in Ethiopia amid February 2023 church split tensions.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "8093beee-1d24-5faa-be22-18021b35f206",
+      "incident_id": "382061061001",
+      "slug": "",
+      "title": "Cambodia blocked access to Voice of Democracy (VOD)",
+      "probe_cc": "KH",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "vodenglish.news",
+        "vodhotnews.com",
+        "vodkhmer.news"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-02-13T00:00:00",
+      "onset_latest": "2023-02-14T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/382061061001"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of the media outlet, Voice of Democracy (VOD), in Cambodia.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "eab0eb02-1160-5dfd-89eb-232013e99723",
+      "incident_id": "203466718601",
+      "slug": "",
+      "title": "Tanzania blocked Grindr",
+      "probe_cc": "TZ",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "www.grindr.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-03-21T00:00:00",
+      "onset_latest": "2023-03-22T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/203466718601"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Grindr in Tanzania.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "b23d7cf8-7fb1-5b6a-9c8f-127b8eebdfb7",
+      "incident_id": "76657383201",
+      "slug": "",
+      "title": "Brazil blocked Telegram",
+      "probe_cc": "BR",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "telegram.org",
+        "web.telegram.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-04-27T00:00:00",
+      "onset_latest": "2023-04-28T00:00:00",
+      "resolution_earliest": "2023-04-29T00:00:00",
+      "resolution_latest": "2023-04-30T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/76657383201"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the temporary blocking of Telegram in Brazil in April 2023.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "ee12ad6c-1cf5-58f8-8691-c95af2df8089",
+      "incident_id": "300902917301",
+      "slug": "",
+      "title": "Pakistan blocked social media following arrest of former Prime Minister",
+      "probe_cc": "PK",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "twitter.com",
+        "www.facebook.com",
+        "www.instagram.com",
+        "www.youtube.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-05-09T00:00:00",
+      "onset_latest": "2023-05-10T00:00:00",
+      "resolution_earliest": "2023-05-17T00:00:00",
+      "resolution_latest": "2023-05-18T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/300902917301"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Facebook, Twitter, YouTube, and Instagram in Pakistan following the arrest of the former Prime Minister.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "9d417a10-e375-5c88-8021-9e543c86a174",
+      "incident_id": "394000980901",
+      "slug": "",
+      "title": "Guinea blocked social media amid protests",
+      "probe_cc": "GN",
+      "asn_scope": [
+        37461,
+        37612
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "web.telegram.org",
+        "web.whatsapp.com",
+        "www.facebook.com",
+        "www.instagram.com",
+        "www.snapchat.com",
+        "www.youtube.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-05-17T00:00:00",
+      "onset_latest": "2023-05-18T00:00:00",
+      "resolution_earliest": "2023-05-23T00:00:00",
+      "resolution_latest": "2023-05-24T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/394000980901"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram",
+        "web_connectivity",
+        "whatsapp"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of social media in Guinea in May 2023 amid protests.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "4a57c187-3c7f-515f-a8ec-cb0b5957b604",
+      "incident_id": "25060018801",
+      "slug": "",
+      "title": "Senegal blocked social media amid political unrest",
+      "probe_cc": "SN",
+      "asn_scope": [
+        8346,
+        37196,
+        37649
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "telegram.org",
+        "twitter.com",
+        "web.telegram.org",
+        "www.facebook.com",
+        "www.instagram.com",
+        "www.tiktok.com",
+        "www.whatsapp.com",
+        "www.youtube.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-06-01T00:00:00",
+      "onset_latest": "2023-06-02T00:00:00",
+      "resolution_earliest": "2023-06-07T00:00:00",
+      "resolution_latest": "2023-06-08T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/25060018801"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram",
+        "web_connectivity",
+        "whatsapp"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Facebook, WhatsApp, Instagram, YouTube, Twitter, TikTok and Telegram in Senegal amid political unrest.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "32fd4d18-af34-574e-9619-a48dabbe5a7d",
+      "incident_id": "318597244501",
+      "slug": "",
+      "title": "Egypt started blocking Proton privacy services",
+      "probe_cc": "EG",
+      "asn_scope": [
+        8452,
+        24835,
+        36935,
+        37069
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "proton.me",
+        "protonvpn.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-06-01T00:00:00",
+      "onset_latest": "2023-06-02T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/318597244501"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Proton privacy services in Egypt.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "bc19b2ca-c797-5324-964a-982d411c56c1",
+      "incident_id": "206551055901",
+      "slug": "",
+      "title": "China started blocking F-Droid",
+      "probe_cc": "CN",
+      "asn_scope": [
+        4134,
+        4538,
+        4837,
+        9808,
+        56040
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "f-droid.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-06-22T00:00:00",
+      "onset_latest": "2023-06-23T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/206551055901"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of F-Droid in China.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "a180b890-e40e-536f-9a31-1390959fca38",
+      "incident_id": "178720534001",
+      "slug": "",
+      "title": "Malaysia blocked MalaysiaNow and website of former MP",
+      "probe_cc": "MY",
+      "asn_scope": [
+        4788,
+        4818,
+        4818,
+        9534,
+        10030,
+        38322,
+        38466,
+        45960
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "weechookeong.com",
+        "www.malaysianow.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-06-28T00:00:00",
+      "onset_latest": "2023-06-29T00:00:00",
+      "resolution_earliest": "2024-09-07T00:00:00",
+      "resolution_latest": "2024-09-08T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/178720534001"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of news media outlet MalaysiaNow and of a website which belongs to a former Malaysian Member of Parliament (Wee Choo Keong).",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "56488621-f15b-5cb0-aea6-84f2748ea86c",
+      "incident_id": "57494519801",
+      "slug": "",
+      "title": "China started blocking OONI",
+      "probe_cc": "CN",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "ooni.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-07-07T13:13:00",
+      "onset_latest": "2023-07-08T13:13:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/57494519801"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of OONI in China.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "12ad9973-f4be-5fd8-95ae-2a921c8d2e49",
+      "incident_id": "373150675601",
+      "slug": "",
+      "title": "Cambodia blocked independent media websites ahead of 2023 general elections",
+      "probe_cc": "KH",
+      "asn_scope": [
+        24492,
+        38901,
+        45498,
+        131207
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "english.cambodiadaily.com",
+        "kamnotra.io",
+        "www.cambodiadaily.com",
+        "www.camnews.org",
+        "www.dtn7.com",
+        "www.rfa.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-07-17T00:00:00",
+      "onset_latest": "2023-07-18T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/373150675601"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the ongoing blocking of news media websites in Cambodia. The blocks appear to have started a week ahead of Cambodia's 2023 general elections.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "733c4614-9319-504a-a90d-9fe7129e3ad1",
+      "incident_id": "144156914701",
+      "slug": "",
+      "title": "Senegal blocked TikTok",
+      "probe_cc": "SN",
+      "asn_scope": [
+        8346
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.tiktok.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-08-02T00:00:00",
+      "onset_latest": "2023-08-03T00:00:00",
+      "resolution_earliest": "2024-02-17T00:00:00",
+      "resolution_latest": "2024-02-18T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/144156914701"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of TikTok in Senegal between August 2023 to February 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "69fd6056-0735-57df-9e69-a44a835bc51e",
+      "incident_id": "64077907701",
+      "slug": "",
+      "title": "Iraq temporarily blocked Telegram",
+      "probe_cc": "IQ",
+      "asn_scope": [
+        203214,
+        209193
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [],
+      "target_set_kind": "unknown",
+      "onset_earliest": "2023-08-05T00:00:00",
+      "onset_latest": "2023-08-06T00:00:00",
+      "resolution_earliest": "2023-08-13T00:00:00",
+      "resolution_latest": "2023-08-14T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/64077907701"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the temporary blocking of Telegram in Iraq in August 2023.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no targets named; set target_set or leave unknown",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "9cf49aaf-d9c9-557f-b75b-02d717d6c0f4",
+      "incident_id": "179818906201",
+      "slug": "",
+      "title": "Jordan blocked Grindr",
+      "probe_cc": "JO",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "cdns.grindr.com",
+        "grindr.mobi",
+        "www.grindr.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-08-08T00:00:00",
+      "onset_latest": "2023-08-09T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/179818906201"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Grindr in Jordan.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "8d7da224-db9b-5a1d-aa11-31e8d19f1fce",
+      "incident_id": "185407756401",
+      "slug": "",
+      "title": "Tanzania blocked Clubhouse",
+      "probe_cc": "TZ",
+      "asn_scope": [
+        33765,
+        37084,
+        327885
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.clubhouse.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-08-13T00:00:00",
+      "onset_latest": "2023-08-14T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/185407756401"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Clubhouse in Tanzania.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "a60931e8-42f5-5529-9f23-8505c6a24f3f",
+      "incident_id": "67768606801",
+      "slug": "",
+      "title": "Azerbaijan blocked TikTok and Google Play Store amid military offensive in Nagorno-Karabakh",
+      "probe_cc": "AZ",
+      "asn_scope": [
+        29049,
+        31721,
+        39232,
+        196961
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "play.google.com",
+        "www.tiktok.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-09-19T00:00:00",
+      "onset_latest": "2023-09-20T00:00:00",
+      "resolution_earliest": "2023-10-31T00:00:00",
+      "resolution_latest": "2023-11-01T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/67768606801"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of TikTok and the Google Play Store in Azerbaijan during the military offensive in Nagorno-Karabakh in September 2023.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "948e8349-bca3-5f79-84e9-3c676ca5332f",
+      "incident_id": "228466228201",
+      "slug": "",
+      "title": "Kenya blocked Telegram during the KCSE 2023 exams",
+      "probe_cc": "KE",
+      "asn_scope": [
+        12455,
+        33771
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [],
+      "target_set_kind": "unknown",
+      "onset_earliest": "2023-11-08T00:00:00",
+      "onset_latest": "2023-11-09T00:00:00",
+      "resolution_earliest": "2023-11-24T00:00:00",
+      "resolution_latest": "2023-11-25T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/228466228201"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Telegram in Kenya amid the KCSE 2023 exams.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no targets named; set target_set or leave unknown",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "15710304-b96f-5b31-a2ee-1eaaeb25a3e6",
+      "incident_id": "296303006301",
+      "slug": "",
+      "title": "Guinea blocked WhatsApp, Telegram, Facebook, Twitter, Instagram, and YouTube",
+      "probe_cc": "GN",
+      "asn_scope": [
+        37461,
+        37665
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "twitter.com",
+        "www.facebook.com",
+        "www.instagram.com",
+        "www.youtube.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-11-24T00:00:00",
+      "onset_latest": "2023-11-25T00:00:00",
+      "resolution_earliest": "2024-02-22T00:00:00",
+      "resolution_latest": "2024-02-23T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/296303006301"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram",
+        "web_connectivity",
+        "whatsapp"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of WhatsApp, Telegram, Twitter, Facebook, Instagram and Youtube in Guinea between November 2023 to February 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "f513c56e-5a54-5071-a504-f99419865ff0",
+      "incident_id": "112092297601",
+      "slug": "",
+      "title": "Nepal blocked TikTok",
+      "probe_cc": "NP",
+      "asn_scope": [
+        17501,
+        38565
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "m.tiktok.com",
+        "p16-sign-sg.tiktokcdn.com",
+        "www.tiktok.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-11-24T00:00:00",
+      "onset_latest": "2023-11-25T00:00:00",
+      "resolution_earliest": "2024-08-22T00:00:00",
+      "resolution_latest": "2024-08-23T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/112092297601"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of TikTok in Nepal.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "fab30086-61fa-567a-b279-bd18f68d6369",
+      "incident_id": "324516225200",
+      "slug": "2025-pakistan-blocked-telegram",
+      "title": "Pakistan blocked Telegram",
+      "probe_cc": "PK",
+      "asn_scope": [
+        9541,
+        17557
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "telegram.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2023-12-16T00:00:00",
+      "onset_latest": "2023-12-17T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/324516225200"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Telegram in Pakistan from December 2023 onwards.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "847cbdfa-95ed-547e-a46c-f079cf7fc37c",
+      "incident_id": "11686385001",
+      "slug": "",
+      "title": "Bangladesh blocked news media websites amid 2024 general elections",
+      "probe_cc": "BD",
+      "asn_scope": [
+        23956,
+        24389,
+        24432
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "jamuna.tv",
+        "mzamin.com",
+        "samakal.com",
+        "www.voabangla.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-01-06T00:00:00",
+      "onset_latest": "2024-01-07T00:00:00",
+      "resolution_earliest": "2024-01-07T00:00:00",
+      "resolution_latest": "2024-01-08T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/11686385001"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of news media websites in Bangladesh amid the country's 2024 general elections.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "857b0aaf-549f-5864-9002-1a8f2bcaf81f",
+      "incident_id": "108298926901",
+      "slug": "",
+      "title": "Pakistan blocked PTI political party sites and investigative news platform ahead of 2024 elections",
+      "probe_cc": "PK",
+      "asn_scope": [
+        17557,
+        59257,
+        136384
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "factfocus.com",
+        "pticandidates.com",
+        "www.insaf.pk"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-01-26T00:00:00",
+      "onset_latest": "2024-01-27T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/108298926901"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of an investigative news platform (Fact Focus), as well as on the blocking of the websites of the Pakistan Tehreek-e-Insaf (PTI) political party in Pakistan leading up to the country's 2024 general elections.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "bbfce327-4ee3-5c92-86f1-d6425241d753",
+      "incident_id": "255040833200",
+      "slug": "2025-pakistan-blocked-twitterx-",
+      "title": "Pakistan blocked Twitter/X ",
+      "probe_cc": "PK",
+      "asn_scope": [
+        9541,
+        17557,
+        135407,
+        140499
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "twitter.com",
+        "x.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-02-17T00:00:00",
+      "onset_latest": "2024-02-18T00:00:00",
+      "resolution_earliest": "2025-05-06T00:00:00",
+      "resolution_latest": "2025-05-07T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/255040833200"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Twitter/X in Pakistan.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "be7eae79-f5ed-53cd-b426-93355c060380",
+      "incident_id": "44213966401",
+      "slug": "",
+      "title": "Malaysia blocked Grindr",
+      "probe_cc": "MY",
+      "asn_scope": [
+        4788,
+        4818,
+        9930
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.grindr.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-04-17T00:00:00",
+      "onset_latest": "2024-04-18T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/44213966401"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Grindr in Malaysia in April 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "671e021f-e9c0-58f6-b0ab-1c7a713655ef",
+      "incident_id": "154621229001",
+      "slug": "",
+      "title": "Kyrgyzstan blocked TikTok",
+      "probe_cc": "KG",
+      "asn_scope": [
+        29061,
+        41750,
+        47237,
+        50223,
+        206351
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.tiktok.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-04-18T00:00:00",
+      "onset_latest": "2024-04-19T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/154621229001"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of TikTok in Kyrgyzstan in April 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "74b1b797-912f-506a-ab51-5afbddcaebf6",
+      "incident_id": "62771144901",
+      "slug": "",
+      "title": "Israel blocks Al-Jazeera following decision to suspend its services",
+      "probe_cc": "IL",
+      "asn_scope": [
+        1680,
+        6810,
+        12849
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.aljazeera.com",
+        "www.aljazeera.net"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-05-05T00:00:00",
+      "onset_latest": "2024-05-06T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/62771144901"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Al-Jazeera's services in Israel in May 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "698f201f-42bb-5e98-b764-6e4d1da41d45",
+      "incident_id": "45013413801",
+      "slug": "",
+      "title": "Bangladesh blocked Facebook amid student protests",
+      "probe_cc": "BD",
+      "asn_scope": [
+        24389,
+        24432
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.facebook.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-07-16T00:00:00",
+      "onset_latest": "2024-07-17T00:00:00",
+      "resolution_earliest": "2024-08-05T00:00:00",
+      "resolution_latest": "2024-08-06T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/45013413801"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Facebook in Bangladesh between 16th July 2024 to 5th August 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "1b4ad2bb-dc11-5b2f-917e-b2830e932aec",
+      "incident_id": "282511010901",
+      "slug": "",
+      "title": "DuckDuckGo search engine blocked in Indonesia",
+      "probe_cc": "ID",
+      "asn_scope": [
+        4761,
+        7713,
+        24203,
+        63859
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "duckduckgo.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-07-29T00:00:00",
+      "onset_latest": "2024-07-30T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/282511010901"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of DuckDuckGo search engine in Indonesia in July 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "282e13d2-f9bb-579d-b66d-9c19dd9794ab",
+      "incident_id": "330022197701",
+      "slug": "",
+      "title": "T\u00fcrkiye blocked Instagram",
+      "probe_cc": "TR",
+      "asn_scope": [
+        9121,
+        12735,
+        20978,
+        47331,
+        47524,
+        201411
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.instagram.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-08-02T00:00:00",
+      "onset_latest": "2024-08-03T00:00:00",
+      "resolution_earliest": "2024-08-10T00:00:00",
+      "resolution_latest": "2024-08-11T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/330022197701"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Instagram in Turkey in August 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "35dc8210-368b-5dd1-bbba-7284fa646964",
+      "incident_id": "291477923300",
+      "slug": "2025-venezuela-blocked-twitterx-during-protests",
+      "title": "Venezuela blocked Twitter/X during protests",
+      "probe_cc": "VE",
+      "asn_scope": [
+        8048,
+        61461,
+        264731
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "api.twitter.com",
+        "twitter.com",
+        "x.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-08-09T00:00:00",
+      "onset_latest": "2024-08-10T00:00:00",
+      "resolution_earliest": "2026-06-25T00:00:00",
+      "resolution_latest": "2026-06-26T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/291477923300"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Twitter/X in Venezuela in August 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "548e1605-cfa6-50cc-9fbe-3a6750c3146a",
+      "incident_id": "188763810301",
+      "slug": "",
+      "title": "Tanzania blocked Twitter/X",
+      "probe_cc": "TZ",
+      "asn_scope": [
+        36908,
+        36909,
+        37035,
+        37133
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "twitter.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-08-30T00:00:00",
+      "onset_latest": "2024-08-31T00:00:00",
+      "resolution_earliest": "2024-08-31T00:00:00",
+      "resolution_latest": "2024-09-01T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/188763810301"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of X (formerly known as Twitter) in Tanzania on 30th August 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "5b3a8036-303d-55dc-b6fa-e251034a70e7",
+      "incident_id": "174962608001",
+      "slug": "",
+      "title": "Brazil blocked Twitter/X",
+      "probe_cc": "BR",
+      "asn_scope": [
+        7738,
+        8167,
+        14868,
+        18881,
+        26599,
+        26615,
+        27699,
+        28126,
+        28210,
+        28573,
+        28669,
+        52765,
+        52795,
+        53006,
+        262354,
+        262595,
+        262777,
+        262907,
+        263332,
+        263349,
+        264294,
+        265428,
+        268490,
+        268701,
+        269217,
+        270944
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "twitter.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-08-31T00:00:00",
+      "onset_latest": "2024-09-01T00:00:00",
+      "resolution_earliest": "2024-10-11T00:00:00",
+      "resolution_latest": "2024-10-12T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/174962608001"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of X (formerly known as Twitter) in Brazil between August and October 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "a16de696-ef74-5c53-a9e9-ec89d6550dbd",
+      "incident_id": "26818990400",
+      "slug": "2025-el-salvador-blocked-telegram",
+      "title": "El Salvador blocked Telegram",
+      "probe_cc": "SV",
+      "asn_scope": [
+        14754,
+        17079,
+        27773,
+        27903,
+        263783
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [],
+      "target_set_kind": "unknown",
+      "onset_earliest": "2024-09-15T00:00:00",
+      "onset_latest": "2024-09-16T00:00:00",
+      "resolution_earliest": "2024-09-16T00:00:00",
+      "resolution_latest": "2024-09-17T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/26818990400"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Telegram in El Salvador in September 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no targets named; set target_set or leave unknown",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "ed97ef34-90a6-55d2-b62e-5347550089c2",
+      "incident_id": "162112071200",
+      "slug": "2025-russia-blocked-discord",
+      "title": "Russia blocked Discord",
+      "probe_cc": "RU",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "discord.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-10-08T00:00:00",
+      "onset_latest": "2024-10-09T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/162112071200"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Discord in Russia, which started in October 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "e2a6a72f-4d47-5a4c-b0e6-3d7f812c36a6",
+      "incident_id": "267640924000",
+      "slug": "2025-turkiye-blocked-discord",
+      "title": "T\u00fcrkiye blocked Discord",
+      "probe_cc": "TR",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "discord.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-10-08T00:00:00",
+      "onset_latest": "2024-10-09T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/267640924000"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Discord in T\u00fcrkiye, which started in October 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "3f9754b0-c8ce-5a82-882a-5310c01d42f1",
+      "incident_id": "123289771000",
+      "slug": "2025-azerbaijan-blocked-twitterx",
+      "title": "Azerbaijan blocked Twitter/X",
+      "probe_cc": "AZ",
+      "asn_scope": [
+        8814,
+        13099,
+        39232,
+        197830,
+        200446
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "twitter.com",
+        "x.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-10-08T00:00:00",
+      "onset_latest": "2024-10-09T00:00:00",
+      "resolution_earliest": "2024-10-10T00:00:00",
+      "resolution_latest": "2024-10-11T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/123289771000"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Twitter/X in Azerbaijan in October 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "e238974f-4881-57e0-9b19-8e7203472887",
+      "incident_id": "169004237900",
+      "slug": "2025-mozambique-blocked-facebook-instagram-and-whatsapp-amid-pro",
+      "title": "Mozambique blocked Facebook, Instagram and WhatsApp amid protests",
+      "probe_cc": "MZ",
+      "asn_scope": [
+        25139,
+        30619,
+        37223
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.facebook.com",
+        "www.instagram.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-10-29T00:00:00",
+      "onset_latest": "2024-10-30T00:00:00",
+      "resolution_earliest": "2024-11-14T00:00:00",
+      "resolution_latest": "2024-11-15T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/169004237900"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity",
+        "whatsapp"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Facebook, Instagram and WhatsApp in Mozambique in October 2024 and November 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "1ce7385a-7ec0-5682-b747-16c67b3ac864",
+      "incident_id": "73729350400",
+      "slug": "2024-mauritius-blocked-social-media-ahead-of-2024-general-electi",
+      "title": "Mauritius blocked social media ahead of 2024 general election",
+      "probe_cc": "MU",
+      "asn_scope": [
+        23889,
+        30999,
+        37622
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "twitter.com",
+        "www.facebook.com",
+        "www.instagram.com",
+        "www.linkedin.com",
+        "www.tiktok.com",
+        "www.youtube.com",
+        "x.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-11-01T00:00:00",
+      "onset_latest": "2024-11-02T00:00:00",
+      "resolution_earliest": "2024-11-02T00:00:00",
+      "resolution_latest": "2024-11-03T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/73729350400"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of social media platforms in Mauritius ahead of the country's 2024 general election.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "9c6dce09-7c48-5250-8ee8-7a0e3bc54f3a",
+      "incident_id": "20313562200",
+      "slug": "2025-kenya-blocked-telegram-during-the-kcse-2024-exams",
+      "title": "Kenya blocked Telegram during the KCSE 2024 exams",
+      "probe_cc": "KE",
+      "asn_scope": [
+        33771,
+        37061
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [],
+      "target_set_kind": "unknown",
+      "onset_earliest": "2024-11-07T00:00:00",
+      "onset_latest": "2024-11-08T00:00:00",
+      "resolution_earliest": "2024-11-29T00:00:00",
+      "resolution_latest": "2024-11-30T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/20313562200"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Telegram in Kenya in November 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no targets named; set target_set or leave unknown",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "9b26be48-f629-5a0d-b432-a1c0216acf47",
+      "incident_id": "50334204500",
+      "slug": "2025-russia-blocked-viber-",
+      "title": "Russia blocked Viber ",
+      "probe_cc": "RU",
+      "asn_scope": [],
+      "asn_scope_kind": "unknown",
+      "target_set": [
+        "www.viber.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2024-12-13T00:00:00",
+      "onset_latest": "2024-12-14T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/50334204500"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Viber in Russia in December 2024.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "no ASNs named; confirm national scope or list them",
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "fdb3ef2c-cfc4-5f31-88af-3e6aca4b6eb2",
+      "incident_id": "239437560400",
+      "slug": "2025-democratic-republic-of-congo-blocked-twitterx-and-tiktok",
+      "title": "Democratic Republic of Congo blocked Twitter/X and TikTok",
+      "probe_cc": "CD",
+      "asn_scope": [
+        36924,
+        37020,
+        37447
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "abs.twimg.com",
+        "twitter.com",
+        "upload.twitter.com",
+        "video.twimg.com",
+        "www.tiktok.com",
+        "x.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-02-03T00:00:00",
+      "onset_latest": "2025-02-04T00:00:00",
+      "resolution_earliest": "2025-02-12T00:00:00",
+      "resolution_latest": "2025-02-13T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/239437560400"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Twitter/X and TikTok in the Democratic Republic of Congo in February 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "ae332074-3f23-53c6-bdd6-46e141711e2a",
+      "incident_id": "99431807200",
+      "slug": "2025-egypt-blocked-independent-media-outlet-zawia3",
+      "title": "Egypt blocked independent media outlet Zawia3",
+      "probe_cc": "EG",
+      "asn_scope": [
+        8452
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "zawia3.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-02-16T00:00:00",
+      "onset_latest": "2025-02-17T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/99431807200"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Zawia3 in Egypt in February 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "bc9cf484-0ffd-5268-a74d-1f0ae9f726e4",
+      "incident_id": "274282914400",
+      "slug": "2025-albania-blocked-tiktok",
+      "title": "Albania blocked TikTok",
+      "probe_cc": "AL",
+      "asn_scope": [
+        21183,
+        35444,
+        50973
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "m.tiktok.com",
+        "www.tiktok.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-03-13T00:00:00",
+      "onset_latest": "2025-03-14T00:00:00",
+      "resolution_earliest": "2026-01-11T00:00:00",
+      "resolution_latest": "2026-01-12T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/274282914400"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of TikTok in Albania in March 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "e7346440-ed1c-5ed3-8fa4-f092949a3d5f",
+      "incident_id": "72755787600",
+      "slug": "2025-trkiye-blocked-the-opposition-campaign-boykotyap-amid-prote",
+      "title": "T\u00fcrkiye blocked the opposition campaign Boykotyap amid protests",
+      "probe_cc": "TR",
+      "asn_scope": [
+        9121,
+        12735,
+        34296,
+        34984,
+        47331,
+        47524
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "boykotyap.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-03-28T00:00:00",
+      "onset_latest": "2025-03-29T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/72755787600"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of the the opposition campaign Boykotyap in T\u00fcrkiye in March 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "236fbeef-dc5d-5cba-8d85-1cfea9c4c87e",
+      "incident_id": "667455800",
+      "slug": "2025-india-blocked-the-wire-amid-military-conflict-with-pakistan",
+      "title": "India blocked The Wire amid military conflict with Pakistan",
+      "probe_cc": "IN",
+      "asn_scope": [
+        9829,
+        24309,
+        24560,
+        45609,
+        55836
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "thewire.in"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-05-09T00:00:00",
+      "onset_latest": "2025-05-10T00:00:00",
+      "resolution_earliest": "2025-05-10T00:00:00",
+      "resolution_latest": "2025-05-11T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/667455800"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of The Wire in India in May 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "6e5fb3a9-365a-5c79-8cab-d7bfc761ceda",
+      "incident_id": "101531332700",
+      "slug": "2025-jordan-blocked-12-news-media-websites",
+      "title": "Jordan blocked 12 news media websites",
+      "probe_cc": "JO",
+      "asn_scope": [
+        8376,
+        8697,
+        9038
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "al-akhbar.com",
+        "alshoub.tv",
+        "ammannet.net",
+        "arabi21.com",
+        "arabicpost.net",
+        "jordan-voice.com",
+        "qudspress.com",
+        "raseef22.net",
+        "rassd.com",
+        "shehabnews.com",
+        "www.alkhanadeq.com",
+        "www.meemmagazine.net",
+        "www.middleeasteye.net"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-05-13T00:00:00",
+      "onset_latest": "2025-05-14T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/101531332700"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of 12 news media websites in Jordan in May 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "18aeda02-02f2-5766-a003-bf0d005b5fbb",
+      "incident_id": "133109222300",
+      "slug": "2025-tanzania-blocked-twitterx-again",
+      "title": "Tanzania blocked Twitter/X, again",
+      "probe_cc": "TZ",
+      "asn_scope": [
+        33765,
+        36908,
+        37133,
+        327714
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "twitter.com",
+        "x.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-05-20T00:00:00",
+      "onset_latest": "2025-05-21T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/133109222300"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report documents the ongoing blocking of Twitter/X in Tanzania based on OONI data.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "77eb5513-2d04-5f22-8669-e254450f6beb",
+      "incident_id": "382823169800",
+      "slug": "2025-vietnam-blocked-telegram",
+      "title": "Vietnam blocked Telegram",
+      "probe_cc": "VN",
+      "asn_scope": [
+        7552,
+        18403,
+        45899
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "telegram.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-05-25T00:00:00",
+      "onset_latest": "2025-05-26T00:00:00",
+      "resolution_earliest": "2025-07-10T00:00:00",
+      "resolution_latest": "2025-07-11T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/382823169800"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram",
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Telegram app in Vietnam in May 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "d1907273-2b41-547b-a86d-3d48dbd607af",
+      "incident_id": "8025203600",
+      "slug": "2025-indonesia-blocked-access-to-the-internet-archive",
+      "title": "Indonesia blocked access to the Internet Archive",
+      "probe_cc": "ID",
+      "asn_scope": [
+        7713,
+        17451,
+        18004,
+        23693,
+        23951,
+        24203,
+        63859,
+        136119,
+        139447
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "archive.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-05-26T00:00:00",
+      "onset_latest": "2025-05-27T00:00:00",
+      "resolution_earliest": "2025-05-29T00:00:00",
+      "resolution_latest": "2025-05-30T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/8025203600"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of the Internet Archive in Indonesia in May 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "8436068d-65bf-58e0-b014-6c109ca07d14",
+      "incident_id": "273244099200",
+      "slug": "2025-iran-blocked-whatsapp-amid-war-with-israel",
+      "title": "Iran blocked WhatsApp amid war with Israel",
+      "probe_cc": "IR",
+      "asn_scope": [
+        58224,
+        197207
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "web.whatsapp.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-06-15T00:00:00",
+      "onset_latest": "2025-06-16T00:00:00",
+      "resolution_earliest": "2025-07-12T00:00:00",
+      "resolution_latest": "2025-07-13T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/273244099200"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "whatsapp"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the temporary blocking of WhatsApp in Iran amid the twelve-day war with Israel in June 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "dd909b2f-334b-51c7-839b-fd43789e8830",
+      "incident_id": "224470320900",
+      "slug": "2025-kenya-blocks-access-to-telegram-amid-anti-government-protes",
+      "title": "Kenya blocked Telegram amid anti-government protests",
+      "probe_cc": "KE",
+      "asn_scope": [
+        33771,
+        36866,
+        37061
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "web.telegram.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-06-25T00:00:00",
+      "onset_latest": "2025-06-26T00:00:00",
+      "resolution_earliest": "2025-06-26T00:00:00",
+      "resolution_latest": "2025-06-27T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/224470320900"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram",
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Telegram in Kenya in June 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "5fc9c59e-559c-5e39-8214-68c66439e472",
+      "incident_id": "167838678600",
+      "slug": "2025-togo-blocked-facebook-telegram-youtube-duckduckgo-and-signa",
+      "title": "Togo blocked Facebook, Telegram, Signal, YouTube, and DuckDuckGo amid protests",
+      "probe_cc": "TG",
+      "asn_scope": [
+        24691,
+        36924,
+        37229
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "duckduckgo.com",
+        "signal.org",
+        "telegram.org",
+        "www.facebook.com",
+        "www.youtube.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-06-26T00:00:00",
+      "onset_latest": "2025-06-27T00:00:00",
+      "resolution_earliest": "2025-09-25T00:00:00",
+      "resolution_latest": "2025-09-26T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/167838678600"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "facebook_messenger",
+        "signal",
+        "telegram",
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Facebook, Telegram, YouTube, Signal and DuckDuckGo in Togo in June 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "4501b2e8-7a2c-529b-8fa3-192e91a330ca",
+      "incident_id": "284032502800",
+      "slug": "2025-nepal-blocked-telegram",
+      "title": "Nepal blocked Telegram",
+      "probe_cc": "NP",
+      "asn_scope": [
+        4007,
+        17501,
+        38565
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "web.telegram.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-07-19T00:00:00",
+      "onset_latest": "2025-07-20T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/284032502800"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Telegram in Nepal in July 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "f7630585-c114-52e1-8f8a-c77f4c8f0f4b",
+      "incident_id": "393608039300",
+      "slug": "2025-cameroon-blocked-social-media-amid-post-election-protests",
+      "title": "Cameroon blocked social media amid post-election protests",
+      "probe_cc": "CM",
+      "asn_scope": [
+        15964,
+        36912,
+        328866
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "protonvpn.com",
+        "www.facebook.com",
+        "www.instagram.com",
+        "www.purevpn.com",
+        "www.tiktok.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2025-10-31T00:00:00",
+      "onset_latest": "2025-11-01T00:00:00",
+      "resolution_earliest": "2025-11-05T00:00:00",
+      "resolution_latest": "2025-11-06T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/393608039300"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram",
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report documents the temporary blocking of TikTok, Facebook, Instagram, Telegram, and a few VPNs (such as Proton VPN) during post-election protests in Cameroon in early November 2025.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "272c1cbf-eaf1-5b02-b839-0099c71d1ba0",
+      "incident_id": "352623460000",
+      "slug": "2026-uganda-blocked-social-media-following-2026-general-election",
+      "title": "Uganda blocked social media following 2026 general election",
+      "probe_cc": "UG",
+      "asn_scope": [
+        20294,
+        37063,
+        37075
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "twitter.com",
+        "v.whatsapp.net",
+        "web.whatsapp.com",
+        "www.facebook.com",
+        "www.instagram.com",
+        "x.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2026-01-18T00:00:00",
+      "onset_latest": "2026-01-19T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/352623460000"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "facebook_messenger",
+        "web_connectivity",
+        "whatsapp"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of social media and instant messaging apps in Uganda, following the country's 2026 general election.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "59f77e9a-35f4-5ae9-8a90-a742edc898b4",
+      "incident_id": "340845567300",
+      "slug": "2026-gabon-blocked-social-media",
+      "title": "Gabon blocked social media",
+      "probe_cc": "GA",
+      "asn_scope": [
+        16058,
+        36924,
+        37616
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "web.whatsapp.com",
+        "www.facebook.com",
+        "www.instagram.com",
+        "www.tiktok.com",
+        "www.youtube.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2026-02-18T00:00:00",
+      "onset_latest": "2026-02-19T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/340845567300"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity",
+        "whatsapp"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of WhatsApp, Facebook, Instagram, TikTok, and YouTube in Gabon in February 2026.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "4ecb627d-3d40-5338-bc8b-05764950f5b1",
+      "incident_id": "96225549500",
+      "slug": "2026-russia-blocked-telegram",
+      "title": "Russia blocked Telegram",
+      "probe_cc": "RU",
+      "asn_scope": [
+        8359,
+        8402,
+        8615,
+        12389
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.telegram.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2026-03-20T00:00:00",
+      "onset_latest": "2026-03-21T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/96225549500"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Telegram in Russia.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "f8d85ce5-7e11-5f2a-b1f3-8d913ebdca15",
+      "incident_id": "287571208700",
+      "slug": "2026-russia-blocked-bluesky",
+      "title": "Russia blocked Bluesky",
+      "probe_cc": "RU",
+      "asn_scope": [
+        8359,
+        8402,
+        12389,
+        12768,
+        25513,
+        30822,
+        35125,
+        57044
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "bsky.app"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2026-04-11T00:00:00",
+      "onset_latest": "2026-04-12T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/287571208700"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Bluesky in Russia in April 2026.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "867fb87f-0270-5fd5-af41-65964e91046a",
+      "incident_id": "321816829100",
+      "slug": "2026-india-blocked-telegram-during-exams",
+      "title": "India blocked Telegram during exams",
+      "probe_cc": "IN",
+      "asn_scope": [
+        17465,
+        17762,
+        24309,
+        24560,
+        55333,
+        55410,
+        55836
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "telegram.org"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2026-06-16T00:00:00",
+      "onset_latest": "2026-06-17T00:00:00",
+      "resolution_earliest": "2026-06-23T00:00:00",
+      "resolution_latest": "2026-06-24T00:00:00",
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/321816829100"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "telegram",
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "This report shares OONI data on the blocking of Telegram on multiple networks in India during the June 2026 national medical exam period.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "3d9345e8-74c7-59f5-b338-5cabaf9e3ba3",
+      "incident_id": "106140107100",
+      "slug": "2026-guinea-blocked-facebook-tiktok-and-youtube",
+      "title": "Guinea blocked Facebook, TikTok, and YouTube",
+      "probe_cc": "GN",
+      "asn_scope": [
+        37461
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "www.facebook.com",
+        "www.tiktok.com",
+        "www.youtube.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2026-07-27T00:00:00",
+      "onset_latest": "2026-07-28T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/106140107100"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "facebook_messenger",
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "On 27th July 2026, Guinea started blocking access to social media platforms again. This report documents the blocking of Facebook, TikTok, and YouTube in Guinea based on OONI data.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    },
+    {
+      "event_id": "f527a057-022d-56e1-aecb-b57ce885611d",
+      "incident_id": "305408501600",
+      "slug": "2026-saudi-arabia-just-blocked-tinder",
+      "title": "Saudi Arabia just blocked Tinder",
+      "probe_cc": "SA",
+      "asn_scope": [
+        35819
+      ],
+      "asn_scope_kind": "listed",
+      "target_set": [
+        "tinder.com"
+      ],
+      "target_set_kind": "enumerated",
+      "onset_earliest": "2026-07-29T00:00:00",
+      "onset_latest": "2026-07-30T00:00:00",
+      "resolution_earliest": null,
+      "resolution_latest": null,
+      "mechanisms": [],
+      "mechanism_taxonomy": "v1",
+      "event_class": "true_event",
+      "scoreable": "unknown",
+      "confidence": "uncertain",
+      "source": "ooni_report",
+      "source_urls": [
+        "https://explorer.ooni.org/findings/305408501600"
+      ],
+      "corroborators": [],
+      "test_names": [
+        "web_connectivity"
+      ],
+      "adjudicator": "",
+      "adjudicated_at": null,
+      "rationale": "Starting on 29th July 2026, Saudi Arabia started blocking access to Tinder, the world's most popular dating app. This report shares OONI data to document the block.",
+      "added_at": "2026-08-04T12:19:35",
+      "superseded_by": null,
+      "supersede_reason": null,
+      "import_source": "incidents.json",
+      "needs_review": [
+        "mechanisms empty; required before the event scores"
+      ]
+    }
+  ]
+}
