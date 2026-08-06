@@ -1,15 +1,12 @@
 from collections import defaultdict
 import streamlit as st
 from oonipipeline.analysis.detector import make_cusums_chart, run_detector_for, ANALYSIS_COLS
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 import logging
 import pandas as pd
 import vl_convert as vlc
 
 log = logging.getLogger(__name__)
-
-def to_datetime(d: date):
-    return datetime(year=d.year, month=d.month, day=d.day, hour=0, tzinfo=timezone.utc)
 
 
 @st.cache_data(ttl=300)
@@ -38,12 +35,12 @@ def detector_panel():
         c1, c2 = st.columns(2)
 
         # column 1
-        start_time = c1.date_input("**Start time**", now - timedelta(days=30))
+        start_time = c1.datetime_input("**Start date**", now - timedelta(days=30))
         probe_cc = c1.text_input("**Country code (two chars)**", "VE")
         edd = c1.number_input("**Estimated Detection Delay (EDD)**", value=10)
 
         # column2
-        end_time = c2.date_input("**End time**", now)
+        end_time = c2.datetime_input("**End date**", now)
         domain = c2.text_input("**domain**", "x.com")
         gap_halflife = c2.number_input("**Gap half life**", value=48.0)
 
@@ -59,8 +56,8 @@ def detector_panel():
 
         changepoints, _, cusum_steps = run_detector_cached(
             clickhouse_url,
-            to_datetime(start_time),
-            to_datetime(end_time),
+            start_time,
+            end_time,
             probe_cc,
             [domain],
             edd,

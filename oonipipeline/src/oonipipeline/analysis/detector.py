@@ -585,6 +585,8 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
     import pandas as pd
 
     STATE_COLORS = {"ok": "#d4edda", "blk": "#f8d7da", "unk": "#fff3cd"}
+    x_axis = alt.Axis(format="%b %d, %H:%M")
+    ts_tooltip_fmt = "%b %d, %H:%M"
 
     df_steps = pd.DataFrame([s for s in steps if s["block_type"] == block_type])
     df_last = df_steps.loc[[df_steps["ts"].idxmax()]]
@@ -608,7 +610,7 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         alt.Chart(df_bands)
         .mark_rect(opacity=0.25)
         .encode(
-            x=alt.X("state_start:T"),
+            x=alt.X("state_start:T", axis=x_axis),
             x2=alt.X2("state_end:T"),
             color=alt.Color(
                 "current_state:N",
@@ -622,11 +624,15 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
                 ),
                 legend=alt.Legend(title="State"),
             ),
-            tooltip=["current_state:N", "state_start:T", "state_end:T"],
+            tooltip=[
+                "current_state:N",
+                alt.Tooltip("state_start:T", format=ts_tooltip_fmt),
+                alt.Tooltip("state_end:T", format=ts_tooltip_fmt),
+            ],
         )
     )
 
-    base = alt.Chart(df_steps).encode(x="ts:T")
+    base = alt.Chart(df_steps).encode(x=alt.X("ts:T", axis=x_axis))
 
     def make_label(df, field, label, color):
         return (
@@ -641,15 +647,20 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
 
     obs_line = base.mark_line(color="steelblue", opacity=0.5).encode(
         y=alt.Y("obs_value:Q", title="value"),
-        tooltip=["ts:T", "obs_value:Q", "weight:Q", "current_state:N"],
+        tooltip=[
+            alt.Tooltip("ts:T", format=ts_tooltip_fmt),
+            "obs_value:Q",
+            "weight:Q",
+            "current_state:N",
+        ],
     )
     s_pos_line = base.mark_line(color="red").encode(
         y=alt.Y("s_pos:Q"),
-        tooltip=["ts:T", "s_pos:Q"],
+        tooltip=[alt.Tooltip("ts:T", format=ts_tooltip_fmt), "s_pos:Q"],
     )
     s_neg_line = base.mark_line(color="orange").encode(
         y=alt.Y("s_neg:Q"),
-        tooltip=["ts:T", "s_neg:Q"],
+        tooltip=[alt.Tooltip("ts:T", format=ts_tooltip_fmt), "s_neg:Q"],
     )
     threshold = (
         alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
@@ -660,7 +671,13 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         .encode(
             x="ts:T",
             y=alt.Y("obs_value:Q"),
-            tooltip=["ts:T", "obs_value:Q", "s_pos:Q", "s_neg:Q", "current_state:N"],
+            tooltip=[
+                alt.Tooltip("ts:T", format=ts_tooltip_fmt),
+                "obs_value:Q",
+                "s_pos:Q",
+                "s_neg:Q",
+                "current_state:N",
+            ],
         )
     )
 
