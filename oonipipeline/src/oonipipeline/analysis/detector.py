@@ -645,13 +645,14 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
             )
         )
 
-    def make_nearest_hover(df, value_vars, colors, labels, y_title):
+    def make_nearest_hover(df, value_vars, colors, labels, y_title, legend_title):
         """
         Builds an invisible hit-target layer plus a visible highlight dot per
         series, using a melted long-form copy so the "nearest" selection
         matches in true 2D (ts, value) space — hovering picks whichever
         series is visually closest to the cursor rather than just the
-        closest timestamp.
+        closest timestamp. The same color scale drives a legend labeling
+        each line.
         """
         df_melt = df.melt(
             id_vars=["ts"],
@@ -672,11 +673,12 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
             x=alt.X("ts:T", axis=x_axis),
             y=alt.Y("value:Q", title=y_title),
             color=alt.Color(
-                "series:N",
+                "series_label:N",
                 scale=alt.Scale(
-                    domain=list(colors.keys()), range=list(colors.values())
+                    domain=[labels[v] for v in value_vars],
+                    range=[colors[v] for v in value_vars],
                 ),
-                legend=None,
+                legend=alt.Legend(title=legend_title),
             ),
         )
         selectors = (
@@ -708,6 +710,7 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         {"obs_value": "steelblue"},
         {"obs_value": "observed"},
         y_title="value",
+        legend_title="Value",
     )
     cp_points = (
         alt.Chart(df_steps[df_steps["is_changepoint"]])
@@ -731,10 +734,11 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
     s_neg_line = base.mark_line(color="orange").encode(y=alt.Y("s_neg:Q"))
     cusum_hover = make_nearest_hover(
         df_steps,
-        ["s_pos", "s_neg"],
-        {"s_pos": "red", "s_neg": "orange"},
-        {"s_pos": "S+", "s_neg": "S−"},
+        ["s_pos", "s_neg", "h"],
+        {"s_pos": "red", "s_neg": "orange", "h": "green"},
+        {"s_pos": "S+", "s_neg": "S−", "h": "threshold (h)"},
         y_title="CUSUM statistic",
+        legend_title="CUSUM",
     )
     threshold = (
         alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
