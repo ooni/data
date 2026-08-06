@@ -42,6 +42,7 @@ analysis = [
   "bokeh ~= 3.5.2",
   "streamlit",
   "pyarrow < 19", # fixes segfault with streamlit
+  "vl-convert-python>=1.9.0.post1",
 ]
 
 [tool.hatch.build.targets.sdist]

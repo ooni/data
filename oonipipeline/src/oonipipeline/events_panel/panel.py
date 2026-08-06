@@ -4,6 +4,7 @@ from oonipipeline.analysis.detector import make_cusums_chart, run_detector_for, 
 from datetime import datetime, timezone, timedelta, date
 import logging
 import pandas as pd
+import vl_convert as vlc
 
 log = logging.getLogger(__name__)
 
@@ -106,13 +107,23 @@ def detector_panel():
         st.warning(f"No cusum steps found for ASN {selected_asn}")
         return
 
-    st.altair_chart(make_cusums_chart(chart_steps, block_type))
+    chart = make_cusums_chart(chart_steps, block_type)
+    st.altair_chart(chart)
 
     if asns:
         df = pd.DataFrame({"ASN": list(asns.keys()), "total": list(asns.values())})
         df = df.sort_values("total", ascending=False).reset_index(drop=True)
         df["ASN"] = df["ASN"].astype(str)
         st.dataframe(df, hide_index=True)
+
+    with st.expander("🔧 Debug"):
+        if st.checkbox("Render chart as PNG", key="debug_render_png"):
+            spec = chart.to_dict()
+            png_bytes = vlc.vegalite_to_png(spec, scale=2)
+            st.image(png_bytes, caption="Chart rendered to PNG via vl-convert")
+
+        if st.checkbox("Show Vega-Lite spec", key="debug_show_spec"):
+            st.json(chart.to_dict())
 
 
 detector_panel()
