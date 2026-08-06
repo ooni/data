@@ -51,6 +51,7 @@ rewrite_links() {
         -e 's|\]\(event-labeler\.html\)|](/event-labeler.html)|g' \
         -e 's|\]\(explorer-mockup\.html\)|](/explorer-mockup.html)|g' \
         -e "s|\]\(analysis-evaluation\.ipynb\)|]($BLOB/docs/analysis-evaluation.ipynb)|g" \
+        -e "s|\]\(detector-evaluation\.ipynb\)|]($BLOB/docs/detector-evaluation.ipynb)|g" \
         -e "s|\]\(labels/\)|]($TREE/docs/labels)|g" \
         -e "s|\]\(\.\./scripts/([a-zA-Z0-9_.-]+)\)|]($BLOB/scripts/\1)|g" \
         `# The handful of places a document is named in running prose rather` \

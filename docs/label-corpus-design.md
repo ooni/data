@@ -557,67 +557,79 @@ against a design target.
 | W6 | Version cut | **not done**: fits name the export file |
 | W7 | The LR fit | **done**: [analysis-evaluation.ipynb](analysis-evaluation.ipynb) §5, conditioned per layer, [Jeffreys-smoothed](https://en.wikipedia.org/wiki/Jeffreys_prior), bootstrap CIs. Not done: beta-binomial shrinkage, probe clustering |
 | W8 | LR diff report | **partial**: §7 prices a promotion; no automatic diff on refit |
-| W9 | Event replay harness | **done**: `event_eval.py`, `oonipipeline event-eval` |
+| W9 | Event replay harness | **done**: [detector-evaluation.ipynb](detector-evaluation.ipynb) §4 |
 | W11 | The interval sampler | **done**: `GET /api/v1/labeling/interval_sample`, cell-weeks drawn from a snapped, volume-floored frame under a resolved partition |
-| W12 | The false-alarm estimate | **done**: `interval_eval.py`, `oonipipeline event-eval --intervals`, Horvitz–Thompson per volume band with a cluster bootstrap |
+| W12 | The false-alarm estimate | **done**: [detector-evaluation.ipynb](detector-evaluation.ipynb) §5, Horvitz–Thompson per volume band with a cluster bootstrap |
 | W10 | Privacy review before `probe_id` | **outstanding**: probe-level linkage across time and target is a correlation surface the project has historically avoided creating; requirements PR1 makes the review a precondition, deciding retention, access and an aggregation floor before the field is threaded through the corpus |
 
-### The harness (W9)
+### The harness (W9, W12)
 
-`oonipipeline event-eval <events.json>` replays the detector per event and
-prints a fixed scorecard: event recall stratified by `size_band`, median
-detection latency, false alerts per quiet series-week, alerts per detected true
-event. It exits non-zero on any failure, so it can gate a detector change.
+[detector-evaluation.ipynb](detector-evaluation.ipynb) replays the detector over
+both corpora and reports: event recall stratified by `size_band`, median
+detection latency, alerts per detected true event, and — from the interval
+corpus — the weighted false-alarm rate per quiet series-week with a
+cluster-bootstrap interval.
 
-Two things it does not do, both deliberate:
+It is a notebook rather than a CLI subcommand for the same reason
+[analysis-evaluation.ipynb](analysis-evaluation.ipynb) is. A scorecard tells you
+a configuration's number; the question actually being asked is which
+configuration to ship, and that needs the intermediate frames on screen — which
+events were missed and what their series looked like, which quiet weeks carried
+the rate, what happens to both as `edd` moves. §7 sweeps the parameters and
+plots recall against false alarms, fetching observations once and replaying them
+per setting; a single-configuration command could not do that at all.
+
+Four things it does not do, all deliberate:
 
 **It does not replay the incumbent.** The deployed CUSUM is online and its output
 depends on the order measurements arrived in, which the pipeline does not
-record. The harness starts every cell cold, so it scores stateless candidates
-exactly and the incumbent only approximately. That asymmetry is itself an
-argument for making detection stateless.
+record. Every replay starts cold, so it scores stateless candidates exactly and
+the incumbent only approximately. That asymmetry is itself an argument for
+making detection stateless.
 
 **It does not score unadjudicated events.** Rows without `scoreable = yes` or
 without mechanisms are excluded and counted, not silently treated as misses.
+
+**It does not count alarms over event lead-ins.** That was the old CLI harness's
+false-alarm proxy: quiet time over "whatever cells happen to surround an
+adjudicated event", a population nothing sampled and one concentrated in exactly
+the countries and networks where quiet time is least typical. The interval
+corpus replaces it with an estimate over a frame, so the proxy is gone rather
+than printed alongside.
+
+**It does not gate a deploy.** The CLI command exited non-zero on a failed
+event, which was usable in CI; a notebook is not. What replaces it is a rule
+rather than an exit code — a promotion needs the frontier in §7, compared
+against the incumbent's *interval* rather than its point estimate, and the
+export files it read named in the commit message. If detector gating in CI is
+wanted later, it should run this notebook (`jupyter nbconvert --execute`) rather
+than reintroduce a second implementation of the same arithmetic.
 
 Latency is measured from `onset_earliest` and can be negative: reports are
 day-granular and usually lag the block, so firing before the bracket opens is a
 good outcome, not a sign error.
 
-**Its false-alarm number is a proxy**, and prints as one. It counts alarms in
-each event's own lead-in, which is quiet time over "whatever cells happen to
-surround an adjudicated event" — a population nothing sampled, concentrated in
-exactly the countries and networks where quiet time is least typical. W12
-estimates the same quantity over a frame.
+### What makes the false-alarm number an estimate (W12)
 
-### The false-alarm estimate (W12)
+Three choices, all in §5 of the notebook.
 
-`oonipipeline event-eval <events.json> --intervals <intervals.json>` adds a
-second scorecard: false alerts per quiet series-week as a weighted estimate,
-per volume band, with a 95% cluster-bootstrap interval; the share of quiet
-weeks with no alert at all; and the weighted rate at which the detector fires
-when an event *was* present.
+**It weights.** The queue oversamples alerted and near-miss weeks on purpose, so
+counting alarms over the rows would describe the queue. Each row is weighted by
+`population / n_labelled` for its pooled stratum group — recomputed from the
+design records rather than read off the row, exactly as the measurement notebook
+recomputes label weights, because the stored weight assumes the whole queue was
+worked.
 
-Four choices worth knowing about.
-
-**It weights.** The queue oversamples alerted and near-miss weeks on purpose,
-so counting alarms over the rows would describe the queue. Each row is weighted
-by `population / drawn` for its stratum.
-
-**It clusters.** The bootstrap resamples `(probe_cc, ISO week)` blocks, because
-a national event or a probe-fleet outage moves many ASNs at once and treating
-cell-weeks as independent reports an interval narrower than the evidence
-supports. Below ten clusters it prints no interval rather than an arbitrary one.
+**It clusters.** The bootstrap resamples `(probe_cc, ISO week)` blocks within
+stratum group, because a national event or a probe-fleet outage moves many ASNs
+at once and treating cell-weeks as independent reports an interval narrower than
+the evidence supports. Below ten clusters it reports no interval rather than an
+arbitrary one.
 
 **It warms up.** Each replay starts a fortnight before the window and counts
 only what fires inside it: a cold CUSUM's first threshold crossing establishes
 state silently, so replaying the bare week would swallow the alarms being
 counted.
-
-**Its gate compares the lower bound.** `--max-false-alarms` fails a change only
-when the interval's lower end is above the budget, i.e. when the corpus can
-actually tell the rate apart from it. A gate that fails at random gets switched
-off.
 
 ---
 

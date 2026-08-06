@@ -42,7 +42,7 @@ Companion documents: [requirements.md](requirements.md),
 | `7cc188a`, `e6fd4a4`, `4bf2c6c` | One canonical fingerprint DDL; daily-DAG `op_kwargs` fix with a static test; non-Docker test override. |
 | `a40fc49` | Control-baseline rollup removed: the inline control is already deterministic, and the real defect (no control vs contrary control) is a rules fix, §3.3. |
 | `c555f55`, `62ecf86` | The API's `Calibration` reads the fitted likelihood-ratio table; what-if promotion analysis driven from it, with the deployed threshold read from the service. |
-| `5247450`, `d61668f` | Event label grain shipped: editor, incident import, replay harness (`event_eval.py`, `oonipipeline event-eval`), hourly timeseries for setting onset brackets. |
+| `5247450`, `d61668f` | Event label grain shipped: editor, incident import, replay harness, hourly timeseries for setting onset brackets. |
 | `57b977c` | TCP/TLS gated on the endpoint rather than the DNS verdict (`endpoint_untrusted`, `RULES_VERSION` 2; migration-notes §5). |
 | `74df178`, `fba816d` | Evaluation-notebook fixes; a second adjudicator's measurement labels landed. |
 
@@ -320,9 +320,10 @@ blocking than not, per corpus vN" replaces "0.9 means the author felt strongly".
 
 **Per-event labels**: implemented end to end, comprising the editor
 ([event-labeler.html](event-labeler.html)), the incident import, and the
-replay harness (`event_eval.py`, `oonipipeline event-eval`) that reconstructs
-cell state and reports event recall, detection latency, false alerts per
-quiet series-week, and alerts per true event. The record itself is specified
+replay harness ([detector-evaluation.ipynb](detector-evaluation.ipynb)) that
+reconstructs cell state and reports event recall, detection latency and alerts
+per true event; the false-alarm rate comes from the interval grain (§1.3),
+which is the only one of the three with a denominator in it. The record itself is specified
 in [label-corpus-design.md](label-corpus-design.md) §1.2: scope with explicit
 unknowns, onset and resolution as intervals, mechanisms from the same
 taxonomy, `true_event` vs `false_positive_event`, and `scoreable` to keep
