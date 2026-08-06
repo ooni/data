@@ -108,6 +108,15 @@ class Scorecard:
 
     @property
     def false_alarms_per_quiet_series_week(self) -> Optional[float]:
+        """Unweighted, over the lead-ins of adjudicated events.
+
+        A proxy, and labelled as one where it prints. The population it counts
+        over is "whatever cells happen to surround a known event", which is not
+        a frame: nothing sampled it, so no weight corrects it, and events
+        cluster in exactly the countries and networks where quiet time is least
+        typical. `interval_eval.py` estimates the same quantity over a sampled
+        frame; when both are available, that one is the number.
+        """
         weeks = sum(r.lead_weeks * max(r.series_count, 1) for r in self.results)
         alarms = sum(r.false_alarms_in_lead for r in self.results)
         return alarms / weeks if weeks else None
@@ -147,7 +156,8 @@ class Scorecard:
             # Per series-week, so it is small by construction: three digits or
             # every configuration reads as 0.0.
             f"  false alerts / quiet series-wk  "
-            f"{num(self.false_alarms_per_quiet_series_week, dp=3)}",
+            f"{num(self.false_alarms_per_quiet_series_week, dp=3)}"
+            f"   (lead-in proxy; --intervals estimates it over a frame)",
             f"  alerts per detected true event  {num(self.alerts_per_true_event)}",
         ]
         failed = [r for r in self.results if not r.passed]

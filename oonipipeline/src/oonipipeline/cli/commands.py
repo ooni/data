@@ -390,12 +390,29 @@ def events_panel(port: int):
 @click.option("--gap-halflife", default=48.0, show_default=True)
 @click.option("--json-out", type=click.Path(), default=None,
               help="Write the per-event results, for diffing two configurations")
-def event_eval(events_path, tolerance_hours, lead_days, edd, gap_halflife, json_out):
+@click.option("--intervals", "intervals_path", type=click.Path(exists=True), default=None,
+              help="Interval-grain export. Adds the weighted false-alarm rate, "
+                   "which the event corpus cannot express: it is curated, so it "
+                   "has no denominator in it")
+@click.option("--max-false-alarms", type=float, default=None,
+              help="Fail when the false-alarm rate per quiet series-week is "
+                   "above this. Needs --intervals")
+@click.option("--bootstrap", default=400, show_default=True,
+              help="Cluster-bootstrap resamples for the false-alarm interval")
+def event_eval(events_path, tolerance_hours, lead_days, edd, gap_halflife, json_out,
+               intervals_path, max_false_alarms, bootstrap):
     """
-    Score a detector configuration against the adjudicated event corpus.
+    Score a detector configuration against the adjudicated corpora.
 
-    Takes an event-grain export from the event labeller. Prints the scorecard
-    and exits non-zero if any event fails, so it can gate a detector change.
+    Takes an event-grain export from the event labeller, and optionally an
+    interval-grain export from the quiet-interval labeller. Prints the
+    scorecards and exits non-zero if any event fails, so it can gate a detector
+    change.
+
+    The two grains answer different questions and neither substitutes for the
+    other. Events say whether a change still finds what it should. Intervals
+    say what it costs in false alarms, as a weighted estimate over a sampled
+    frame rather than a count over whatever surrounds the known events.
     """
     import json as _json
     from dataclasses import asdict
@@ -416,6 +433,34 @@ def event_eval(events_path, tolerance_hours, lead_days, edd, gap_halflife, json_
             _json.dump([asdict(r) for r in card.results], fh, indent=2)
         click.echo(f"wrote {json_out}")
 
+    interval_card = None
+    if intervals_path:
+        from ..analysis.interval_eval import run_interval_harness
+
+        interval_card = run_interval_harness(
+            clickhouse_url=config.clickhouse_url,
+            intervals_path=intervals_path,
+            lead_days=lead_days,
+            bootstrap=bootstrap,
+            edd=edd,
+            gap_halflife=gap_halflife,
+        )
+        click.echo("")
+        click.echo(interval_card.format())
+        if json_out:
+            with open(json_out.replace(".json", "") + "-intervals.json", "w") as fh:
+                _json.dump([asdict(r) for r in interval_card.results], fh, indent=2)
+    elif max_false_alarms is not None:
+        raise click.UsageError("--max-false-alarms needs --intervals")
+
     failed = [r for r in card.results if not r.passed]
     if failed:
         raise SystemExit(1)
+
+    if interval_card is not None and max_false_alarms is not None:
+        from ..analysis.interval_eval import gate
+
+        ok, why = gate(interval_card, max_false_alarms)
+        click.echo(f"false-alarm budget: {'pass' if ok else 'FAIL'} — {why}")
+        if not ok:
+            raise SystemExit(1)

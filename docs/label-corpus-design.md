@@ -1,20 +1,28 @@
 # Label Corpus Design
 
-Two label grains, one curation workflow. This is the machinery behind
+Three label grains, one curation workflow. This is the machinery behind
 requirements V1–V3 ([requirements.md](requirements.md)): ground truth
 independent of the rules it evaluates, no unmeasured changes, and a corpus
 whose own health is watched.
 
-**Why two.** The per-measurement corpus calibrates *scoring*: it is what the
+**Why three.** The per-measurement corpus calibrates *scoring*: it is what the
 per-rule likelihood ratios in [analysis-evaluation.ipynb](analysis-evaluation.ipynb)
 are fitted from. It is structurally incapable of evaluating the *detector*:
 time-to-detect, missed events, false-alarm density and alert-flood size are
 properties of a time series that no per-measurement metric can express. That is
 what the event grain is for.
 
-They share sourcing. An analyst working an incident produces both in one pass:
-the event row (when it started, where, against what) and a sample of
-measurement rows drawn from inside and around it.
+The event grain in turn cannot express a *rate*. It is curated, so recall over
+it is a coverage statement about a hand-built set, and there is no denominator
+in it: nothing defines quiet time, and quiet time can only be counted if it was
+sampled from a frame. That is what the interval grain is for. It is the mirror
+image of the event grain — sampled rather than curated, weighted rather than
+enumerated, negative rather than positive.
+
+They share sourcing. An analyst working an incident produces the first two in
+one pass: the event row (when it started, where, against what) and a sample of
+measurement rows drawn from inside and around it. The third is drawn, not
+found, which is the point of it.
 
 **Neither grain is stored server-side.** Labels live in the browser and leave by
 copy-paste, which is why there is no write endpoint, no auth surface and no
@@ -50,7 +58,7 @@ a re-adjudication writes a new row and sets `superseded_by` on the old one.
   "adjudicated_at":   "2026-08-03T16:46:31.058Z",
   "rationale":        "…",            // required for label_source = analyst
 
-  // sampling design — unrecoverable if omitted, see §1.4
+  // sampling design — unrecoverable if omitted, see §1.5
   "sampling_stratum":   "screen_negative",
   "sampling_weight":    2207987.8,
   "sampling_design_id": "d2241318a47",
@@ -85,7 +93,7 @@ badly, a label recording "this was an SNI reset" does not.
 different, unmeasured coverage, so a later refit can drop or separate them.
 
 `blinded` records that the pipeline's verdict was hidden when the call was made
-(§3.3). A corpus mixing blinded and unblinded labels cannot be pooled.
+(§3.4). A corpus mixing blinded and unblinded labels cannot be pooled.
 
 **Not implemented, and why it matters.** There is no `probe_id`,
 `scored_rules`, `pipeline_version` or `event_id` on a label today.
@@ -187,7 +195,87 @@ which mislabels the unaffected ones: the single most damaging corpus defect
 available. Measurements drawn from inside an event carry
 `sampling_stratum = incident_window` and are judged on their own evidence.
 
-### 1.3 Sampling designs: implemented
+### 1.3 Interval labels: implemented
+
+Emitted by [interval-labeler](https://docs.ooni.org/tools/interval-labeler),
+drawn from `GET /api/v1/labeling/interval_sample`. One row per adjudicated
+cell-week, append-only in the same way as the measurement grain.
+
+The unit is the detector's own unit — `event_detector_cusums` keys on
+`(probe_cc, probe_asn, domain)` ([architecture.md](architecture.md)
+§"Storage") — because anything coarser would estimate a rate over a different
+population than the one the detector runs on:
+
+```jsonc
+{
+  "interval_id": "uuid",
+  "probe_cc": "TZ", "probe_asn": 33765, "domain": "telegram.org",
+  "window_start": "2026-03-02T00:00:00", "window_end": "2026-03-09T00:00:00",
+
+  "verdict": "quiet_observed",   // quiet_observed | event_present
+                                 // | uncertain | unusable
+  "confidence": "probable",
+  "rationale": "…",
+
+  "sampling_stratum": "random_covered",   // | detector_alerted | near_miss
+  "screen_kind": "volume_stratified_random",
+  "sampling_weight": 41022.5,
+  "sample_population": 820450, "sample_rows": 20,
+  "sampling_design_id": "…",
+
+  "volume_band": "high",                  // derived from the count
+  "measurements_in_window": 3184,         // from the frame query, not a guess
+
+  "event_overlap": [],                    // null = no corpus was cross-checked
+  "blinded": true,
+  "adjudicator": "…", "adjudicated_at": "…",
+  "superseded_by": null, "supersede_reason": null
+}
+```
+
+**`quiet_observed`, never `quiet`.** The week is judged from the same OONI data
+the detector reads, so an unmeasured block is indistinguishable from calm. The
+name caps the claim at "no interference visible in OONI's data", which is the
+honest ceiling and also the fair one: a better candidate that finds subtle real
+events must not be charged a false alarm for finding them.
+
+**This grain carries weights, and the event grain does not.** Events are
+curated: no frame, no weight, and none can be invented later. Intervals are
+sampled precisely so a rate exists, which makes §1.5 apply to them in full. The
+event grain is the exception among the three, not this one.
+
+**The strata partition the frame.** `detector_alerted` is the cell-weeks the
+deployed detector fired in, `near_miss` those that scored blocked-leaning
+without firing, `random_covered` everything else. Each cell-week belongs to
+exactly one, so it has one selection probability and one correct weight;
+`random_covered` is resolved as the complement of whatever else is being drawn,
+and the resolved predicate is part of the design spec.
+
+`detector_alerted` alone would be circular — it estimates the incumbent's
+precision *given that it fired*, and a candidate's alerts in cells the
+incumbent never flagged would land on weeks nobody adjudicated, making its
+false alarms structurally invisible. As a stratum with a recorded screen and a
+weight it is not, because the weight states how much of the frame it stands
+for. Note this uses the historical alert log as a screen, which §4's "it does
+not replay the incumbent" does not forbid.
+
+**The frame is bounded, and says so.** Cell-weeks below a volume floor are
+excluded, because a uniform draw over all of them is dominated by cells too
+thin for any detector to fire in and every detector then scores well. Frames
+snap to whole ISO weeks, since a partial week is a shorter observation window
+rather than a smaller one. The default domain set is the one the detector
+actually runs on. All three are in the design spec, so all three are in the
+design id.
+
+**Derived, never stored.** `volume_band` follows the `ongoing` / `size_band`
+rule: the harness re-derives it from `measurements_in_window` rather than
+trusting the stored value, which a merge or a hand edit can contradict.
+
+**`uncertain` is first-class and counted**, as `unusable` is in §1.1. Ambiguous
+cells that get quietly skipped leave the easy negatives behind, and the rate
+improves for a reason that appears in no number.
+
+### 1.4 Sampling designs: implemented
 
 Not a separate table. Every export carries the designs its labels were drawn
 under, keyed by `design_id`, so weights are reconstructable from the export
@@ -223,16 +311,20 @@ matters is that membership is derived (`added_at <= cut_at` and not superseded
 as of that timestamp) rather than stamped on the row, so a revised adjudication
 does not retroactively change a published figure.
 
-### 1.4 Why `sampling_stratum` / `sampling_weight` cannot be added later
+### 1.5 Why `sampling_stratum` / `sampling_weight` cannot be added later
 
-These are the only fields in either schema that are **unrecoverable
+These are the only fields in the sampled schemas that are **unrecoverable
 retroactively**. Everything else can be backfilled by re-reading the
 measurement. But "what was this row's probability of being selected into the
 corpus" is a fact about a process that has already finished running. Start
 curation without them and you have a pile of interesting examples with no way to
 compute a rate from it; the only repair is re-doing the sampling.
 
-Implemented strata, from `labeling.py`:
+This is why the interval grain (§1.3) was built as a *draw* rather than as a
+collection of quiet weeks somebody noticed. A pile of intervals without weights
+would look like a corpus and support no rate at all.
+
+Implemented measurement strata, from `labeling.py`:
 
 | stratum | screen | purpose |
 |---|---|---|
@@ -257,6 +349,21 @@ labels drawn either side are not one population.
 `obs_web_ctrl` join with per-layer agreement predicates, and a negative stratum
 with a wrong predicate is worse than an absent one, because it silently deflates
 every LR denominator.
+
+Implemented interval strata, from the same module:
+
+| stratum | screen | purpose |
+|---|---|---|
+| `detector_alerted` | a positive changepoint in the week | precision of the incumbent's alerts |
+| `near_miss` | no alert, but `greatest(*_blocked) >= t` in the week | importance sampling: where disagreement lives |
+| `random_covered` | the complement of the above, in frame | the denominator |
+
+These differ from the measurement strata in one structural way: they are a
+*partition*, resolved against the strata actually being drawn. Two draws over
+overlapping populations would give a cell-week two selection probabilities and
+no correct weight, and unlike the measurement strata — where the layer
+predicates are disjoint by construction — an alerted cell-week is otherwise
+also a member of the random population.
 
 ---
 
@@ -293,7 +400,7 @@ one probe, no pattern → probably `down` with `label_confidence = uncertain`.
   adjudication wearing a measurement's clothes.
 - **`unadjudicated` is a legitimate outcome.** Forcing a call on an
   ambiguous row poisons the calibration exactly where it matters most.
-- **Do not look at the pipeline's verdict first.** See §3.3.
+- **Do not look at the pipeline's verdict first.** See §3.4.
 - **Write the rationale.** One sentence naming the specific evidence: "control
   returned 3 AWS A-records, probe got a single RIPE-registered in-country IP
   hosting a known ISP notice page". This is what makes a disagreement resolvable.
@@ -303,7 +410,23 @@ one probe, no pattern → probably `down` with `label_confidence = uncertain`.
   rate per rule is the ceiling on any accuracy claim the project later makes;
   measuring it is more valuable than avoiding it.
 
-### 2.4 Where to start
+### 2.4 On the interval grain, the question is different
+
+Not "what does this measurement show" but "did anything change in this cell
+during this week". Three things follow that catch people out.
+
+- **A uniformly blocked week is not quiet.** Nothing changes inside it, so its
+  own shape says nothing. Judge the week, but look at the fortnight either
+  side; the labeller pads the chart for exactly this reason.
+- **Boring is the expected answer.** Most cell-weeks are quiet, and that is the
+  product: a rate needs its denominator counted, not curated. A session that
+  produced forty quiet rows and no interesting finding did its job.
+- **A known event inside the window is `event_present`, not a skip.** Dropping
+  the row shrinks the denominator with nothing on the record to say why, which
+  is worse than the contamination it was meant to avoid — contamination biases
+  the rate upward, the safe direction.
+
+### 2.5 Where to start
 
 `answer_unmatched`. It scores `(0.75, 0, 0.25)` for any DNS answer matching
 nothing in the control, fires routinely on legitimately rotating CDN and geo-DNS
@@ -311,12 +434,20 @@ answers, and is the documented prime false-positive suspect. It is also the rule
 uniform sampling reaches slowest, roughly 12% of DNS-blocked traffic, so it is
 the strongest candidate for a rule-targeted draw.
 
-### 2.5 Volume expectations
+### 2.6 Volume expectations
 
 A few hundred adjudicated measurements gives informative LRs for the top 5–10
 rules per layer; the tail honestly stays at prior and should be shown as such
 rather than given a number. Per-country stratification needs thousands and
 should wait. For events, 50–150 rows is the working target.
+
+For intervals the binding constraint is not rows but *country-weeks*: the
+bootstrap clusters on them, because cell-weeks correlate across ASNs within a
+country and across adjacent weeks. Below ten clusters the harness prints no
+interval at all rather than an arbitrary one, so aim to spread a session over
+many countries and weeks instead of deepening a few. Intervals are also much
+faster to judge than measurements — a flat chart is a few seconds — so a
+couple of hundred is a realistic sitting.
 
 ---
 
@@ -365,7 +496,29 @@ inputs and nothing else; everything derivable is derived.
 Import merges by `event_id` and leaves already-adjudicated rows alone, so a
 refreshed draft can be re-imported without losing work.
 
-### 3.3 The blinding rule: implemented
+### 3.3 The quiet-interval queue: implemented
+
+[interval-labeler](https://docs.ooni.org/tools/interval-labeler). Closer to the
+measurement queue than to the event editor: a drawn queue, one cell-week at a
+time, blinded until commit, `Q` quiet, `E` event present, `U` can't call it, `X`
+unusable, plus confidence and a rationale.
+
+- **The observation timeline, padded.** The same stacked failure-mix chart the
+  event editor plots, over the adjudicated week with a settable margin either
+  side. The margin is what distinguishes "nothing happened" from "this cell has
+  been blocked throughout"; without it a uniformly blocked week reads as calm.
+- **Failure strings, not scores**, for the same reason as §3.2: an interval
+  judged from the pipeline's opinion of blocking is judged by the thing being
+  evaluated, and here one of the strata *is* the detector's output.
+- **Event-corpus cross-check.** Importing an event export flags cell-weeks a
+  known event overlaps, and the flagged ids are carried on the label. This is
+  external ground truth rather than detector output, so showing it before
+  commit is not unblinding.
+- **The reveal shows the alert log and the stratum.** After commit: the
+  changepoints in the window, drawn on the chart, and which stratum the row was
+  drawn from with its weight.
+
+### 3.4 The blinding rule: implemented
 
 **The pipeline's verdict, the winning rules and the LoNI triple stay hidden
 until the analyst commits.** Then reveal, with a supersede path for "this
@@ -378,7 +531,13 @@ by an unmeasurable amount. Blinding costs one UI state and removes an entire
 class of circularity. The post-commit reveal is useful too: it is how
 analysts find rule bugs.
 
-### 3.4 Corpus health dashboard: not implemented
+On the interval grain the rule is stronger, not merely inherited. There, one
+stratum is the detector's own alert log, so an unblinded alert state does not
+nudge the analyst towards an answer — it *is* the answer to the question being
+asked. The sampler's candidate path returns no changepoints, no CUSUM state and
+no scores; all of it lives behind `interval_reveal`.
+
+### 3.5 Corpus health dashboard: not implemented
 
 The evaluation notebook covers per-rule label counts and the unusable rate. Not
 covered: inter-adjudicator κ, probe concentration, and per-stratum shortfall
@@ -399,6 +558,8 @@ against a design target.
 | W7 | The LR fit | **done**: [analysis-evaluation.ipynb](analysis-evaluation.ipynb) §5, conditioned per layer, [Jeffreys-smoothed](https://en.wikipedia.org/wiki/Jeffreys_prior), bootstrap CIs. Not done: beta-binomial shrinkage, probe clustering |
 | W8 | LR diff report | **partial**: §7 prices a promotion; no automatic diff on refit |
 | W9 | Event replay harness | **done**: `event_eval.py`, `oonipipeline event-eval` |
+| W11 | The interval sampler | **done**: `GET /api/v1/labeling/interval_sample`, cell-weeks drawn from a snapped, volume-floored frame under a resolved partition |
+| W12 | The false-alarm estimate | **done**: `interval_eval.py`, `oonipipeline event-eval --intervals`, Horvitz–Thompson per volume band with a cluster bootstrap |
 | W10 | Privacy review before `probe_id` | **outstanding**: probe-level linkage across time and target is a correlation surface the project has historically avoided creating; requirements PR1 makes the review a precondition, deciding retention, access and an aggregation floor before the field is threaded through the corpus |
 
 ### The harness (W9)
@@ -423,6 +584,41 @@ Latency is measured from `onset_earliest` and can be negative: reports are
 day-granular and usually lag the block, so firing before the bracket opens is a
 good outcome, not a sign error.
 
+**Its false-alarm number is a proxy**, and prints as one. It counts alarms in
+each event's own lead-in, which is quiet time over "whatever cells happen to
+surround an adjudicated event" — a population nothing sampled, concentrated in
+exactly the countries and networks where quiet time is least typical. W12
+estimates the same quantity over a frame.
+
+### The false-alarm estimate (W12)
+
+`oonipipeline event-eval <events.json> --intervals <intervals.json>` adds a
+second scorecard: false alerts per quiet series-week as a weighted estimate,
+per volume band, with a 95% cluster-bootstrap interval; the share of quiet
+weeks with no alert at all; and the weighted rate at which the detector fires
+when an event *was* present.
+
+Four choices worth knowing about.
+
+**It weights.** The queue oversamples alerted and near-miss weeks on purpose,
+so counting alarms over the rows would describe the queue. Each row is weighted
+by `population / drawn` for its stratum.
+
+**It clusters.** The bootstrap resamples `(probe_cc, ISO week)` blocks, because
+a national event or a probe-fleet outage moves many ASNs at once and treating
+cell-weeks as independent reports an interval narrower than the evidence
+supports. Below ten clusters it prints no interval rather than an arbitrary one.
+
+**It warms up.** Each replay starts a fortnight before the window and counts
+only what fires inside it: a cold CUSUM's first threshold crossing establishes
+state silently, so replaying the bare week would swallow the alarms being
+counted.
+
+**Its gate compares the lower bound.** `--max-false-alarms` fails a change only
+when the interval's lower end is above the budget, i.e. when the corpus can
+actually tell the rate apart from it. A gate that fails at random gets switched
+off.
+
 ---
 
 ## Part 5: The failure modes to watch
@@ -430,9 +626,14 @@ good outcome, not a sign error.
 | Failure | Symptom | Guard |
 |---|---|---|
 | Incident-grain leakage | Every row in a window labelled `blocked` | No `event_id` on labels; audit the `ok` rate inside `incident_window`: a zero rate means the analyst is adjudicating the incident |
-| Anchoring | Analyst labels track pipeline verdicts near-perfectly | §3.3 blinding, recorded per label; monitor agreement as a *diagnostic*, not a target |
+| Anchoring | Analyst labels track pipeline verdicts near-perfectly | §3.4 blinding, recorded per label; monitor agreement as a *diagnostic*, not a target |
 | Pseudo-replication | One chatty probe dominates a stratum | Needs `probe_id` (W10); currently unguarded |
 | Negative-class starvation | `screen_negative` count flat | Treat as a release blocker for any published LR |
 | Silent design drift | Sampling rate changed without a new design id | `design_id` is a content hash of the spec, so it cannot happen silently |
 | Threshold drift | Layer strata redefined under the same design | `scoring_version` and `blocking_threshold` recorded in every design spec |
 | Version soup | Published figures with no reproducible input | Weakest link today: fits name an export file, not a cut (W6) |
+| Circular quiet time | False-alarm rate estimated only over weeks the incumbent alerted in | `random_covered` is the denominator and the strata partition the frame; a draw without it estimates precision-given-firing and says so |
+| Frame flattery | Every detector scores well on quiet time | Volume floor, whole ISO weeks, detector's own domain set — all three in the design spec, so a change to any of them changes the design id |
+| Absence read as calm | A block on an unmeasured network scores as a false alarm against a better detector | The verdict is `quiet_observed`, never `quiet`; the claim is capped at what OONI's data shows |
+| Differential effort | Ambiguous cell-weeks quietly skipped, leaving the easy negatives | `uncertain` is first-class and the harness counts exclusions by reason |
+| Independence assumed | A false-alarm interval far too narrow | Cluster bootstrap on `(probe_cc, week)`; no interval below ten clusters |
