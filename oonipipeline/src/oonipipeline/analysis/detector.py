@@ -645,50 +645,27 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
             )
         )
 
-    def make_nearest_hover(df, value_vars, colors, labels, y_title, legend_title):
+    def make_nearest_hover(df, field, label, color, y_title, legend_title):
         """
-        Builds an invisible hit-target layer plus a visible highlight dot per
-        series, using a melted long-form copy so the "nearest" selection
-        matches in true 2D (ts, value) space — hovering picks whichever
-        series is visually closest to the cursor rather than just the
-        closest timestamp. The same color scale drives a legend labeling
-        each line.
+        Builds an invisible hit-target layer plus a visible highlight dot
+        for a single series. Uses a plain x-only "nearest" selection (cheap:
+        a sorted bisect) rather than a 2D Voronoi nearest selection, which
+        is what made panning/zooming sluggish.
         """
-        df_melt = df.melt(
-            id_vars=["ts"],
-            value_vars=value_vars,
-            var_name="series",
-            value_name="value",
-        )
-        df_melt["series_label"] = df_melt["series"].map(labels)
-
         nearest = alt.selection_single(
-            nearest=True,
-            on="mouseover",
-            fields=["ts", "series"],
-            empty="none",
-            name=f"nearest_{'_'.join(value_vars)}",
+            nearest=True, on="mouseover", fields=["ts"], empty="none", name=f"nearest_{field}"
         )
-        melt_base = alt.Chart(df_melt).encode(
+        hover_base = alt.Chart(df).encode(
             x=alt.X("ts:T", axis=x_axis),
-            y=alt.Y("value:Q", title=y_title),
-            color=alt.Color(
-                "series_label:N",
-                scale=alt.Scale(
-                    domain=[labels[v] for v in value_vars],
-                    range=[colors[v] for v in value_vars],
-                ),
-                legend=alt.Legend(title=legend_title),
-            ),
+            y=alt.Y(f"{field}:Q", title=y_title),
         )
         selectors = (
-            melt_base.mark_point()
+            hover_base.mark_point()
             .encode(
                 opacity=alt.value(0),
                 tooltip=[
                     alt.Tooltip("ts:T", format=ts_tooltip_fmt),
-                    alt.Tooltip("series_label:N", title="series"),
-                    alt.Tooltip("value:Q"),
+                    alt.Tooltip(f"{field}:Q", title=label),
                 ],
             )
             .add_selection(nearest)
@@ -696,19 +673,35 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         hover_rule = base.mark_rule(color="gray").encode(
             opacity=alt.condition(nearest, alt.value(0.3), alt.value(0))
         )
-        highlight_points = melt_base.mark_point(filled=True, size=80).encode(
-            opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+        highlight_point = hover_base.mark_point(
+            color=color, filled=True, size=80
+        ).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0)))
+        return hover_rule + highlight_point + selectors
+
+    def make_legend_swatch(labels, colors, title):
+        """A zero-opacity mark whose sole purpose is to render a fixed-domain
+        color legend, since the actual lines it labels use static (not
+        data-driven) mark colors and so don't produce one on their own."""
+        return (
+            alt.Chart(pd.DataFrame({"label": labels}))
+            .mark_point(filled=True, opacity=0)
+            .encode(
+                color=alt.Color(
+                    "label:N",
+                    scale=alt.Scale(domain=labels, range=colors),
+                    legend=alt.Legend(title=title),
+                )
+            )
         )
-        return hover_rule + highlight_points + selectors
 
     obs_line = base.mark_line(color="steelblue", opacity=0.5).encode(
         y=alt.Y("obs_value:Q", title="value"),
     )
     obs_hover = make_nearest_hover(
         df_steps,
-        ["obs_value"],
-        {"obs_value": "steelblue"},
-        {"obs_value": "observed"},
+        "obs_value",
+        "observed",
+        "steelblue",
         y_title="value",
         legend_title="Value",
     )
@@ -728,18 +721,47 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         )
     )
     obs_label = make_label(df_last, "obs_value", "observed", "steelblue")
-    value_group = alt.layer(obs_line, obs_hover, cp_points, obs_label)
+    obs_legend = make_legend_swatch(["observed"], ["steelblue"], "Value")
+    value_group = alt.layer(obs_line, obs_hover, cp_points, obs_label, obs_legend)
 
-    s_pos_line = base.mark_line(color="red").encode(y=alt.Y("s_pos:Q"))
-    s_neg_line = base.mark_line(color="orange").encode(y=alt.Y("s_neg:Q"))
-    cusum_hover = make_nearest_hover(
-        df_steps,
-        ["s_pos", "s_neg", "h"],
-        {"s_pos": "red", "s_neg": "orange", "h": "green"},
-        {"s_pos": "S+", "s_neg": "S−", "h": "threshold (h)"},
-        y_title="CUSUM statistic",
-        legend_title="CUSUM",
+    s_pos_line = base.mark_line(color="red").encode(
+        y=alt.Y("s_pos:Q", title="CUSUM statistic")
     )
+    s_neg_line = base.mark_line(color="orange").encode(y=alt.Y("s_neg:Q"))
+
+    # Unconditionally show both S+ and S- in one tooltip (rather than trying
+    # to guess which line the cursor is closer to), using a plain x-only
+    # "nearest" selection — cheap, unlike a 2D Voronoi nearest selection.
+    cusum_nearest = alt.selection_single(
+        nearest=True, on="mouseover", fields=["ts"], empty="none", name="nearest_cusum"
+    )
+    cusum_selectors = (
+        base.mark_point()
+        .encode(
+            opacity=alt.value(0),
+            tooltip=[
+                alt.Tooltip("ts:T", format=ts_tooltip_fmt),
+                alt.Tooltip("s_pos:Q", title="🔴 S+"),
+                alt.Tooltip("s_neg:Q", title="🟠 S−"),
+            ],
+        )
+        .add_selection(cusum_nearest)
+    )
+    cusum_hover_rule = base.mark_rule(color="gray").encode(
+        opacity=alt.condition(cusum_nearest, alt.value(0.3), alt.value(0))
+    )
+    s_pos_highlight = base.mark_point(color="red", filled=True, size=80).encode(
+        y=alt.Y("s_pos:Q"),
+        opacity=alt.condition(cusum_nearest, alt.value(1), alt.value(0)),
+    )
+    s_neg_highlight = base.mark_point(color="orange", filled=True, size=80).encode(
+        y=alt.Y("s_neg:Q"),
+        opacity=alt.condition(cusum_nearest, alt.value(1), alt.value(0)),
+    )
+    cusum_hover = (
+        cusum_hover_rule + s_pos_highlight + s_neg_highlight + cusum_selectors
+    )
+
     threshold = (
         alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
     )
@@ -751,6 +773,9 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         .mark_text(align="left", dx=5, fontSize=11, color="green")
         .encode(x="ts:T", y="h:Q", text=alt.value("threshold (h)"))
     )
+    cusum_legend = make_legend_swatch(
+        ["S+", "S−", "threshold (h)"], ["red", "orange", "green"], "CUSUM"
+    )
     cusum_group = alt.layer(
         s_pos_line,
         s_neg_line,
@@ -759,6 +784,7 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         s_pos_label,
         s_neg_label,
         threshold_label,
+        cusum_legend,
     )
 
     chart = (
