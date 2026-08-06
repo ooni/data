@@ -325,9 +325,10 @@ incidentally.
 **V2. No unmeasured changes.** Nothing that changes what is published ships
 without measurement at the right grain. Scoring changes are measured against
 the per-measurement corpus. Detector changes (statistic, thresholds, series
-keys, watchlist) are measured against the event-grain scorecard: recall by
-event size, detection latency, false alarms per quiet series-week, alerts per
-true event. Presentation thresholds are fitted and versioned rather than
+keys, watchlist) are measured against two grains, because one cannot carry both
+halves: recall by event size, detection latency and alerts per true event come
+from the curated event corpus, and false alarms per silent series-week from the
+sampled interval corpus, which is the only one with a denominator in it. Presentation thresholds are fitted and versioned rather than
 eyeballed. A tier without a baseline cannot claim improvement.
 
 **V3. The corpus itself is monitored.** Negative-class share,

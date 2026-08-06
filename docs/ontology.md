@@ -781,8 +781,8 @@ already returns, which is not optional if those consumers are to keep working.
 
 The second label grain: whole incidents rather than single measurements, used
 by the replay harness to score the detector (event recall, detection latency,
-false alerts per quiet series-week). Fifty to 150 rows, hand-curated from
-adjudicated incidents. This grain is **implemented**: the full field list,
+alerts per detected event). Fifty to 150 rows, hand-curated from adjudicated
+incidents. It cannot carry a false-alarm *rate* — see §12.9. This grain is **implemented**: the full field list,
 export format and storage model live in
 [label-corpus-design.md](label-corpus-design.md) §1.2, and the editor is
 [event-labeler.html](event-labeler.html). What matters semantically:
@@ -814,6 +814,39 @@ export format and storage model live in
 Everything a consumer might want beyond that (`ongoing`, the affected layers,
 the size band) is derived, never stored, so a curator cannot enter a
 contradiction as data.
+
+### 12.9 The interval label record
+
+The third label grain, and the negative one: a `(probe_cc, probe_asn, domain)`
+cell over one ISO week — the detector's own key — adjudicated for whether the
+state *changed* inside it. Implemented; fields and export format in
+[label-corpus-design.md](label-corpus-design.md) §1.3. What matters
+semantically:
+
+- **It is sampled, not curated.** Unlike §12.8 it carries `sampling_stratum`,
+  `sampling_weight` and a design id, because a false-alarm rate is an estimate
+  over a population of cell-weeks. That population has to be drawn from a
+  recorded frame; a selection probability cannot be reconstructed afterwards.
+- **The verdict is about change, not level.** A changepoint detector can only
+  be right or wrong about a transition. `quiet_observed` (nothing visible went
+  wrong) and `blocked_throughout` (a block that started earlier, running all
+  week) both mean no transition, and both count as weeks the detector should
+  have been silent through. `event_present` means the state moved — an onset,
+  a recovery, or a mechanism shift mid-block.
+- **`quiet_observed` is the claim, not `quiet`.** The week is judged from the
+  same OONI data the detector reads, so the ceiling on the claim is "no
+  interference visible in OONI's data". An unmeasured block reads as calm, and
+  the naming keeps that honest rather than hidden.
+- **`uncertain` and `unusable` are counted, not dropped**, as `unadjudicated`
+  and `unusable` are at the measurement grain (§12.5). Silently losing the
+  ambiguous cell-weeks leaves the easy negatives behind and improves every rate
+  for a reason that appears in no number.
+- **The frame is bounded and the bound is recorded**: a volume floor, whole ISO
+  weeks, and the domain set the detector actually watches. Each is a way to
+  flatter a detector for free, so each is part of the design id.
+
+`volume_band` is derived from the measurement count, never stored in a form an
+analyst can contradict — the same rule as `ongoing` and `size_band` in §12.8.
 
 ## 13. Tradeoffs
 

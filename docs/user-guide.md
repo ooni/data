@@ -180,6 +180,12 @@ states of one *subject*. Use the profile shape above instead.
 For a heterogeneous selection, report counts ("blocked on 3 of 41 networks")
 rather than a single state label.
 
+The same applies to *drawing* them. The quiet-interval labeller
+([label-corpus-design.md](label-corpus-design.md) §3.3) plots a cell's per-layer
+scores as three independent lines rather than a stacked area, for this reason:
+stacked, they would sum above one in most buckets, because `dns_ok` sits near
+1.0 whenever anything in the bucket resolved cleanly.
+
 ### 3.6 `top_*_failure` and `top_*_rule_id` may describe different rows
 
 `top_dns_failure` is `anyHeavy` (modal) while `top_dns_rule_id` is

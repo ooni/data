@@ -212,8 +212,8 @@ population than the one the detector runs on:
   "probe_cc": "TZ", "probe_asn": 33765, "domain": "telegram.org",
   "window_start": "2026-03-02T00:00:00", "window_end": "2026-03-09T00:00:00",
 
-  "verdict": "quiet_observed",   // quiet_observed | event_present
-                                 // | uncertain | unusable
+  "verdict": "quiet_observed",   // quiet_observed | blocked_throughout
+                                 // | event_present | uncertain | unusable
   "confidence": "probable",
   "rationale": "…",
 
@@ -238,6 +238,34 @@ the detector reads, so an unmeasured block is indistinguishable from calm. The
 name caps the claim at "no interference visible in OONI's data", which is the
 honest ceiling and also the fair one: a better candidate that finds subtle real
 events must not be charged a false alarm for finding them.
+
+**The verdict answers "did it change", not "was it blocked".** The detector is a
+changepoint detector, so a transition is the only thing it can be right or wrong
+about, and state and change come apart on a common case: a week inside a
+long-running block. It has no transition in it, so the detector should stay
+silent and an alert there is a false alarm — but the cell is not quiet.
+`blocked_throughout` is that week. Without it the two available labels are both
+wrong: `quiet_observed` asserts "no interference visible" about a blocked week
+and puts it in the pool later mined as clean negatives, while `event_present`
+credits a detection nobody earned — the real onset was weeks earlier — *and*
+removes the week from the false-alarm denominator, so a detector that re-fires
+throughout a long block scores clean on both metrics. A six-month event
+corrupted all twenty-six of its weeks that way.
+
+How the estimator reads the five:
+
+```
+false-alarm denominator   quiet_observed + blocked_throughout
+recall / latency          event_present only
+clean negatives           quiet_observed only
+excluded, and counted     uncertain, unusable
+```
+
+A mechanism shift inside an ongoing block (injected DNS answers giving way to
+TLS resets) is a transition and stays `event_present`, as does a recovery, with
+the direction named in the rationale. If direction needs to become machine
+readable, the next move is a separate `onset_direction` field rather than more
+verdict values.
 
 **This grain carries weights, and the event grain does not.** Events are
 curated: no frame, no weight, and none can be invented later. Intervals are
@@ -500,23 +528,32 @@ refreshed draft can be re-imported without losing work.
 
 [interval-labeler](https://docs.ooni.org/tools/interval-labeler). Closer to the
 measurement queue than to the event editor: a drawn queue, one cell-week at a
-time, blinded until commit, `Q` quiet, `E` event present, `U` can't call it, `X`
-unusable, plus confidence and a rationale.
+time, blinded until commit, `Q` quiet, `B` blocked throughout, `E` event
+present, `U` can't call it, `X` unusable, plus confidence and a rationale.
 
 - **The observation timeline, padded.** The same stacked failure-mix chart the
   event editor plots, over the adjudicated week with a settable margin either
-  side. The margin is what distinguishes "nothing happened" from "this cell has
-  been blocked throughout"; without it a uniformly blocked week reads as calm.
+  side. The margin is not context, it is the evidence for the `Q` / `B`
+  distinction: a week inside a long-running block and a week where nothing is
+  wrong are both flat from inside the band, and only the fortnight either side
+  tells them apart.
 - **Failure strings, not scores**, for the same reason as §3.2: an interval
   judged from the pipeline's opinion of blocking is judged by the thing being
   evaluated, and here one of the strata *is* the detector's output.
 - **Event-corpus cross-check.** Importing an event export flags cell-weeks a
-  known event overlaps, and the flagged ids are carried on the label. This is
-  external ground truth rather than detector output, so showing it before
-  commit is not unblinding.
-- **The reveal shows the alert log and the stratum.** After commit: the
-  changepoints in the window, drawn on the chart, and which stratum the row was
-  drawn from with its weight.
+  known event overlaps, and the flagged ids are carried on the label. The flag
+  says which verdict the overlap implies — `event_present` when the event
+  starts or ends inside the week, `blocked_throughout` when it merely covers
+  it — because steering every overlap to `event_present` is exactly the error
+  §1.3 describes. This is external ground truth rather than detector output, so
+  showing it before commit is not unblinding.
+- **The reveal shows the alert log, the stratum and the scores.** After commit:
+  the changepoints in the window drawn on the chart, which stratum the row was
+  drawn from with its weight, and a second chart of what the pipeline concluded
+  — blocking probability, per-layer scores, and which outcome carried each
+  bucket — on the same time axis. The per-layer values are drawn as independent
+  lines, never stacked: they are componentwise maxima and routinely sum above
+  one ([user-guide.md](user-guide.md) §3.5).
 
 ### 3.4 The blinding rule: implemented
 
@@ -567,15 +604,15 @@ against a design target.
 [detector-evaluation.ipynb](detector-evaluation.ipynb) replays the detector over
 both corpora and reports: event recall stratified by `size_band`, median
 detection latency, alerts per detected true event, and — from the interval
-corpus — the weighted false-alarm rate per quiet series-week with a
+corpus — the weighted false-alarm rate per silent series-week with a
 cluster-bootstrap interval.
 
 It is a notebook rather than a CLI subcommand for the same reason
 [analysis-evaluation.ipynb](analysis-evaluation.ipynb) is. A scorecard tells you
 a configuration's number; the question actually being asked is which
 configuration to ship, and that needs the intermediate frames on screen — which
-events were missed and what their series looked like, which quiet weeks carried
-the rate, what happens to both as `edd` moves. §7 sweeps the parameters and
+events were missed and what their series looked like, which silent weeks
+carried the rate, what happens to both as `edd` moves. §7 sweeps the parameters and
 plots recall against false alarms, fetching observations once and replaying them
 per setting; a single-configuration command could not do that at all.
 
@@ -611,7 +648,14 @@ good outcome, not a sign error.
 
 ### What makes the false-alarm number an estimate (W12)
 
-Three choices, all in §5 of the notebook.
+Four choices, all in §5 of the notebook.
+
+**Its denominator is silence, not calm.** Both `quiet_observed` and
+`blocked_throughout` weeks belong in it: neither contains a transition, so the
+detector should fire in neither, and an alert in either is a false alarm. The
+rate is reported over the two together and split between them, because they
+fail differently — alerts in quiet weeks are noise, and alerts inside ongoing
+blocks are duplicate pages on something already known.
 
 **It weights.** The queue oversamples alerted and near-miss weeks on purpose, so
 counting alarms over the rows would describe the queue. Each row is weighted by
@@ -647,5 +691,6 @@ counted.
 | Circular quiet time | False-alarm rate estimated only over weeks the incumbent alerted in | `random_covered` is the denominator and the strata partition the frame; a draw without it estimates precision-given-firing and says so |
 | Frame flattery | Every detector scores well on quiet time | Volume floor, whole ISO weeks, detector's own domain set — all three in the design spec, so a change to any of them changes the design id |
 | Absence read as calm | A block on an unmeasured network scores as a false alarm against a better detector | The verdict is `quiet_observed`, never `quiet`; the claim is capped at what OONI's data shows |
+| Ongoing block read as a detection | A detector re-firing through a long block scores perfect recall and no false alarms, because every week of it was labelled `event_present` | `blocked_throughout` (§1.3): a week with no transition stays in the false-alarm denominator whether or not the cell is blocked |
 | Differential effort | Ambiguous cell-weeks quietly skipped, leaving the easy negatives | `uncertain` is first-class and the harness counts exclusions by reason |
 | Independence assumed | A false-alarm interval far too narrow | Cluster bootstrap on `(probe_cc, week)`; no interval below ten clusters |
