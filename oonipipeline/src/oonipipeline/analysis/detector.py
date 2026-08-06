@@ -645,25 +645,69 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
             )
         )
 
+    def make_nearest_hover(df, value_vars, colors, labels, y_title):
+        """
+        Builds an invisible hit-target layer plus a visible highlight dot per
+        series, using a melted long-form copy so the "nearest" selection
+        matches in true 2D (ts, value) space — hovering picks whichever
+        series is visually closest to the cursor rather than just the
+        closest timestamp.
+        """
+        df_melt = df.melt(
+            id_vars=["ts"],
+            value_vars=value_vars,
+            var_name="series",
+            value_name="value",
+        )
+        df_melt["series_label"] = df_melt["series"].map(labels)
+
+        nearest = alt.selection_single(
+            nearest=True,
+            on="mouseover",
+            fields=["ts", "series"],
+            empty="none",
+            name=f"nearest_{'_'.join(value_vars)}",
+        )
+        melt_base = alt.Chart(df_melt).encode(
+            x=alt.X("ts:T", axis=x_axis),
+            y=alt.Y("value:Q", title=y_title),
+            color=alt.Color(
+                "series:N",
+                scale=alt.Scale(
+                    domain=list(colors.keys()), range=list(colors.values())
+                ),
+                legend=None,
+            ),
+        )
+        selectors = (
+            melt_base.mark_point()
+            .encode(
+                opacity=alt.value(0),
+                tooltip=[
+                    alt.Tooltip("ts:T", format=ts_tooltip_fmt),
+                    alt.Tooltip("series_label:N", title="series"),
+                    alt.Tooltip("value:Q"),
+                ],
+            )
+            .add_selection(nearest)
+        )
+        hover_rule = base.mark_rule(color="gray").encode(
+            opacity=alt.condition(nearest, alt.value(0.3), alt.value(0))
+        )
+        highlight_points = melt_base.mark_point(filled=True, size=80).encode(
+            opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+        )
+        return hover_rule + highlight_points + selectors
+
     obs_line = base.mark_line(color="steelblue", opacity=0.5).encode(
         y=alt.Y("obs_value:Q", title="value"),
-        tooltip=[
-            alt.Tooltip("ts:T", format=ts_tooltip_fmt),
-            "obs_value:Q",
-            "weight:Q",
-            "current_state:N",
-        ],
     )
-    s_pos_line = base.mark_line(color="red").encode(
-        y=alt.Y("s_pos:Q"),
-        tooltip=[alt.Tooltip("ts:T", format=ts_tooltip_fmt), "s_pos:Q"],
-    )
-    s_neg_line = base.mark_line(color="orange").encode(
-        y=alt.Y("s_neg:Q"),
-        tooltip=[alt.Tooltip("ts:T", format=ts_tooltip_fmt), "s_neg:Q"],
-    )
-    threshold = (
-        alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
+    obs_hover = make_nearest_hover(
+        df_steps,
+        ["obs_value"],
+        {"obs_value": "steelblue"},
+        {"obs_value": "observed"},
+        y_title="value",
     )
     cp_points = (
         alt.Chart(df_steps[df_steps["is_changepoint"]])
@@ -680,8 +724,21 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
             ],
         )
     )
-
     obs_label = make_label(df_last, "obs_value", "observed", "steelblue")
+    value_group = alt.layer(obs_line, obs_hover, cp_points, obs_label)
+
+    s_pos_line = base.mark_line(color="red").encode(y=alt.Y("s_pos:Q"))
+    s_neg_line = base.mark_line(color="orange").encode(y=alt.Y("s_neg:Q"))
+    cusum_hover = make_nearest_hover(
+        df_steps,
+        ["s_pos", "s_neg"],
+        {"s_pos": "red", "s_neg": "orange"},
+        {"s_pos": "S+", "s_neg": "S−"},
+        y_title="CUSUM statistic",
+    )
+    threshold = (
+        alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
+    )
     s_pos_label = make_label(df_last, "s_pos", "S+", "red")
     s_neg_label = make_label(df_last, "s_neg", "S−", "orange")
     df_h = df_last[["ts", "h"]].copy()
@@ -690,20 +747,20 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         .mark_text(align="left", dx=5, fontSize=11, color="green")
         .encode(x="ts:T", y="h:Q", text=alt.value("threshold (h)"))
     )
+    cusum_group = alt.layer(
+        s_pos_line,
+        s_neg_line,
+        cusum_hover,
+        threshold,
+        s_pos_label,
+        s_neg_label,
+        threshold_label,
+    )
 
     chart = (
-        (
-            state_bands
-            + obs_line
-            + obs_label
-            + s_pos_line
-            + s_pos_label
-            + s_neg_line
-            + s_neg_label
-            + threshold
-            + threshold_label
-            + cp_points
-        )
+        alt.layer(state_bands, value_group, cusum_group)
+        .resolve_scale(y="independent", color="independent")
+        .resolve_legend(color="independent")
         .properties(
             width=900,
             height=400,
