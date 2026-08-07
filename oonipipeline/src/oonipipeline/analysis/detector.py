@@ -963,11 +963,9 @@ def get_detector_panel_url(
     warmup: bool = False,
 ) -> str:
     """
-    Builds a link to the events-panel Streamlit app (see
+    Builds a link to the events-panel app (see
     oonipipeline.events_panel.panel), prefilled via query params so the app
-    auto-runs the detector for this changepoint's country/domain and a
-    +-13/2 day window around it on first load — same window convention as
-    get_explorer_url/get_alert_page_url above.
+    auto-runs the detector for this changepoint's metadata
     """
     start_time = changepoint["ts"] - timedelta(days=13)
     end_time = changepoint["ts"] + timedelta(days=2)
