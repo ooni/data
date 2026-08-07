@@ -1,16 +1,39 @@
 from collections import defaultdict
 import streamlit as st
+import streamlit.components.v1 as components
 from oonipipeline.analysis.detector import (
     make_cusums_chart_grid,
     run_detector_for,
     ANALYSIS_COLS,
 )
 from datetime import datetime, timezone, timedelta
+import json
 import logging
 import pandas as pd
 import vl_convert as vlc
 
 log = logging.getLogger(__name__)
+
+# st.altair_chart always renders to SVG, which gets noticeably janky once a
+# chart has thousands of marks whose position must be recomputed on every
+# pan/zoom tick (as this multi-row CUSUM chart does). Rendering via
+# vega-embed directly lets us request the canvas renderer instead, which
+# redraws pixels rather than patching a large SVG DOM tree every frame.
+def altair_chart_canvas(chart, row_height=100, extra_height=150):
+    spec = chart.to_dict()
+    n_rows = len(spec.get("vconcat", [spec]))
+    height = n_rows * row_height + extra_height
+    html = f"""
+    <div id="vis"></div>
+    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+    <script>
+      vegaEmbed('#vis', {json.dumps(spec)}, {{renderer: 'canvas'}})
+        .catch(console.error);
+    </script>
+    """
+    components.html(html, height=height, scrolling=True)
 
 
 @st.cache_data(ttl=300)
@@ -218,7 +241,7 @@ def detector_panel():
     if chart is None:
         st.warning(f"No cusum steps found for ASN {selected_asn}")
         return
-    st.altair_chart(chart)
+    altair_chart_canvas(chart)
 
     with st.expander("🔧 Debug"):
         if st.checkbox("Render chart as PNG", key="debug_render_png"):
