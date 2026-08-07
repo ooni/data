@@ -593,6 +593,7 @@ def make_cusums_chart(
     steps: List[CusumStep],
     block_type: str,
     zoom=None,
+    nearest=None,
     show_legend: bool = True,
     show_x_axis: bool = True,
 ):
@@ -601,6 +602,12 @@ def make_cusums_chart(
     across multiple calls (see make_cusums_chart_grid) so pan/zoom on one
     chart's time axis applies to all of them. When omitted, a private one is
     created so this function still works as a standalone chart.
+
+    nearest: an optional shared alt.selection_single(nearest=True, ...) to
+    reuse across multiple calls (see make_cusums_chart_grid), so a single
+    mouseover listener drives the hover crosshair/highlights on every row
+    instead of one independent listener per row. When omitted, a private one
+    is created so this function still works as a standalone chart.
 
     show_legend: when False, suppresses this chart's own State/Value/CUSUM
     legends — used when stacking several of these charts so only one copy
@@ -668,6 +675,14 @@ def make_cusums_chart(
 
     base = alt.Chart(df_steps).encode(x=alt.X("ts:T", axis=x_axis))
 
+    # One tooltip covering all three series at once (rather than trying to
+    # guess which line the cursor is closer to), using a plain x-only
+    # "nearest" selection — cheap, unlike a 2D Voronoi nearest selection.
+    if nearest is None:
+        nearest = alt.selection_single(
+            nearest=True, on="mouseover", fields=["ts"], empty="none", name="nearest"
+        )
+
     def make_label(df, field, label, color):
         return (
             alt.Chart(df)
@@ -680,9 +695,13 @@ def make_cusums_chart(
         )
 
     def make_highlight(field, color):
-        return base.mark_point(color=color, filled=True, size=80).encode(
-            y=alt.Y(f"{field}:Q"),
-            opacity=alt.condition(nearest, alt.value(1), alt.value(0)),
+        # transform_filter (rather than an opacity condition over the full
+        # dataset) means only the single matched point is ever rendered, so
+        # this stays O(1) instead of O(n) marks per row.
+        return (
+            base.transform_filter(nearest)
+            .mark_point(color=color, filled=True, size=80)
+            .encode(y=alt.Y(f"{field}:Q"))
         )
 
     def make_legend_swatch(labels, colors, title):
@@ -731,12 +750,6 @@ def make_cusums_chart(
     )
     s_neg_line = base.mark_line(color="orange").encode(y=alt.Y("s_neg:Q"))
 
-    # One tooltip covering all three series at once (rather than trying to
-    # guess which line the cursor is closer to), using a plain x-only
-    # "nearest" selection — cheap, unlike a 2D Voronoi nearest selection.
-    nearest = alt.selection_single(
-        nearest=True, on="mouseover", fields=["ts"], empty="none", name="nearest"
-    )
     selectors = (
         base.mark_point()
         .encode(
@@ -750,8 +763,8 @@ def make_cusums_chart(
         )
         .add_selection(nearest)
     )
-    hover_rule = base.mark_rule(color="gray").encode(
-        opacity=alt.condition(nearest, alt.value(0.3), alt.value(0))
+    hover_rule = (
+        base.transform_filter(nearest).mark_rule(color="gray", opacity=0.3)
     )
     obs_highlight = make_highlight("obs_value", "steelblue")
     s_pos_highlight = make_highlight("s_pos", "red")
@@ -834,12 +847,16 @@ def make_cusums_chart_grid(steps: List[CusumStep], block_types: List[str]):
         return None
 
     zoom = alt.selection_interval(bind="scales", encodings=["x"])
+    nearest = alt.selection_single(
+        nearest=True, on="mouseover", fields=["ts"], empty="none", name="nearest"
+    )
     last_idx = len(present_block_types) - 1
     charts = [
         make_cusums_chart(
             steps,
             block_type,
             zoom=zoom,
+            nearest=nearest,
             show_legend=(i == last_idx),
             show_x_axis=(i == last_idx),
         )
