@@ -69,6 +69,7 @@ def run_make_event_detector(
     ts: str = "",
     slack_webhook: str | None = None,
     explorer_base_url: str = "https://explorer.ooni.org/",
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/",
 ):
     from oonipipeline.tasks.detector import MakeDetectorParams, make_detector
 
@@ -81,6 +82,7 @@ def run_make_event_detector(
         timestamp=timestamp,
         slack_webhook=slack_webhook,
         explorer_base_url=explorer_base_url,
+        detector_panel_base_url=detector_panel_base_url,
     )
 
     make_detector(params)
@@ -241,6 +243,10 @@ with DAG(
             "slack_webhook": Variable.get("slack_webhook", default_var=None),
             "explorer_base_url": Variable.get(
                 "explorer_base_url", default_var="https://explorer.ooni.org/"
+            ),
+            "detector_panel_base_url": Variable.get(
+                "detector_panel_base_url",
+                default_var="https://detector-panel.prod.ooni.io/",
             ),
             "ts": "{{ts}}",
         },

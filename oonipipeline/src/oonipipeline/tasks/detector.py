@@ -12,6 +12,7 @@ class MakeDetectorParams:
     timestamp: str
     slack_webhook: str | None = None
     explorer_base_url: str = "https://explorer.ooni.org/"
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/"
 
 
 def make_detector(params: MakeDetectorParams):
@@ -33,4 +34,5 @@ def make_detector(params: MakeDetectorParams):
         probe_cc=params.probe_cc,
         slack_webhook=params.slack_webhook,
         explorer_base_url=params.explorer_base_url,
+        detector_panel_base_url=params.detector_panel_base_url,
     )
