@@ -104,6 +104,15 @@ def detector_panel():
         st.warning(f"No cusum steps found for ASN {selected_asn}")
         return
 
+    block_steps = [s for s in chart_steps if s["block_type"] == block_type]
+    if all(s["obs_value"] is None or s["obs_value"] != s["obs_value"] for s in block_steps):
+        st.info(
+            f"No **{block_type}** measurements were observed for this ASN in the "
+            "selected window (the underlying weight/count was zero every hour), so "
+            "the observed-value line has nothing to plot. The CUSUM statistics "
+            "below still reflect the detector's last known state."
+        )
+
     chart = make_cusums_chart(chart_steps, block_type)
     st.altair_chart(chart)
 
@@ -121,6 +130,9 @@ def detector_panel():
 
         if st.checkbox("Show Vega-Lite spec", key="debug_show_spec"):
             st.json(chart.to_dict())
+
+        if st.checkbox("Show cusum data as dataframe", key="debug_show_cusum_df"):
+            st.dataframe(pd.DataFrame(block_steps))
 
 
 detector_panel()

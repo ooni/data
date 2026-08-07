@@ -637,46 +637,13 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
     def make_label(df, field, label, color):
         return (
             alt.Chart(df)
-            .mark_text(align="left", dx=5, fontSize=11, color=color)
+            .mark_text(align="right", dx=-5, fontSize=11, color=color)
             .encode(
                 x="ts:T",
                 y=alt.Y(f"{field}:Q"),
                 text=alt.value(label),
             )
         )
-
-    def make_nearest_hover(df, field, label, color, y_title, legend_title):
-        """
-        Builds an invisible hit-target layer plus a visible highlight dot
-        for a single series. Uses a plain x-only "nearest" selection (cheap:
-        a sorted bisect) rather than a 2D Voronoi nearest selection, which
-        is what made panning/zooming sluggish.
-        """
-        nearest = alt.selection_single(
-            nearest=True, on="mouseover", fields=["ts"], empty="none", name=f"nearest_{field}"
-        )
-        hover_base = alt.Chart(df).encode(
-            x=alt.X("ts:T", axis=x_axis),
-            y=alt.Y(f"{field}:Q", title=y_title),
-        )
-        selectors = (
-            hover_base.mark_point()
-            .encode(
-                opacity=alt.value(0),
-                tooltip=[
-                    alt.Tooltip("ts:T", format=ts_tooltip_fmt),
-                    alt.Tooltip(f"{field}:Q", title=label),
-                ],
-            )
-            .add_selection(nearest)
-        )
-        hover_rule = base.mark_rule(color="gray").encode(
-            opacity=alt.condition(nearest, alt.value(0.3), alt.value(0))
-        )
-        highlight_point = hover_base.mark_point(
-            color=color, filled=True, size=80
-        ).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0)))
-        return hover_rule + highlight_point + selectors
 
     def make_legend_swatch(labels, colors, title):
         """A zero-opacity mark whose sole purpose is to render a fixed-domain
@@ -697,14 +664,6 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
     obs_line = base.mark_line(color="steelblue", opacity=0.5).encode(
         y=alt.Y("obs_value:Q", title="value"),
     )
-    obs_hover = make_nearest_hover(
-        df_steps,
-        "obs_value",
-        "observed",
-        "steelblue",
-        y_title="value",
-        legend_title="Value",
-    )
     cp_points = (
         alt.Chart(df_steps[df_steps["is_changepoint"]])
         .mark_point(color="black", size=100, shape="diamond")
@@ -720,46 +679,56 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
             ],
         )
     )
-    obs_label = make_label(df_last, "obs_value", "observed", "steelblue")
+    obs_last_value = df_last["obs_value"].iloc[0]
+    obs_label_text = (
+        f"observed: {obs_last_value:.2f}" if pd.notna(obs_last_value) else "observed: n/a"
+    )
+    obs_label = make_label(df_last, "obs_value", obs_label_text, "steelblue")
     obs_legend = make_legend_swatch(["observed"], ["steelblue"], "Value")
-    value_group = alt.layer(obs_line, obs_hover, cp_points, obs_label, obs_legend)
 
     s_pos_line = base.mark_line(color="red").encode(
         y=alt.Y("s_pos:Q", title="CUSUM statistic")
     )
     s_neg_line = base.mark_line(color="orange").encode(y=alt.Y("s_neg:Q"))
 
-    # Unconditionally show both S+ and S- in one tooltip (rather than trying
-    # to guess which line the cursor is closer to), using a plain x-only
+    # One tooltip covering all three series at once (rather than trying to
+    # guess which line the cursor is closer to), using a plain x-only
     # "nearest" selection — cheap, unlike a 2D Voronoi nearest selection.
-    cusum_nearest = alt.selection_single(
-        nearest=True, on="mouseover", fields=["ts"], empty="none", name="nearest_cusum"
+    nearest = alt.selection_single(
+        nearest=True, on="mouseover", fields=["ts"], empty="none", name="nearest"
     )
-    cusum_selectors = (
+    selectors = (
         base.mark_point()
         .encode(
             opacity=alt.value(0),
             tooltip=[
                 alt.Tooltip("ts:T", format=ts_tooltip_fmt),
+                alt.Tooltip("obs_value:Q", title="🔵 observed"),
                 alt.Tooltip("s_pos:Q", title="🔴 S+"),
                 alt.Tooltip("s_neg:Q", title="🟠 S−"),
             ],
         )
-        .add_selection(cusum_nearest)
+        .add_selection(nearest)
     )
-    cusum_hover_rule = base.mark_rule(color="gray").encode(
-        opacity=alt.condition(cusum_nearest, alt.value(0.3), alt.value(0))
+    hover_rule = base.mark_rule(color="gray").encode(
+        opacity=alt.condition(nearest, alt.value(0.3), alt.value(0))
+    )
+    obs_highlight = base.mark_point(color="steelblue", filled=True, size=80).encode(
+        y=alt.Y("obs_value:Q"),
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0)),
     )
     s_pos_highlight = base.mark_point(color="red", filled=True, size=80).encode(
         y=alt.Y("s_pos:Q"),
-        opacity=alt.condition(cusum_nearest, alt.value(1), alt.value(0)),
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0)),
     )
     s_neg_highlight = base.mark_point(color="orange", filled=True, size=80).encode(
         y=alt.Y("s_neg:Q"),
-        opacity=alt.condition(cusum_nearest, alt.value(1), alt.value(0)),
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0)),
     )
-    cusum_hover = (
-        cusum_hover_rule + s_pos_highlight + s_neg_highlight + cusum_selectors
+    hover = hover_rule + selectors
+
+    value_group = alt.layer(
+        obs_line, obs_highlight, cp_points, obs_label, obs_legend
     )
 
     threshold = (
@@ -779,7 +748,8 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
     cusum_group = alt.layer(
         s_pos_line,
         s_neg_line,
-        cusum_hover,
+        s_pos_highlight,
+        s_neg_highlight,
         threshold,
         s_pos_label,
         s_neg_label,
@@ -788,7 +758,7 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
     )
 
     chart = (
-        alt.layer(state_bands, value_group, cusum_group)
+        alt.layer(state_bands, value_group, cusum_group, hover)
         .resolve_scale(y="independent", color="independent")
         .resolve_legend(color="independent")
         .properties(
