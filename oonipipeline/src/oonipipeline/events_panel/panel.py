@@ -206,9 +206,7 @@ def detector_panel():
     block_types = [c[0] for c in ANALYSIS_COLS]
     for block_type in block_types:
         block_steps = [s for s in chart_steps if s["block_type"] == block_type]
-        if block_steps and all(
-            s["obs_value"] is None or s["obs_value"] != s["obs_value"] for s in block_steps
-        ):
+        if block_steps and all(pd.isna(s["obs_value"]) for s in block_steps):
             st.info(
                 f"No **{block_type}** measurements were observed for this ASN in the "
                 "selected window (the underlying weight/count was zero every hour), so "

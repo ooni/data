@@ -679,6 +679,12 @@ def make_cusums_chart(
             )
         )
 
+    def make_highlight(field, color):
+        return base.mark_point(color=color, filled=True, size=80).encode(
+            y=alt.Y(f"{field}:Q"),
+            opacity=alt.condition(nearest, alt.value(1), alt.value(0)),
+        )
+
     def make_legend_swatch(labels, colors, title):
         """A zero-opacity mark whose sole purpose is to render a fixed-domain
         color legend, since the actual lines it labels use static (not
@@ -747,18 +753,9 @@ def make_cusums_chart(
     hover_rule = base.mark_rule(color="gray").encode(
         opacity=alt.condition(nearest, alt.value(0.3), alt.value(0))
     )
-    obs_highlight = base.mark_point(color="steelblue", filled=True, size=80).encode(
-        y=alt.Y("obs_value:Q"),
-        opacity=alt.condition(nearest, alt.value(1), alt.value(0)),
-    )
-    s_pos_highlight = base.mark_point(color="red", filled=True, size=80).encode(
-        y=alt.Y("s_pos:Q"),
-        opacity=alt.condition(nearest, alt.value(1), alt.value(0)),
-    )
-    s_neg_highlight = base.mark_point(color="orange", filled=True, size=80).encode(
-        y=alt.Y("s_neg:Q"),
-        opacity=alt.condition(nearest, alt.value(1), alt.value(0)),
-    )
+    obs_highlight = make_highlight("obs_value", "steelblue")
+    s_pos_highlight = make_highlight("s_pos", "red")
+    s_neg_highlight = make_highlight("s_neg", "orange")
     hover = hover_rule + selectors
 
     value_group_layers = [obs_line, obs_highlight, cp_points, obs_label]
