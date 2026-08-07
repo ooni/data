@@ -1,6 +1,10 @@
 from collections import defaultdict
 import streamlit as st
-from oonipipeline.analysis.detector import make_cusums_chart, run_detector_for, ANALYSIS_COLS
+from oonipipeline.analysis.detector import (
+    make_cusums_chart_grid,
+    run_detector_for,
+    ANALYSIS_COLS,
+)
 from datetime import datetime, timezone, timedelta
 import logging
 import pandas as pd
@@ -44,7 +48,11 @@ def detector_panel():
         domain = c2.text_input("**domain**", "x.com")
         gap_halflife = c2.number_input("**Gap half life**", value=48.0)
 
-        warmup = st.checkbox("**Warmup**", True)
+        warmup = st.checkbox(
+            "**Warmup**",
+            False,
+            help="When enabled, no changepoints will be returned.",
+        )
         submitted = st.form_submit_button("Run detector")
 
     # Only recompute on submit; store in session_state so results survive
@@ -83,19 +91,30 @@ def detector_panel():
     for step in cusum_steps:
         asns[step["probe_asn"]] += 1
 
+    asns_with_changepoints = {cp["probe_asn"] for cp in changepoints}
+
     c1, c2 = st.columns(2)
     c1.write(f"Changepoints: **{len(changepoints)}**")
     c2.write(f"Cusum steps: **{len(cusum_steps)}**")
 
-    c1, c2 = st.columns(2)
-    block_type = c1.selectbox(
-        "Block type", [c[0] for c in ANALYSIS_COLS], key="block_type_select"
-    )
+    if changepoints:
+        st.write("**Changepoints**")
+        cp_df = pd.DataFrame(changepoints)
+        cp_df = cp_df.sort_values("ts", ascending=False).reset_index(drop=True)
+        display_cols = [
+            c
+            for c in ["ts", "probe_asn", "domain", "block_type", "change_dir", "s_pos", "s_neg", "h"]
+            if c in cp_df.columns
+        ]
+        st.dataframe(cp_df[display_cols], hide_index=True)
 
     asn_list = list(asns.keys())
     asn_list.sort(key=lambda k: asns[k], reverse=True)
-    selected_asn = c2.selectbox(
-        "ASN", asn_list, format_func=lambda k: f"{k} ({asns[k]})", key="asn_select"
+    selected_asn = st.selectbox(
+        "ASN",
+        asn_list,
+        format_func=lambda k: f"{'❗️' if k in asns_with_changepoints else ''}{k} ({asns[k]})",
+        key="asn_select",
     )
 
     chart_steps = [s for s in cusum_steps if s["probe_asn"] == selected_asn]
@@ -104,23 +123,24 @@ def detector_panel():
         st.warning(f"No cusum steps found for ASN {selected_asn}")
         return
 
-    block_steps = [s for s in chart_steps if s["block_type"] == block_type]
-    if all(s["obs_value"] is None or s["obs_value"] != s["obs_value"] for s in block_steps):
-        st.info(
-            f"No **{block_type}** measurements were observed for this ASN in the "
-            "selected window (the underlying weight/count was zero every hour), so "
-            "the observed-value line has nothing to plot. The CUSUM statistics "
-            "below still reflect the detector's last known state."
-        )
+    block_types = [c[0] for c in ANALYSIS_COLS]
+    for block_type in block_types:
+        block_steps = [s for s in chart_steps if s["block_type"] == block_type]
+        if block_steps and all(
+            s["obs_value"] is None or s["obs_value"] != s["obs_value"] for s in block_steps
+        ):
+            st.info(
+                f"No **{block_type}** measurements were observed for this ASN in the "
+                "selected window (the underlying weight/count was zero every hour), so "
+                "the observed-value line has nothing to plot for that row. The CUSUM "
+                "statistics still reflect the detector's last known state."
+            )
 
-    chart = make_cusums_chart(chart_steps, block_type)
+    chart = make_cusums_chart_grid(chart_steps, block_types)
+    if chart is None:
+        st.warning(f"No cusum steps found for ASN {selected_asn}")
+        return
     st.altair_chart(chart)
-
-    if asns:
-        df = pd.DataFrame({"ASN": list(asns.keys()), "total": list(asns.values())})
-        df = df.sort_values("total", ascending=False).reset_index(drop=True)
-        df["ASN"] = df["ASN"].astype(str)
-        st.dataframe(df, hide_index=True)
 
     with st.expander("🔧 Debug"):
         if st.checkbox("Render chart as PNG", key="debug_render_png"):
@@ -132,7 +152,13 @@ def detector_panel():
             st.json(chart.to_dict())
 
         if st.checkbox("Show cusum data as dataframe", key="debug_show_cusum_df"):
-            st.dataframe(pd.DataFrame(block_steps))
+            st.dataframe(pd.DataFrame(chart_steps))
+
+    if asns:
+        df = pd.DataFrame({"ASN": list(asns.keys()), "total": list(asns.values())})
+        df = df.sort_values("total", ascending=False).reset_index(drop=True)
+        df["ASN"] = df["ASN"].astype(str)
+        st.dataframe(df, hide_index=True)
 
 
 detector_panel()

@@ -580,12 +580,37 @@ def run_detector_for(
 def plot(steps: List[CusumStep], block_type: str):
     make_cusums_chart(steps, block_type).show()
 
-def make_cusums_chart(steps: List[CusumStep], block_type: str):
+def make_cusums_chart(
+    steps: List[CusumStep],
+    block_type: str,
+    zoom=None,
+    show_legend: bool = True,
+    show_x_axis: bool = True,
+):
+    """
+    zoom: an optional shared alt.selection_interval(bind="scales") to reuse
+    across multiple calls (see make_cusums_chart_grid) so pan/zoom on one
+    chart's time axis applies to all of them. When omitted, a private one is
+    created so this function still works as a standalone chart.
+
+    show_legend: when False, suppresses this chart's own State/Value/CUSUM
+    legends — used when stacking several of these charts so only one copy
+    of each (identically-scaled) legend is shown for the whole stack.
+
+    show_x_axis: when False, hides the time-axis tick labels/ticks (grid
+    lines stay) — used when stacking several of these charts so only the
+    bottom-most one shows the shared time axis.
+    """
     import altair as alt
     import pandas as pd
 
     STATE_COLORS = {"ok": "#d4edda", "blk": "#f8d7da", "unk": "#fff3cd"}
-    x_axis = alt.Axis(format="%b %d, %H:%M")
+    x_axis = alt.Axis(
+        format="%b %d, %H:%M",
+        title=None,
+        labels=show_x_axis,
+        ticks=show_x_axis,
+    )
     ts_tooltip_fmt = "%b %d, %H:%M"
 
     df_steps = pd.DataFrame([s for s in steps if s["block_type"] == block_type])
@@ -622,7 +647,7 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
                         STATE_COLORS["unk"],
                     ],
                 ),
-                legend=alt.Legend(title="State"),
+                legend=alt.Legend(title="State") if show_legend else None,
             ),
             tooltip=[
                 "current_state:N",
@@ -727,9 +752,10 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
     )
     hover = hover_rule + selectors
 
-    value_group = alt.layer(
-        obs_line, obs_highlight, cp_points, obs_label, obs_legend
-    )
+    value_group_layers = [obs_line, obs_highlight, cp_points, obs_label]
+    if show_legend:
+        value_group_layers.append(obs_legend)
+    value_group = alt.layer(*value_group_layers)
 
     threshold = (
         alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
@@ -742,10 +768,7 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         .mark_text(align="left", dx=5, fontSize=11, color="green")
         .encode(x="ts:T", y="h:Q", text=alt.value("threshold (h)"))
     )
-    cusum_legend = make_legend_swatch(
-        ["S+", "S−", "threshold (h)"], ["red", "orange", "green"], "CUSUM"
-    )
-    cusum_group = alt.layer(
+    cusum_group_layers = [
         s_pos_line,
         s_neg_line,
         s_pos_highlight,
@@ -754,8 +777,17 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         s_pos_label,
         s_neg_label,
         threshold_label,
-        cusum_legend,
-    )
+    ]
+    if show_legend:
+        cusum_group_layers.append(
+            make_legend_swatch(
+                ["S+", "S−", "threshold (h)"], ["red", "orange", "green"], "CUSUM"
+            )
+        )
+    cusum_group = alt.layer(*cusum_group_layers)
+
+    if zoom is None:
+        zoom = alt.selection_interval(bind="scales", encodings=["x"])
 
     chart = (
         alt.layer(state_bands, value_group, cusum_group, hover)
@@ -763,12 +795,58 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         .resolve_legend(color="independent")
         .properties(
             width=900,
-            height=400,
-            title=f"CUSUM Detector: {block_type}",
+            height=100,
+            title=alt.TitleParams(
+                text=block_type,
+                fontSize=11,
+                fontWeight="normal",
+                color="gray",
+                anchor="start",
+                dy=-4,
+                offset=2,
+            ),
         )
-        .interactive()
+        .add_selection(zoom)
     )
     return chart
+
+
+def make_cusums_chart_grid(steps: List[CusumStep], block_types: List[str]):
+    """
+    One row per block type, stacked vertically in a single chart, so all of
+    an ASN's CUSUM series can be compared at a glance. The State/Value/CUSUM
+    legends (identical across rows) are only shown once, on the last row,
+    and every row shares one time-axis pan/zoom selection.
+    """
+    import altair as alt
+
+    present_block_types = [
+        block_type
+        for block_type in block_types
+        if any(s["block_type"] == block_type for s in steps)
+    ]
+    if not present_block_types:
+        return None
+
+    zoom = alt.selection_interval(bind="scales", encodings=["x"])
+    last_idx = len(present_block_types) - 1
+    charts = [
+        make_cusums_chart(
+            steps,
+            block_type,
+            zoom=zoom,
+            show_legend=(i == last_idx),
+            show_x_axis=(i == last_idx),
+        )
+        for i, block_type in enumerate(present_block_types)
+    ]
+    return (
+        alt.vconcat(*charts, spacing=0)
+        .resolve_scale(x="shared")
+        .properties(title="CUSUM Detector", padding=0)
+        .configure_view(strokeWidth=0)
+    )
+
 
 def notify_slack(
     changepoints: list[Changepoint],
