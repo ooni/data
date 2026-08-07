@@ -258,6 +258,20 @@ labels drawn either side are not one population.
 with a wrong predicate is worse than an absent one, because it silently deflates
 every LR denominator.
 
+`screen_tunnel` is proposed, **not implemented**, and gated on
+[implementation-plan.md](implementation-plan.md) §3.15 landing first: there is
+nothing to draw from until `analysis_tunnel_measurement` exists. Once it does,
+the same reasoning that motivates the layer strata applies with more force,
+since tunnel evidence has no test-helper control at all to lean on: a uniform
+draw would oversample whichever provider or protocol has the most traffic, so
+draw explicitly per protocol stack, with `screen_negative`'s role (bounding
+what the pipeline misses) played here by targets that tested reachable
+everywhere. **This stratum must exist, populated, before any tunnel rule
+weight ships** ([implementation-plan.md](implementation-plan.md) §3.15's V2
+gate): a tunnel rule cascade running on unlabelled data is the same mistake
+web scoring made before this corpus existed, repeated on a target class OONI
+has less experience judging.
+
 ---
 
 ## Part 2: How an analyst should think about it
@@ -341,6 +355,16 @@ build a corpus of any size.
 
 Controls: `B` blocked, `D` down, `O` ok, `U` can't call it, `X` unusable, then
 confidence, mechanism chips, and a rationale field. Commit advances.
+
+**Tunnel adjudication: not implemented.** The queue and the Request/Observation/
+Control panel layout above assume a web measurement (DNS/TCP/TLS/HTTP,
+control diffed against `obs_web_ctrl`). A tunnel row has no control panel to
+diff against (ontology.md §5.1's cross-network comparison is not a
+side-by-side view); the Observation panel would need to show phase reached
+and the sibling-endpoint comparison instead. `tunnel.*` mechanism chips stay
+greyed out (ontology.md §12.3 marks the nodes `[reserved]`) until this lands.
+**Trigger:** [implementation-plan.md](implementation-plan.md) §3.15 landing,
+which is also what `screen_tunnel` (§1.4 above) is gated on.
 
 ### 3.2 The event editor: implemented
 

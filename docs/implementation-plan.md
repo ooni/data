@@ -73,7 +73,7 @@ likelihood-ratio fits remain winner-censored.
 | Corpus thin, fits winner-censored | First labels are drawn (two adjudicators) and the LR fit runs, but volume is far below the targets that make per-rule LRs informative, and only the *winning* rule is persisted, so fits are conditional on cascade position. | V1, V2 |
 | Detector watchlist is narrow | Citizenlab global `GRP` plus `twitter.com`; country-specific news blocking is structurally invisible. | priority 5, D1 |
 | `resolver_transport` unused | `dns_engine IN ('getaddrinfo','system')` excludes DoT/DoH/UDP answers from the answer set, so `dnscheck`'s central comparison is dropped. | E1, M1 |
-| ~28 spec nettests have no transformer | Notably `openvpn`, actively collected with no analysis path at all. | M1 |
+| ~28 spec nettests have no transformer | `openvpn` is addressed by §3.14-3.16 below; the remaining ~27 stay deferred (§4). | M1, M8 |
 | Reference data is unversioned | Fingerprints and test lists join as of run time; no verdict names the corpus state that produced it, and a rebuild cannot reproduce old output for validation. | P3, A5 |
 | Alerts are not reconstructible | Changepoints reference no measurement set, tier-2 rows mutate under them, and the recovery procedure regenerates history under current code. | P5, P4 |
 | Late data never reaches detection | The daily DAG has no detector task; the CUSUM never revisits a closed hour. Late uploads correlate with censored networks (C7). | D2 |
@@ -106,8 +106,11 @@ would re-derive (§6.1 there).
 | Provenance and reproducibility | 3.9 (versioned scoring inputs) |
 | Unreconstructible alerts, late data, backfill hazard | 3.10 (stateless detection) |
 | Silent degradation in production | 3.11 (health checks) |
+| No circumvention-tool analysis or alerting | 3.14 (observation tier), 3.15 (analysis path), 3.16 (series and alerting) |
 
-Roughly eight to ten weeks. Everything else is §4.
+Roughly eight to ten weeks for 3.1-3.13; 3.14-3.16 add a further three to
+five weeks, riding 3.6/3.7/3.10 rather than duplicating them. Everything else
+is §4.
 
 ---
 
@@ -488,6 +491,53 @@ controls the strictest admission standard in the system.
 **Effort:** days for the floor and sanity checks; revalidation waits on the
 certificate-storage decision. **Serves:** A4, A2.
 
+### 3.14 Tunnel observation tier
+
+Land `obs_tunnel` ([ontology.md](ontology.md) §2), converging the OpenVPN
+observation models already drafted in
+[ooni/data#63](https://github.com/ooni/data/pull/63) with the shape that
+entry specifies: one row per (measurement, endpoint, phase), the protocol
+stack, and no control counterpart. Add the phase columns (§3.1) and wire
+`make_observations` for `openvpn`.
+
+Additive: a new table and transformer, no change to existing rows. The PR
+exists and is open for review; this item is convergence and test coverage,
+not new design. **Effort:** the PR's scope is most of it; convergence with
+the unsupported-nettests review (#48) and tests, days. **Serves:** M8.
+
+### 3.15 Tunnel analysis path
+
+Register tunnel targets (`provider/protocol+obfuscation`,
+[ontology.md](ontology.md) §4.1), build the cross-network baseline aggregate
+(architecture.md §3.2) that stands in for the missing test helper, and score
+`analysis_tunnel_measurement` from it: a rule cascade keyed on
+`(target, phase)`, mirroring the web judgment tier's shape.
+
+Rules ship **weightless** until 3.8 gains a tunnel stratum: this is the same
+V2 discipline the web rules follow ("no unmeasured changes"), and skipping it
+here would mean the alert feed's first tool-reachability alerts inherit
+exactly the uncalibrated-constant problem the labelled corpus exists to
+retire. **Effort:** the baseline aggregate is the real work; 1 to 2 weeks.
+**Depends on:** 3.14. **Serves:** M8, C9 (aggregate-only publication is
+enforced at this layer, not bolted on at presentation).
+
+### 3.16 Tunnel series and alerting
+
+Extend series to `(cc, asn, tunnel_target, phase)`
+([ontology.md](ontology.md) §11), through the same cell state, detector and
+alert feed as web series, not a parallel system. Events carry both the
+provider ladder and the protocol ladder (§4.1) in their scope, so an alert
+can say "RiseupVPN" or "openvpn+obfs4 generally" depending on what the
+evidence supports.
+
+Rides 3.6 (cell state), 3.7 (event correlation) and 3.10 (stateless
+detection) rather than duplicating any of them: once those land for web
+series, extending them to a second series kind is the marginal cost.
+**Effort:** days once 3.6/3.7/3.10 land. **Depends on:** 3.15, 3.6, 3.7,
+3.10. **Serves:** M8, D1 (endpoint rotation must not enter the series key,
+which matters more here than for web: a provider's own discovery system can
+rotate a pool on a schedule unrelated to any network condition).
+
 ---
 
 ## 4. Later
@@ -513,7 +563,9 @@ blocked on it.
 | Full `locus` axis with inference (E7) | 3.5 stabilises series; naming *who* is responsible needs cross-network resolver checks that do not exist. Blockpage-fingerprint `scope` already attributes what it matches, and the planned middlebox and transit detectors widen that set. See [ontology.md](ontology.md) A.2. |
 | Dempster-Shafer verdicts / pipeline-side mechanism inference / target hierarchy / cert store | Ontology Appendix A, each with its trigger. (The mechanism *taxonomy* was promoted into ontology §12; what stays deferred is the pipeline emitting mechanism labels as output.) |
 | Widening the detector watchlist (priority 5) | Needs 3.7 first, and the stale hardcoded entry fixed (D1). |
-| Coverage of ~28 unsupported nettests | `openvpn` first (actively collected, no analysis path); then the low-level probes, which map onto existing observation shapes. |
+| Coverage of remaining ~27 unsupported nettests | `openvpn` moved into scope (3.14-3.16); the low-level probes remain, mapping onto existing observation shapes. |
+| External reports tier (M8, C9) | `external_reports` table and `vpnext` transformer, corroboration join at event grading only ([ontology.md](ontology.md) §5.2, Appendix A.7). Trigger: a signed provider agreement under the published report format, with PR1's retention, access and aggregation-floor decisions settled first. This is where a companion project's provider-telemetry relationship (if one exists) would arrive pipeline-side: that project owns the collection and the relationship, this plan owns what the data may and may not mean once it does. |
+| Tunnel mechanism taxonomy leaves (`tunnel.*`) | Reserved, not scored ([ontology.md](ontology.md) §12.3). Trigger: first adjudicated tunnel labels (3.8-style corpus extension) or alignment with an external taxonomy effort. |
 
 ---
 

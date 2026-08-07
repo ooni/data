@@ -66,6 +66,16 @@ analysis does not extend to other nettests.
 verdict, so it is a separate table: shape, not subject matter, is the right
 reason to split one.
 
+**`obs_tunnel`** **[mvp]** holds one row per (measurement, endpoint, phase) for
+circumvention-tunnel nettests (`openvpn` today; `wireguard` and peers as they
+land, X3). Columns record the protocol stack (`protocol`, `obfuscation`), the
+endpoint attempted, the phase reached (§3.1) and the failure if any. No control
+table exists for tunnels: the test-helper model does not apply, since there is
+no third party positioned to fetch the same tunnel. Scoring instead leans on
+cross-network comparison (§5). Shape, not subject matter, is again why this is
+a separate table: a tunnel row has no hostname ladder and no HTTP transaction,
+and a web row has no phase.
+
 ## 3. Layer
 
 `dns | tcp | tls | http`. **Observed, not inferred**: the DNS query either
@@ -83,6 +93,25 @@ stored column.
 A known defect: the analysis query restricts the DNS answer set to
 `dns_engine IN ('getaddrinfo','system')`, so DoT and DoH answers are silently
 excluded from scoring, which discards the entire point of `dnscheck`.
+
+### 3.1 Phase, for tunnel observations **[mvp]**
+
+`bootstrap | dns | handshake | tunnel_check`. Phase is to `obs_tunnel` what
+layer is to `obs_web`: observed, not inferred, and the one dimension that
+never demands an attribution the evidence cannot make. A `handshake` failure
+does not by itself say whether the endpoint address was targeted or the
+protocol itself was: distinguishing those needs cross-endpoint comparison (an
+address-blocked endpoint fails while a sibling on the same protocol succeeds
+elsewhere; protocol-targeted DPI fails them all). That comparison is an
+analysis conclusion (§4.1), never a per-observation field.
+
+`tunnel_check`, where the nettest verifies an established tunnel actually
+passes traffic, is deliberately scored no more finely than reach / no-reach.
+Anything about the quality of a passing tunnel is throughput and experience
+measurement, which this pipeline does not do (M7's throttling deferral
+applies here too, and a neighbouring project, LEAP's MANTA, covers
+in-tunnel quality of experience from the client side; keeping `tunnel_check`
+binary is what keeps the boundary clean).
 
 ## 4. Target
 
@@ -113,6 +142,37 @@ something needs them (Appendix A.4).
 combine: `any_of` for redundant pools (WhatsApp's 16 hosts, Telegram's
 datacentres), `all_of` for independently required services (Signal's chat,
 directory, CDN, SFU, storage). Populated; **no scorer reads it yet**.
+
+### 4.1 Tunnel targets **[mvp]**
+
+Tunnel endpoints rotate faster than CDN pools, so the naming rule above binds
+harder: `target_id` keys on `provider/protocol+obfuscation` (`riseup/openvpn`,
+`unknown/openvpn+obfs4`), never on the endpoint address.
+`combination_rule` is `any_of` over the provider's gateway pool, the same
+registry field IM targets already populate.
+Endpoint addresses MUST be stored in such a way that they prevent enumeration
+in the published dataset and MAY offer the ability for the provider to lookup
+measurements for a particular addresses knowing the address and some shared
+secret (eg. `public_address = hash(private_address, key)`).
+
+Two aggregation ladders rise from the same observations, and they answer
+different questions:
+
+- The **provider ladder** groups by provider: "does RiseupVPN work in Iran?"
+- The **protocol ladder** groups by protocol stack across providers: "does
+  `openvpn+obfs4` work on this network, for anyone?"
+
+The protocol ladder is the more censorship-relevant of the two, and it is
+also what makes endpoint-grain evidence publishable in aggregate without
+enumerating endpoints (C9): a reader learns that a protocol stack is blocked
+on a network without learning which specific addresses were tested.
+
+A `target_id` here can also name a provider unknown to the registry
+(`unknown/wireguard`), for endpoints reported without a registered owner
+or when a provider wishes to not publicly disclose ownership of a particular
+endpoint.
+Unknown-provider rows aggregate only on the protocol ladder; there is no
+provider identity to group them by.
 
 ## 5. Control
 
@@ -148,6 +208,63 @@ Not available, and the prerequisite for extending analysis to helper-less
 nettests: cross-network baselines ("this hostname resolves fine in 40 other
 ASNs"), per-resolver baselines, and historical baselines. All computable from
 `obs_web` alone. **[later]**
+
+### 5.1 Control for tunnel targets **[mvp]**
+
+Tunnel nettests have no test helper, so the cross-network baseline that §5's
+closing paragraph marks **[later]** for web is pulled forward here, in its
+cheapest form, because there is no cheaper alternative: the control is **the
+same target measured elsewhere**. A tunnel target succeeding from k
+established credentialed probes (A3) in other networks inside the window is
+the control; a target failing on one network while succeeding on twelve
+others is evidence at the level `failure_ctrl_ok` occupies for web. A target
+failing everywhere is `down`, the provider's problem rather than the
+censor's.
+
+This needs a precomputed aggregate (a per-target, per-window success-by-network
+rollup), for the same cost reason §5 already gives for widening the web
+control window: scanning raw observations for every hourly run is not
+affordable. [architecture.md](architecture.md) §3.3 records it as new
+standing infrastructure.
+
+**Provider-side liveness data is not a control.** Where a registration
+interface offers "this endpoint was up as of our own check", that is a
+submitter-asserted signal and does not meet A4's admission standard on its
+own: providers report on their own infrastructure, which is what A4 requires
+independent corroboration for. It may however narrow which networks are worth
+testing.
+
+### 5.2 External reports **[later]**
+
+A circumvention provider can submit connection failure or success reports
+from its own users, following an externally-defined report format
+(`vpn_ext`), rather than from an OONI probe. This is a distinct evidence class,
+for these reasons that follow from the requirements:
+
+- **E1 (facts before conclusions).** The aggregated form of an external
+  report is a provider-computed failure ratio, a conclusion whose underlying
+  measurements OONI does not see. It cannot enter the observation tier as
+  though it were a fact, because there is no fact behind it to recompute
+  from.
+- **A2/A3 (independence).** An external report, per-connection or
+  aggregated, is **one submitter** however large its claimed sample size.
+  It can never contribute to the k-established-probes corroboration floor
+  required by claims in §8.4.
+- **E2/M5 (labelled provenance).** Any surface showing external-report data
+  labels it as such. No OONI-verdict surface should blend the two silently.
+
+An external report is stored in its own tier-1 table, joins no control set,
+and works at event level corrobotation not as detection input (§11).
+An OONI-detected tunnel event that an independent provider report also
+names is stronger; a provider report with no OONI-side signal is a lead
+for targeted testing, not a finding, as it cannot be independently
+corroborated.
+
+**Trigger to promote from [later]:** a provider agreement under the
+published report format, naming what is collected and at what aggregation
+(PR1: this is new exposure and needs the same discuss-first treatment as any
+other privacy-relevant decision, since per-connection reports carry
+`client_asn`). See Appendix A.7.
 
 ## 6. Verdict
 
@@ -536,6 +653,16 @@ the same way for probes in *other* networks, which is a cross-network check the
 pipeline does not yet compute. Until it does, series are stable and attribution
 stays with the probe's network (E7).
 
+**Tunnel series [mvp]**: `(probe_cc, probe_asn, tunnel_target, phase)`, run
+through the same cell state, detector and event machinery as web series
+rather than a parallel system. Endpoint rotation inside a provider's pool
+must never enter the key, for the same reason a CDN's rotating addresses
+never enter a web series key (§4): a target-grain key is what makes rotation
+invisible to the detector instead of reading as an event. This matters more
+here than for web, since a provider's own discovery system (an external
+system such as GTDB) can rotate a pool on a schedule unrelated to any
+network condition.
+
 **Signal**: one of `dns_isp_blocked`, `dns_other_blocked`, `tcp_blocked`,
 `tls_blocked`. Each is currently the hourly **median** LoNI across the series, a
 statistic of a statistic that discards both spread and count. §9 replaces it.
@@ -646,6 +773,10 @@ http.throttle.host                     [unmeasurable today]
 ip                                     (internal)
 ip.unreachable                         ICMP unreachable or no route
 ip.prefix_null_route                   [needs co-affected evidence]
+
+tunnel                                 (internal) [reserved]
+tunnel.protocol_dpi                    protocol-signature blocking, any destination [reserved]
+tunnel.endpoint_list                   known-endpoint blocklisting [reserved]
 ```
 
 Three deliberate choices, each of which resolves an ambiguity a labeller would
@@ -671,6 +802,19 @@ Nodes marked `[unmeasurable today]` are reserved deliberately. `web_connectivity
 measures reachability, not throughput, so nothing can currently produce them.
 Reserving the path is better than minting one under deadline later; treat their
 absence from a corpus as "never measured", not "never happened".
+
+**Nodes marked `[reserved]`** are a related but distinct case: the manifestation
+rule already covers most tunnel blocking with existing nodes (a tunnel reset
+during the TCP handshake is `tcp.reset`; a reset after a TLS-camouflaged
+ClientHello is `tls.reset.sni`). What has no home is protocol-targeted
+interference, where the trigger is the tunnel protocol itself rather than
+the destination. Distinguishing that from endpoint-address blocking needs the
+cross-endpoint contrast §3.1 describes, and no adjudicated tunnel corpus
+exists yet to confirm if the split is feasible. **Trigger to
+lift the reservation:** the tunnel labelling work in
+[label-corpus-design.md](label-corpus-design.md) producing its first
+adjudicated rows, or alignment with a related taxonomy effort (GTDB's D4
+deliverable). Nodes stay append-only regardless (X2).
 
 ### 12.4 Label the deepest node the evidence supports
 
@@ -952,3 +1096,23 @@ summarises (§9.4).
 
 **Trigger:** measurement showing the view is too slow for the detector or the
 API at production volume.
+
+### A.7 Ingesting external (non-probe) reports
+
+The requirements' non-requirements table excludes "ingesting other
+observatories' data into the pipeline", with the trigger "a formal
+data-sharing agreement with aligned schemas."
+
+**Status: the trigger is arriving, narrower than originally scoped.** A
+draft external report format (`vpn_ext`) exists for circumvention providers
+to submit connection failure and success reports, and a companion project
+(GTDB) proposes collecting exactly this class of data. The exclusion was
+written with peer observatories in mind; it was never meant to bar a
+provider-scoped, OONI-defined format under an explicit agreement, and §5.2
+specifies the treatment: a distinct evidence class, one submitter
+regardless of claimed volume, corroboration-only at event grading, never a
+control or detection input.
+
+**Trigger to promote §5.2 from [later] to [mvp]:** a signed provider
+agreement under the published format, with the retention, access and
+aggregation-floor decisions PR1 requires settled first.
