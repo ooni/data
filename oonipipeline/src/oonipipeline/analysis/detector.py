@@ -953,3 +953,37 @@ def get_alert_page_url(
     }
     url = f"{base_url}/chart/alerts?{urlencode(params)}"
     return url
+
+
+def get_detector_panel_url(
+    changepoint: Changepoint,
+    base_url: str = "https://detector-panel.prod.ooni.io/",
+    edd: int = 10,
+    gap_halflife: float = 48.0,
+    warmup: bool = False,
+) -> str:
+    """
+    Builds a link to the events-panel Streamlit app (see
+    oonipipeline.events_panel.panel), prefilled via query params so the app
+    auto-runs the detector for this changepoint's country/domain and a
+    +-13/2 day window around it on first load — same window convention as
+    get_explorer_url/get_alert_page_url above.
+    """
+    start_time = changepoint["ts"] - timedelta(days=13)
+    end_time = changepoint["ts"] + timedelta(days=2)
+
+    def to_iso(dt: datetime) -> str:
+        return dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    params = {
+        "probe_cc": changepoint["probe_cc"],
+        "domain": changepoint["domain"],
+        "probe_asn": changepoint["probe_asn"],
+        "start_time": to_iso(start_time),
+        "end_time": to_iso(end_time),
+        "edd": edd,
+        "gap_halflife": gap_halflife,
+        "warmup": str(warmup).lower(),
+    }
+    url = f"{base_url}?{urlencode(params)}"
+    return url
