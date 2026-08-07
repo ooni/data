@@ -511,6 +511,7 @@ def run_detector(
     trace: bool = False,
     slack_webhook: str | None = None,
     explorer_base_url: str = "https://explorer.ooni.org/",
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/",
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     db = ClickhouseClient.from_url(clickhouse_url)
     domains = get_domain_list(db)
@@ -536,7 +537,15 @@ def run_detector(
     update_tables(db, updated_cusums, changepoints)
 
     if slack_webhook is not None:
-        notify_slack(changepoints, slack_webhook, explorer_base_url)
+        notify_slack(
+            changepoints,
+            slack_webhook,
+            explorer_base_url,
+            detector_panel_base_url,
+            edd=edd,
+            gap_halflife=gap_halflife,
+            warmup=warmup,
+        )
 
     return changepoints, updated_cusums, steps
 
@@ -810,7 +819,6 @@ def make_cusums_chart(
     )
     return chart
 
-
 def make_cusums_chart_grid(steps: List[CusumStep], block_types: List[str]):
     """
     One row per block type, stacked vertically in a single chart, so all of
@@ -852,6 +860,10 @@ def notify_slack(
     changepoints: list[Changepoint],
     slack_webhook: str,
     explorer_base_url: str = "https://explorer.ooni.org/",
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/",
+    edd: int = 10,
+    gap_halflife: float = 48.0,
+    warmup: bool = False,
 ):
     """
     Sends a message to slack with a list of all changepoints that were detected
@@ -877,10 +889,13 @@ def notify_slack(
         explorer = get_explorer_url(cp, explorer_base_url)
         # Alerts panel not yet deployed to prod, we use the test one for now
         alerts = get_alert_page_url(cp, "https://explorer.test.ooni.org/")
+        panel = get_detector_panel_url(
+            cp, detector_panel_base_url, edd=edd, gap_halflife=gap_halflife, warmup=warmup
+        )
         message += (
             f"• :flag-{cp['probe_cc'].lower()}: [{cp['probe_cc']}/AS{cp['probe_asn']}] "
             f"*{cp['domain']}* {dir_to_str(cp['change_dir'])} - `{cp['block_type']}` "
-            f"| <{explorer}|explorer> | <{alerts}|alerts>\n"
+            f"| <{explorer}|explorer> | <{alerts}|alerts> | <{panel}|detector panel>\n"
         )
 
         # Send messages in 10 entries batches to avoid max message size limit

@@ -19,6 +19,36 @@ def run_detector_cached(*args, **kwargs):
 
 st.set_page_config(layout="wide")
 
+# Query params that can prefill the form, e.g.
+# ?probe_cc=VE&domain=x.com&start_time=2024-01-01T00:00:00&end_time=2024-01-15T00:00:00&edd=10&gap_halflife=48&warmup=false
+# When every one of these is present (and parses cleanly), the form auto-runs
+# on first load instead of waiting for a manual "Run detector" click.
+QUERY_FIELD_TO_WIDGET_KEY = {
+    "probe_cc": "probe_cc_input",
+    "domain": "domain_input",
+    "start_time": "start_time_input",
+    "end_time": "end_time_input",
+    "edd": "edd_input",
+    "gap_halflife": "gap_halflife_input",
+    "warmup": "warmup_input",
+}
+
+
+def _parse_query_value(field: str, raw: str):
+    if field in ("start_time", "end_time"):
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    if field == "edd":
+        return int(raw)
+    if field == "gap_halflife":
+        return float(raw)
+    if field == "warmup":
+        return raw.strip().lower() in ("1", "true", "yes")
+    return raw
+
+
 def detector_panel():
     st.write(
         """
@@ -31,6 +61,23 @@ def detector_panel():
 
     now = datetime.now(timezone.utc)
 
+    # Prefill the form from URL query params on first load, and remember
+    # whether every field was present so we can auto-run below.
+    if "query_params_applied" not in st.session_state:
+        st.session_state["query_params_applied"] = True
+        parsed_ok = set()
+        for field, widget_key in QUERY_FIELD_TO_WIDGET_KEY.items():
+            raw = st.query_params.get(field)
+            if raw is not None:
+                try:
+                    st.session_state[widget_key] = _parse_query_value(field, raw)
+                    parsed_ok.add(field)
+                except (ValueError, TypeError):
+                    pass
+        st.session_state["auto_submit_pending"] = parsed_ok == set(
+            QUERY_FIELD_TO_WIDGET_KEY
+        )
+
     clickhouse_url = st.sidebar.text_input(
         "**Clickhouse url**", "clickhouse://localhost:9000/ooni"
     )
@@ -39,25 +86,37 @@ def detector_panel():
         c1, c2 = st.columns(2)
 
         # column 1
-        start_time = c1.datetime_input("**Start date**", now - timedelta(days=30))
-        probe_cc = c1.text_input("**Country code (two chars)**", "VE")
-        edd = c1.number_input("**Estimated Detection Delay (EDD)**", value=10)
+        start_time = c1.datetime_input(
+            "**Start date**", now - timedelta(days=30), key="start_time_input"
+        )
+        probe_cc = c1.text_input(
+            "**Country code (two chars)**", "VE", key="probe_cc_input"
+        )
+        edd = c1.number_input(
+            "**Estimated Detection Delay (EDD)**", value=10, key="edd_input"
+        )
 
         # column2
-        end_time = c2.datetime_input("**End date**", now)
-        domain = c2.text_input("**domain**", "x.com")
-        gap_halflife = c2.number_input("**Gap half life**", value=48.0)
+        end_time = c2.datetime_input("**End date**", now, key="end_time_input")
+        domain = c2.text_input("**domain**", "x.com", key="domain_input")
+        gap_halflife = c2.number_input(
+            "**Gap half life**", value=48.0, key="gap_halflife_input"
+        )
 
         warmup = st.checkbox(
             "**Warmup**",
             False,
             help="When enabled, no changepoints will be returned.",
+            key="warmup_input",
         )
         submitted = st.form_submit_button("Run detector")
 
-    # Only recompute on submit; store in session_state so results survive
-    # reruns triggered by the selectboxes below.
-    if submitted:
+    auto_submit = st.session_state.pop("auto_submit_pending", False)
+
+    # Only recompute on submit (or on a fully-specified first load via query
+    # params); store in session_state so results survive reruns triggered by
+    # the selectboxes below.
+    if submitted or auto_submit:
         # Drop any cusum-related state left over from a previous submission
         for key in ("changepoints", "cusum_steps", "block_type_select", "asn_select"):
             st.session_state.pop(key, None)
