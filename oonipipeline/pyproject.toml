@@ -82,6 +82,11 @@ test-cov = "pytest --cov=./ --cov-report=xml --cov-report=html --cov-report=term
 cov-report = ["coverage report"]
 cov = ["test-cov", "cov-report"]
 
+[tool.coverage.run]
+omit = [
+  "src/oonipipeline/events_panel/panel.py",
+]
+
 [tool.hatch.envs.analysis]
 template = "default"
 features = ["analysis"]
