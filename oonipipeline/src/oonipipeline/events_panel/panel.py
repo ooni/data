@@ -19,13 +19,8 @@ def run_detector_cached(*args, **kwargs):
 
 st.set_page_config(layout="wide")
 
-# Query params that can prefill the form, e.g.
-# ?probe_cc=VE&domain=x.com&start_time=2024-01-01T00:00:00&end_time=2024-01-15T00:00:00&edd=10&gap_halflife=48&warmup=false&probe_asn=1234
-# When every one of these is present (and parses cleanly), the form auto-runs
-# on first load instead of waiting for a manual "Run detector" click.
-# probe_asn isn't a form field — it's applied afterwards to preselect the ASN
-# selectbox once results are in, since it's only known to be a valid choice
-# after the detector has actually run.
+# When every one of these is present the form auto-runs
+# on first load
 QUERY_FIELD_TO_WIDGET_KEY = {
     "probe_cc": "probe_cc_input",
     "domain": "domain_input",
@@ -64,8 +59,7 @@ def detector_panel():
 
     now = datetime.now(timezone.utc)
 
-    # Prefill the form from URL query params on first load, and remember
-    # whether every field was present so we can auto-run below.
+    # Prefill the form from URL query params on first load
     if "query_params_applied" not in st.session_state:
         st.session_state["query_params_applied"] = True
         parsed_ok = set()
@@ -125,11 +119,10 @@ def detector_panel():
 
     auto_submit = st.session_state.pop("auto_submit_pending", False)
 
-    # Only recompute on submit (or on a fully-specified first load via query
-    # params); store in session_state so results survive reruns triggered by
+    # store in session_state so results survive reruns triggered by
     # the selectboxes below.
     if submitted or auto_submit:
-        # Drop any cusum-related state left over from a previous submission
+        # Drop any cusum-related state left over
         for key in ("changepoints", "cusum_steps", "block_type_select", "asn_select"):
             st.session_state.pop(key, None)
 

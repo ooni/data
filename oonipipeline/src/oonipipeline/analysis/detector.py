@@ -605,16 +605,15 @@ def make_cusums_chart(
 
     nearest: an optional shared alt.selection_single(nearest=True, ...) to
     reuse across multiple calls (see make_cusums_chart_grid), so a single
-    mouseover listener drives the hover crosshair/highlights on every row
-    instead of one independent listener per row. When omitted, a private one
-    is created so this function still works as a standalone chart.
+    mouseover listener drives the hover crosshair/highlights on every row.
+    When omitted, a private one is created
 
     show_legend: when False, suppresses this chart's own State/Value/CUSUM
-    legends — used when stacking several of these charts so only one copy
-    of each (identically-scaled) legend is shown for the whole stack.
+    legends. Used when stacking several of these charts so only one copy
+    of each legend is shown for the whole stack.
 
     show_x_axis: when False, hides the time-axis tick labels/ticks (grid
-    lines stay) — used when stacking several of these charts so only the
+    lines stay). Used when stacking several of these charts so only the
     bottom-most one shows the shared time axis.
     """
     import altair as alt
