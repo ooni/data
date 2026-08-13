@@ -290,3 +290,80 @@ def test_top_rule_does_not_rank_on_down_or_ok(layer, rules):
     assert f"{layer}_down" not in sql
     assert f"{layer}_ok" not in sql
     assert f"({layer}_evidence, {layer}_blocked, {layer}_rule_id)" in sql
+
+
+# ------------------------------------------------- per-endpoint trust (wc 0.5)
+
+def test_endpoint_mask_is_narrower_than_the_dns_verdict_it_replaced():
+    """endpoint_untrusted must only ever unmask relative to dns_untrusted.
+
+    The old condition masked on the measurement's DNS verdict alone. The new
+    one conjoins ip_trusted onto it, so every row it masks the old rule masked
+    too. That one-way property is what makes this safe to deploy: no row that
+    was being scored stops being scored.
+    """
+    old = "dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)"
+    for layer, rules in LAYER_RULES.items():
+        for rule in rules:
+            if rule.rule_id != "endpoint_untrusted":
+                continue
+            assert "NOT ip_trusted" in rule.condition, layer
+            assert old in rule.condition, (
+                f"{layer}/endpoint_untrusted no longer conjoins the original "
+                f"condition, so it may mask rows dns_untrusted did not")
+
+
+@ALL_LAYERS
+def test_no_rule_still_masks_on_the_bare_dns_verdict(layer, rules):
+    """The whole point of the change: a poisoned system lookup must not
+    discard results for addresses that lookup never produced."""
+    assert "dns_untrusted" not in {r.rule_id for r in rules}
+
+
+def test_endpoint_untrusted_sits_below_the_failure_rules():
+    """Ordering matters more than usual here. A TLS failure against an address
+    the control succeeds on has to be scored as blocking BEFORE we consider
+    masking, or trusting fewer endpoints would lose real positives."""
+    ids = [r.rule_id for r in TLS_RULES]
+    assert ids.index("failure_ctrl_ok_ssl") < ids.index("endpoint_untrusted")
+    assert ids.index("failure_ctrl_ok_reset") < ids.index("endpoint_untrusted")
+    assert ids.index("failure_ctrl_ok_other") < ids.index("endpoint_untrusted")
+    tcp_ids = [r.rule_id for r in TCP_RULES]
+    assert tcp_ids.index("failure_ctrl_ok") < tcp_ids.index("endpoint_untrusted")
+
+
+def test_dns_scoring_is_partitioned_per_resolver():
+    """Every DNS signal is a window over the answer set. If the resolver is not
+    in the partition key the window spans resolvers, and a row whose address
+    came from DoH inherits the system resolver's verdict."""
+    sql, _ = format_query_analysis_web_fuzzy_logic(
+        start_time=__import__("datetime").datetime(2024, 1, 1),
+        end_time=__import__("datetime").datetime(2024, 1, 2),
+        probe_cc=[],
+    )
+    partition = ("partition by measurement_uid, hostname, ip_is_v6, "
+                 "dns_engine, dns_engine_resolver_address")
+    for alias in ("dns_answers", "dns_answers_asns", "dns_answers_contain_bogon"):
+        window = re.search(rf"over \(([^)]*)\) as {alias}\b", sql)
+        assert window, f"{alias} is no longer a window function"
+        assert window.group(1).strip() == partition, (
+            f"{alias} partitions by {window.group(1).strip()!r}, which pools "
+            f"answers across resolvers")
+
+    # The old form restricted the answer set to the system resolver, which
+    # dropped every extension lookup web_connectivity 0.5 performs.
+    assert "groupArrayIf(dns_answer, dns_engine IN" not in sql
+
+
+def test_ip_trusted_is_defined_from_resolver_independent_signals():
+    sql, _ = format_query_analysis_web_fuzzy_logic(
+        start_time=__import__("datetime").datetime(2024, 1, 1),
+        end_time=__import__("datetime").datetime(2024, 1, 2),
+        probe_cc=[],
+    )
+    assert "has(mapKeys(ctrl_dns_answers), ip) as ip_in_ctrl_answers" in sql
+    assert "has(union_tls_consistent_ips, ip) as ip_tls_consistent" in sql
+    assert "(ip_in_ctrl_answers OR ip_tls_consistent) as ip_trusted" in sql
+    # An ASN-level match is not strong enough to license interpreting a
+    # failure as censorship; it must not creep into the trust definition.
+    assert "dns_answer_asn_matches_ctrl) as ip_trusted" not in sql
