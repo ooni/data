@@ -44,8 +44,9 @@ destroys the evidence needed to draw a better one later.
 | Tier | Table | Produced by | Grain | Status |
 |---|---|---|---|---|
 | 0 Raw | S3 JSONL | OONI collector (external) | measurement | built |
-| 1 Observation | `obs_web`, `obs_web_ctrl`, `obs_http_middlebox` | `make_observations` | measurement × endpoint | built |
-| 2 Evidence / judgment | `analysis_web_measurement` | `make_analysis` | measurement × target | built |
+| 1 Observation | `obs_web`, `obs_web_ctrl`, `obs_http_middlebox`, `obs_tunnel` | `make_observations` | measurement × endpoint (× phase for tunnels) | built; `obs_tunnel` **[mvp]** |
+| 1 External report | `external_reports` | collector (measurement type `vpnext`) | provider report (per-connection or aggregated) | **[later]** |
+| 2 Evidence / judgment | `analysis_web_measurement`, `analysis_tunnel_measurement` | `make_analysis`, `make_tunnel_analysis` | measurement × target | built; tunnel **[mvp]** |
 | 3 Cell state | *(a view, not a table)* | `GROUP BY` over tier 2 | target × network × layer × hour | **[mvp]** |
 | 4 Changepoint | `event_detector_changepoints`, `event_detector_cusums` | `make_detector` | series × signal | built |
 | 5 Event | `events` | n/a | cc × target-set × time | **[mvp]** |
@@ -54,6 +55,13 @@ Tiers 3 and 5 are the two structural gaps. Today tier 4 reads tier 2 directly,
 computing its own hourly aggregate inline, which is why measurement counts are
 discarded and why a national event emits one alert per
 `(cc, asn, domain, layer)` rather than one alert per event.
+
+`analysis_tunnel_measurement` deliberately mirrors `analysis_web_measurement`'s
+shape (per measurement × target: blocked/down/ok plus rule id, keyed on phase
+instead of layer) rather than inventing a parallel structure, so tier 3, the
+detector and the alert feed consume both through one shape. `external_reports`
+sits at tier 1 but outside this chain entirely: it joins no control set and
+feeds only event grading at tier 5, never tiers 2 to 4 (ontology.md §5.2).
 
 Tier 3 is deliberately **a view rather than a table** while its grain is still
 being learned. It holds per-layer histograms of rule firings, from which
@@ -85,6 +93,7 @@ graph TD
     OGEN --> OW[(obs_web)]
     OGEN --> OWC[(obs_web_ctrl)]
     OGEN --> OHM[(obs_http_middlebox)]
+    OGEN --> OT[(obs_tunnel)]
 
     OW --> AN[[make_analysis]]
     OWC --> AN
@@ -92,13 +101,23 @@ graph TD
     RULES[analysis/rules.py<br/>rule registry] --> AN
     AN --> AWM[(analysis_web_measurement)]
 
+    OT --> TAN[[make_tunnel_analysis]]
+    BASE[(tunnel baseline aggregate<br/>cross-network rollup)] --> TAN
+    TAN --> ATM[(analysis_tunnel_measurement)]
+
     AWM --> DET[[make_detector]]
+    ATM --> DET
     CLB[(citizenlab)] --> DET
     DET --> CP[(event_detector_changepoints)]
     DET --> CUS[(event_detector_cusums)]
     CP --> SLACK[Slack alerts]
 
+    EXT[External report collector<br/>type vpnext] --> ER[(external_reports)]
+    ER -.corroboration only.-> EVT[[event grading]]
+    CP --> EVT
+
     AWM --> API[[FastAPI]]
+    ATM --> API
     OW --> API
     API --> USERS[Explorer / researchers]
 
@@ -107,7 +126,9 @@ graph TD
 ```
 
 Note `fastpath` is the *v4* pipeline's table, not produced here. The two data
-quality jobs read it; nothing else in v5 depends on it.
+quality jobs read it; nothing else in v5 depends on it. The dotted edge
+from `external_reports` marks that it feeds event grading and nothing
+upstream of it.
 
 ---
 
@@ -166,26 +187,46 @@ an oversight.
   **Only web_connectivity produces this.**
 - `obs_http_middlebox`: HIRL/HFM results. Different shape, hence a different
   table.
+- `obs_tunnel` **[mvp]**: one row per (measurement, endpoint, phase) for
+  tunnel nettests (`openvpn` today). No control counterpart; see
+  [ontology.md](ontology.md) §2, §3.1.
+
+**External report tier** **[later]**
+
+- `external_reports`: provider-submitted connection reports,
+- per-connection or provider-aggregated. Outside the tiered chain:
+  joins no control set. [ontology.md](ontology.md) §5.2.
+- should consider aligning the semantics with [MANTA client metrics](https://0xacab.org/leap/manta/-/blob/no-masters/2026-06-09-client-metrics.md)
 
 **Judgment tier**
 
 - `analysis_web_measurement`: per measurement: `(blocked, down, ok)` per layer,
   the top failure per layer, and `top_{dns,tcp,tls}_rule_id`.
+- `analysis_tunnel_measurement` **[mvp]**: per measurement: `(blocked, down,
+  ok)` per phase and the driving rule id, mirroring the web table's shape.
 
 **State tier** **[mvp]**
 
 - Cell state: a view over tier 2, not a table. §3.1 below; semantics in
-  [ontology.md](ontology.md) §9.
+  [ontology.md](ontology.md) §9. Extends to tunnel targets at the same grain,
+  keyed on phase instead of layer.
 
 **Detection tier**
 
 - `event_detector_cusums`: per `(cc, asn, domain)` CUSUM accumulator state.
+  Tunnel series extend the key to `(cc, asn, tunnel_target, phase)`
+  ([ontology.md](ontology.md) §11); no new table, same accumulator shape.
 - `event_detector_changepoints`: emitted transitions.
 
 **Reference data**: externally maintained, refreshed by updater DAGs:
 `fingerprints_dns`, `fingerprints_http`, `citizenlab`, `citizenlab_flip`,
 `asnmeta`. The fingerprint tables are `EmbeddedRocksDB` and are swapped in
 atomically via `EXCHANGE TABLES`.
+
+**Tunnel baseline aggregate** **[mvp]**: a per-(tunnel target, window)
+success-by-network rollup, standing in for the control web targets get from
+`obs_web_ctrl`. New infrastructure, not a byproduct of an existing job;
+§3.2 below states the cost reasoning.
 
 **Data quality**: `faulty_measurements`, written by the volume and
 time-inconsistency jobs.
@@ -228,6 +269,23 @@ Promotion path, if measurement shows the view too slow: a scheduled rebuild per
 closed window into a plain table. **Not** an insert-time `AggregatingMergeTree`
 materialized view: MVs fire per insert and never observe `ReplacingMergeTree`
 replacement, so nightly re-analysis would double-count every re-scored row.
+
+### 3.2 Tunnel baseline aggregate **[mvp]**
+
+Tunnel nettests have no test helper, so scoring needs a substitute control:
+whether the same target succeeded elsewhere in the window
+([ontology.md](ontology.md) §5.1). Unlike the web control, this cannot be
+computed inline per run. §4.4 already gives the cost reason for why the web
+control window stays narrow: scanning a trailing 24h or 7d of raw
+observations on every hourly run is not affordable. The same arithmetic
+applies here, with no narrow-window option to fall back on, since there is no
+test helper to ask instead.
+
+The aggregate is therefore precomputed: per `(tunnel_target, window)`, a
+success/failure rollup by network, rebuilt per closed window like tier 3.
+Small by construction (the watchlist of registered targets, not the full
+measurement volume), and this is the one piece of standing infrastructure
+the tunnel work adds beyond extending existing tiers.
 
 ## 4. Tradeoffs
 

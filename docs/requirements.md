@@ -56,6 +56,7 @@ assessment regardless of its other merits.
 | C6 | **Errors are asymmetric.** OONI output is cited in litigation, press and policy. A false blocking claim is ammunition against OONI's credibility everywhere and forever; a missed event is invisible. Both are failures, priced differently. |
 | C7 | **Data arrives late, correlated with censorship.** Probes on interfered networks upload late or never, often *because of* the event being measured. Designs should not assumes prompt arrival of data. |
 | C8 | **Coverage is uneven and uncontrolled.** The probe population is volunteer, with orders-of-magnitude differences between countries and networks. While it's possible to [prioritize the testing](https://docs.ooni.org/backend/ooniapi/services/#prioritization) of certain targets in specific geographies, if no volunteers exist in the region the coverage will remain scarse. Building additional coverage and capacity in a region is costly. |
+| C9 | **Published tool data is an enumeration oracle.** Any surface reporting per-endpoint circumvention-tool results hands a censor a tested blocklist for free. This is not a general property of OONI's output (a web target's domain is already public), but it is a property of tunnel endpoints specifically, which providers entrust to OONI precisely because they are not public. Designs for tunnel evidence must publish at the aggregate grain (provider or protocol stack, by network and country) and never expose endpoint identity, unless they are already public. |
 
 ---
 
@@ -108,6 +109,15 @@ This is not implemented yet, and is stated here so it gets designed for rather
 than discovered later. A vocabulary that can only express reach or no-reach
 answers "no" to "is this throttled?" when the honest answer is "the schema
 cannot represent the question".
+
+**M8. Tool reachability is a first-class question.** The system answers *"does
+circumvention tool T, or protocol stack P, work in location X?"* at the same
+ladder grains M1 establishes for web targets, from probe-measured evidence.
+Tool targets key on stable names (provider, protocol stack), never on
+endpoint addresses (§4 of ontology.md, generalised). Answers about a protocol
+stack aggregate across providers, which is what lets a reader ask whether a
+technique works on a network independent of who deployed it. The published
+grain never exposes individual endpoints (C9).
 
 ---
 
@@ -450,4 +460,5 @@ omitting these; it would be criticised for building them now.
 | Per-measurement belief fusion (Dempster–Shafer and kin) | The rule vocabulary already carries the distinctions categorically | A measurement needing partial belief that no rule split can express |
 | Learned models deciding published verdicts | Violates priority 2; permitted as firewalled triage feeding human curation | Never, for the published verdict itself. The firewalled-triage form has its own trigger: a blockpage family the corpus missed for days |
 | Crowdsourced labelling | Ground-truth quality over volume (V1) | The curated corpus demonstrably too small for the top rules, with adjudication capacity the binding constraint |
-| Ingesting other observatories' data into the pipeline | Corroboration happens at analysis and reporting time rather than at ingestion | A formal data-sharing agreement with aligned schemas |
+| Ingesting *peer observatories'* data into the pipeline | Corroboration happens at analysis and reporting time rather than at ingestion | A formal data-sharing agreement with aligned schemas |
+| Treating externally-submitted (non-probe) evidence as ground truth or control | It is one submitter regardless of claimed volume (A2, A3); it cannot corroborate itself | Never for control or detection input; it corroborates at event grading once ontology.md §5.2's evidence class exists |
