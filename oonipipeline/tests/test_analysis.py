@@ -382,7 +382,7 @@ WC05_QA_CASES: Dict[str, Dict[str, Any]] = {
         "top_probe_analysis": "dns",
     },
     "dnsBlockingNXDOMAIN": {
-        "dns_ok_max": (0.9, 1.0),
+        "dns_blocked_max": (0.5, 1.0),
         "top_probe_analysis": "dns",
     },
     "dnsHijackingToLocalhostWithHTTP": {
@@ -536,12 +536,14 @@ WC05_QA_CASES: Dict[str, Dict[str, Any]] = {
         "top_probe_analysis": "http-failure",
     },
     "tlsBlockingConnectionResetWithConsistentDNS": {
+        "dns_ok_max": (0.5, 1.0),
         "tls_blocked_max": (0.5, 1.0),
         "tls_ok_max": (0.0, 0.05),
         "top_tls_failure": "connection_reset",
         "top_probe_analysis": "http-failure",
     },
     "tlsBlockingConnectionResetWithInconsistentDNS": {
+        "dns_blocked_max": (0.5, 1.0),
         "tls_blocked_max": (0.5, 1.0),
         "tls_ok_max": (0.0, 0.05),
         "top_tls_failure": "connection_reset",
