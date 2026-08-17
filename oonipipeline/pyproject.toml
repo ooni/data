@@ -32,7 +32,8 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-grpc ~= 1.29.0",
   "uvicorn ~= 0.25.0",
   "pydantic-settings ~= 2.4.0",
-  "apache-airflow == 2.11.1"
+  "apache-airflow == 2.11.1",
+  "google-re2==1.1.20251105"
 ]
 
 [project.optional-dependencies]
@@ -42,6 +43,7 @@ analysis = [
   "bokeh ~= 3.5.2",
   "streamlit",
   "pyarrow < 19", # fixes segfault with streamlit
+  "vl-convert-python>=1.9.0.post1",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -83,6 +85,11 @@ test = "pytest {args:tests}"
 test-cov = "pytest --cov=./ --cov-report=xml --cov-report=html --cov-report=term {args:tests}"
 cov-report = ["coverage report"]
 cov = ["test-cov", "cov-report"]
+
+[tool.coverage.run]
+omit = [
+  "src/oonipipeline/events_panel/panel.py",
+]
 
 [tool.hatch.envs.analysis]
 template = "default"

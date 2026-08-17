@@ -205,7 +205,7 @@ ALTER TABLE obs_http_middlebox ON CLUSTER oonidata_cluster      DROP COLUMN IF E
 ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster DROP COLUMN IF EXISTS `probe_id`;
 ```
 
-## 4. Reprocess `top_*_rule_id` for the last 30 days
+## 4. Reprocess `top_*_rule_id`
 
 **Introduced by:** "Rank the top rule on evidence before score"
 
@@ -214,180 +214,24 @@ ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster DROP COLUMN IF 
 `top_*_rule_id` was `argMax(rule_id, blocked)`. On a measurement that is not
 blocked the key is 0 on every row, so `argMax` kept whichever row it saw first.
 Every web_connectivity measurement carries one row per resolved IP plus one per
-redirect hop, and the redirect rows hold only HTTP, so they score `no_*_data`
+redirect hop, and the redirect rows hold only HTTP, so they score `no_tls_data`
 and were winning that tie. The recorded values are wrong for a large share of
 rows, skewed toward the `no_*_data` ids.
 
 No DDL: the columns and their types are unchanged, only the expression filling
-them. `analysis_web_measurement` is a `ReplacingMergeTree` keyed on
-`(measurement_uid, measurement_start_time, probe_cc, probe_asn)`, so re-running
-analysis over a window inserts replacements rather than editing in place.
-
-### Before you start: make the rerun deterministic
-
-Analysis is not a pure function of the measurement. Four things decide what a
-rerun writes, and three of them have to be pinned by hand.
-
-**1. The window must match the one that wrote the row.** `make_analysis` derives
-its window from the timestamp it is given: `YYYY-MM-DDTHH` scores one hour,
-`YYYY-MM-DD` scores twenty-four. That window is also the window the control
-aggregates (`ctrl_dns_success_rate`, `ctrl_tls_success_rate` and the rest) are
-computed over, so rescoring an hourly bucket as part of a daily one compares
-each measurement against 24x more control data and moves the `blocked` scores
-themselves — not just the rule id this migration is repairing.
-
-Production writes hourly: `obs_web.bucket_date` reads `2026-08-03T12`, and the
-hourly DAG is what fills it. **`oonipipeline run` cannot reproduce that over a
-30-day range.** `build_timestamps` collapses whole days into daily buckets, so
-`--start-at 2026-07-04 --end-at 2026-08-03` yields 30 daily buckets, and even an
-hour-offset range only stays hourly at its two ends:
-
-```
-2026-07-04T00 -> 2026-08-03T00   30 buckets, all daily
-2026-07-04T01 -> 2026-08-03T01   53 buckets, hourly at each end, daily between
-```
-
-Use the Airflow DAG instead, which runs one hour per task instance.
-
-**2. Pause the event detector.** It reads `analysis_web_measurement` and its
-state cannot be recomputed, so let it consume rows once, after they settle:
-
-```
-airflow variables set enable_event_detector false
-```
-
-The `gate_event_detector` ShortCircuitOperator in
-`hourly_batch_measurement_processing` reads this. Restore it to `true` when the
-backfill and the OPTIMIZE below have finished.
-
-**3. Check the fingerprint table has not moved.** The analysis query joins
-`fingerprints_dns` as it stands at run time, with no snapshot pinning, so a
-rerun scores against today's corpus rather than the one in force when the row
-was written. Only `country_consistent_blockpage` depends on it, but if the
-corpus changed mid-window some DNS verdicts will legitimately differ from the
-originals. Record the row count before starting so a later diff is explicable:
-
-```sql
-SELECT count() FROM fingerprints_dns;
-```
-
-Pinning this properly is the versioned-scoring-inputs work, still outstanding.
-
-**4. `top_probe_analysis` and `top_*_failure` will churn regardless.** They are
-`anyHeavy`, which is order-dependent: the same four rows in a different order
-return a different answer when no value holds a majority. Expect these three
-columns to differ after any rerun, on rows whose verdict did not change. Only
-`top_*_rule_id` is deterministic today.
-
-### Reprocess
-
-Re-run analysis alone, one hour at a time. Observations are untouched.
-
-This reruns existing DAG runs only; the hourly DAG has `catchup=False`, so an
-hour it never ran will not be created by a clear:
-
-```bash
-airflow tasks clear hourly_batch_measurement_processing --task-regex make_analysis --start-date 2026-07-04 --end-date 2026-08-03 --yes
-```
-
-Then collapse the duplicate rows. Until this runs, both the old and the new row
-for each measurement are visible and every count below is inflated:
-
-```sql
-OPTIMIZE TABLE analysis_web_measurement PARTITION '202607' FINAL;
-OPTIMIZE TABLE analysis_web_measurement PARTITION '202608' FINAL;
-```
-
-The partition key is `substring(measurement_uid, 1, 6)`, so a 30-day window
-spans two partitions in most months. Confirm convergence:
-
-```bash
-oonipipeline check-duplicates --start-at 2026-07-04 --end-at 2026-08-03
-```
-
-For a single measurement, `write_analysis_web_fuzzy_logic` takes a
-`measurement_uid` argument, which is the cheapest way to test the change before
-committing to the range.
-
-### Monitor
-
-**Which window is running right now.** `clickhouse_driver` substitutes bound
-parameters client side, so the server receives literal datetimes and the running
-query names its own window:
-
-```sql
-SELECT
-    extract(query, 'measurement_start_time > \'([^\']+)\'') AS window_start,
-    round(elapsed) AS secs,
-    formatReadableQuantity(read_rows) AS read_rows,
-    formatReadableSize(memory_usage) AS mem
-FROM system.processes
-WHERE query LIKE '%INSERT INTO analysis_web_measurement%';
-```
-
-**How far along, and how much longer.** `system.query_log` holds the finished
-ones. Set the divisor to the number of hours in your range (720 for 30 days):
-
-```sql
-WITH
-    toDateTime('2026-07-04 00:00:00') AS range_start,
-    toDateTime('2026-08-03 00:00:00') AS range_end
-SELECT
-    count()                                      AS windows_done,
-    dateDiff('hour', range_start, range_end)     AS windows_total,
-    round(100 * windows_done / windows_total, 1) AS pct,
-    argMax(window_start, finished_at)            AS current_window,
-    max(window_start)                            AS furthest_window,
-    max(finished_at)                             AS last_activity,
-    round(avg(ms) / 1000, 1)                     AS avg_secs,
-    formatReadableTimeDelta((windows_total - windows_done) * avg(ms) / 1000) AS eta
-FROM (
-    -- One row per distinct window, keeping its most recent completion.
-    SELECT
-        parseDateTimeBestEffortOrNull(
-            extract(query, 'measurement_start_time > \'([^\']+)\'')) AS window_start,
-        max(event_time)                       AS finished_at,
-        argMax(query_duration_ms, event_time) AS ms
-    FROM system.query_log
-    WHERE type = 'QueryFinish'
-      AND is_initial_query
-      AND event_time > now() - INTERVAL 36 HOUR
-      AND query LIKE '%INSERT INTO analysis_web_measurement%'
-    GROUP BY window_start
-    HAVING window_start >= range_start AND window_start < range_end
-) Format Vertical
-```
-
-`query_log` is per node. Wrap it in
-`clusterAllReplicas('oonidata_cluster', system.query_log)` if the work is spread
-across the cluster, and swap `QueryFinish` for `ExceptionWhileProcessing` to
-find buckets that failed.
-
-**From Airflow.** There is no CLI that shows task state across a date range —
-use the Grid view, or these for a coarse read. Clearing a task instance puts its
-DAG run back into `running`:
-
-```bash
-airflow dags list-runs -d hourly_batch_measurement_processing --state running -o plain
-airflow dags list-runs -d hourly_batch_measurement_processing --state queued -o plain | wc -l
-airflow tasks states-for-dag-run hourly_batch_measurement_processing <run_id>
-```
-
-The last one needs a single run id, so it drills into one hour rather than
-summarising the range. Per-bucket logs are the task instance's own logs;
-`make_analysis` itself logs nothing, so a bucket that is working looks identical
-to one that is hung. Use `system.processes` above to tell them apart.
+them. Nothing reads these columns yet, so the reprocess can run behind the live
+pipeline.
 
 ### Verify
 
-`no_*_data` should now appear only where the measurement genuinely carried no
-data at that layer:
+`no_*_data` should now appear only where the measurement had no data
+at that layer:
 
 ```sql
 SELECT top_tls_rule_id, count() AS n,
        countIf(greatest(tls_ok_max, tls_blocked_max, tls_down_max) > 0) AS with_verdict
 FROM analysis_web_measurement
-WHERE measurement_start_time > now() - INTERVAL 30 DAY
+WHERE measurement_start_time > now() - INTERVAL 1 DAY
 GROUP BY top_tls_rule_id ORDER BY n DESC;
 ```
 
@@ -409,3 +253,87 @@ WHERE measurement_start_time > now() - INTERVAL 30 DAY;
 
 Revert the code and reprocess again. Both versions write valid ids from the same
 vocabulary, so a partially reprocessed range is inconsistent but not corrupt.
+
+### Rollback
+
+Revert the code. Both versions write valid ids from the same vocabulary.
+
+## 5. Reprocess after the per-endpoint trust change
+
+**Introduced by:** "Gate TCP and TLS on the endpoint, not the DNS verdict"
+
+### Background
+
+DNS scoring was restricted to the system resolver and its window partitioned
+without the resolver, so every DNS signal was constant across a measurement. A
+row whose address came from another resolver inherited the system resolver's
+verdict and was masked with it. `dns_untrusted` is replaced by
+`endpoint_untrusted`, which additionally requires that nothing independent
+vouches for the address.
+
+No DDL. `RULES_VERSION` goes to 2, and the rule id changes, so rows written
+before and after are distinguishable in `top_{dns,tcp,tls}_rule_id`.
+
+### What to expect
+
+Measured over a 10-minute production window (9,731 measurements), rescoring
+with the new code against the old:
+
+- **no change to any `*_blocked` score**
+- 3 rule-id changes, all `tcp: endpoint_untrusted -> none`
+
+That is the designed outcome: the new condition is strictly narrower than the
+one it replaces, so it can only unmask rows, never mask new ones. It is close
+to a no-op on today's data because no web_connectivity 0.5 measurements are in
+the pipeline yet: every row still comes from the system resolver. The change
+matters when 0.5 arrives, and it is safe to land first.
+
+The 3 rows that moved to `none` expose a pre-existing gap rather than a new
+one: the TCP cascade has no equivalent of DNS's `failure_no_ctrl`, so a TCP
+failure against an endpoint with no control data matches nothing. It was
+already reachable whenever `dns_blocked` was 0; it now also catches these.
+`none` runs at 0.03% of measurements, so this is a cleanup, not a blocker.
+
+### Reprocess
+
+Same procedure as section 4, including the detector pause and the OPTIMIZE.
+Because scores do not move, the detector will see no changepoints from this;
+the reprocess is for rule-id attribution only and can run at low priority.
+
+### Refit the calibration afterwards
+
+`Calibration` in the API service's `scoring.py` was fitted against a corpus
+scored under `RULES_VERSION = 1`. Scores are unchanged here, so the fit remains
+valid and `SCORING_VERSION` does not strictly need to move, but check it
+rather than assume: re-run the fit cell in `analysis-evaluation.ipynb` after
+reprocessing and confirm INTERCEPT and SLOPE land inside their recorded
+intervals. If they do not, the reprocess changed more than this note predicts.
+
+### Verify
+
+`dns_untrusted` should disappear entirely, and no row should carry a DNS
+verdict it did not earn:
+
+```sql
+SELECT top_tcp_rule_id, top_tls_rule_id, count()
+FROM analysis_web_measurement
+WHERE measurement_start_time > now() - INTERVAL 1 DAY
+  AND (top_tcp_rule_id = 'dns_untrusted' OR top_tls_rule_id = 'dns_untrusted')
+GROUP BY 1, 2;
+```
+
+Expect zero rows once the range is fully reprocessed.
+
+### Rollback
+
+Revert the code and reprocess. Both rule sets write valid ids; a partially
+reprocessed range carries a mix of `dns_untrusted` and `endpoint_untrusted`,
+which is inconsistent but not corrupt, and the `RULES_VERSION` on each row says
+which is which.
+
+### Add indexes to control tables
+
+```
+ALTER TABLE obs_web_ctrl ON CLUSTER oonidata_cluster ADD INDEX measurement_start_time_idx measurement_start_time TYPE minmax GRANULARITY 2;
+ALTER TABLE obs_web_ctrl ON CLUSTER oonidata_cluster MATERIALIZE INDEX measurement_start_time_idx;
+```
