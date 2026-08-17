@@ -8,6 +8,7 @@ from urllib.parse import urlparse, urlsplit
 from datetime import datetime, timedelta, timezone
 from typing import (
     Callable,
+    Dict,
     Optional,
     List,
     Tuple,
@@ -553,6 +554,14 @@ def make_web_observation(
         (tcp_o and tcp_o.port) or (tls_o and tls_o.port) or (http_o and http_o.port)
     )
     web_obs.hostname = (dns_o and dns_o.hostname) or (http_o and http_o.hostname)
+    if not web_obs.hostname and tls_o and tls_o.server_name:
+        # When the TCP/TLS observation is not attached to any DNS resolution
+        # (eg. the address was tested because the control resolved it), the SNI
+        # is the best hostname signal we have, provided it's not a literal IP.
+        try:
+            ipaddress.ip_address(tls_o.server_name)
+        except ValueError:
+            web_obs.hostname = tls_o.server_name
     if web_obs.ip:
         web_obs.ip_is_bogon = is_ip_bogon(web_obs.ip)
         ip_info = netinfodb.lookup_ip(msmt_meta.measurement_start_time, web_obs.ip)
@@ -894,6 +903,7 @@ class MeasurementTransformer:
         http_observations: List[HTTPObservation] = [],
         target_id: Optional[str] = None,
         probe_analysis: Optional[str] = None,
+        ip_hostname_hints: Optional[Dict[str, str]] = None,
     ) -> List[WebObservation]:
         """
         Returns a list of WebObservations by mapping all related
@@ -907,6 +917,11 @@ class MeasurementTransformer:
 
         Any observation that cannot be mapped will be returned inside of it's
         own WebObservation with all other columns set to None.
+
+        ip_hostname_hints maps an IP address to the hostname it's known to be
+        serving (eg. from the control measurement DNS resolution). It's used to
+        fill in the hostname of observations which could not be attached to any
+        DNS resolution done by the probe.
         """
         web_obs_list: List[WebObservation] = []
         # TODO: surely there is some way to refactor this into a better pattern
@@ -1001,6 +1016,11 @@ class MeasurementTransformer:
                 )
             )
             self.observation_idx += 1
+
+        if ip_hostname_hints:
+            for web_obs in web_obs_list:
+                if not web_obs.hostname and web_obs.ip:
+                    web_obs.hostname = ip_hostname_hints.get(web_obs.ip)
 
         return web_obs_list
 

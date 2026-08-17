@@ -61,6 +61,31 @@ def test_wc_v5_cn_bug_observations(netinfodb, measurements):
     assert len(web_ctrl_obs) == 2
 
 
+def test_wc_v5_control_only_addresses_have_hostname(netinfodb, measurements):
+    # The probe also tested addresses which only the control resolved, so the
+    # resulting TCP/TLS observations are not attached to any DNS observation.
+    # We expect the hostname to be filled in from the control DNS resolution
+    # and the TLS SNI instead of being left empty.
+    # see: https://explorer.ooni.org/m/20260730100745.046370_IN_webconnectivity_35dfecc6616656ee
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20260730100745.046370_IN_webconnectivity_35dfecc6616656ee"
+        ]
+    )
+    assert isinstance(msmt, WebConnectivity)
+    web_obs, _ = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2026-07-30"
+    )
+    control_only_ips = {
+        obs.ip for obs in web_obs if obs.ip and obs.dns_answer is None and obs.tcp_success
+    }
+    assert "192.178.183.100" in control_only_ips
+    assert "2a00:1450:4001:c21::66" in control_only_ips
+    for obs in web_obs:
+        if obs.ip:
+            assert obs.hostname is not None, f"missing hostname for {obs.ip}"
+
+
 def test_http_observations(measurements, netinfodb):
     msmt = load_measurement(
         msmt_path=measurements[
