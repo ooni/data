@@ -65,7 +65,7 @@ likelihood-ratio fits remain winner-censored.
 | Gap | Consequence | Violates |
 |---|---|---|
 | No HTTP layer in the analysis | HTTP blockpage detection, the classic "confirmed" signal, is absent. `fingerprints_http` is refreshed and joined nowhere. | M3, M1 |
-| No tier-3 state table | The detector aggregates tier 2 inline with a median, discarding measurement counts. | E5, E2 |
+| No tier-3 state table | The detector aggregates tier 2 inline with a median, discarding measurement counts. The median is also a step function at 50% of a cell, so partial blocking below half a cell is invisible and one measurement swings the signal at half. | E5, E2, M4 |
 | No `locus` axis | Resolver-side DNS censorship is attributed to `probe_asn` instead of `resolver_asn`, naming the wrong responsible party and making series flip as probes rotate resolvers. | E7, D1 |
 | Target is `domain(input)` only | No way to ask "is Facebook blocked?" without assembling a union of domains by hand. | M1 |
 | No event entity | A national block emits up to ~1800 uncorrelated changepoints and an unbatched Slack flood. | M4, D4 |
@@ -230,6 +230,13 @@ series without deciding attribution; naming the resolver's AS as responsible
 additionally requires evidence the same resolver misbehaves for probes in other
 networks, which is future work ([ontology.md](ontology.md) §11).
 
+The detector already carries a two-bucket approximation of this key:
+`IF(resolver_asn = probe_asn, 1, 0) AS is_isp_resolver` in
+`analysis/detector.py`, which is why `dns_isp_blocked` and `dns_other_blocked`
+are separate signals. Once `resolver_asn` is a real key dimension the
+distinction moves from the signal axis to the series axis, and the detector's
+four signals collapse to three (`dns`, `tcp`, `tls`).
+
 **Effort:** days. **Serves:** D1, E7. **Note:** the `dns_isp.*` / `dns_other.*`
 labels the aggregation API returns need a mapping, since they have no direct
 successor (M6: deprecate by mapping, never silently).
@@ -259,8 +266,77 @@ out of it, no new formalism required. The specifics that matter:
 Build as a view first; if materialised later, a scheduled rebuild per closed
 window, never an insert-time materialized view (architecture §3.1 says why).
 
-**Effort:** days. **Depends on:** 3.5 for the grain. **Serves:** E5, E2, D4;
-the arrival-lag column is D2's minimum form.
+**What the detector then consumes.** The histogram is not itself the detector
+input: the CUSUM is scalar and stays scalar. What changes is that its input
+acquires a denominator, and that is what makes everything below possible.
+
+What we have now is `quantile(0.5)` which is basically a step function at the 50% mark:
+a cell of 6 measurements saying blocked=0.0 and four blocked=0.8 has median 0.0, and at six
+blocked it jumps to 0.8. So blocking below half of a cell's measurements is
+structurally invisible, which is most of an ISP-by-ISP rollout and most partial
+injection, while at half a cell one measurement swings the input across the
+detector's full dynamic range. Miss everything under half, chatter at half.
+
+The replacement is the blocked-class share: `k` firings in the blocked class
+over `n` firings that said anything (`Evidence.SCORED` only).
+
+While we don't have proper estimated log-likelyhoods per class, we are going to use
+hardcoded priors (similar to what we are doing now) and use a two-weight
+Bernoulli increment:
+
+```python
+w_blocked = log(p1 / p0)              # per blocked-class firing
+w_clear   = log((1 - p1) / (1 - p0))  # per clear one: negative, and it is what
+                                      # the hand-set -v/2 drift term stood in for
+s_pos = max(0.0, s_pos + k * w_blocked + (n - k) * w_clear)
+```
+
+Threshold crossing and reset are unchanged. Three things fall out:
+
+- **`n` becomes evidence weight by construction.** A cell of 300 observers moves
+  the accumulator two orders of magnitude more than a cell of 3, with no
+  hand-tuned multiplier, and the count column stops being a boolean `w == 0`
+  gate. Most of D4's evidence floor arrives free; the explicit floor is then
+  only needed on the publication side.
+- **`h` becomes interpretable.** Log-odds units, so the threshold reads as "what
+  odds before this pages someone" rather than `edd * v / 2`.
+- **The operating point moves, and must be refit.** `mu_0 = 0.0` is ok 
+  for a median and wrong for a share: a healthy series has a nonzero baseline
+  blocked share, likely `answer_unmatched` (3.1). Expect the first cut to fire
+  considerably more, and fit `h` on 3.8's scorecard rather than by eye.
+
+Use `n_probes` rather than `n_measurements` as `n`, or one chatty probe buys
+itself 42 votes ([ontology.md](ontology.md) §9.3).
+
+**The generalisation is one line, and it is why the histogram is the right
+structure.** Replace the two-weight Bernoulli increment with a per-rule one:
+
+```python
+s_pos = max(0.0, s_pos + sum(c * log_lr[rule_id] for rule_id, c in counts.items()))
+```
+
+`log_lr` is exactly what 3.8's fit already produces. At that point the detector
+consumes no scores at all: `dns_blockpage_match` contributes a large increment
+and `answer_unmatched` a small one because the corpus says so, not because
+someone typed 0.9 and 0.75. This makes 3.8 a hard dependency of this item rather
+than a parallel track. It also inherits 3.9's censoring: until fired-rule sets
+are persisted the LRs are conditional on "fired **and won**", which the Bernoulli
+form tolerates and the per-rule form does not.
+
+**Two prerequisites this exposes.** `Rule` in `analysis/rules.py` has no
+`outcome_class` field, so the blocked/down/ok grouping that ontology §9 calls
+load-bearing would today be an `argMax` over the triple plus an `Evidence`
+check, re-derived independently in SQL and in Python; make it a field before
+anything consumes the histogram. And ClickHouse's `quantile` is documented as
+non-deterministic (reservoir sampling): hourly cells sit far below the 8192
+reservoir size so it is exact in practice, but the detector's current input is
+not deterministic by contract, which matters once 3.10's shadow run treats a
+diff as signal (P2).
+
+**Effort:** days for the histogram itself; the Bernoulli increment is a day and
+the per-rule increment waits on 3.8. **Depends on:** 3.5 for the grain, 3.8 for
+the per-rule weights. **Serves:** E5, E2, D4; the arrival-lag column is D2's
+minimum form.
 
 ### 3.7 Correlate changepoints into events
 
@@ -268,7 +344,7 @@ Cluster changepoints within a time window by `(cc, target)` and `(cc, asn)`
 before alerting, with `n_asns`, `n_domains`, `layers`, `first_ts` and a
 severity. Alert on events; cap volume per run, and record what the cap dropped.
 
-Semantics that must be specified up front, not discovered in code review:
+Semantics that must be specified up front:
 clusters are per direction (a mixed +1/-1 cluster during ISP-by-ISP rollout is
 two events, not one); events can extend as they roll out across ISPs over days;
 and when the two cluster keys disagree, the larger event subsumes the smaller.
@@ -284,8 +360,7 @@ degrade too? Carrying the ruleset and fingerprint-snapshot versions (3.9) on
 analysis rows is what makes a deploy distinguishable from a coordinated block.
 
 **Effort:** a week. **Serves:** M4, D4, D5. **Do before** widening the
-detector watchlist, or the noise gets worse. Note the watchlist itself needs
-review: the hardcoded `twitter.com` predates the rename to x.com (D1).
+detector watchlist, or the noise gets worse.
 
 ### 3.8 Labelled corpus and evaluation harness
 
@@ -390,6 +465,20 @@ durable record of what was detected when, surviving re-analysis, and the
 detection tables become disposable like every other tier. One doctrine must be
 written before cutover: what a changepoint near the trailing edge shifting or
 vanishing means for an already-sent alert.
+
+**Three things the current code makes concrete.** `get_observations` returns
+only hours that produced rows and `detect_changepoints` iterates that list, so
+an empty hour is not skipped, it does not exist, and the gap decay quietly
+papers over it. Detection must iterate a **dense hour grid** with cell state
+left-joined onto it, so a zero-volume hour arrives as `n = 0` and can drive a
+volume-collapse signal: a precondition for D2 rather than a follow-up to it.
+The stateless path is already in the file, since `run_detector_for` passes an
+empty cusum map and warms up from cold to serve the detector panel;
+productionising it is largely running that over the watchlist per closed hour
+and dropping `get_cusum_map` and `event_detector_cusums`. And `warmup` fixes W:
+the head of the trailing window is warmup and the tail is live, so W is warmup
+length plus alert horizon, which is the same number as the immutability horizon
+the alert-revision doctrine has to name, not a second one.
 
 Migrate by running shadow alongside the live CUSUM for a few weeks and
 comparing emitted changepoints.

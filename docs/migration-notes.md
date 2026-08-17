@@ -330,3 +330,10 @@ Revert the code and reprocess. Both rule sets write valid ids; a partially
 reprocessed range carries a mix of `dns_untrusted` and `endpoint_untrusted`,
 which is inconsistent but not corrupt, and the `RULES_VERSION` on each row says
 which is which.
+
+### Add indexes to control tables
+
+```
+ALTER TABLE obs_web_ctrl ON CLUSTER oonidata_cluster ADD INDEX measurement_start_time_idx measurement_start_time TYPE minmax GRANULARITY 2;
+ALTER TABLE obs_web_ctrl ON CLUSTER oonidata_cluster MATERIALIZE INDEX measurement_start_time_idx;
+```
