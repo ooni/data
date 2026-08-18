@@ -235,7 +235,6 @@ into a single observer:
 ```sql
 SELECT domain,
        uniqIf(probe_id, probe_id != '') AS n_probes,
-       uniq(report_id)                  AS n_sessions,   -- fallback, historical
        count()                          AS n_measurements
 FROM analysis_web_measurement
 WHERE probe_cc = 'IT' AND measurement_start_time > now() - INTERVAL 7 DAY
@@ -456,10 +455,9 @@ keep labels and discard qualifiers, so below the evidence floor the **state
 itself** changes to "Not enough data".
 
 Build that sentence on the number of distinct probes
-(`uniqIf(probe_id, probe_id != '')`) rather than the raw measurement count,
-falling back to `uniq(report_id)` for windows that predate the scheme. "Seen by
-9 probes on this network" is a stronger claim than "seen 42 times", and it is
-the one a reader will assume you meant.
+(`uniqIf(probe_id, probe_id != '')`) rather than the raw measurement count.
+"Seen by 9 probes on this network" is a stronger claim than "seen 42 times",
+and it is the one a reader will assume you meant.
 
 ### 7.4 Colour is redundant, never load-bearing
 

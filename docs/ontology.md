@@ -346,9 +346,6 @@ regimes:
   distinct credentialed probes, and any published threshold should further
   weight by the attested standing of those probes rather than treat every id
   equally (A3).
-- **Everything collected before the scheme**, and any probe omitting it, is
-  unauthenticated. `report_id` is client-chosen and free to mint, so for that
-  data `n_sessions` is an *upper bound* on independence, not a count.
 
 Three consequences for published claims:
 
@@ -376,7 +373,6 @@ The unit the detector and the presentation layer should both read: one
 rule_counts   Map(LowCardinality(String), UInt32)
 n_measurements
 n_probes      uniqIf(probe_id, probe_id != '')   -- "" is unknown, not a probe
-n_sessions    uniq(report_id)     -- fallback for pre-scheme measurements
 ```
 
 Everything needed falls out of it, which is why the machinery in Appendix A.1 is
@@ -407,7 +403,7 @@ The mistake worth avoiding is treating "how much evidence" as a single number.
 | Kind | Question | Read from |
 |---|---|---|
 | **Ambiguity** | Is each measurement individually conclusive? | which rule dominates |
-| **Sample size** | How many independent observations? | `n_sessions` |
+| **Sample size** | How many independent observations? | `n_probes` |
 | **Consensus** | Do the conclusive ones agree with each other? | modal share |
 
 | Cell | Ambiguity | Sample | Consensus |
