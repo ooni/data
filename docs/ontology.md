@@ -458,11 +458,6 @@ Carry both. Reader-facing thresholds key on the probe count where it is
 available and otherwise treat the session count as the upper bound §8.4 says
 it is (A3).
 
-One more denominator matters for DNS cells specifically: probes behind the same
-resolver share cached answers, so the effective sample size is closer to the
-number of distinct resolvers than to either count above. Carry
-`uniq(resolver_asn)` alongside them for DNS.
-
 ### 9.4 Build it as a view, not a table
 
 Start as a `GROUP BY` at query time: over the detector's watchlist the scan is
