@@ -51,6 +51,14 @@ class Evidence(IntEnum):
     DISCARDED = 1  # observed, but an earlier layer makes it uninterpretable
     SCORED = 2  # observed and scored
 
+class OutcomeClass(IntEnum):
+    """Whether this particular rule is blocked, down or ok leaning.
+    Used to derived a final verdict"""
+
+    UNKNOWN = 0 # there is not enough data to say anything
+    OK = 1 # available and not blocked
+    DOWN = 2 # unavailable, but not due to network interference
+    BLOCKED = 3 # unavailable, due not network interference
 
 @dataclass(frozen=True)
 class Rule:
@@ -67,6 +75,7 @@ class Rule:
     ok: float
     comment: str
     evidence: Evidence = Evidence.SCORED
+    outcome_class: OutcomeClass = OutcomeClass.UNKNOWN
 
     @property
     def outcome(self) -> Tuple[float, float, float]:
@@ -98,6 +107,7 @@ DNS_RULES: List[Rule] = [
         blocked=1.0,
         down=0.0,
         ok=0.0,
+        outcome_class=OutcomeClass.BLOCKED,
         comment="Matched a known blockpage fingerprint for this country.",
     ),
     Rule(
@@ -106,6 +116,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=1.0,
+        outcome_class=OutcomeClass.OK,
         comment=(
             "The answer is TLS-consistent, a very strong signal that it is "
             "genuine — absent a TLS MITM."
@@ -117,6 +128,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.95,
         down=0.05,
         ok=0.0,
+        outcome_class=OutcomeClass.BLOCKED,
         comment="Bogon answer that the control never returned. Likely blocking.",
     ),
     Rule(
@@ -125,6 +137,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.1,
         down=0.9,
         ok=0.0,
+        outcome_class=OutcomeClass.DOWN,
         comment=(
             "Bogon answer that the control also returned — a DNS "
             "misconfiguration rather than blocking."
@@ -136,6 +149,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.9,
         down=0.05,
         ok=0.05,
+        outcome_class=OutcomeClass.BLOCKED,
         comment=(
             "Certificates fail for this answer and the control never returned "
             "it. Most likely true blocking."
@@ -147,6 +161,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.9,
+        outcome_class=OutcomeClass.OK,
         comment="Direct answer match against the control.",
     ),
     Rule(
@@ -155,6 +170,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.2,
         down=0.0,
         ok=0.8,
+        outcome_class=OutcomeClass.OK,
         comment=(
             "Experiment and control answers share an ASN. Usually a valid "
             "answer, especially given no earlier rule fired."
@@ -166,6 +182,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.1,
         down=0.9,
         ok=0.0,
+        outcome_class=OutcomeClass.DOWN,
         comment=(
             "DNS is failing but also fails in the control — likely an issue "
             "with the fqdn itself, e.g. NXDOMAIN."
@@ -177,6 +194,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.9,
         down=0.1,
         ok=0.0,
+        outcome_class=OutcomeClass.BLOCKED,
         comment="DNS is failing but succeeds in the control. Likely blocking.",
     ),
     Rule(
@@ -185,6 +203,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.5,
         down=0.5,
         ok=0.0,
+        outcome_class=OutcomeClass.UNKNOWN,
         comment="DNS is failing and we have no usable control to compare to.",
     ),
     Rule(
@@ -193,6 +212,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.75,
         down=0.0,
         ok=0.25,
+        outcome_class=OutcomeClass.BLOCKED,
         comment=(
             "Catch-all: we got an answer that matched nothing in the control. "
             "Fires for legitimately rotating CDN/geo-DNS answers the control "
@@ -210,6 +230,7 @@ TCP_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        outcome_class=OutcomeClass.UNKNOWN,
         comment="Row has no TCP data attached. Masked out of aggregate analysis.",
         evidence=Evidence.NONE,
     ),
@@ -219,6 +240,7 @@ TCP_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=1.0,
+        outcome_class=OutcomeClass.OK,
         comment="We can connect, nothing to see here.",
     ),
     Rule(
@@ -227,6 +249,7 @@ TCP_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        outcome_class=OutcomeClass.UNKNOWN,
         comment=(
             "Failure against an IPv6 target while IPv6 is failing broadly for "
             "this report_id — the probe most likely has broken IPv6. Masked."
@@ -242,6 +265,7 @@ TCP_RULES: List[Rule] = [
         blocked=0.75,
         down=0.25,
         ok=0.0,
+        outcome_class=OutcomeClass.BLOCKED,
         comment="Failure against an address that mostly succeeds in the control.",
     ),
     Rule(
@@ -250,6 +274,7 @@ TCP_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        outcome_class=OutcomeClass.UNKNOWN,
         comment=(
             "DNS was not trustworthy, so the addresses we connected to cannot "
             "be trusted either. Masked."
@@ -267,6 +292,7 @@ TCP_RULES: List[Rule] = [
         blocked=0.25,
         down=0.75,
         ok=0.0,
+        outcome_class=OutcomeClass.DOWN,
         comment="Failure, but the control is failing a lot too. Likely down.",
     ),
 ]
@@ -284,6 +310,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        outcome_class=OutcomeClass.UNKNOWN,
         comment="Row has no TLS data attached. Masked out of aggregate analysis.",
         evidence=Evidence.NONE,
     ),
@@ -293,6 +320,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=1.0,
+        outcome_class=OutcomeClass.OK,
         comment="Valid certificate, nothing to see here.",
     ),
     # These three were a nested multiIf under a shared outer condition. Flattened
@@ -304,6 +332,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.9,
         down=0.1,
         ok=0.0,
+        outcome_class=OutcomeClass.BLOCKED,
         comment="Failure where the control succeeds; SSL errors are most suspicious.",
     ),
     Rule(
@@ -312,6 +341,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.8,
         down=0.2,
         ok=0.0,
+        outcome_class=OutcomeClass.BLOCKED,
         comment=(
             "Failure where the control succeeds; connection reset carries more "
             "weight than timeouts."
@@ -323,6 +353,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.7,
         down=0.3,
         ok=0.0,
+        outcome_class=OutcomeClass.BLOCKED,
         comment="Failure where the control succeeds, with a less specific error.",
     ),
     Rule(
@@ -331,6 +362,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        outcome_class=OutcomeClass.UNKNOWN,
         comment="DNS was not trustworthy, so this result cannot be either. Masked.",
         evidence=Evidence.DISCARDED,
     ),
@@ -340,6 +372,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        outcome_class=OutcomeClass.UNKNOWN,
         comment=(
             "TCP analysis says this address is blocked, so the TLS result is "
             "downstream of that. Masked."
@@ -355,6 +388,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.2,
         down=0.8,
         ok=0.0,
+        outcome_class=OutcomeClass.DOWN,
         comment="Failure, but the control is failing a lot too. Likely down.",
     ),
 ]
