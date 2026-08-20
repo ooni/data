@@ -21,45 +21,6 @@ strip_title() {
     cat $infile | awk 'BEGIN{p=1} /^#/{if(p){p=0; next}} {print}'
 }
 
-# The pipeline documents cross-reference each other with relative paths so they
-# stay readable in the repository and on GitHub. On the docs site those have to
-# become slugs. Anchors are preserved: foo.md#bar -> /data/foo#bar
-#
-# The first block also replaces the link *text*, since every cross-reference is
-# written as [filename.md](filename.md): a bare filename reads correctly next to
-# the file in the repository, and as a document title on the site. The second
-# block catches any reference whose text was written differently.
-rewrite_links() {
-    sed -E \
-        -e 's|\[requirements\.md\]\(requirements\.md\)|[Requirements](/data/pipeline-design)|g' \
-        -e 's|\[architecture\.md\]\(architecture\.md\)|[Architecture](/data/pipeline)|g' \
-        -e 's|\[ontology\.md\]\(ontology\.md\)|[Ontology](/data/pipeline-ontology)|g' \
-        -e 's|\[user-guide\.md\]\(user-guide\.md\)|[User guide](/data/pipeline-user-guide)|g' \
-        -e 's|\[developer-guide\.md\]\(developer-guide\.md\)|[Developer guide](/data/pipeline-developer-guide)|g' \
-        -e 's|\[implementation-plan\.md\]\(implementation-plan\.md\)|[Implementation plan](/data/pipeline-implementation-plan)|g' \
-        -e 's|\[label-corpus-design\.md\]\(label-corpus-design\.md\)|[Label corpus](/data/pipeline-label-corpus)|g' \
-        -e 's|\[migration-notes\.md\]\(migration-notes\.md\)|[Migration notes](/data/pipeline-migration-notes)|g' \
-        -e 's|\]\(requirements\.md(#[^)]*)?\)|](/data/pipeline-design\1)|g' \
-        -e 's|\]\(architecture\.md(#[^)]*)?\)|](/data/pipeline\1)|g' \
-        -e 's|\]\(ontology\.md(#[^)]*)?\)|](/data/pipeline-ontology\1)|g' \
-        -e 's|\]\(user-guide\.md(#[^)]*)?\)|](/data/pipeline-user-guide\1)|g' \
-        -e 's|\]\(developer-guide\.md(#[^)]*)?\)|](/data/pipeline-developer-guide\1)|g' \
-        -e 's|\]\(implementation-plan\.md(#[^)]*)?\)|](/data/pipeline-implementation-plan\1)|g' \
-        -e 's|\]\(label-corpus-design\.md(#[^)]*)?\)|](/data/pipeline-label-corpus\1)|g' \
-        -e 's|\]\(migration-notes\.md(#[^)]*)?\)|](/data/pipeline-migration-notes\1)|g' \
-        -e 's|\]\(labeler\.html\)|](/tools/labeler)|g' \
-        -e 's|\]\(event-labeler\.html\)|](/event-labeler.html)|g' \
-        -e 's|\]\(explorer-mockup\.html\)|](/explorer-mockup.html)|g' \
-        -e "s|\]\(analysis-evaluation\.ipynb\)|]($BLOB/docs/analysis-evaluation.ipynb)|g" \
-        -e "s|\]\(labels/\)|]($TREE/docs/labels)|g" \
-        -e "s|\]\(\.\./scripts/([a-zA-Z0-9_.-]+)\)|]($BLOB/scripts/\1)|g" \
-        `# The handful of places a document is named in running prose rather` \
-        `# than linked. Applied last, so the rules above have already consumed` \
-        `# every genuine link.` \
-        -e 's|cite requirements\.md\.|cite [Requirements](/data/pipeline-design).|g' \
-        -e 's|(^\|[^/])label-corpus-design\.md|\1[Label corpus](/data/pipeline-label-corpus)|g'
-}
-
 generate_doc() {
     local order="$1"
     local slug="$2"
@@ -82,7 +43,7 @@ sidebar:
 ---
 EOF
     echo "[edit file](https://github.com/$REPO_NAME/edit/$MAIN_BRANCH/$input_file)" >> "$DOCS_ROOT/$output_file"
-    strip_title "$input_file" | rewrite_links >> "$DOCS_ROOT/$output_file"
+    strip_title "$input_file" >> "$DOCS_ROOT/$output_file"
 }
 
 ## Accessing OONI data, and the oonidata CLI.
@@ -116,17 +77,9 @@ generate_pipeline_doc 1 "data/pipeline" "architecture" "01-architecture.md" \
     "Architecture" "How the OONI data pipeline is put together: processing tiers, infrastructure and tradeoffs"
 generate_pipeline_doc 2 "data/pipeline-ontology" "ontology" "02-ontology.md" \
     "Ontology" "What the pipeline entities mean and what the numbers claim"
-generate_pipeline_doc 3 "data/pipeline-user-guide" "user-guide" "03-user-guide.md" \
-    "User guide" "How to consume the datasets the pipeline produces, and what the numbers support"
-generate_pipeline_doc 4 "data/pipeline-developer-guide" "developer-guide" "04-developer-guide.md" \
-    "Developer guide" "Working on the pipeline: local setup, common changes and the traps"
-generate_pipeline_doc 5 "data/pipeline-implementation-plan" "implementation-plan" "05-implementation-plan.md" \
+generate_pipeline_doc 3 "data/pipeline-implementation-plan" "implementation-plan" "03-implementation-plan.md" \
     "Implementation plan" "Where the pipeline stands today and what the next steps are"
-generate_pipeline_doc 6 "data/pipeline-label-corpus" "label-corpus-design" "06-label-corpus.md" \
+generate_pipeline_doc 4 "data/pipeline-label-corpus" "label-corpus-design" "04-label-corpus.md" \
     "Label corpus" "The ground-truth corpora used to evaluate scoring and detection"
-generate_pipeline_doc 7 "data/pipeline-migration-notes" "migration-notes" "07-migration-notes.md" \
+generate_pipeline_doc 5 "data/pipeline-migration-notes" "migration-notes" "05-migration-notes.md" \
     "Migration notes" "Operations to run by hand against a live ClickHouse cluster, in deploy order"
-
-## Static assets referenced by the documents above. These are served from the
-## docs site root, so docs/event-labeler.html becomes /event-labeler.html.
-cp docs/explorer-mockup.html $ASSETS_ROOT/
