@@ -1,14 +1,6 @@
 # Ontology
 
-What the entities mean and what the numbers claim. Read this before
-interpreting any output or adding any field.
-
-Companions: [requirements.md](requirements.md) (what it must achieve),
-[architecture.md](architecture.md) (how it runs),
-[user-guide.md](user-guide.md) (consuming it),
-[developer-guide.md](developer-guide.md) (working on it),
-[implementation-plan.md](implementation-plan.md) (what happens next).
-Bare ids like `E3` or `A4` cite requirements.md.
+What the entities mean and what the numbers claim.
 
 **Status markers**, used throughout:
 
@@ -23,12 +15,12 @@ Bare ids like `E3` or `A4` cite requirements.md.
 ## 1. Measurement
 
 One nettest run, against one input, by one probe, at one time. Keyed by
-`measurement_uid`; grouped into a `report_id` (one probe session) and a
-`bucket_date` (the S3 partition it arrived in).
+`measurement_uid`. Recent probes have a `probe_id` field which is unique
+for them within the same `probe_cc`,`probe_asn` tuple.
 
 A measurement is raw evidence with the probe's own verdict attached
 (`test_keys.blocking`). The pipeline keeps that as `probe_analysis` but does not
-trust it. Recomputing centrally is a founding goal (E1), since probe-side
+trust it. Recomputing centrally is a founding goal, since probe-side
 analysis cannot be improved retroactively and varies by probe version.
 
 ## 2. Observation
@@ -36,7 +28,7 @@ analysis cannot be improved retroactively and varies by probe version.
 > A timestamped statement about a network condition seen by one vantage point.
 
 The atomic fact: "the TLS handshake to `8.8.4.4:443` with SNI `dns.google`
-failed with `connection_reset`". An observation says **what happened**, never
+failed with `connection_reset`". An observation says **what happened**, not
 what it means.
 
 One measurement becomes many observations. That decomposition is what makes
@@ -44,9 +36,7 @@ ad-hoc research possible: you can ask "every TLS handshake to this address
 across all nettests" without the test's designer having anticipated it.
 
 **`obs_web`** holds one row per (measurement, endpoint), merging the DNS answer,
-TCP connect, TLS handshake and HTTP transaction for the same address. Merging is
-by `transaction_id`, falling back to `ip:port`; anything unmergeable gets its own
-row with the other layers null.
+TCP connect, TLS handshake and HTTP transaction for the same address.
 
 Fields worth knowing:
 
@@ -54,8 +44,9 @@ Fields worth knowing:
   addresses its datacentres numerically).
 - `ip` may be the literal string `"scrubbed"`, from upstream PII redaction.
 - `ip_asn`, `ip_cc`, `ip_is_bogon` are enriched as of the measurement's
-  timestamp, not today's.
-- `resolver_asn`, `resolver_as_cc` record which resolver answered.
+  timestamp.
+- `resolver_asn`, `resolver_as_cc` record which resolver was used for `system` or
+  `getaddrinfo` queries.
 - `dns_engine` records transport: `system`, `getaddrinfo`, `udp`, `dot`, `doh`.
 
 **`obs_web_ctrl`** is the web_connectivity test helper's view of the same
@@ -68,21 +59,16 @@ reason to split one.
 
 ## 3. Layer
 
-`dns | tcp | tls | http`. **Observed, not inferred**: the DNS query either
+`dns | tcp | tls | http`. **Observed**: the DNS query either
 failed or it did not.
 
-This is why verdicts are keyed by layer rather than by censorship mechanism. You
-are routinely certain about the layer and uncertain about everything else, so
-layer is the one dimension that never demands an attribution you cannot make.
+Verdicts are keyed by layer rather than by censorship mechanism, since
+we are certain about the layer in which some interference was observed, but
+unclear about what the root cause for it was.
 
-One qualifier matters today: whether `resolver_asn == probe_asn`. It is
-currently re-derived independently in `detector.py` and in the aggregation API,
-which is two definitions of one concept free to drift. **[mvp]** makes it a
-stored column.
-
-A known defect: the analysis query restricts the DNS answer set to
-`dns_engine IN ('getaddrinfo','system')`, so DoT and DoH answers are silently
-excluded from scoring, which discards the entire point of `dnscheck`.
+The DNS layer requires an additional qualifier, which is what specific
+`resolver_asn` was being used, since that will impact the interpretation of the
+observation on the `dns` layer.
 
 ## 4. Target
 
@@ -99,9 +85,6 @@ change, which is indistinguishable from a blocking event to a changepoint
 detector. The same reasoning is why IM targets key on **service role** rather
 than hostname: Signal's chat endpoint maps to `signal/chat` whether the archive
 calls it `textsecure-service.whispersystems.org` or `chat.signal.org`.
-
-IP:port stays an observation attribute, reachable through the argmax of a query
-(§8), never a series key.
 
 **Grouping [mvp]:** "is Facebook blocked?" should be one question rather than a
 union the user assembles from domains they would have to already know. The
