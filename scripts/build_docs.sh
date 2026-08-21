@@ -81,5 +81,3 @@ generate_pipeline_doc 3 "data/pipeline-implementation-plan" "implementation-plan
     "Implementation plan" "Where the pipeline stands today and what the next steps are"
 generate_pipeline_doc 4 "data/pipeline-label-corpus" "label-corpus-design" "04-label-corpus.md" \
     "Label corpus" "The ground-truth corpora used to evaluate scoring and detection"
-generate_pipeline_doc 5 "data/pipeline-migration-notes" "migration-notes" "05-migration-notes.md" \
-    "Migration notes" "Operations to run by hand against a live ClickHouse cluster, in deploy order"
