@@ -126,7 +126,7 @@ def test_dns_catch_all_is_last():
     answer_unmatched is the fallthrough for "we got an answer that matched
     nothing". If a rule were added below it, it would be unreachable.
     """
-    assert DNS_RULES[-1].rule_id == "answer_unmatched"
+    assert DNS_RULES[-1].rule_id == "dns_system_answer_unmatched"
 
 
 def test_tls_flattened_branches_are_ordered_most_specific_first():

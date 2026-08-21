@@ -314,10 +314,22 @@ def test_website_web_analysis_wc05_ok_dns_tls_consistent(measurements, netinfodb
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    print(analysis)
     assert analysis["dns_ok_max"] > 0.5
     assert analysis["dns_blocked_max"] < 0.5
     assert analysis["top_dns_failure"] == None
+
+
+def test_website_web_analysis_wc05_one_dns_server_failing(measurements, netinfodb, db):
+    measurement_uid = "20260819122252.565771_RO_webconnectivity_011c98d67eae59a9"
+    analysis = perform_analysis(
+        db=db,
+        netinfodb=netinfodb,
+        measurements=measurements,
+        measurement_uid=measurement_uid,
+    )
+    assert analysis["dns_ok_max"] > 0.5
+    assert analysis["dns_blocked_max"] < 0.5
+
 
 # --------------------------------------------------------------------------
 # web_connectivity 0.5 QA fixtures
@@ -416,12 +428,12 @@ WC05_QA_CASES: Dict[str, Dict[str, Any]] = {
         "top_probe_analysis": "false",
     },
     "ghostDNSBlockingWithHTTP": {
-        "dns_down_max": (0.5, 1.0),
+        "dns_blocked_max": (0.5, 1.0),
         "top_dns_failure": "dns_nxdomain_error",
         "top_probe_analysis": "dns",
     },
     "ghostDNSBlockingWithHTTPS": {
-        "dns_down_max": (0.5, 1.0),
+        "dns_blocked_max": (0.5, 1.0),
         "top_dns_failure": "dns_nxdomain_error",
         "top_probe_analysis": "dns",
     },
@@ -554,8 +566,10 @@ WC05_QA_CASES: Dict[str, Dict[str, Any]] = {
         "top_tls_failure": "connection_reset",
         "top_probe_analysis": "http-failure",
     },
+    # DNS is actually not inconsistent, since we observe the TLS handshake
+    # being successful in the control measurement
     "tlsBlockingConnectionResetWithInconsistentDNS": {
-        "dns_blocked_max": (0.5, 1.0),
+        "dns_ok_max": (0.5, 1.0),
         "tls_blocked_max": (0.5, 1.0),
         "tls_ok_max": (0.0, 0.05),
         "top_tls_failure": "connection_reset",
