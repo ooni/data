@@ -156,7 +156,7 @@ def run(
     last_month = None
     for timestamp, current_day in tqdm(build_timestamps(start_at, end_at)):
         if not only_analysis:
-        click.echo(f"Runnning make_observations({timestamp})")
+            click.echo(f"Runnning make_observations({timestamp})")
             make_observations(
                 MakeObservationsParams(
                     probe_cc=probe_cc,
