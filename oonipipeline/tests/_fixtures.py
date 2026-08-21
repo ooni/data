@@ -48,6 +48,7 @@ SAMPLE_MEASUREMENTS = [
     "20250201172431.190360_CZ_signal_ef68029a5fff6e29",  # Scrubbed IP address in test_keys
     "20260730100745.046370_IN_webconnectivity_35dfecc6616656ee",  # wc 0.5 with control-only resolved addresses
     "20260820134136.956850_IR_webconnectivity_849483829bc121b7", # wc 0.5 with mismatching answers, which are TLS consistent
+    "20260819122252.565771_RO_webconnectivity_011c98d67eae59a9", # wc 0.5 where one of the DNS servers contacted is failing
 ]
 
 SAMPLE_POSTCANS = ["2024030100_AM_webconnectivity.n1.0.tar.gz"]

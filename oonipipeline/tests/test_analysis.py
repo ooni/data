@@ -314,10 +314,22 @@ def test_website_web_analysis_wc05_ok_dns_tls_consistent(measurements, netinfodb
         measurements=measurements,
         measurement_uid=measurement_uid,
     )
-    print(analysis)
     assert analysis["dns_ok_max"] > 0.5
     assert analysis["dns_blocked_max"] < 0.5
     assert analysis["top_dns_failure"] == None
+
+
+def test_website_web_analysis_wc05_one_dns_server_failing(measurements, netinfodb, db):
+    measurement_uid = "20260819122252.565771_RO_webconnectivity_011c98d67eae59a9"
+    analysis = perform_analysis(
+        db=db,
+        netinfodb=netinfodb,
+        measurements=measurements,
+        measurement_uid=measurement_uid,
+    )
+    assert analysis["dns_ok_max"] > 0.5
+    assert analysis["dns_blocked_max"] < 0.5
+
 
 # --------------------------------------------------------------------------
 # web_connectivity 0.5 QA fixtures
