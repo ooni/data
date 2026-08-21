@@ -214,8 +214,8 @@ def format_query_analysis_web_fuzzy_logic(
 
     FROM (
         WITH
-        position(ip, '.') = 0 as ip_is_v6,
-        position(ip, '.') != 0 as ip_is_v4
+        isIPv4String(ip) as ip_is_v4,
+        isIPv6String(ip) as ip_is_v6
 
         SELECT
         measurement_uid,
@@ -238,9 +238,9 @@ def format_query_analysis_web_fuzzy_logic(
         -- We limit this to only the system resolver
         -- TODO: in order to fully support web_connectivity 0.5 we should ideally
         -- parse this as well.
-        groupArrayIf(dns_answer, dns_engine IN ('getaddrinfo', 'system')) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers,
-        groupArrayIf(ip_asn, dns_engine IN ('getaddrinfo', 'system')) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_asns,
-        maxIf(ip_is_bogon, dns_engine IN ('getaddrinfo', 'system')) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_contain_bogon,
+        groupArrayIf(dns_answer, dns_engine IN ('getaddrinfo', 'system') AND (ip_is_v6 OR ip_is_v4)) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers,
+        groupArrayIf(ip_asn, dns_engine IN ('getaddrinfo', 'system') AND (ip_is_v6 OR ip_is_v4)) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_asns,
+        maxIf(ip_is_bogon, dns_engine IN ('getaddrinfo', 'system') AND (ip_is_v6 OR ip_is_v4)) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_contain_bogon,
 
         countIf(ip_asn IN %(cloud_provider_asns)s) over (partition by measurement_uid) as dns_answers_cloud,
 
