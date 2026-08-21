@@ -47,6 +47,7 @@ SAMPLE_MEASUREMENTS = [
     "20250125135854.612046_AU_webconnectivity_45560dd5efe1035c",  # Scrubbed IP in DNS answer
     "20250201172431.190360_CZ_signal_ef68029a5fff6e29",  # Scrubbed IP address in test_keys
     "20260730100745.046370_IN_webconnectivity_35dfecc6616656ee",  # wc 0.5 with control-only resolved addresses
+    "20260820134136.956850_IR_webconnectivity_849483829bc121b7", # wc 0.5 with mismatching answers, which are TLS consistent
 ]
 
 SAMPLE_POSTCANS = ["2024030100_AM_webconnectivity.n1.0.tar.gz"]

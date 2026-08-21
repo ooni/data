@@ -306,6 +306,18 @@ def test_website_web_analysis_blocked_inconsistent_country(measurements, netinfo
     assert analysis["dns_blocked_max"] > 0.5
     assert analysis["top_dns_failure"] == None
 
+def test_website_web_analysis_wc05_ok_dns_tls_consistent(measurements, netinfodb, db):
+    measurement_uid = "20260820134136.956850_IR_webconnectivity_849483829bc121b7"
+    analysis = perform_analysis(
+        db=db,
+        netinfodb=netinfodb,
+        measurements=measurements,
+        measurement_uid=measurement_uid,
+    )
+    print(analysis)
+    assert analysis["dns_ok_max"] > 0.5
+    assert analysis["dns_blocked_max"] < 0.5
+    assert analysis["top_dns_failure"] == None
 
 # --------------------------------------------------------------------------
 # web_connectivity 0.5 QA fixtures
