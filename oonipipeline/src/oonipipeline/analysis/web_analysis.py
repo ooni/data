@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from ..db.connections import ClickhouseConnection
 from .rules import (
     DNS_RULES,
+    RULES_VERSION,
     TCP_RULES,
     TLS_RULES,
     render_evidence_multiif,
@@ -210,7 +211,12 @@ def format_query_analysis_web_fuzzy_logic(
 
     -- Constant within a measurement, so it rides along in the GROUP BY rather
     -- than needing an aggregate.
-    probe_id
+    probe_id,
+
+    -- Stamp the rule set that produced the scores above, so a range that was
+    -- reprocessed under a newer rules.py is distinguishable from one that was
+    -- not. Must stay last: the writer does a positional INSERT .. SELECT.
+    toUInt16({RULES_VERSION}) as analysis_rules_version
 
     FROM (
         WITH
