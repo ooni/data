@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import List, Tuple
 
-RULES_VERSION = 1
+RULES_VERSION = 2
 
 
 class Evidence(IntEnum):
@@ -177,8 +177,8 @@ DNS_RULES: List[Rule] = [
         ),
     ),
     Rule(
-        rule_id="failure_ctrl_also_failing",
-        condition="dns_failure IS NOT NULL AND ctrl_dns_success_rate <= 0.5",
+        rule_id="dns_system_failure_ctrl_also_failing",
+        condition="dns_engine IN ('system', 'getaddrinfo') AND dns_failure IS NOT NULL AND ctrl_dns_success_rate <= 0.5",
         blocked=0.1,
         down=0.9,
         ok=0.0,
@@ -189,8 +189,8 @@ DNS_RULES: List[Rule] = [
         ),
     ),
     Rule(
-        rule_id="failure_ctrl_ok",
-        condition="dns_failure IS NOT NULL AND ctrl_dns_success_rate > 0.5",
+        rule_id="dns_system_failure_ctrl_ok",
+        condition="dns_engine IN ('system', 'getaddrinfo') AND dns_failure IS NOT NULL AND ctrl_dns_success_rate > 0.5",
         blocked=0.9,
         down=0.1,
         ok=0.0,
@@ -198,8 +198,8 @@ DNS_RULES: List[Rule] = [
         comment="DNS is failing but succeeds in the control. Likely blocking.",
     ),
     Rule(
-        rule_id="failure_no_ctrl",
-        condition="dns_failure IS NOT NULL",
+        rule_id="dns_system_failure_no_ctrl",
+        condition="dns_engine IN ('system', 'getaddrinfo') AND dns_failure IS NOT NULL",
         blocked=0.5,
         down=0.5,
         ok=0.0,
@@ -207,8 +207,8 @@ DNS_RULES: List[Rule] = [
         comment="DNS is failing and we have no usable control to compare to.",
     ),
     Rule(
-        rule_id="answer_unmatched",
-        condition="dns_failure IS NULL",
+        rule_id="dns_system_answer_unmatched",
+        condition="dns_engine IN ('system', 'getaddrinfo') AND dns_failure IS NULL",
         blocked=0.75,
         down=0.0,
         ok=0.25,

@@ -234,6 +234,7 @@ def format_query_analysis_web_fuzzy_logic(
         ip_is_v6,
         dns_failure,
         dns_answer,
+        dns_engine,
 
         -- We limit this to only the system resolver
         -- TODO: in order to fully support web_connectivity 0.5 we should ideally
@@ -270,12 +271,6 @@ def format_query_analysis_web_fuzzy_logic(
         FROM
         obs_web
         WHERE
-
-        -- since web_connectivity 0.5 runs measurements on alternative
-        -- resolver, yet these are not tested as part of the control experiment,
-        -- them failing leads to mistakenly detecting it as blocking.
-        -- we should think of a better way to analyse this in the future.
-        dns_engine IN ('getaddrinfo', 'system') AND
 
         {where_clause}
     ) as experiment
