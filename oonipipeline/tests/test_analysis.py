@@ -428,12 +428,12 @@ WC05_QA_CASES: Dict[str, Dict[str, Any]] = {
         "top_probe_analysis": "false",
     },
     "ghostDNSBlockingWithHTTP": {
-        "dns_down_max": (0.5, 1.0),
+        "dns_blocked_max": (0.5, 1.0),
         "top_dns_failure": "dns_nxdomain_error",
         "top_probe_analysis": "dns",
     },
     "ghostDNSBlockingWithHTTPS": {
-        "dns_down_max": (0.5, 1.0),
+        "dns_blocked_max": (0.5, 1.0),
         "top_dns_failure": "dns_nxdomain_error",
         "top_probe_analysis": "dns",
     },
@@ -566,8 +566,10 @@ WC05_QA_CASES: Dict[str, Dict[str, Any]] = {
         "top_tls_failure": "connection_reset",
         "top_probe_analysis": "http-failure",
     },
+    # DNS is actually not inconsistent, since we observe the TLS handshake
+    # being successful in the control measurement
     "tlsBlockingConnectionResetWithInconsistentDNS": {
-        "dns_blocked_max": (0.5, 1.0),
+        "dns_ok_max": (0.5, 1.0),
         "tls_blocked_max": (0.5, 1.0),
         "tls_ok_max": (0.0, 0.05),
         "top_tls_failure": "connection_reset",
