@@ -2,12 +2,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Mapping
-from .rules import LAYER_RULES, get_layer, get_rule
+from .rules import get_layer, get_rule, Evidence, OutcomeClass
+from clickhouse_driver import Client as ClickhouseClient
 import logging
 
 log = logging.getLogger(__name__)
 
-from clickhouse_driver import Client as ClickhouseClient
 
 @dataclass()
 class Cell:
@@ -22,7 +22,8 @@ class Cell:
     tcp_rule_counts: Mapping[str, int]  # sumMap([top_tcp_rule_id], [toUInt32(1)])
     tls_rule_counts: Mapping[str, int]  # sumMap([top_tls_rule_id], [toUInt32(1)])
     # layer -> amount of blocked measurements in that layer
-    k_blocked: dict[str, int]
+    k_blocked: Mapping[str, int] # layer -> |Blocked measurements|
+    n_ok: Mapping[str, int] # layer -> |Ok measurements|
 
 
 @dataclass
@@ -87,6 +88,7 @@ def get_cells(
     rule_maps = ["dns_rule_counts", "tcp_rule_counts", "tls_rule_counts"]
     for row in rows:
         row['k_blocked'] = defaultdict(int)
+        row['n_ok'] = defaultdict(int)
         for rule_map in rule_maps:
 
             if not row.get(rule_map):
@@ -102,10 +104,13 @@ def get_cells(
                 except ValueError as e:
                     # old entries can have old rule names, ignore those
                     log.warning(str(e))
+                    continue
                 # See: https://docs.ooni.org/data/pipeline-implementation-plan ,
                 # section 3.6
-                if rule.evidence.SCORED and (rule.blocked > 0 or rule.down > 0):
+                if rule.evidence == Evidence.SCORED and rule.outcome_class == OutcomeClass.BLOCKED:
                     row['k_blocked'][get_layer(rule_id)] += count
+                if rule.outcome_class == OutcomeClass.OK:
+                    row['n_ok'][get_layer(rule_id)] += count
 
 
     return [Cell(**row) for row in rows]
