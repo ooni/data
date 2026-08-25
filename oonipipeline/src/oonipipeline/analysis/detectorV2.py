@@ -24,6 +24,7 @@ class Cell:
     # layer -> amount of blocked measurements in that layer
     k_blocked: Mapping[str, int] # layer -> |Blocked measurements|
     n_ok: Mapping[str, int] # layer -> |Ok measurements|
+    discarded: Mapping[str, int] # layer -> |Ignored rules|
 
 
 @dataclass
@@ -89,6 +90,7 @@ def get_cells(
     for row in rows:
         row['k_blocked'] = defaultdict(int)
         row['n_ok'] = defaultdict(int)
+        row['discarded'] = defaultdict(int)
         for rule_map in rule_maps:
 
             if not row.get(rule_map):
@@ -107,11 +109,13 @@ def get_cells(
                     continue
                 # See: https://docs.ooni.org/data/pipeline-implementation-plan ,
                 # section 3.6
+                layer = get_layer(rule_id)
                 if rule.evidence == Evidence.SCORED and rule.outcome_class == OutcomeClass.BLOCKED:
-                    row['k_blocked'][get_layer(rule_id)] += count
-                if rule.outcome_class == OutcomeClass.OK:
-                    row['n_ok'][get_layer(rule_id)] += count
-
+                    row['k_blocked'][layer] += count
+                elif rule.outcome_class == OutcomeClass.OK:
+                    row['n_ok'][layer] += count
+                else:
+                    row['discarded'][layer] += count
 
     return [Cell(**row) for row in rows]
 
