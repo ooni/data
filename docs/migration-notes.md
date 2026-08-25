@@ -330,3 +330,57 @@ Revert the code and reprocess. Both rule sets write valid ids; a partially
 reprocessed range carries a mix of `dns_untrusted` and `endpoint_untrusted`,
 which is inconsistent but not corrupt, and the `RULES_VERSION` on each row says
 which is which.
+
+### Add indexes to control tables
+
+```
+ALTER TABLE obs_web_ctrl ON CLUSTER oonidata_cluster ADD INDEX measurement_start_time_idx measurement_start_time TYPE minmax GRANULARITY 2;
+ALTER TABLE obs_web_ctrl ON CLUSTER oonidata_cluster MATERIALIZE INDEX measurement_start_time_idx;
+```
+
+---
+
+## 6. Add `analysis_rules_version` to `analysis_web_measurement`
+
+
+### Fix
+
+The writer uses a positional `INSERT .. SELECT`, so this is order-sensitive and
+must be appended last, matching where it sits in `make_create_queries()` and in
+the query's projection. **Apply before deploying**, or the next analysis run
+fails with a column-count mismatch.
+
+```sql
+ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster
+    ADD COLUMN IF NOT EXISTS `analysis_rules_version` UInt16;
+```
+
+Existing rows backfill as `0`.
+
+No reprocess is required.
+
+### Verify
+
+After the next analysis run, recent partitions should carry the current version
+while older ones stay at `0`:
+
+```sql
+SELECT analysis_rules_version, count()
+FROM analysis_web_measurement
+WHERE measurement_start_time > now() - INTERVAL 1 DAY
+GROUP BY 1 ORDER BY 1;
+```
+
+This is also the query to watch during a reprocess: the `0` (or previous
+version) bucket should drain as the range is rewritten.
+
+### Rollback
+
+Revert the code first, then drop. Reverting the code without dropping leaves the
+writer projecting one column fewer than the table has, which `INSERT .. SELECT`
+rejects.
+
+```sql
+ALTER TABLE analysis_web_measurement ON CLUSTER oonidata_cluster
+    DROP COLUMN IF EXISTS `analysis_rules_version`;
+```

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from ..db.connections import ClickhouseConnection
 from .rules import (
     DNS_RULES,
+    RULES_VERSION,
     TCP_RULES,
     TLS_RULES,
     render_evidence_multiif,
@@ -210,12 +211,17 @@ def format_query_analysis_web_fuzzy_logic(
 
     -- Constant within a measurement, so it rides along in the GROUP BY rather
     -- than needing an aggregate.
-    probe_id
+    probe_id,
+
+    -- Stamp the rule set that produced the scores above, so a range that was
+    -- reprocessed under a newer rules.py is distinguishable from one that was
+    -- not. Must stay last: the writer does a positional INSERT .. SELECT.
+    toUInt16({RULES_VERSION}) as analysis_rules_version
 
     FROM (
         WITH
-        position(ip, '.') = 0 as ip_is_v6,
-        position(ip, '.') != 0 as ip_is_v4
+        isIPv4String(ip) as ip_is_v4,
+        isIPv6String(ip) as ip_is_v6
 
         SELECT
         measurement_uid,
@@ -234,13 +240,14 @@ def format_query_analysis_web_fuzzy_logic(
         ip_is_v6,
         dns_failure,
         dns_answer,
+        dns_engine,
 
         -- We limit this to only the system resolver
         -- TODO: in order to fully support web_connectivity 0.5 we should ideally
         -- parse this as well.
-        groupArrayIf(dns_answer, dns_engine IN ('getaddrinfo', 'system')) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers,
-        groupArrayIf(ip_asn, dns_engine IN ('getaddrinfo', 'system')) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_asns,
-        maxIf(ip_is_bogon, dns_engine IN ('getaddrinfo', 'system')) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_contain_bogon,
+        groupArrayIf(dns_answer, dns_engine IN ('getaddrinfo', 'system') AND (ip_is_v6 OR ip_is_v4)) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers,
+        groupArrayIf(ip_asn, dns_engine IN ('getaddrinfo', 'system') AND (ip_is_v6 OR ip_is_v4)) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_asns,
+        maxIf(ip_is_bogon, dns_engine IN ('getaddrinfo', 'system') AND (ip_is_v6 OR ip_is_v4)) over (partition by measurement_uid, hostname, ip_is_v6) as dns_answers_contain_bogon,
 
         countIf(ip_asn IN %(cloud_provider_asns)s) over (partition by measurement_uid) as dns_answers_cloud,
 

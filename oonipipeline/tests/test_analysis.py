@@ -1,8 +1,9 @@
 from base64 import b64decode
 from datetime import datetime, timedelta
+from pathlib import Path
 from pprint import pprint
 import random
-from typing import List, Tuple
+from typing import Any, Dict, List, Tuple
 from unittest.mock import MagicMock
 
 from oonipipeline.analysis.web_analysis import (
@@ -304,3 +305,336 @@ def test_website_web_analysis_blocked_inconsistent_country(measurements, netinfo
     assert analysis["dns_ok_max"] < 0.3
     assert analysis["dns_blocked_max"] > 0.5
     assert analysis["top_dns_failure"] == None
+
+def test_website_web_analysis_wc05_ok_dns_tls_consistent(measurements, netinfodb, db):
+    measurement_uid = "20260820134136.956850_IR_webconnectivity_849483829bc121b7"
+    analysis = perform_analysis(
+        db=db,
+        netinfodb=netinfodb,
+        measurements=measurements,
+        measurement_uid=measurement_uid,
+    )
+    assert analysis["dns_ok_max"] > 0.5
+    assert analysis["dns_blocked_max"] < 0.5
+    assert analysis["top_dns_failure"] == None
+
+
+def test_website_web_analysis_wc05_one_dns_server_failing(measurements, netinfodb, db):
+    measurement_uid = "20260819122252.565771_RO_webconnectivity_011c98d67eae59a9"
+    analysis = perform_analysis(
+        db=db,
+        netinfodb=netinfodb,
+        measurements=measurements,
+        measurement_uid=measurement_uid,
+    )
+    assert analysis["dns_ok_max"] > 0.5
+    assert analysis["dns_blocked_max"] < 0.5
+
+
+# --------------------------------------------------------------------------
+# web_connectivity 0.5 QA fixtures
+#
+# tests/data/wc05_qa/<case>.json is a copy of the measurement.json from
+# probe-cli's own QA corpus, at
+# probe-cli/internal/minipipeline/testdata/webconnectivity/generated/<case>/,
+# one per censorship/edge-case scenario, named after the scenario itself
+# (e.g. "tlsBlockingConnectionResetWithConsistentDNS"). probe-cli uses these
+# to test its own minipipeline package; here we replay the same raw
+# measurements through oonipipeline's web_analysis fuzzy-logic rules and
+# check that the *_blocked_max/_down_max/_ok_max/top_*_failure signals it
+# derives line up with what each scenario is supposed to look like.
+#
+# top_probe_analysis is a passthrough of the measurement's own
+# test_keys.blocking field (see WebConnectivityTransformer.make_observations),
+# so asserting on it also verifies that field survives the observations
+# pipeline unchanged.
+# --------------------------------------------------------------------------
+
+WC05_QA_TESTDATA_DIR = Path(__file__).parent / "data" / "wc05_qa"
+
+# Maps each QA scenario directory name to the subset of the analysis row
+# that's distinctive for that scenario. A 2-tuple is an inclusive (lo, hi)
+# range for a fuzzy-logic score; any other value (including None) must match
+# exactly.
+WC05_QA_CASES: Dict[str, Dict[str, Any]] = {
+    "badSSLWithExpiredCertificate": {
+        "tls_ok_max": (0.0, 0.1),
+        "tls_down_max": (0.5, 1.0),
+        "top_tls_failure": "ssl_invalid_certificate",
+    },
+    "badSSLWithUnknownAuthorityWithConsistentDNS": {
+        "tls_ok_max": (0.0, 0.1),
+        "tls_down_max": (0.5, 1.0),
+        "top_tls_failure": "ssl_unknown_authority",
+    },
+    "badSSLWithUnknownAuthorityWithInconsistentDNS": {
+        # A second, legitimately-resolved IP completes the TLS handshake, so
+        # despite the bad-cert IP the layer isn't reported as blocked/down.
+        "tls_ok_max": (0.9, 1.0),
+        "top_tls_failure": "ssl_unknown_authority",
+        "top_probe_analysis": "dns",
+    },
+    "badSSLWithWrongServerName": {
+        "tls_ok_max": (0.0, 0.1),
+        "tls_down_max": (0.5, 1.0),
+        "top_tls_failure": "ssl_invalid_hostname",
+    },
+    "cloudflareCAPTCHAWithHTTP": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "http-diff",
+    },
+    "cloudflareCAPTCHAWithHTTPS": {
+        # Same CAPTCHA interstitial, but over HTTPS the encrypted body can't
+        # be diffed against the control, so it isn't flagged.
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "controlFailureWithSuccessfulHTTPSWebsite": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "controlFailureWithSuccessfulHTTPWebsite": {
+        "tcp_ok_max": (0.9, 1.0),
+        "top_probe_analysis": None,
+    },
+    "dnsBlockingAndroidDNSCacheNoData": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "dns",
+    },
+    "dnsBlockingBOGON": {
+        "tcp_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "dns",
+    },
+    "dnsBlockingNXDOMAIN": {
+        "dns_blocked_max": (0.5, 1.0),
+        "top_probe_analysis": "dns",
+    },
+    "dnsHijackingToLocalhostWithHTTP": {
+        "tcp_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "dns",
+    },
+    "dnsHijackingToLocalhostWithHTTPS": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "dns",
+    },
+    "dnsHijackingToProxyWithHTTPSURL": {
+        # The hijack redirects to a working proxy that serves valid content,
+        # so nothing downstream looks blocked.
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "dnsHijackingToProxyWithHTTPURL": {
+        "tcp_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "ghostDNSBlockingWithHTTP": {
+        "dns_blocked_max": (0.5, 1.0),
+        "top_dns_failure": "dns_nxdomain_error",
+        "top_probe_analysis": "dns",
+    },
+    "ghostDNSBlockingWithHTTPS": {
+        "dns_blocked_max": (0.5, 1.0),
+        "top_dns_failure": "dns_nxdomain_error",
+        "top_probe_analysis": "dns",
+    },
+    "httpBlockingConnectionReset": {
+        "tcp_ok_max": (0.9, 1.0),
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "http-failure",
+    },
+    "httpDiffWithConsistentDNS": {
+        "top_probe_analysis": "http-diff",
+    },
+    "httpDiffWithInconsistentDNS": {
+        # DNS inconsistency outranks the http-diff signal.
+        "top_probe_analysis": "dns",
+    },
+    "idnaWithoutCensorshipLowercase": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "idnaWithoutCensorshipWithFirstLetterUppercase": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "largeFileWithHTTP": {
+        "tcp_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "largeFileWithHTTPS": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "localhostWithHTTP": {
+        "tcp_blocked_max": (0.0, 0.05),
+        "tls_blocked_max": (0.0, 0.05),
+        "top_probe_analysis": "false",
+    },
+    "localhostWithHTTPS": {
+        "tcp_blocked_max": (0.0, 0.05),
+        "tls_blocked_max": (0.0, 0.05),
+        "top_probe_analysis": "false",
+    },
+    "redirectWithBrokenLocationForHTTP": {
+        "top_probe_analysis": "http-failure",
+    },
+    "redirectWithBrokenLocationForHTTPS": {
+        "top_probe_analysis": "http-failure",
+    },
+    # In these redirect-chain cases the failure happens on the hop's own IP,
+    # which isn't corroborated by control/TLS-consistency data, so the fuzzy
+    # rules score that layer as inconclusive/ok rather than blocked; only the
+    # raw failure string (top_*_failure, an unweighted mode) surfaces it.
+    "redirectWithConsistentDNSAndThenConnectionRefusedForHTTP": {
+        "tcp_ok_max": (0.9, 1.0),
+        "top_tcp_failure": "connection_refused",
+        "top_probe_analysis": "http-failure",
+    },
+    "redirectWithConsistentDNSAndThenConnectionRefusedForHTTPS": {
+        "tcp_ok_max": (0.9, 1.0),
+        "top_tcp_failure": "connection_refused",
+        "top_probe_analysis": "http-failure",
+    },
+    "redirectWithConsistentDNSAndThenConnectionResetForHTTP": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_tls_failure": "connection_reset",
+        "top_probe_analysis": "http-failure",
+    },
+    "redirectWithConsistentDNSAndThenConnectionResetForHTTPS": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_tls_failure": "connection_reset",
+        "top_probe_analysis": "http-failure",
+    },
+    "redirectWithConsistentDNSAndThenEOFForHTTP": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_tls_failure": "eof_error",
+        "top_probe_analysis": "http-failure",
+    },
+    "redirectWithConsistentDNSAndThenEOFForHTTPS": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_tls_failure": "eof_error",
+        "top_probe_analysis": "http-failure",
+    },
+    "redirectWithConsistentDNSAndThenNXDOMAIN": {
+        "top_dns_failure": "dns_nxdomain_error",
+        "top_probe_analysis": "dns",
+    },
+    "redirectWithConsistentDNSAndThenTimeoutForHTTP": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_tls_failure": "generic_timeout_error",
+        "top_probe_analysis": "http-failure",
+    },
+    "redirectWithConsistentDNSAndThenTimeoutForHTTPS": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_tls_failure": "generic_timeout_error",
+        "top_probe_analysis": "http-failure",
+    },
+    "redirectWithMoreThanTenRedirectsAndHTTP": {
+        "top_probe_analysis": "false",
+    },
+    "redirectWithMoreThanTenRedirectsAndHTTPS": {
+        "top_probe_analysis": "false",
+    },
+    "successWithHTTP": {
+        "tcp_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "successWithHTTPS": {
+        "tls_ok_max": (0.9, 1.0),
+        "top_probe_analysis": "false",
+    },
+    "tcpBlockingConnectTimeout": {
+        "tcp_blocked_max": (0.5, 1.0),
+        "tcp_ok_max": (0.0, 0.05),
+        "top_tcp_failure": "generic_timeout_error",
+        "top_probe_analysis": "tcp_ip",
+    },
+    "tcpBlockingConnectionRefusedWithInconsistentDNS": {
+        "top_tcp_failure": "connection_refused",
+        "top_probe_analysis": "dns",
+    },
+    "throttlingWithHTTP": {
+        "top_probe_analysis": "http-failure",
+    },
+    "throttlingWithHTTPS": {
+        "top_probe_analysis": "http-failure",
+    },
+    "tlsBlockingConnectionResetWithConsistentDNS": {
+        "dns_ok_max": (0.5, 1.0),
+        "tls_blocked_max": (0.5, 1.0),
+        "tls_ok_max": (0.0, 0.05),
+        "top_tls_failure": "connection_reset",
+        "top_probe_analysis": "http-failure",
+    },
+    # DNS is actually not inconsistent, since we observe the TLS handshake
+    # being successful in the control measurement
+    "tlsBlockingConnectionResetWithInconsistentDNS": {
+        "dns_ok_max": (0.5, 1.0),
+        "tls_blocked_max": (0.5, 1.0),
+        "tls_ok_max": (0.0, 0.05),
+        "top_tls_failure": "connection_reset",
+        "top_probe_analysis": "dns",
+    },
+    "websiteDownNXDOMAIN": {
+        # The control gets NXDOMAIN too, so it's classified as the site
+        # being down rather than as censorship.
+        "dns_down_max": (0.5, 1.0),
+        "top_dns_failure": "dns_nxdomain_error",
+        "top_probe_analysis": "false",
+    },
+    "websiteDownNoAddrs": {
+        "top_probe_analysis": "false",
+    },
+    "websiteDownTCPConnect": {
+        # The control fails to connect too, so this reads as the site being
+        # down rather than as censorship.
+        "tcp_down_max": (0.5, 1.0),
+        "top_tcp_failure": "connection_refused",
+        "top_probe_analysis": "false",
+    },
+}
+
+
+def perform_wc05_qa_analysis(db, netinfodb, case_name: str):
+    msmt_path = WC05_QA_TESTDATA_DIR / f"{case_name}.json"
+    msmt = load_measurement(msmt_path=msmt_path)
+    # These QA fixtures don't carry a measurement_uid (it's assigned by the
+    # collector on ingestion), but the observations/analysis pipeline
+    # requires one, so use the scenario name, which is unique within the
+    # corpus.
+    msmt.measurement_uid = case_name
+    ts = datetime.strptime(msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S")
+    write_observations_to_db(
+        db=db,
+        netinfodb=netinfodb,
+        msmt=msmt,
+        bucket_date="1984-01-01",
+    )
+    db.flush()
+    analysis_list = list(
+        get_analysis_web_fuzzy_logic(
+            db=db,
+            start_time=ts - timedelta(days=1),
+            end_time=ts + timedelta(days=1),
+            probe_cc=[],
+            measurement_uid=case_name,
+        )
+    )
+    assert len(analysis_list) == 1
+    return analysis_list[0]
+
+
+@pytest.mark.parametrize("case_name", sorted(WC05_QA_CASES.keys()))
+def test_website_web_analysis_wc05_qa_corpus(db, netinfodb, case_name):
+    analysis = perform_wc05_qa_analysis(db, netinfodb, case_name)
+    for field, expected in WC05_QA_CASES[case_name].items():
+        got = analysis[field]
+        if isinstance(expected, tuple):
+            lo, hi = expected
+            assert lo <= got <= hi, (
+                f"{case_name}: expected {field} in [{lo}, {hi}], got {got}"
+            )
+        else:
+            assert got == expected, (
+                f"{case_name}: expected {field} == {expected!r}, got {got!r}"
+            )
