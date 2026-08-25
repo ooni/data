@@ -5,6 +5,7 @@ These need no database: the rules are data and the SQL is generated from them,
 so the invariants that used to be unverifiable (ids unique, weights in range,
 the outcome and rule-id cascades agreeing) can be asserted directly.
 """
+from collections import defaultdict
 
 import re
 
@@ -290,3 +291,15 @@ def test_top_rule_does_not_rank_on_down_or_ok(layer, rules):
     assert f"{layer}_down" not in sql
     assert f"{layer}_ok" not in sql
     assert f"({layer}_evidence, {layer}_blocked, {layer}_rule_id)" in sql
+
+def test_all_rules_unique():
+    all_rules = [rule for layer in LAYER_RULES.values() for rule in layer]
+    unique_rule_ids = defaultdict(list)
+
+    for r in all_rules:
+        unique_rule_ids[r.rule_id].append(r)
+
+    assert len(all_rules) == len(unique_rule_ids), \
+    f"""There are duplicated rule_ids: {
+        [rid for (rid, rls) in unique_rule_ids.items() if len(rls) > 1]
+    }"""
