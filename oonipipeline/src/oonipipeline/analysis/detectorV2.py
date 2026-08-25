@@ -26,6 +26,9 @@ class Cell:
     n_ok: Mapping[str, int] # layer -> |Ok measurements|
     discarded: Mapping[str, int] # layer -> |Ignored rules|
 
+    # def next_s_pos(self, s_prev: float, ) -> float:
+    #     # s_pos = max(0.0, s_pos + sum(c * log_lr[rule_id] for rule_id, c in counts.items()))
+    #     return max(0, s_prev + ())
 
 @dataclass
 class ChangePoints:
@@ -120,9 +123,13 @@ def get_cells(
     return [Cell(**row) for row in rows]
 
 
-def run_detector(
+# TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
+def compute_changepoints(
     series: list[Cell], p_block: float = 0.1, p_ok: float = 0.9, edd: int = 1
 ) -> list[ChangePoints]:
+
+
+
     return []
 
 
