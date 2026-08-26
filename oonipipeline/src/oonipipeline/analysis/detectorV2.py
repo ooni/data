@@ -1,4 +1,3 @@
-from mypy.state import state
 from enum import StrEnum
 import logging
 import math
@@ -122,7 +121,10 @@ def get_cells(
                     and rule.outcome_class == OutcomeClass.BLOCKED
                 ):
                     row["k_blocked"][layer] += count
-                elif rule.outcome_class == OutcomeClass.OK:
+                elif (
+                    rule.evidence == Evidence.SCORED
+                    and rule.outcome_class == OutcomeClass.OK
+                ):
                     row["n_ok"][layer] += count
                 else:
                     row["discarded"][layer] += count
@@ -132,9 +134,11 @@ def get_cells(
 
 # TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
 class Detector:
-    def __init__(self):
+    def __init__(self, debug: bool = False):
         self.s_pos = self.s_neg = 0
         self.state = State.UNKNOWN  # UNK | OK | BLOCK
+        self.debug = debug
+        self.series = [] # List of (s_neg, s_pos) values per step
 
 
     def compute_changepoints(
@@ -163,8 +167,11 @@ class Detector:
         w_clear = math.log((1.0 - p1) / (1.0 - p0))
 
         for cell in series:
-            if (cp := self.step(cell, w_block, w_clear, layer, h)) and not warmup:
+            cp = self.step(cell, w_block, w_clear, layer, h)
+            if cp and not warmup:
                 results.append(cp)
+            if self.debug:
+                self.series.append((self.s_neg, self.s_pos))
 
         return results
 
@@ -172,10 +179,10 @@ class Detector:
         # original state is unknown, run both series in parallel to discover
         # current state
         k = cell.k_blocked[layer]
-        n = cell.n_ok[layer]
+        n = cell.n_ok[layer] + k # total scored firings, ok or not
         llr = self.s_pos + k * w_block + (n - k) * w_clear
 
-        def make_cp(state: State) -> ChangePoint:
+        def make_cp(s: State) -> ChangePoint:
             return ChangePoint(
                 domain = cell.domain,
                 probe_cc = cell.probe_cc,
@@ -183,7 +190,7 @@ class Detector:
                 resolver_asn = cell.resolver_asn,
                 s_neg = self.s_neg,
                 s_pos = self.s_pos,
-                state = state,
+                state = s,
                 h = h,
                 ts_hour = cell.ts_hour
             )
