@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import List, Tuple
 
-RULES_VERSION = 2
+RULES_VERSION = 3
 
 
 class Evidence(IntEnum):
@@ -269,7 +269,7 @@ TCP_RULES: List[Rule] = [
         comment="Failure against an address that mostly succeeds in the control.",
     ),
     Rule(
-        rule_id="dns_untrusted",
+        rule_id="dns_untrusted_tcp_gate",
         condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
         blocked=0.0,
         down=0.0,
@@ -284,7 +284,7 @@ TCP_RULES: List[Rule] = [
         evidence=Evidence.DISCARDED,
     ),
     Rule(
-        rule_id="failure_ctrl_also_failing",
+        rule_id="tcp_failure_ctrl_also_failing",
         condition=(
             "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate <= 0.5 "
             "AND ctrl_tcp_failing_count > 0"
@@ -357,7 +357,7 @@ TLS_RULES: List[Rule] = [
         comment="Failure where the control succeeds, with a less specific error.",
     ),
     Rule(
-        rule_id="dns_untrusted",
+        rule_id="dns_untrusted_tls_gate",
         condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
         blocked=0.0,
         down=0.0,
@@ -380,7 +380,7 @@ TLS_RULES: List[Rule] = [
         evidence=Evidence.DISCARDED,
     ),
     Rule(
-        rule_id="failure_ctrl_also_failing",
+        rule_id="tls_failure_ctrl_also_failing",
         condition=(
             "tls_failure IS NOT NULL AND ctrl_tls_success_rate <= 0.5 "
             "AND ctrl_tls_failing_count > 0"
