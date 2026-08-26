@@ -5,6 +5,7 @@ from oonipipeline.analysis.detector import (
     run_detector_for,
     ANALYSIS_COLS,
 )
+from oonipipeline.events_panel.panel_v2 import detector_v2_panel
 from datetime import datetime, timezone, timedelta
 import logging
 import pandas as pd
@@ -232,4 +233,8 @@ def detector_panel():
         st.dataframe(df, hide_index=True)
 
 
-detector_panel()
+pg = st.navigation([
+    st.Page(detector_panel, title="Detector V1", icon="📉"),
+    st.Page(detector_v2_panel, title="Detector V2", icon="🧪"),
+])
+pg.run()

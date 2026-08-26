@@ -229,7 +229,7 @@ class Detector:
         # TODO: Reset to unknown after long periouds without data
         return None
 
-# Charts
+# ----< Charts >---------------------------------------------------------------
 LAYERS = ["dns", "tcp", "tls"]
 
 OUTCOME_COLORS = {
@@ -239,12 +239,98 @@ OUTCOME_COLORS = {
 }
 
 
-def make_cells_histogram_chart(cells: list[Cell]):
+def _cusum_overlay_df(cells: list[Cell], detector: "Detector"):
+    """
+    Zips a debug-run Detector's recorded (s_neg, s_pos) steps back onto the
+    same cells list it was run over — Detector.series has no timestamp of
+    its own, it's positional, one entry per cell in the order step() saw
+    them, which is exactly the order/length of the cells list passed to
+    compute_changepoints.
+    """
+    import pandas as pd
+
+    n = min(len(cells), len(detector.series))
+    if n < len(cells) or n < len(detector.series):
+        log.warning(
+            "cells (%d) and detector.series (%d) length mismatch; "
+            "overlay truncated to %d — did you run the detector over a "
+            "different cells list than the one being charted?",
+            len(cells), len(detector.series), n,
+        )
+    return pd.DataFrame(
+        [
+            {
+                "ts_hour": cells[i].ts_hour,
+                "s_neg": detector.series[i][0],
+                "s_pos": detector.series[i][1],
+            }
+            for i in range(n)
+        ]
+    )
+
+
+CUSUM_COLORS = {
+    "s_pos (evidence for blocked)": "#d62728",  # red
+    "s_neg (evidence for ok)": "#ff7f0e",       # orange
+}
+
+
+def _make_cusum_overlay_chart(df_overlay, show_legend: bool):
+    import altair as alt
+
+    base = alt.Chart(df_overlay).encode(x=alt.X("ts_hour:T"))
+    axis = alt.Axis(title="CUSUM statistic", orient="right")
+    s_pos_line = base.mark_line(color="#d62728").encode(
+        y=alt.Y("s_pos:Q", axis=axis),
+        tooltip=[alt.Tooltip("ts_hour:T"), alt.Tooltip("s_pos:Q")],
+    )
+    s_neg_line = base.mark_line(color="#ff7f0e").encode(
+        y=alt.Y("s_neg:Q", axis=axis),
+        tooltip=[alt.Tooltip("ts_hour:T"), alt.Tooltip("s_neg:Q")],
+    )
+    chart = s_pos_line + s_neg_line
+
+    if show_legend:
+        # The lines above use static (not data-driven) colors, so they don't
+        # produce a legend on their own. This zero-opacity mark exists only
+        # to render one, matching CUSUM_COLORS' labels/colors.
+        legend_swatch = (
+            alt.Chart(pd_dataframe_for_legend())
+            .mark_point(filled=True, opacity=0)
+            .encode(
+                color=alt.Color(
+                    "label:N",
+                    scale=alt.Scale(
+                        domain=list(CUSUM_COLORS.keys()),
+                        range=list(CUSUM_COLORS.values()),
+                    ),
+                    legend=alt.Legend(title="CUSUM"),
+                )
+            )
+        )
+        chart = chart + legend_swatch
+
+    return chart
+
+
+def pd_dataframe_for_legend():
+    import pandas as pd
+
+    return pd.DataFrame({"label": list(CUSUM_COLORS.keys())})
+
+
+def make_cells_histogram_chart(
+    cells: list[Cell], detectors: Mapping[str, "Detector"] | None = None
+):
     """
     One stacked-bar histogram per layer (dns, tcp, tls): x is the cell hour,
     y is measurement count, stacked by outcome (blocked/ok/discarded). Cells
     sharing the same hour are summed together, so pass in cells already
     scoped to whatever series you want plotted (domain/probe_cc/probe_asn).
+
+    detectors: optional {layer: Detector} of debug-run (debug=True) detectors
+    for that same cells list — when given, the layer's s_pos/s_neg series is
+    overlaid as lines on an independent right-hand y-axis.
     """
     import altair as alt
     import pandas as pd
@@ -268,7 +354,7 @@ def make_cells_histogram_chart(cells: list[Cell]):
     df = df.groupby(["ts_hour", "layer", "outcome"], as_index=False)["count"].sum()
 
     def make_layer_chart(layer: str, show_x_axis: bool):
-        return (
+        bar_chart = (
             alt.Chart(df[df["layer"] == layer])
             .mark_bar()
             .encode(
@@ -288,19 +374,28 @@ def make_cells_histogram_chart(cells: list[Cell]):
                 ),
                 tooltip=["ts_hour:T", "outcome:N", "count:Q"],
             )
-            .properties(
-                width=900,
-                height=150,
-                title=alt.TitleParams(
-                    text=layer,
-                    fontSize=11,
-                    fontWeight="normal",
-                    color="gray",
-                    anchor="start",
-                    dy=-4,
-                    offset=2,
-                ),
+        )
+
+        chart = bar_chart
+        if detectors and layer in detectors:
+            overlay_df = _cusum_overlay_df(cells, detectors[layer])
+            overlay_chart = _make_cusum_overlay_chart(
+                overlay_df, show_legend=(layer == LAYERS[-1])
             )
+            chart = alt.layer(bar_chart, overlay_chart).resolve_scale(y="independent")
+
+        return chart.properties(
+            width=900,
+            height=150,
+            title=alt.TitleParams(
+                text=layer,
+                fontSize=11,
+                fontWeight="normal",
+                color="gray",
+                anchor="start",
+                dy=-4,
+                offset=2,
+            ),
         )
 
     charts = [
@@ -337,13 +432,19 @@ def _classify_rule_id_for_chart(rule_id: str) -> str:
     return "discarded"
 
 
-def make_rule_histogram_chart(cells: list[Cell]):
+def make_rule_histogram_chart(
+    cells: list[Cell], detectors: Mapping[str, "Detector"] | None = None
+):
     """
     One stacked-bar histogram per layer, same x/y axes and blocked=red /
     ok=green / discarded=gray coloring as make_cells_histogram_chart, but
     each bar is stacked by individual rule id rather than by outcome class.
     There isn't room to label each segment, so the rule id and its count
     are shown in the tooltip on hover instead.
+
+    detectors: optional {layer: Detector} of debug-run (debug=True) detectors
+    for that same cells list — when given, the layer's s_pos/s_neg series is
+    overlaid as lines on an independent right-hand y-axis.
     """
     import altair as alt
     import pandas as pd
@@ -366,9 +467,13 @@ def make_rule_histogram_chart(cells: list[Cell]):
     ].sum()
 
     def make_layer_chart(layer: str, show_x_axis: bool):
-        return (
+        bar_chart = (
             alt.Chart(df[df["layer"] == layer])
-            .mark_bar()
+            # A stroke around each stacked segment, since same-outcome rules
+            # share a fill color and would otherwise merge into one blob —
+            # the outline is what makes "how many rules contributed" readable
+            # at a glance.
+            .mark_bar(stroke="black", strokeWidth=1)
             .encode(
                 x=alt.X(
                     "ts_hour:T",
@@ -392,19 +497,28 @@ def make_rule_histogram_chart(cells: list[Cell]):
                     alt.Tooltip("count:Q"),
                 ],
             )
-            .properties(
-                width=900,
-                height=150,
-                title=alt.TitleParams(
-                    text=layer,
-                    fontSize=11,
-                    fontWeight="normal",
-                    color="gray",
-                    anchor="start",
-                    dy=-4,
-                    offset=2,
-                ),
+        )
+
+        chart = bar_chart
+        if detectors and layer in detectors:
+            overlay_df = _cusum_overlay_df(cells, detectors[layer])
+            overlay_chart = _make_cusum_overlay_chart(
+                overlay_df, show_legend=(layer == LAYERS[-1])
             )
+            chart = alt.layer(bar_chart, overlay_chart).resolve_scale(y="independent")
+
+        return chart.properties(
+            width=900,
+            height=150,
+            title=alt.TitleParams(
+                text=layer,
+                fontSize=11,
+                fontWeight="normal",
+                color="gray",
+                anchor="start",
+                dy=-4,
+                offset=2,
+            ),
         )
 
     charts = [
