@@ -1,5 +1,6 @@
 from typing import List
 
+import orjson
 import pytest
 
 from oonidata.dataclient import load_measurement
@@ -60,6 +61,54 @@ def test_wc_v5_cn_bug_observations(netinfodb, measurements):
     assert len(web_obs) == 4
     assert len(web_ctrl_obs) == 2
 
+def test_wc_v5_hostname_map_bug(netinfodb, measurements):
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20260819191120.166951_BR_webconnectivity_83e91bd6e8aab5b5"
+        ]
+    )
+    assert isinstance(msmt, WebConnectivity)
+    bucket_date = "2026-08-19"
+    obs_tup = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date
+    )
+    assert len(obs_tup) == 2
+    web_obs, web_ctrl_obs = obs_tup
+    assert isinstance(web_obs[0], WebObservation)
+    # www.mtv.com resolves to 2.20.21.125, which the probe connects to 3 times
+    # (once over port 80 and twice over port 443). Each connection should be
+    # mapped to its own observation and all of them should carry the hostname.
+    mtv_obs = [obs for obs in web_obs if obs.ip == "2.20.21.125"]
+    assert len(mtv_obs) == 3
+    assert sorted(obs.port for obs in mtv_obs) == [80, 443, 443]
+    assert set(obs.transaction_id for obs in mtv_obs) == {40003, 50003, 50009}
+    for obs in mtv_obs:
+        assert obs.hostname == "www.mtv.com"
+    for obs in web_obs:
+        if obs.ip:
+            assert obs.hostname is not None, f"missing hostname for {obs.ip}"
+
+    # Each row has to hold observations of a single connection: the port 80
+    # connections carry neither a TLS handshake nor an HTTPS request, and the
+    # HTTPS request belongs to the connection it was made over.
+    for obs in web_obs:
+        if obs.port == 80:
+            assert obs.tls_server_name is None, f"TLS on port 80 for {obs.ip}"
+            assert obs.tls_failure is None
+            assert not (obs.http_request_url or "").startswith("https://")
+    https_obs = [
+        obs
+        for obs in web_obs
+        if obs.http_request_url == "https://www.mtv.com/?xrs=PPM-18-10caf1c"
+    ]
+    assert len(https_obs) == 1
+    assert https_obs[0].transaction_id == 50009
+    assert https_obs[0].port == 443
+    assert https_obs[0].tls_server_name == "www.mtv.com"
+
+    assert len(web_obs) == 36
+    assert len(web_ctrl_obs) == 19
+
 
 def test_wc_v5_control_only_addresses_have_hostname(netinfodb, measurements):
     # The probe also tested addresses which only the control resolved, so the
@@ -84,6 +133,116 @@ def test_wc_v5_control_only_addresses_have_hostname(netinfodb, measurements):
     for obs in web_obs:
         if obs.ip:
             assert obs.hostname is not None, f"missing hostname for {obs.ip}"
+
+
+def test_wc_v5_tcp_failure_only_has_hostname(netinfodb, measurements):
+    # An address which only the control resolved and which fails at the TCP
+    # level has neither a DNS observation nor a TLS handshake to take the
+    # hostname from (there is no SNI, since the handshake never happened), so
+    # the control DNS resolution is the only hint we have.
+    msmt_dict = orjson.loads(
+        measurements[
+            "20260730100745.046370_IN_webconnectivity_35dfecc6616656ee"
+        ].read_bytes()
+    )
+    test_keys = msmt_dict["test_keys"]
+    ip = "192.178.183.100"
+    failed_transaction_ids = set()
+    for tcp_connect in test_keys["tcp_connect"]:
+        if tcp_connect["ip"] == ip:
+            tcp_connect["status"] = {"failure": "connection_reset", "success": False}
+            failed_transaction_ids.add(tcp_connect["transaction_id"])
+    test_keys["tls_handshakes"] = [
+        tls_h
+        for tls_h in test_keys["tls_handshakes"]
+        if tls_h["transaction_id"] not in failed_transaction_ids
+    ]
+    test_keys["requests"] = [
+        r for r in test_keys["requests"] if r["transaction_id"] not in failed_transaction_ids
+    ]
+
+    msmt = load_measurement(msmt=msmt_dict)
+    assert isinstance(msmt, WebConnectivity)
+    web_obs, _ = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2026-07-30"
+    )
+    failed_obs = [obs for obs in web_obs if obs.ip == ip]
+    assert len(failed_obs) == 1
+    assert failed_obs[0].tcp_failure == "connection_reset"
+    assert failed_obs[0].tls_server_name is None
+    assert failed_obs[0].dns_answer is None
+    assert failed_obs[0].hostname == "google.com"
+    for obs in web_obs:
+        if obs.ip:
+            assert obs.hostname is not None, f"missing hostname for {obs.ip}"
+
+
+def test_wc_v5_dns_transaction_id_is_not_a_connection_id(netinfodb, measurements):
+    # In web_connectivity 0.5 the transaction_id of a DNS query lives in a
+    # different ID space than that of the connections, so it must not be used
+    # to look them up: when a DNS resolution cannot be anchored to a TCP
+    # observation (here because the tcp_connect entry is missing), the TLS
+    # observation still has to be attached to it via the address.
+    msmt_dict = orjson.loads(
+        measurements[
+            "20260819122252.565771_RO_webconnectivity_011c98d67eae59a9"
+        ].read_bytes()
+    )
+    test_keys = msmt_dict["test_keys"]
+    ip = "198.20.0.103"
+    dns_transaction_ids = {
+        q["transaction_id"]
+        for q in test_keys["queries"]
+        if any(a.get("ipv4") == ip for a in (q["answers"] or []))
+    }
+    connection_transaction_ids = {t["transaction_id"] for t in test_keys["tcp_connect"]}
+    assert dns_transaction_ids
+    assert not dns_transaction_ids & connection_transaction_ids
+    test_keys["tcp_connect"] = [t for t in test_keys["tcp_connect"] if t["ip"] != ip]
+
+    msmt = load_measurement(msmt=msmt_dict)
+    assert isinstance(msmt, WebConnectivity)
+    web_obs, _ = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2026-08-19"
+    )
+    joined = [
+        obs for obs in web_obs if obs.dns_answer == ip and obs.tls_server_name is not None
+    ]
+    assert len(joined) == 1
+
+
+def test_wc_v5_shared_dns_and_connection_transaction_id(netinfodb, measurements):
+    # Some nettests use a single transaction_id for the DNS query and for the
+    # connections which follow it. When that's the case the ID does identify
+    # the connection, and it must win over matching on the address, which would
+    # otherwise pick whichever connection to that endpoint comes first.
+    msmt_dict = orjson.loads(
+        measurements[
+            "20260819191120.166951_BR_webconnectivity_83e91bd6e8aab5b5"
+        ].read_bytes()
+    )
+    test_keys = msmt_dict["test_keys"]
+    ip = "23.201.217.53"
+    # the probe connects to this endpoint over port 80 (transaction 40004) and
+    # over port 443 (transaction 50010)
+    queries = [
+        q
+        for q in test_keys["queries"]
+        if [a["ipv4"] for a in (q["answers"] or []) if a.get("ipv4")] == [ip]
+    ]
+    assert len(queries) == 1
+    queries[0]["transaction_id"] = 50010
+
+    msmt = load_measurement(msmt=msmt_dict)
+    assert isinstance(msmt, WebConnectivity)
+    web_obs, _ = measurement_to_observations(
+        msmt=msmt, netinfodb=netinfodb, bucket_date="2026-08-19"
+    )
+    resolved = [obs for obs in web_obs if obs.dns_answer == ip]
+    assert len(resolved) == 1
+    assert resolved[0].transaction_id == 50010
+    assert resolved[0].port == 443
+    assert resolved[0].tls_server_name == "www.mtv.com"
 
 
 def test_http_observations(measurements, netinfodb):
