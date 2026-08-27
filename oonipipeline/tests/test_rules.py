@@ -12,6 +12,9 @@ import re
 import pytest
 
 from oonipipeline.analysis.rules import (
+    RULES_VERSION,
+    CURRENT_RULES,
+    LEGACY_RULES,
     DNS_RULES,
     LAYER_RULES,
     NO_MATCH_EVIDENCE,
@@ -303,3 +306,10 @@ def test_all_rules_unique():
     f"""There are duplicated rule_ids: {
         [rid for (rid, rls) in unique_rule_ids.items() if len(rls) > 1]
     }"""
+
+def test_current_rules_match_layers():
+    assert len(DNS_RULES) + len(TCP_RULES) + len(TLS_RULES) == len(CURRENT_RULES)
+
+def test_legacy_rules_have_old_version():
+    for rule in LEGACY_RULES:
+        assert rule.version < RULES_VERSION
