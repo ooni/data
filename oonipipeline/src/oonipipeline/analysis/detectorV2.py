@@ -78,7 +78,8 @@ def get_cells(
         AND ts_hour >= %(start_time)s
         AND ts_hour <= %(end_time)s
         {"AND probe_cc=%(probe_cc)s" if probe_cc else ""}
-    GROUP BY domain, probe_cc, probe_asn, resolver_asn, ts_hour;
+    GROUP BY domain, probe_cc, probe_asn, resolver_asn, ts_hour
+    ORDER BY domain, probe_cc, probe_asn, resolver_asn, ts_hour
     """
 
     params = {"domains": domains, "start_time": start_time, "end_time": end_time}
