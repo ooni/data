@@ -293,53 +293,121 @@ def _cusum_overlay_df(cells: list[Cell], detector: "Detector"):
 
 
 CUSUM_COLORS = {
-    "s_pos (evidence for blocked)": "#d62728",  # red
-    "s_neg (evidence for ok)": "#ff7f0e",       # orange
+    "s+": "#1f77b4",  # blue
+    "s-": "#f1c40f",  # yellow
+}
+
+STATE_BAND_COLORS = {
+    "UNK": "#ffe066",    # yellow
+    "OK": "#2ca02c",     # green
+    "BLOCK": "#d62728",  # red
 }
 
 
-def _make_cusum_overlay_chart(df_overlay, show_legend: bool):
-    import altair as alt
-
-    base = alt.Chart(df_overlay).encode(x=alt.X("ts_hour:T"))
-    axis = alt.Axis(title="CUSUM statistic", orient="right")
-    s_pos_line = base.mark_line(color="#d62728").encode(
-        y=alt.Y("s_pos:Q", axis=axis),
-        tooltip=[alt.Tooltip("ts_hour:T"), alt.Tooltip("s_pos:Q")],
-    )
-    s_neg_line = base.mark_line(color="#ff7f0e").encode(
-        y=alt.Y("s_neg:Q", axis=axis),
-        tooltip=[alt.Tooltip("ts_hour:T"), alt.Tooltip("s_neg:Q")],
-    )
-    chart = s_pos_line + s_neg_line
-
-    if show_legend:
-        # The lines above use static (not data-driven) colors, so they don't
-        # produce a legend on their own. This zero-opacity mark exists only
-        # to render one, matching CUSUM_COLORS' labels/colors.
-        legend_swatch = (
-            alt.Chart(pd_dataframe_for_legend())
-            .mark_point(filled=True, opacity=0)
-            .encode(
-                color=alt.Color(
-                    "label:N",
-                    scale=alt.Scale(
-                        domain=list(CUSUM_COLORS.keys()),
-                        range=list(CUSUM_COLORS.values()),
-                    ),
-                    legend=alt.Legend(title="CUSUM"),
-                )
-            )
-        )
-        chart = chart + legend_swatch
-
-    return chart
-
-
-def pd_dataframe_for_legend():
+def _state_bands_df(cells: list[Cell], detector: "Detector"):
+    """
+    Collapses a debug-run Detector's per-step state into contiguous-run
+    bands (state_start, state_end, state), one row per unbroken stretch of
+    the same state — same idea as v1 detector.py's state background bands.
+    """
     import pandas as pd
 
-    return pd.DataFrame({"label": list(CUSUM_COLORS.keys())})
+    n = min(len(cells), len(detector.series))
+    if n == 0:
+        return pd.DataFrame(columns=["state_start", "state_end", "state"])
+
+    states = [str(detector.series[i][2]) for i in range(n)]
+    hours = [cells[i].ts_hour for i in range(n)]
+
+    bands = []
+    run_start = 0
+    for i in range(1, n + 1):
+        if i == n or states[i] != states[run_start]:
+            bands.append(
+                {
+                    "state_start": hours[run_start],
+                    # extend to the start of the next hour so the band
+                    # covers the full width of the last bar in the run
+                    "state_end": hours[i] if i < n else hours[i - 1] + timedelta(hours=1),
+                    "state": states[run_start],
+                }
+            )
+            run_start = i
+    return pd.DataFrame(bands)
+
+
+def _make_state_bands_chart(bands_df):
+    import altair as alt
+
+    return (
+        alt.Chart(bands_df)
+        .mark_rect(opacity=0.25)
+        .encode(
+            x=alt.X("state_start:T"),
+            x2=alt.X2("state_end:T"),
+            color=alt.Color(
+                "state:N",
+                scale=alt.Scale(
+                    domain=list(STATE_BAND_COLORS.keys()),
+                    range=list(STATE_BAND_COLORS.values()),
+                ),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("state:N"),
+                alt.Tooltip("state_start:T"),
+                alt.Tooltip("state_end:T"),
+            ],
+        )
+    )
+
+
+def _make_cusum_overlay_chart(df_overlay, show_legend: bool, selection):
+    """
+    Melts (s_pos, s_neg) into one color-encoded line series (rather than two
+    statically-colored marks + a fake legend swatch) so the CUSUM legend is
+    real and click-bindable: click "s+"/"s-" to isolate that line, same as
+    the Outcome legend already does for the bars. `selection` is shared
+    across all layer subplots (created once by the caller); the legend (and
+    the click-binding) is only attached on the subplot where show_legend is
+    True.
+    """
+    import altair as alt
+
+    long_df = df_overlay.melt(
+        id_vars=["ts_hour"],
+        value_vars=["s_pos", "s_neg"],
+        var_name="component",
+        value_name="value",
+    )
+    long_df["series"] = long_df["component"].map({"s_pos": "s+", "s_neg": "s-"})
+
+    axis = alt.Axis(title="CUSUM statistic", orient="right")
+    line = (
+        alt.Chart(long_df)
+        .mark_line()
+        .encode(
+            x=alt.X("ts_hour:T"),
+            y=alt.Y("value:Q", axis=axis),
+            color=alt.Color(
+                "series:N",
+                scale=alt.Scale(
+                    domain=list(CUSUM_COLORS.keys()),
+                    range=list(CUSUM_COLORS.values()),
+                ),
+                legend=alt.Legend(title="CUSUM") if show_legend else None,
+            ),
+            opacity=alt.condition(selection, alt.value(1.0), alt.value(0.05)),
+            tooltip=[
+                alt.Tooltip("ts_hour:T"),
+                alt.Tooltip("series:N"),
+                alt.Tooltip("value:Q"),
+            ],
+        )
+    )
+    if show_legend:
+        line = line.add_selection(selection)
+    return line
 
 
 def make_cells_histogram_chart(
@@ -376,10 +444,19 @@ def make_cells_histogram_chart(
     df = pd.DataFrame(records)
     df = df.groupby(["ts_hour", "layer", "outcome"], as_index=False)["count"].sum()
 
+    # Shared across all three layer subplots: click an entry in the Outcome
+    # legend (shown only on the last subplot) to isolate that outcome across
+    # every subplot; shift-click to select more than one. An empty selection
+    # (nothing clicked yet) means "show everything", same as today.
+    outcome_selection = alt.selection_multi(fields=["outcome"], bind="legend")
+    # Same idea for the CUSUM legend: click "s+"/"s-" to isolate that line
+    # across every subplot, and dim the bars too so the line stands out.
+    cusum_selection = alt.selection_multi(fields=["series"], bind="legend")
+
     def make_layer_chart(layer: str, show_x_axis: bool):
         bar_chart = (
             alt.Chart(df[df["layer"] == layer])
-            .mark_bar()
+            .mark_bar(stroke="black", strokeWidth=1)
             .encode(
                 x=alt.X(
                     "ts_hour:T",
@@ -395,17 +472,28 @@ def make_cells_histogram_chart(
                     ),
                     legend=alt.Legend(title="Outcome") if layer == LAYERS[-1] else None,
                 ),
+                opacity=alt.condition(
+                    outcome_selection & cusum_selection, alt.value(0.4), alt.value(0.05)
+                ),
                 tooltip=["ts_hour:T", "outcome:N", "count:Q"],
             )
         )
+        if layer == LAYERS[-1]:
+            bar_chart = bar_chart.add_selection(outcome_selection)
 
         chart = bar_chart
         if detectors and layer in detectors:
-            overlay_df = _cusum_overlay_df(cells, detectors[layer])
+            detector = detectors[layer]
+            bands_df = _state_bands_df(cells, detector)
+            overlay_df = _cusum_overlay_df(cells, detector)
             overlay_chart = _make_cusum_overlay_chart(
-                overlay_df, show_legend=(layer == LAYERS[-1])
+                overlay_df, show_legend=(layer == LAYERS[-1]), selection=cusum_selection
             )
-            chart = alt.layer(bar_chart, overlay_chart).resolve_scale(y="independent")
+            layers = []
+            if not bands_df.empty:
+                layers.append(_make_state_bands_chart(bands_df))
+            layers += [bar_chart, overlay_chart]
+            chart = alt.layer(*layers).resolve_scale(y="independent", color="independent")
 
         return chart.properties(
             width=900,
@@ -489,6 +577,15 @@ def make_rule_histogram_chart(
         "count"
     ].sum()
 
+    # Shared across all three layer subplots: click an entry in the Outcome
+    # legend (shown only on the last subplot) to isolate that outcome across
+    # every subplot; shift-click to select more than one. An empty selection
+    # (nothing clicked yet) means "show everything", same as today.
+    outcome_selection = alt.selection_multi(fields=["outcome"], bind="legend")
+    # Same idea for the CUSUM legend: click "s+"/"s-" to isolate that line
+    # across every subplot, and dim the bars too so the line stands out.
+    cusum_selection = alt.selection_multi(fields=["series"], bind="legend")
+
     def make_layer_chart(layer: str, show_x_axis: bool):
         bar_chart = (
             alt.Chart(df[df["layer"] == layer])
@@ -512,6 +609,9 @@ def make_rule_histogram_chart(
                     ),
                     legend=alt.Legend(title="Outcome") if layer == LAYERS[-1] else None,
                 ),
+                opacity=alt.condition(
+                    outcome_selection & cusum_selection, alt.value(0.6), alt.value(0.05)
+                ),
                 order=alt.Order("rule_id:N"),
                 tooltip=[
                     alt.Tooltip("ts_hour:T"),
@@ -521,14 +621,22 @@ def make_rule_histogram_chart(
                 ],
             )
         )
+        if layer == LAYERS[-1]:
+            bar_chart = bar_chart.add_selection(outcome_selection)
 
         chart = bar_chart
         if detectors and layer in detectors:
-            overlay_df = _cusum_overlay_df(cells, detectors[layer])
+            detector = detectors[layer]
+            bands_df = _state_bands_df(cells, detector)
+            overlay_df = _cusum_overlay_df(cells, detector)
             overlay_chart = _make_cusum_overlay_chart(
-                overlay_df, show_legend=(layer == LAYERS[-1])
+                overlay_df, show_legend=(layer == LAYERS[-1]), selection=cusum_selection
             )
-            chart = alt.layer(bar_chart, overlay_chart).resolve_scale(y="independent")
+            layers = []
+            if not bands_df.empty:
+                layers.append(_make_state_bands_chart(bands_df))
+            layers += [bar_chart, overlay_chart]
+            chart = alt.layer(*layers).resolve_scale(y="independent", color="independent")
 
         return chart.properties(
             width=900,
