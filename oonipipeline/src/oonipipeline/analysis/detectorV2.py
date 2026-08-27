@@ -3,7 +3,7 @@ import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Mapping
 
 from clickhouse_driver import Client as ClickhouseClient
@@ -171,16 +171,39 @@ class Detector:
             if cp and not warmup:
                 results.append(cp)
             if self.debug:
-                self.series.append((self.s_neg, self.s_pos))
+                self.series.append((self.s_neg, self.s_pos, self.state))
 
         return results
+
+    def compute_llr_series(
+        self,
+        series: list[Cell],
+        layer: str,
+        p0: float = 0.1,
+        p1: float = 0.9,
+    ) -> list[float]:
+        """
+        The raw per-cell log-likelihood-ratio (llr = k*w_block + (n-k)*w_clear)
+        for each cell in series.
+
+        Useful for inspecting the evidence a given hour contributed on its own.
+        """
+        w_block = math.log(p1 / p0)
+        w_clear = math.log((1.0 - p1) / (1.0 - p0))
+
+        llrs = []
+        for cell in series:
+            k = cell.k_blocked[layer]
+            n = cell.n_ok[layer] + k  # total scored firings, ok or not
+            llrs.append(k * w_block + (n - k) * w_clear)
+        return llrs
 
     def step(self, cell : Cell, w_block : float, w_clear : float, layer : str, h : float) -> ChangePoint | None:
         # original state is unknown, run both series in parallel to discover
         # current state
         k = cell.k_blocked[layer]
         n = cell.n_ok[layer] + k # total scored firings, ok or not
-        llr = self.s_pos + k * w_block + (n - k) * w_clear
+        llr = k * w_block + (n - k) * w_clear
 
         def make_cp(s: State) -> ChangePoint:
             return ChangePoint(
@@ -211,19 +234,19 @@ class Detector:
             # Run s_neg accumulator: we wan't to see if the blocking signal
             # goes down
             self.s_neg = max(0, self.s_neg - llr)
+            self.s_pos = 0
             if self.s_neg > h:
                 cp = make_cp(State.OK)
                 self.state = State.OK
-                self.s_pos = self.s_neg = 0
                 return cp
         elif self.state == State.OK:
             # Run s_pos accumulator: we wan't to see if the blocking signal
             # goes up
             self.s_pos = max(0, self.s_pos + llr)
+            self.s_neg = 0
             if self.s_pos > h:
                 cp = make_cp(State.BLOCK)
                 self.state = State.BLOCK
-                self.s_neg = self.s_pos = 0
                 return cp
 
         # TODO: Reset to unknown after long periouds without data
