@@ -145,11 +145,11 @@ class Detector:
         self,
         series: list[Cell],
         layer: str,
-        p0: float = 0.1,
-        p1: float = 0.9,
+        p0: float = 0.05,
+        p1: float = 0.50,
         # TODO choose a better value for h depending on labeled corpus
         # (implementation plan section 3.8)
-        h: float = 0.75,
+        h: float = 30,
         warmup: bool = False,
     ) -> list[ChangePoint]:
         """
