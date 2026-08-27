@@ -5,6 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Mapping
+from time import time
 
 from clickhouse_driver import Client as ClickhouseClient
 
@@ -86,6 +87,7 @@ def get_cells(
     if probe_cc:
         params["probe_cc"] = probe_cc
 
+    start_query = time()
     result = clickhouse.execute_iter(
         query,
         params=params,
@@ -93,7 +95,9 @@ def get_cells(
     )
     col_names = [t[0] for t in next(result)]
     rows = [dict(zip(col_names, r)) for r in result]
+    end_query = time()
 
+    start_process = time()
     rule_maps = ["dns_rule_counts", "tcp_rule_counts", "tls_rule_counts"]
     for row in rows:
         row["k_blocked"] = defaultdict(int)
@@ -130,6 +134,8 @@ def get_cells(
                 else:
                     row["discarded"][layer] += count
 
+    end_process = time()
+    log.info(f"Query time: {(end_query - start_query):.3f}")
     return [Cell(**row) for row in rows]
 
 
