@@ -269,6 +269,20 @@ OUTCOME_COLORS = {
 }
 
 
+def _full_hour_range(cells: list[Cell]):
+    """
+    get_cells only ever returns a row for an hour with >=1 measurement — a
+    silent hour (zero measurements) never appears in `cells` at all. This
+    reconstructs the full hourly index between the first and last observed
+    cell so charts can make those gaps explicit instead of silently
+    stretching/compressing the time axis around them.
+    """
+    import pandas as pd
+
+    hours = [cell.ts_hour for cell in cells]
+    return pd.date_range(min(hours), max(hours), freq="h")
+
+
 def _cusum_overlay_df(cells: list[Cell], detector: "Detector"):
     """
     Zips a debug-run Detector's recorded (s_neg, s_pos) steps back onto the
@@ -451,6 +465,28 @@ def make_cells_histogram_chart(
     df = pd.DataFrame(records)
     df = df.groupby(["ts_hour", "layer", "outcome"], as_index=False)["count"].sum()
 
+    # Make silent hours (no cell at all, i.e. zero measurements) explicit
+    # zero-height bars instead of missing rows, so the x-axis spacing and
+    # bar width reflect the real hourly cadence rather than compressing
+    # around the gaps.
+    full_hours = _full_hour_range(cells)
+    # A fixed chart width divided across many more hourly bars (now that
+    # silent hours are included) can make bars wider than their per-hour
+    # pixel slot, causing them to visually overlap their neighbors — scale
+    # width with the number of hours instead of leaving it fixed.
+    chart_width = max(900, len(full_hours) * 6)
+    skeleton = pd.DataFrame(
+        [
+            (ts_hour, layer, outcome)
+            for ts_hour in full_hours
+            for layer in LAYERS
+            for outcome in OUTCOME_COLORS
+        ],
+        columns=["ts_hour", "layer", "outcome"],
+    )
+    df = skeleton.merge(df, on=["ts_hour", "layer", "outcome"], how="left")
+    df["count"] = df["count"].fillna(0)
+
     # Shared across all three layer subplots: click an entry in the Outcome
     # legend (shown only on the last subplot) to isolate that outcome across
     # every subplot; shift-click to select more than one. An empty selection
@@ -480,7 +516,7 @@ def make_cells_histogram_chart(
                     legend=alt.Legend(title="Outcome") if layer == LAYERS[-1] else None,
                 ),
                 opacity=alt.condition(
-                    outcome_selection & cusum_selection, alt.value(0.4), alt.value(0.05)
+                    outcome_selection & cusum_selection, alt.value(0.6), alt.value(0.05)
                 ),
                 tooltip=["ts_hour:T", "outcome:N", "count:Q"],
             )
@@ -503,7 +539,7 @@ def make_cells_histogram_chart(
             chart = alt.layer(*layers).resolve_scale(y="independent", color="independent")
 
         return chart.properties(
-            width=900,
+            width=chart_width,
             height=150,
             title=alt.TitleParams(
                 text=layer,
@@ -584,6 +620,29 @@ def make_rule_histogram_chart(
         "count"
     ].sum()
 
+    # Make silent hours (no cell at all, i.e. zero measurements) explicit
+    # instead of missing rows, so the x-axis spacing reflects the real
+    # hourly cadence. Unlike the outcome histogram, there's no fixed rule-id
+    # set to cross-join against (that would wrongly claim every rule "fired
+    # 0 times" every hour) — just add one zero-height placeholder row per
+    # (hour, layer) that has no data at all.
+    full_hours = _full_hour_range(cells)
+    existing_hour_layer = set(zip(df["ts_hour"], df["layer"]))
+    missing_rows = [
+        {"ts_hour": ts_hour, "layer": layer, "rule_id": "(no data)", "outcome": "discarded", "count": 0}
+        for ts_hour in full_hours
+        for layer in LAYERS
+        if (ts_hour, layer) not in existing_hour_layer
+    ]
+    if missing_rows:
+        df = pd.concat([df, pd.DataFrame(missing_rows)], ignore_index=True)
+
+    # A fixed chart width divided across many more hourly bars (now that
+    # silent hours are included) can make bars wider than their per-hour
+    # pixel slot, causing them to visually overlap their neighbors — scale
+    # width with the number of hours instead of leaving it fixed.
+    chart_width = max(900, len(full_hours) * 6)
+
     # Shared across all three layer subplots: click an entry in the Outcome
     # legend (shown only on the last subplot) to isolate that outcome across
     # every subplot; shift-click to select more than one. An empty selection
@@ -646,7 +705,7 @@ def make_rule_histogram_chart(
             chart = alt.layer(*layers).resolve_scale(y="independent", color="independent")
 
         return chart.properties(
-            width=900,
+            width=chart_width,
             height=150,
             title=alt.TitleParams(
                 text=layer,

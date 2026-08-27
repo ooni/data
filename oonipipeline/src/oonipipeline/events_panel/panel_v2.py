@@ -19,6 +19,36 @@ STATE_COLORS = {
 }
 
 
+def render_scrollable_chart(chart, height: int = 650):
+    """
+    These charts grow wider than the page as the date range grows (bar
+    width is scaled to the number of hourly bars so they don't overlap).
+    st.altair_chart renders the chart at its native width and lets the page
+    itself grow instead of scrolling — build the embed by hand instead, in
+    an explicit overflow-x:auto div, so it scrolls within a fixed-height
+    iframe (via st.iframe) instead.
+
+    height must comfortably fit the whole rendered chart (title + stacked
+    subplots + bottom x-axis tick labels): overflow-y is hidden, so unlike
+    overflow-x there's no scroll fallback if it's too short — content just
+    gets clipped instead.
+    """
+    html = f"""
+    <div style="overflow-x: auto; overflow-y: hidden; width: 100%; padding-bottom: 8px;">
+      <div id="vis"></div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@4.17.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+    <script type="text/javascript">
+      vegaEmbed('#vis', {chart.to_json()}).catch(console.error);
+    </script>
+    """
+    # The iframe itself never scrolls (full height always visible); the
+    # inner div's overflow-x:auto is what actually scrolls.
+    st.iframe(html, width="stretch", height=height)
+
+
 @st.cache_data(ttl=300)
 def get_cells_cached(
     clickhouse_url: str,
@@ -64,6 +94,15 @@ def detector_v2_panel():
             "**Domain**", "www.caraotadigital.net", key="v2_domain_input"
         )
 
+        c3, c4, c5 = st.columns(3)
+        p0 = c3.number_input(
+            "**p0**", value=0.05, min_value=0.0, max_value=1.0, key="v2_p0_input"
+        )
+        p1 = c4.number_input(
+            "**p1**", value=0.50, min_value=0.0, max_value=1.0, key="v2_p1_input"
+        )
+        h = c5.number_input("**h**", value=30.0, key="v2_h_input")
+
         submitted = st.form_submit_button("Run")
 
     # While only the first date of the range has been picked, date_input
@@ -90,8 +129,8 @@ def detector_v2_panel():
         return
 
     st.write(f"Cells: **{len(cells)}**")
-    w_clear = math.log((1 - 0.9) / (1 - 0.1))
-    w_block = math.log(0.9 / 0.1)
+    w_clear = math.log((1 - p1) / (1 - p0))
+    w_block = math.log(p1 / p0)
     st.write(f"w_clear: {w_clear:.3f}, w_block: {w_block:.3f}")
 
     ccs_in_result = sorted({c.probe_cc for c in cells})
@@ -109,16 +148,18 @@ def detector_v2_panel():
     changepoints = dict()
     for layer in layers:
         detectors[layer] = Detector(debug=True)
-        changepoints[layer] = detectors[layer].compute_changepoints(series_cells, layer)
+        changepoints[layer] = detectors[layer].compute_changepoints(
+            series_cells, layer, p0=p0, p1=p1, h=h
+        )
 
     st.write("**Outcome histogram** (blocked / ok / discarded)")
-    st.altair_chart(make_cells_histogram_chart(series_cells, detectors))
+    render_scrollable_chart(make_cells_histogram_chart(series_cells, detectors))
 
     st.write("**Rule histogram** (stacked by individual rule id)")
-    st.altair_chart(make_rule_histogram_chart(series_cells, detectors))
+    render_scrollable_chart(make_rule_histogram_chart(series_cells, detectors))
 
     for layer in layers:
-        llr_series = detectors[layer].compute_llr_series(series_cells, layer)
+        llr_series = detectors[layer].compute_llr_series(series_cells, layer, p0=p0, p1=p1)
         st.write(f"**LLR** ({layer})")
         llr_df = pd.DataFrame(
             {
