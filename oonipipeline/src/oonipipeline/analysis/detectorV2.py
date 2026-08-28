@@ -4,7 +4,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Mapping
+from typing import Mapping, Iterable
 from time import time
 
 from clickhouse_driver import Client as ClickhouseClient
@@ -56,7 +56,7 @@ def get_cells(
     start_time: datetime,
     end_time: datetime,
     probe_cc: str | None = None,
-) -> list[Cell]:
+) -> Iterable[Cell]:
     query = f"""
     SELECT
         domain, probe_cc, probe_asn,
@@ -71,8 +71,6 @@ def get_cells(
         sumMap([top_tls_rule_id], [toUInt32(1)])   AS tls_rule_counts,
         count()                                    AS n_measurements,
         uniqIf(probe_id, probe_id != '')           AS n_probes
-
-
     FROM analysis_web_measurement
     WHERE
         domain IN %(domains)s
@@ -81,23 +79,34 @@ def get_cells(
         {"AND probe_cc=%(probe_cc)s" if probe_cc else ""}
     GROUP BY domain, probe_cc, probe_asn, resolver_asn, ts_hour
     ORDER BY domain, probe_cc, probe_asn, resolver_asn, ts_hour
+    SETTINGS
+    max_bytes_before_external_group_by=201001000,
+    max_bytes_before_external_sort=201001000
     """
 
     params = {"domains": domains, "start_time": start_time, "end_time": end_time}
     if probe_cc:
         params["probe_cc"] = probe_cc
 
-    start_query = time()
     result = clickhouse.execute_iter(
         query,
         params=params,
         with_column_types=True,
+        chunk_size=1000,
     )
-    col_names = [t[0] for t in next(result)]
-    rows = [dict(zip(col_names, r)) for r in result]
-    end_query = time()
+    first_chunk = next(result)
+    col_names = [t[0] for t in first_chunk[0]]
 
-    start_process = time()
+    # chunk_size > 1 returns a list per iteration, this iterator flattens
+    # that structure
+    def _iter_rows():
+        # first chunk has column definitions on position 0
+        yield from first_chunk[1:]
+        for chunk in result:
+            yield from chunk
+
+    rows = (dict(zip(col_names, r)) for r in _iter_rows())
+
     rule_maps = ["dns_rule_counts", "tcp_rule_counts", "tls_rule_counts"]
     for row in rows:
         row["k_blocked"] = defaultdict(int)
@@ -133,11 +142,7 @@ def get_cells(
                     row["n_ok"][layer] += count
                 else:
                     row["discarded"][layer] += count
-
-    end_process = time()
-    log.info(f"Query time: {(end_query - start_query):.3f}")
-    return [Cell(**row) for row in rows]
-
+        yield Cell(**row)
 
 # TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
 class Detector:

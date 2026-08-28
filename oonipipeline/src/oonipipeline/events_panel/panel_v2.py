@@ -2,7 +2,6 @@ import math
 from collections import defaultdict
 from dataclasses import asdict
 from datetime import datetime, timezone, timedelta
-
 import pandas as pd
 import streamlit as st
 from clickhouse_driver import Client as ClickhouseClient
@@ -60,7 +59,7 @@ def get_cells_cached(
     probe_cc: str | None,
 ) -> list[Cell]:
     client = ClickhouseClient.from_url(clickhouse_url)
-    return get_cells(client, domains, start_time, end_time, probe_cc)
+    return list(get_cells(client, domains, start_time, end_time, probe_cc))
 
 
 def detector_v2_panel():
@@ -138,14 +137,13 @@ def detector_v2_panel():
     w_block = math.log(p1 / p0)
     st.write(f"w_clear: {w_clear:.3f}, w_block: {w_block:.3f}")
 
-    # The CUSUM state is per (probe_cc, probe_asn, resolver_asn, domain)
-    # series — mixing every ASN's cells into one detector run conflates
-    # unrelated series and produces meaningless s_pos/s_neg. Run the
-    # detector separately per ASN instead, same as the original detector.
     layers = ['tcp', 'tls', 'dns']
+    # The CUSUM series key is (probe_cc, probe_asn, resolver_asn, domain) —
+    # probe_cc and domain are already fixed by the query inputs above, so
+    # group by (probe_asn, resolver_asn) here.
     cells_by_asn = defaultdict(list)
     for c in cells:
-        cells_by_asn[c.probe_asn].append(c)
+        cells_by_asn[(c.probe_asn, c.resolver_asn)].append(c)
     for asn_cells in cells_by_asn.values():
         asn_cells.sort(key=lambda c: c.ts_hour)
 
@@ -167,17 +165,20 @@ def detector_v2_panel():
 
     asn_list = sorted(cells_by_asn.keys(), key=lambda a: asn_counts[a], reverse=True)
 
-    # Default to an ASN with anomalies, same as the original detector panel;
-    # fall back to the ASN with the most cells if none have anomalies.
+    # Default to an (asn, resolver_asn) with anomalies, same as the original
+    # detector panel; fall back to the one with the most cells otherwise.
     if "v2_asn_select" not in st.session_state:
         st.session_state["v2_asn_select"] = next(
             (a for a in asn_list if a in asns_with_changepoints), asn_list[0]
         )
 
     selected_asn = st.selectbox(
-        "ASN",
+        "ASN / resolver ASN",
         asn_list,
-        format_func=lambda a: f"{'❗️' if a in asns_with_changepoints else ''}{a} ({asn_counts[a]})",
+        format_func=lambda a: (
+            f"{'❗️' if a in asns_with_changepoints else ''}"
+            f"{a[0]} / {a[1]} ({asn_counts[a]})"
+        ),
         key="v2_asn_select",
     )
 
