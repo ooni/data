@@ -148,11 +148,16 @@ def get_cells(
 
 # TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
 class Detector:
-    def __init__(self, debug: bool = False):
+    def __init__(self, debug: bool = False, gap_halflife: float = 24):
         self.s_pos = self.s_neg = 0
         self.state = State.UNKNOWN  # UNK | OK | BLOCK
         self.debug = debug
         self.series = []  # List of (s_neg, s_pos) values per step
+        self.gap_halflife = gap_halflife
+
+        # For decay computation
+        self.last_hour: datetime | None = None
+        self.last_state: State = State.UNKNOWN
 
     def compute_changepoints(
         self,
@@ -160,10 +165,9 @@ class Detector:
         layer: str,
         p0: float = 0.05,
         p1: float = 0.50,
-        # TODO choose a better value for h depending on labeled corpus
-        # (implementation plan section 3.8)
         h: float = 30,
         warmup: bool = False,
+        gap_halflife: float = 24,
     ) -> list[ChangePoint]:
         """
         Assumes the input list has the following properties:
@@ -181,7 +185,7 @@ class Detector:
         w_clear = math.log((1.0 - p1) / (1.0 - p0))
 
         for cell in series:
-            cp = self.step(cell, w_block, w_clear, layer, h)
+            cp = self.step(cell, w_block, w_clear, layer, h, gap_halflife)
             if cp and not warmup:
                 results.append(cp)
             if self.debug:
@@ -190,7 +194,13 @@ class Detector:
         return results
 
     def step(
-        self, cell: Cell, w_block: float, w_clear: float, layer: str, h: float
+        self,
+        cell: Cell,
+        w_block: float,
+        w_clear: float,
+        layer: str,
+        h: float,
+        gap_halflife: float,
     ) -> ChangePoint | None:
         # original state is unknown, run both series in parallel to discover
         # current state
@@ -211,16 +221,19 @@ class Detector:
                 ts_hour=cell.ts_hour,
             )
 
+        self.decay(gap_halflife, cell.ts_hour)
+
+        cp = None
         if self.state == State.UNKNOWN:
             # s_pos = max(0.0, s_pos + k * w_blocked + (n - k) * w_clear)
             self.s_pos = max(0, self.s_pos + llr)
             self.s_neg = max(0, self.s_neg - llr)
 
             if self.s_pos > h:
-                self.state = State.BLOCK
+                self.set_state(State.BLOCK)
                 self.s_pos = self.s_neg = 0
             elif self.s_neg > h:
-                self.state = State.OK
+                self.set_state(State.OK)
                 self.s_pos = self.s_neg = 0
             # Don't return a changepoint: this is the initial state
         elif self.state == State.BLOCK:
@@ -230,8 +243,7 @@ class Detector:
             self.s_pos = 0
             if self.s_neg > h:
                 cp = make_cp(State.OK)
-                self.state = State.OK
-                return cp
+                self.set_state(State.OK)
         elif self.state == State.OK:
             # Run s_pos accumulator: we wan't to see if the blocking signal
             # goes up
@@ -239,11 +251,37 @@ class Detector:
             self.s_neg = 0
             if self.s_pos > h:
                 cp = make_cp(State.BLOCK)
-                self.state = State.BLOCK
-                return cp
+                self.set_state(State.BLOCK)
 
         # TODO: Reset to unknown after long periouds without data
-        return None
+        self.last_hour = cell.ts_hour
+        return cp
+
+    def decay(self, gap_halflife: float, ts_hour: datetime):
+        """
+        Every `gap_halflife` hours in silence the accumulators are cut in
+        half of their current value
+
+        With `gap_halflife` = 24, the accumulators are set back to 0 after
+        48 hours of silence
+
+        ts_hour: hour of the current cell
+        """
+        # First iteration: nothing to do
+        if self.last_hour is None:
+            return
+
+        gap_hours = (ts_hour - self.last_hour).total_seconds() / 3600
+        if gap_hours <= 24:
+            return  # not enough gap to decay
+
+        decay = 0.5 ** (gap_hours / gap_halflife)
+        self.s_neg *= decay
+        self.s_pos *= decay
+
+    def set_state(self, new_state: State):
+        self.last_state = self.state
+        self.state = new_state
 
 
 @dataclass
@@ -252,9 +290,11 @@ class ResultEntry:
     tcp: list[ChangePoint]
     tls: list[ChangePoint]
 
+
 # A dict from each probe_cc, probe_asn, resolver_asn, domain to the list of
 # changepoints per layer
 DetectorResult = dict[Tuple[str, str, str, str], ResultEntry]
+
 
 def run_detector_full(
     clickhouse_url: str, start_time: datetime, end_time: datetime
@@ -309,6 +349,7 @@ def compute_llr_series(
         n = cell.n_ok[layer] + k  # total scored firings, ok or not
         llrs.append(k * w_block + (n - k) * w_clear)
     return llrs
+
 
 # ----< Charts >---------------------------------------------------------------
 LAYERS = ["dns", "tcp", "tls"]
