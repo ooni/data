@@ -1,11 +1,11 @@
-from enum import StrEnum
 import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Mapping, Iterable
-from time import time
+from enum import StrEnum
+from itertools import groupby
+from typing import Iterable, Mapping, Tuple
 
 from clickhouse_driver import Client as ClickhouseClient
 
@@ -31,11 +31,12 @@ class Cell:
     n_ok: Mapping[str, int]  # layer -> |Ok measurements|
     discarded: Mapping[str, int]  # layer -> |Ignored rules|
 
-class State(StrEnum):
 
-    UNKNOWN = 'UNK'
-    OK = 'OK'
-    BLOCK = 'BLOCK'
+class State(StrEnum):
+    UNKNOWN = "UNK"
+    OK = "OK"
+    BLOCK = "BLOCK"
+
 
 @dataclass
 class ChangePoint:
@@ -47,7 +48,7 @@ class ChangePoint:
     s_neg: float
     s_pos: float
     h: float
-    state: State # Acquired in this hour
+    state: State  # Acquired in this hour
 
 
 def get_cells(
@@ -144,14 +145,14 @@ def get_cells(
                     row["discarded"][layer] += count
         yield Cell(**row)
 
+
 # TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
 class Detector:
     def __init__(self, debug: bool = False):
         self.s_pos = self.s_neg = 0
         self.state = State.UNKNOWN  # UNK | OK | BLOCK
         self.debug = debug
-        self.series = [] # List of (s_neg, s_pos) values per step
-
+        self.series = []  # List of (s_neg, s_pos) values per step
 
     def compute_changepoints(
         self,
@@ -210,24 +211,26 @@ class Detector:
             llrs.append(k * w_block + (n - k) * w_clear)
         return llrs
 
-    def step(self, cell : Cell, w_block : float, w_clear : float, layer : str, h : float) -> ChangePoint | None:
+    def step(
+        self, cell: Cell, w_block: float, w_clear: float, layer: str, h: float
+    ) -> ChangePoint | None:
         # original state is unknown, run both series in parallel to discover
         # current state
         k = cell.k_blocked[layer]
-        n = cell.n_ok[layer] + k # total scored firings, ok or not
+        n = cell.n_ok[layer] + k  # total scored firings, ok or not
         llr = k * w_block + (n - k) * w_clear
 
         def make_cp(s: State) -> ChangePoint:
             return ChangePoint(
-                domain = cell.domain,
-                probe_cc = cell.probe_cc,
-                probe_asn = cell.probe_asn,
-                resolver_asn = cell.resolver_asn,
-                s_neg = self.s_neg,
-                s_pos = self.s_pos,
-                state = s,
-                h = h,
-                ts_hour = cell.ts_hour
+                domain=cell.domain,
+                probe_cc=cell.probe_cc,
+                probe_asn=cell.probe_asn,
+                resolver_asn=cell.resolver_asn,
+                s_neg=self.s_neg,
+                s_pos=self.s_pos,
+                state=s,
+                h=h,
+                ts_hour=cell.ts_hour,
             )
 
         if self.state == State.UNKNOWN:
@@ -263,6 +266,49 @@ class Detector:
 
         # TODO: Reset to unknown after long periouds without data
         return None
+
+
+@dataclass
+class ResultEntry:
+    dns: list[ChangePoint]
+    tcp: list[ChangePoint]
+    tls: list[ChangePoint]
+
+# A dict from each probe_cc, probe_asn, resolver_asn, domain to the list of
+# changepoints per layer
+DetectorResult = dict[Tuple[str, str, str, str], ResultEntry]
+
+def run_detector_full(
+    clickhouse_url: str, start_time: datetime, end_time: datetime
+) -> DetectorResult:
+    clickhouse = ClickhouseClient.from_url(clickhouse_url)
+    domains = clickhouse.execute("""
+        SELECT domain
+        FROM citizenlab
+        WHERE category_code = 'GRP'
+        """)
+    domains = [d[0] for d in domains]
+    grouped = groupby(
+        get_cells(clickhouse, domains, start_time, end_time),
+        key=lambda cell: (
+            cell.probe_cc,
+            cell.probe_asn,
+            cell.resolver_asn,
+            cell.domain,
+        ),
+    )
+    results = dict()
+    layers = ["dns", "tls", "tcp"]
+    for group, cells in grouped:
+        cells_list = list(cells)
+        entry = dict()
+        for layer in layers:
+            detector = Detector()
+            entry[layer] = detector.compute_changepoints(cells_list, layer)
+        results[group] = ResultEntry(**entry)
+
+    return results
+
 
 # ----< Charts >---------------------------------------------------------------
 LAYERS = ["dns", "tcp", "tls"]
