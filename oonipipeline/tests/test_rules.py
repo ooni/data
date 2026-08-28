@@ -5,12 +5,16 @@ These need no database: the rules are data and the SQL is generated from them,
 so the invariants that used to be unverifiable (ids unique, weights in range,
 the outcome and rule-id cascades agreeing) can be asserted directly.
 """
+from collections import defaultdict
 
 import re
 
 import pytest
 
 from oonipipeline.analysis.rules import (
+    RULES_VERSION,
+    CURRENT_RULES,
+    LEGACY_RULES,
     DNS_RULES,
     LAYER_RULES,
     NO_MATCH_EVIDENCE,
@@ -22,6 +26,7 @@ from oonipipeline.analysis.rules import (
     render_outcome_multiif,
     render_rule_id_multiif,
     render_top_rule_argmax,
+    RuleLayer,
 )
 from oonipipeline.analysis.web_analysis import format_query_analysis_web_fuzzy_logic
 
@@ -290,3 +295,27 @@ def test_top_rule_does_not_rank_on_down_or_ok(layer, rules):
     assert f"{layer}_down" not in sql
     assert f"{layer}_ok" not in sql
     assert f"({layer}_evidence, {layer}_blocked, {layer}_rule_id)" in sql
+
+def test_all_rules_unique():
+    all_rules = [rule for layer in LAYER_RULES.values() for rule in layer]
+    unique_rule_ids = defaultdict(list)
+
+    for r in all_rules:
+        unique_rule_ids[r.rule_id].append(r)
+
+    assert len(all_rules) == len(unique_rule_ids), \
+    f"""There are duplicated rule_ids: {
+        [rid for (rid, rls) in unique_rule_ids.items() if len(rls) > 1]
+    }"""
+
+def test_current_rules_match_layers():
+    assert len(DNS_RULES) + len(TCP_RULES) + len(TLS_RULES) == len(CURRENT_RULES)
+
+def test_legacy_rules_have_old_version():
+    for rule in LEGACY_RULES:
+        assert rule.version < RULES_VERSION
+
+def test_layer_list_consistency():
+    assert all(rule.layer == RuleLayer.TCP for rule in TCP_RULES)
+    assert all(rule.layer == RuleLayer.DNS for rule in DNS_RULES)
+    assert all(rule.layer == RuleLayer.TLS for rule in TLS_RULES)
