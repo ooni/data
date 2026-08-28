@@ -170,7 +170,8 @@ class Detector:
             - Sorted by time, one entry per hour
             - All cells are from the same (probe_cc, probe_asn, resolver_asn, domain)
 
-        TODO: Definition of p1 and p0 is unclear
+        p0: Expected k/n in OK state
+        p1: Expected k/n in BLOCK state
 
         "warmup" runs the detector without generating any new changepoint, it
         only updates internal state
@@ -350,7 +351,9 @@ def _cusum_overlay_df(cells: list[Cell], detector: "Detector"):
             "cells (%d) and detector.series (%d) length mismatch; "
             "overlay truncated to %d — did you run the detector over a "
             "different cells list than the one being charted?",
-            len(cells), len(detector.series), n,
+            len(cells),
+            len(detector.series),
+            n,
         )
     return pd.DataFrame(
         [
@@ -370,8 +373,8 @@ CUSUM_COLORS = {
 }
 
 STATE_BAND_COLORS = {
-    "UNK": "#ffe066",    # yellow
-    "OK": "#2ca02c",     # green
+    "UNK": "#ffe066",  # yellow
+    "OK": "#2ca02c",  # green
     "BLOCK": "#d62728",  # red
 }
 
@@ -400,7 +403,9 @@ def _state_bands_df(cells: list[Cell], detector: "Detector"):
                     "state_start": hours[run_start],
                     # extend to the start of the next hour so the band
                     # covers the full width of the last bar in the run
-                    "state_end": hours[i] if i < n else hours[i - 1] + timedelta(hours=1),
+                    "state_end": hours[i]
+                    if i < n
+                    else hours[i - 1] + timedelta(hours=1),
                     "state": states[run_start],
                 }
             )
@@ -434,7 +439,9 @@ def _make_state_bands_chart(bands_df):
     )
 
 
-def _make_cusum_overlay_chart(df_overlay, show_legend: bool, selection, h: float | None = None):
+def _make_cusum_overlay_chart(
+    df_overlay, show_legend: bool, selection, h: float | None = None
+):
     """
     Melts (s_pos, s_neg) into one color-encoded line series (rather than two
     statically-colored marks + a fake legend swatch) so the CUSUM legend is
@@ -699,7 +706,13 @@ def make_rule_histogram_chart(
     full_hours = _full_hour_range(cells)
     existing_hour_layer = set(zip(df["ts_hour"], df["layer"]))
     missing_rows = [
-        {"ts_hour": ts_hour, "layer": layer, "rule_id": "(no data)", "outcome": "discarded", "count": 0}
+        {
+            "ts_hour": ts_hour,
+            "layer": layer,
+            "rule_id": "(no data)",
+            "outcome": "discarded",
+            "count": 0,
+        }
         for ts_hour in full_hours
         for layer in LAYERS
         if (ts_hour, layer) not in existing_hour_layer
