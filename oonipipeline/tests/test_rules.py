@@ -26,6 +26,7 @@ from oonipipeline.analysis.rules import (
     render_outcome_multiif,
     render_rule_id_multiif,
     render_top_rule_argmax,
+    RuleLayer,
 )
 from oonipipeline.analysis.web_analysis import format_query_analysis_web_fuzzy_logic
 
@@ -313,3 +314,8 @@ def test_current_rules_match_layers():
 def test_legacy_rules_have_old_version():
     for rule in LEGACY_RULES:
         assert rule.version < RULES_VERSION
+
+def test_layer_list_consistency():
+    assert all(rule.layer == RuleLayer.TCP for rule in TCP_RULES)
+    assert all(rule.layer == RuleLayer.DNS for rule in DNS_RULES)
+    assert all(rule.layer == RuleLayer.TLS for rule in TLS_RULES)
