@@ -189,29 +189,6 @@ class Detector:
 
         return results
 
-    def compute_llr_series(
-        self,
-        series: list[Cell],
-        layer: str,
-        p0: float = 0.1,
-        p1: float = 0.9,
-    ) -> list[float]:
-        """
-        The raw per-cell log-likelihood-ratio (llr = k*w_block + (n-k)*w_clear)
-        for each cell in series.
-
-        Useful for inspecting the evidence a given hour contributed on its own.
-        """
-        w_block = math.log(p1 / p0)
-        w_clear = math.log((1.0 - p1) / (1.0 - p0))
-
-        llrs = []
-        for cell in series:
-            k = cell.k_blocked[layer]
-            n = cell.n_ok[layer] + k  # total scored firings, ok or not
-            llrs.append(k * w_block + (n - k) * w_clear)
-        return llrs
-
     def step(
         self, cell: Cell, w_block: float, w_clear: float, layer: str, h: float
     ) -> ChangePoint | None:
@@ -310,6 +287,28 @@ def run_detector_full(
 
     return results
 
+
+def compute_llr_series(
+    series: list[Cell],
+    layer: str,
+    p0: float = 0.1,
+    p1: float = 0.9,
+) -> list[float]:
+    """
+    The raw per-cell log-likelihood-ratio (llr = k*w_block + (n-k)*w_clear)
+    for each cell in series.
+
+    Useful for inspecting the evidence a given hour contributed on its own.
+    """
+    w_block = math.log(p1 / p0)
+    w_clear = math.log((1.0 - p1) / (1.0 - p0))
+
+    llrs = []
+    for cell in series:
+        k = cell.k_blocked[layer]
+        n = cell.n_ok[layer] + k  # total scored firings, ok or not
+        llrs.append(k * w_block + (n - k) * w_clear)
+    return llrs
 
 # ----< Charts >---------------------------------------------------------------
 LAYERS = ["dns", "tcp", "tls"]

@@ -10,7 +10,7 @@ from oonipipeline.analysis.detectorV2 import (
     Cell,
     get_cells,
     make_cells_histogram_chart,
-    make_rule_histogram_chart, Detector,
+    make_rule_histogram_chart, Detector, compute_llr_series,
 )
 
 STATE_COLORS = {
@@ -212,7 +212,7 @@ def detector_v2_panel():
     render_scrollable_chart(make_rule_histogram_chart(series_cells, detectors))
 
     for layer in layers:
-        llr_series = detectors[layer].compute_llr_series(series_cells, layer, p0=p0, p1=p1)
+        llr_series = compute_llr_series(series_cells, layer, p0=p0, p1=p1)
         st.write(f"**LLR** ({layer})")
         llr_df = pd.DataFrame(
             {
