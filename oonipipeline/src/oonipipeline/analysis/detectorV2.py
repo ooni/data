@@ -383,7 +383,7 @@ def _make_state_bands_chart(bands_df):
     )
 
 
-def _make_cusum_overlay_chart(df_overlay, show_legend: bool, selection):
+def _make_cusum_overlay_chart(df_overlay, show_legend: bool, selection, h: float | None = None):
     """
     Melts (s_pos, s_neg) into one color-encoded line series (rather than two
     statically-colored marks + a fake legend swatch) so the CUSUM legend is
@@ -392,8 +392,13 @@ def _make_cusum_overlay_chart(df_overlay, show_legend: bool, selection):
     across all layer subplots (created once by the caller); the legend (and
     the click-binding) is only attached on the subplot where show_legend is
     True.
+
+    h: the detector's threshold — drawn as a green dashed reference line at
+    that value on the CUSUM axis (matching the original detector's chart),
+    since h is a level s_pos/s_neg cross, not a point in time.
     """
     import altair as alt
+    import pandas as pd
 
     long_df = df_overlay.melt(
         id_vars=["ts_hour"],
@@ -428,7 +433,16 @@ def _make_cusum_overlay_chart(df_overlay, show_legend: bool, selection):
     )
     if show_legend:
         line = line.add_selection(selection)
-    return line
+
+    if h is None:
+        return line
+
+    threshold = (
+        alt.Chart(pd.DataFrame({"h": [h]}))
+        .mark_rule(color="green", strokeDash=[4, 4])
+        .encode(y=alt.Y("h:Q", axis=axis))
+    )
+    return line + threshold
 
 
 def make_cells_histogram_chart(
@@ -530,13 +544,18 @@ def make_cells_histogram_chart(
             bands_df = _state_bands_df(cells, detector)
             overlay_df = _cusum_overlay_df(cells, detector)
             overlay_chart = _make_cusum_overlay_chart(
-                overlay_df, show_legend=(layer == LAYERS[-1]), selection=cusum_selection
+                overlay_df,
+                show_legend=(layer == LAYERS[-1]),
+                selection=cusum_selection,
+                h=getattr(detector, "h", None),
             )
             layers = []
             if not bands_df.empty:
                 layers.append(_make_state_bands_chart(bands_df))
             layers += [bar_chart, overlay_chart]
-            chart = alt.layer(*layers).resolve_scale(y="independent", color="independent")
+            chart = alt.layer(*layers).resolve_scale(
+                y="independent", color="independent", opacity="independent"
+            )
 
         return chart.properties(
             width=chart_width,
@@ -696,13 +715,18 @@ def make_rule_histogram_chart(
             bands_df = _state_bands_df(cells, detector)
             overlay_df = _cusum_overlay_df(cells, detector)
             overlay_chart = _make_cusum_overlay_chart(
-                overlay_df, show_legend=(layer == LAYERS[-1]), selection=cusum_selection
+                overlay_df,
+                show_legend=(layer == LAYERS[-1]),
+                selection=cusum_selection,
+                h=getattr(detector, "h", None),
             )
             layers = []
             if not bands_df.empty:
                 layers.append(_make_state_bands_chart(bands_df))
             layers += [bar_chart, overlay_chart]
-            chart = alt.layer(*layers).resolve_scale(y="independent", color="independent")
+            chart = alt.layer(*layers).resolve_scale(
+                y="independent", color="independent", opacity="independent"
+            )
 
         return chart.properties(
             width=chart_width,
