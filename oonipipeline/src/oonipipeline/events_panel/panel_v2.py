@@ -10,7 +10,7 @@ from oonipipeline.analysis.detectorV2 import (
     Cell,
     get_cells,
     make_cells_histogram_chart,
-    make_rule_histogram_chart, Detector, compute_llr_series,
+    Detector, compute_llr_series,
 )
 
 STATE_COLORS = {
@@ -207,9 +207,6 @@ def detector_v2_panel():
 
     st.write("**Outcome histogram** (blocked / ok / discarded)")
     render_scrollable_chart(make_cells_histogram_chart(series_cells, detectors))
-
-    st.write("**Rule histogram** (stacked by individual rule id)")
-    render_scrollable_chart(make_rule_histogram_chart(series_cells, detectors))
 
     for layer in layers:
         llr_series = compute_llr_series(series_cells, layer, p0=p0, p1=p1)

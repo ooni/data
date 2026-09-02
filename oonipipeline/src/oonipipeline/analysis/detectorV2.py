@@ -1,6 +1,5 @@
 import logging
 import math
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -9,9 +8,27 @@ from typing import Iterable, Mapping, Tuple
 
 from clickhouse_driver import Client as ClickhouseClient
 
-from .rules import Evidence, OutcomeClass, get_layer, get_rule
+from .rules import Evidence, LAYER_RULES, OutcomeClass
 
 log = logging.getLogger(__name__)
+
+LAYERS = ["dns", "tcp", "tls"]
+
+
+def _blocked_rule_ids(layer: str) -> list[str]:
+    return [
+        r.rule_id
+        for r in LAYER_RULES[layer]
+        if r.evidence == Evidence.SCORED and r.outcome_class == OutcomeClass.BLOCKED
+    ]
+
+
+def _ok_rule_ids(layer: str) -> list[str]:
+    return [
+        r.rule_id
+        for r in LAYER_RULES[layer]
+        if r.evidence == Evidence.SCORED and r.outcome_class == OutcomeClass.OK
+    ]
 
 
 @dataclass()
@@ -23,13 +40,18 @@ class Cell:
     ts_hour: datetime  # hour
     n_measurements: int
     n_probes: int
-    dns_rule_counts: Mapping[str, int]  # sumMap([top_dns_rule_id], [toUInt32(1)])
-    tcp_rule_counts: Mapping[str, int]  # sumMap([top_tcp_rule_id], [toUInt32(1)])
-    tls_rule_counts: Mapping[str, int]  # sumMap([top_tls_rule_id], [toUInt32(1)])
-    # layer -> amount of blocked measurements in that layer
-    k_blocked: Mapping[str, int]  # layer -> |Blocked measurements|
-    n_ok: Mapping[str, int]  # layer -> |Ok measurements|
-    discarded: Mapping[str, int]  # layer -> |Ignored rules|
+    k_dns: int
+    n_dns: int
+    k_tcp: int
+    n_tcp: int
+    k_tls: int
+    n_tls: int
+
+    def k(self, layer: str) -> int:
+        return getattr(self, f"k_{layer}")
+
+    def n(self, layer: str) -> int:
+        return getattr(self, f"n_{layer}")
 
 
 class State(StrEnum):
@@ -58,6 +80,13 @@ def get_cells(
     end_time: datetime,
     probe_cc: str | None = None,
 ) -> Iterable[Cell]:
+
+    blocked_ids = {layer: _blocked_rule_ids(layer) for layer in LAYERS}
+    # scored = blocked + ok
+    scored_ids = {
+        layer: blocked_ids[layer] + _ok_rule_ids(layer) for layer in LAYERS
+    }
+
     query = f"""
     SELECT
         domain, probe_cc, probe_asn,
@@ -66,12 +95,15 @@ def get_cells(
         -- addressed, so folding the resolver into the network key would attribute
         -- a middlebox to the resolver operator's AS. See ontology §11.
         resolver_asn,
-        toStartOfHour(measurement_start_time)      AS ts_hour,
-        sumMap([top_dns_rule_id], [toUInt32(1)])   AS dns_rule_counts,
-        sumMap([top_tcp_rule_id], [toUInt32(1)])   AS tcp_rule_counts,
-        sumMap([top_tls_rule_id], [toUInt32(1)])   AS tls_rule_counts,
-        count()                                    AS n_measurements,
-        uniqIf(probe_id, probe_id != '')           AS n_probes
+        toStartOfHour(measurement_start_time)          AS ts_hour,
+        countIf(top_dns_rule_id IN %(dns_blocked)s)    AS k_dns,
+        countIf(top_dns_rule_id IN %(dns_scored)s)     AS n_dns,
+        countIf(top_tcp_rule_id IN %(tcp_blocked)s)    AS k_tcp,
+        countIf(top_tcp_rule_id IN %(tcp_scored)s)     AS n_tcp,
+        countIf(top_tls_rule_id IN %(tls_blocked)s)    AS k_tls,
+        countIf(top_tls_rule_id IN %(tls_scored)s)     AS n_tls,
+        count()                                        AS n_measurements,
+        uniqIf(probe_id, probe_id != '')                AS n_probes
     FROM analysis_web_measurement
     WHERE
         domain IN %(domains)s
@@ -80,12 +112,19 @@ def get_cells(
         {"AND probe_cc=%(probe_cc)s" if probe_cc else ""}
     GROUP BY domain, probe_cc, probe_asn, resolver_asn, ts_hour
     ORDER BY domain, probe_cc, probe_asn, resolver_asn, ts_hour
-    SETTINGS
-    max_bytes_before_external_group_by=201001000,
-    max_bytes_before_external_sort=201001000
     """
 
-    params = {"domains": domains, "start_time": start_time, "end_time": end_time}
+    params = {
+        "domains": domains,
+        "start_time": start_time,
+        "end_time": end_time,
+        "dns_blocked": blocked_ids["dns"],
+        "dns_scored": scored_ids["dns"],
+        "tcp_blocked": blocked_ids["tcp"],
+        "tcp_scored": scored_ids["tcp"],
+        "tls_blocked": blocked_ids["tls"],
+        "tls_scored": scored_ids["tls"],
+    }
     if probe_cc:
         params["probe_cc"] = probe_cc
 
@@ -106,44 +145,8 @@ def get_cells(
         for chunk in result:
             yield from chunk
 
-    rows = (dict(zip(col_names, r)) for r in _iter_rows())
-
-    rule_maps = ["dns_rule_counts", "tcp_rule_counts", "tls_rule_counts"]
-    for row in rows:
-        row["k_blocked"] = defaultdict(int)
-        row["n_ok"] = defaultdict(int)
-        row["discarded"] = defaultdict(int)
-        for rule_map in rule_maps:
-            if not row.get(rule_map):
-                continue
-
-            rule_ids, counts = row[rule_map]
-            # convert mapping to a format easier to use
-            row[rule_map] = dict(zip(rule_ids, counts))  # TODO not sure if useful
-
-            for rule_id, count in row[rule_map].items():
-                try:
-                    rule = get_rule(rule_id)
-                except ValueError as e:
-                    # old entries can have old rule names, ignore those
-                    log.warning(str(e))
-                    continue
-                # See: https://docs.ooni.org/data/pipeline-implementation-plan ,
-                # section 3.6
-                layer = get_layer(rule_id)
-                if (
-                    rule.evidence == Evidence.SCORED
-                    and rule.outcome_class == OutcomeClass.BLOCKED
-                ):
-                    row["k_blocked"][layer] += count
-                elif (
-                    rule.evidence == Evidence.SCORED
-                    and rule.outcome_class == OutcomeClass.OK
-                ):
-                    row["n_ok"][layer] += count
-                else:
-                    row["discarded"][layer] += count
-        yield Cell(**row)
+    for r in _iter_rows():
+        yield Cell(**dict(zip(col_names, r)))
 
 
 # TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
@@ -204,8 +207,8 @@ class Detector:
     ) -> ChangePoint | None:
         # original state is unknown, run both series in parallel to discover
         # current state
-        k = cell.k_blocked[layer]
-        n = cell.n_ok[layer] + k  # total scored firings, ok or not
+        k = cell.k(layer)
+        n = cell.n(layer)  # total scored firings, ok or not
         llr = k * w_block + (n - k) * w_clear
 
         def make_cp(s: State) -> ChangePoint:
@@ -345,15 +348,13 @@ def compute_llr_series(
 
     llrs = []
     for cell in series:
-        k = cell.k_blocked[layer]
-        n = cell.n_ok[layer] + k  # total scored firings, ok or not
+        k = cell.k(layer)
+        n = cell.n(layer)  # total scored firings, ok or not
         llrs.append(k * w_block + (n - k) * w_clear)
     return llrs
 
 
 # ----< Charts >---------------------------------------------------------------
-LAYERS = ["dns", "tcp", "tls"]
-
 OUTCOME_COLORS = {
     "blocked": "#d62728",  # red
     "ok": "#2ca02c",  # green
@@ -564,14 +565,14 @@ def make_cells_histogram_chart(
             "ts_hour": cell.ts_hour,
             "layer": layer,
             "outcome": outcome,
-            "count": counts.get(layer, 0),
+            "count": count,
         }
         for cell in cells
         for layer in LAYERS
-        for outcome, counts in (
-            ("blocked", cell.k_blocked),
-            ("ok", cell.n_ok),
-            ("discarded", cell.discarded),
+        for outcome, count in (
+            ("blocked", cell.k(layer)),
+            ("ok", cell.n(layer) - cell.k(layer)),
+            ("discarded", cell.n_measurements - cell.n(layer)),
         )
     ]
     df = pd.DataFrame(records)
@@ -676,181 +677,4 @@ def make_cells_histogram_chart(
         alt.vconcat(*charts, spacing=10)
         .resolve_scale(x="shared", color="shared")
         .properties(title="Cell outcome histogram")
-    )
-
-
-RULE_COUNT_FIELDS = {
-    "dns": "dns_rule_counts",
-    "tcp": "tcp_rule_counts",
-    "tls": "tls_rule_counts",
-}
-
-
-def _classify_rule_id_for_chart(rule_id: str) -> str:
-    """
-    blocked/ok/discarded per docs.ooni.org/data/pipeline-implementation-plan
-    section 3.6, mirroring get_cells' classification for display purposes.
-    """
-    try:
-        rule = get_rule(rule_id)
-    except ValueError as e:
-        log.warning(str(e))
-        return "discarded"
-    if rule.evidence == Evidence.SCORED and rule.outcome_class == OutcomeClass.BLOCKED:
-        return "blocked"
-    elif rule.outcome_class == OutcomeClass.OK:
-        return "ok"
-    return "discarded"
-
-
-def make_rule_histogram_chart(
-    cells: list[Cell], detectors: Mapping[str, "Detector"] | None = None
-):
-    """
-    One stacked-bar histogram per layer, same x/y axes and blocked=red /
-    ok=green / discarded=gray coloring as make_cells_histogram_chart, but
-    each bar is stacked by individual rule id rather than by outcome class.
-    There isn't room to label each segment, so the rule id and its count
-    are shown in the tooltip on hover instead.
-
-    detectors: optional {layer: Detector} of debug-run (debug=True) detectors
-    for that same cells list — when given, the layer's s_pos/s_neg series is
-    overlaid as lines on an independent right-hand y-axis.
-    """
-    import altair as alt
-    import pandas as pd
-
-    records = [
-        {
-            "ts_hour": cell.ts_hour,
-            "layer": layer,
-            "rule_id": rule_id,
-            "outcome": _classify_rule_id_for_chart(rule_id),
-            "count": count,
-        }
-        for cell in cells
-        for layer, field in RULE_COUNT_FIELDS.items()
-        for rule_id, count in getattr(cell, field).items()
-    ]
-    df = pd.DataFrame(records)
-    df = df.groupby(["ts_hour", "layer", "rule_id", "outcome"], as_index=False)[
-        "count"
-    ].sum()
-
-    # Make silent hours (no cell at all, i.e. zero measurements) explicit
-    # instead of missing rows, so the x-axis spacing reflects the real
-    # hourly cadence. Unlike the outcome histogram, there's no fixed rule-id
-    # set to cross-join against (that would wrongly claim every rule "fired
-    # 0 times" every hour) — just add one zero-height placeholder row per
-    # (hour, layer) that has no data at all.
-    full_hours = _full_hour_range(cells)
-    existing_hour_layer = set(zip(df["ts_hour"], df["layer"]))
-    missing_rows = [
-        {
-            "ts_hour": ts_hour,
-            "layer": layer,
-            "rule_id": "(no data)",
-            "outcome": "discarded",
-            "count": 0,
-        }
-        for ts_hour in full_hours
-        for layer in LAYERS
-        if (ts_hour, layer) not in existing_hour_layer
-    ]
-    if missing_rows:
-        df = pd.concat([df, pd.DataFrame(missing_rows)], ignore_index=True)
-
-    # A fixed chart width divided across many more hourly bars (now that
-    # silent hours are included) can make bars wider than their per-hour
-    # pixel slot, causing them to visually overlap their neighbors — scale
-    # width with the number of hours instead of leaving it fixed.
-    chart_width = max(900, len(full_hours) * 6)
-
-    # Shared across all three layer subplots: click an entry in the Outcome
-    # legend (shown only on the last subplot) to isolate that outcome across
-    # every subplot; shift-click to select more than one. An empty selection
-    # (nothing clicked yet) means "show everything", same as today.
-    outcome_selection = alt.selection_multi(fields=["outcome"], bind="legend")
-    # Same idea for the CUSUM legend: click "s+"/"s-" to isolate that line
-    # across every subplot, and dim the bars too so the line stands out.
-    cusum_selection = alt.selection_multi(fields=["series"], bind="legend")
-
-    def make_layer_chart(layer: str, show_x_axis: bool):
-        bar_chart = (
-            alt.Chart(df[df["layer"] == layer])
-            # A stroke around each stacked segment, since same-outcome rules
-            # share a fill color and would otherwise merge into one blob —
-            # the outline is what makes "how many rules contributed" readable
-            # at a glance.
-            .mark_bar(stroke="black", strokeWidth=1)
-            .encode(
-                x=alt.X(
-                    "ts_hour:T",
-                    title=None,
-                    axis=alt.Axis(labels=show_x_axis, ticks=show_x_axis),
-                ),
-                y=alt.Y("count:Q", stack="zero", title="count"),
-                color=alt.Color(
-                    "outcome:N",
-                    scale=alt.Scale(
-                        domain=list(OUTCOME_COLORS.keys()),
-                        range=list(OUTCOME_COLORS.values()),
-                    ),
-                    legend=alt.Legend(title="Outcome") if layer == LAYERS[-1] else None,
-                ),
-                opacity=alt.condition(
-                    outcome_selection & cusum_selection, alt.value(0.6), alt.value(0.05)
-                ),
-                order=alt.Order("rule_id:N"),
-                tooltip=[
-                    alt.Tooltip("ts_hour:T"),
-                    alt.Tooltip("rule_id:N", title="rule"),
-                    alt.Tooltip("outcome:N"),
-                    alt.Tooltip("count:Q"),
-                ],
-            )
-        )
-        if layer == LAYERS[-1]:
-            bar_chart = bar_chart.add_selection(outcome_selection)
-
-        chart = bar_chart
-        if detectors and layer in detectors:
-            detector = detectors[layer]
-            bands_df = _state_bands_df(cells, detector)
-            overlay_df = _cusum_overlay_df(cells, detector)
-            overlay_chart = _make_cusum_overlay_chart(
-                overlay_df,
-                show_legend=(layer == LAYERS[-1]),
-                selection=cusum_selection,
-                h=getattr(detector, "h", None),
-            )
-            layers = []
-            if not bands_df.empty:
-                layers.append(_make_state_bands_chart(bands_df))
-            layers += [bar_chart, overlay_chart]
-            chart = alt.layer(*layers).resolve_scale(
-                y="independent", color="independent", opacity="independent"
-            )
-
-        return chart.properties(
-            width=chart_width,
-            height=150,
-            title=alt.TitleParams(
-                text=layer,
-                fontSize=11,
-                fontWeight="normal",
-                color="gray",
-                anchor="start",
-                dy=-4,
-                offset=2,
-            ),
-        )
-
-    charts = [
-        make_layer_chart(layer, show_x_axis=(layer == LAYERS[-1])) for layer in LAYERS
-    ]
-    return (
-        alt.vconcat(*charts, spacing=10)
-        .resolve_scale(x="shared", color="shared")
-        .properties(title="Rule histogram")
     )
