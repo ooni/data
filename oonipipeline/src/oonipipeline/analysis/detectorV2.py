@@ -14,7 +14,6 @@ log = logging.getLogger(__name__)
 
 LAYERS = ["dns", "tcp", "tls"]
 
-
 def _blocked_rule_ids(layer: str) -> list[str]:
     return [
         r.rule_id
@@ -319,11 +318,10 @@ def run_detector_full(
         ),
     )
     results = dict()
-    layers = ["dns", "tls", "tcp"]
     for group, cells in grouped:
         cells_list = list(cells)
         entry = dict()
-        for layer in layers:
+        for layer in LAYERS:
             detector = Detector()
             entry[layer] = detector.compute_changepoints(cells_list, layer)
         results[group] = ResultEntry(**entry)
