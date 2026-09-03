@@ -29,6 +29,7 @@ do not have to infer it from the numbers. Read the level, never ``blocked == 0``
 TODO(art): the Evidence label carries with it a similar meaning to the Masking rules and should
 eventually be consolidated.
 """
+from functools import lru_cache
 
 from dataclasses import dataclass
 from enum import IntEnum
@@ -400,6 +401,30 @@ LAYER_RULES = {
     "tls": TLS_RULES,
 }
 
+@lru_cache
+def _ruleset(layer: str) -> set[str]:
+    return {r.rule_id for r in LAYER_RULES[layer]}
+
+@lru_cache
+def is_layer(rule_id : str, layer : str) -> bool:
+    return rule_id in _ruleset(layer)
+
+@lru_cache
+def get_layer(rule_id: str) -> str:
+    for layer in LAYER_RULES.keys():
+        if is_layer(rule_id,  layer):
+            return layer
+
+    raise ValueError("Unknown rule: " + rule_id)
+
+@lru_cache
+def get_rule(rule_id: str) -> Rule:
+    for ruleset in LAYER_RULES.values():
+        for rule in ruleset:
+            if rule.rule_id == rule_id:
+                return rule
+
+    raise ValueError("Unknown rule: " + rule_id)
 
 def _indent(s: str, level: int = 8) -> str:
     return " " * level + s

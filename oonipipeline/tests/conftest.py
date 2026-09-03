@@ -1,6 +1,5 @@
 import os
-from datetime import date, datetime, timedelta
-from multiprocessing import Process
+from datetime import date, datetime
 from pathlib import Path
 
 import orjson
@@ -164,6 +163,22 @@ def db(clickhouse_server):
 @pytest.fixture
 def db_analysis(db):
     for fn in ["ug-analysis.sql", "citizenlab-schema.sql", "citizenlab-inserts.sql"]:
+        with (FIXTURE_PATH / fn).open() as in_file:
+            db.execute(in_file.read())
+
+
+@pytest.fixture
+def db_analysis_ve(db):
+    """
+    Data used for the event detector, a dump from the DB with some known changepoints.
+    This data corresponds to:
+        probe_cc = VE
+        start_date = 2026-08-03
+        end_date = 2026-09-03
+
+    The changepoints are dns-related
+    """
+    for fn in ["ve-analysis.sql", "citizenlab-schema.sql", "citizenlab-inserts.sql"]:
         with (FIXTURE_PATH / fn).open() as in_file:
             db.execute(in_file.read())
 

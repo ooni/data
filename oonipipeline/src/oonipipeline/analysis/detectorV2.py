@@ -1,0 +1,678 @@
+import logging
+import math
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from enum import StrEnum
+from itertools import groupby
+from typing import Iterable, Mapping, Tuple
+
+from clickhouse_driver import Client as ClickhouseClient
+
+from .rules import Evidence, LAYER_RULES, OutcomeClass
+
+log = logging.getLogger(__name__)
+
+LAYERS = ["dns", "tcp", "tls"]
+
+def _blocked_rule_ids(layer: str) -> list[str]:
+    return [
+        r.rule_id
+        for r in LAYER_RULES[layer]
+        if r.evidence == Evidence.SCORED and r.outcome_class == OutcomeClass.BLOCKED
+    ]
+
+
+def _ok_rule_ids(layer: str) -> list[str]:
+    return [
+        r.rule_id
+        for r in LAYER_RULES[layer]
+        if r.evidence == Evidence.SCORED and r.outcome_class == OutcomeClass.OK
+    ]
+
+
+@dataclass()
+class Cell:
+    domain: str
+    probe_cc: str
+    probe_asn: str
+    resolver_asn: str
+    ts_hour: datetime  # hour
+    n_measurements: int
+    n_probes: int
+    k_dns: int
+    n_dns: int
+    k_tcp: int
+    n_tcp: int
+    k_tls: int
+    n_tls: int
+
+    def k(self, layer: str) -> int:
+        return getattr(self, f"k_{layer}")
+
+    def n(self, layer: str) -> int:
+        return getattr(self, f"n_{layer}")
+
+
+class State(StrEnum):
+    UNKNOWN = "UNK"
+    OK = "OK"
+    BLOCK = "BLOCK"
+
+
+@dataclass
+class ChangePoint:
+    domain: str
+    probe_cc: str
+    probe_asn: str
+    resolver_asn: str
+    ts_hour: datetime
+    s_neg: float
+    s_pos: float
+    h: float
+    state: State  # Acquired in this hour
+
+
+def get_cells(
+    clickhouse: ClickhouseClient,
+    domains: list[str],
+    start_time: datetime,
+    end_time: datetime,
+    probe_cc: str | None = None,
+) -> Iterable[Cell]:
+
+    blocked_ids = {layer: _blocked_rule_ids(layer) for layer in LAYERS}
+    # scored = blocked + ok
+    scored_ids = {
+        layer: blocked_ids[layer] + _ok_rule_ids(layer) for layer in LAYERS
+    }
+
+    query = f"""
+    SELECT
+        domain, probe_cc, probe_asn,
+        -- Kept as its own key column for DNS series, never substituted for
+        -- probe_asn: on-path injection answers for whatever resolver was
+        -- addressed, so folding the resolver into the network key would attribute
+        -- a middlebox to the resolver operator's AS. See ontology §11.
+        resolver_asn,
+        toStartOfHour(measurement_start_time)          AS ts_hour,
+        countIf(top_dns_rule_id IN %(dns_blocked)s)    AS k_dns,
+        countIf(top_dns_rule_id IN %(dns_scored)s)     AS n_dns,
+        countIf(top_tcp_rule_id IN %(tcp_blocked)s)    AS k_tcp,
+        countIf(top_tcp_rule_id IN %(tcp_scored)s)     AS n_tcp,
+        countIf(top_tls_rule_id IN %(tls_blocked)s)    AS k_tls,
+        countIf(top_tls_rule_id IN %(tls_scored)s)     AS n_tls,
+        count()                                        AS n_measurements,
+        uniqIf(probe_id, probe_id != '')                AS n_probes
+    FROM analysis_web_measurement
+    WHERE
+        domain IN %(domains)s
+        AND ts_hour >= %(start_time)s
+        AND ts_hour <= %(end_time)s
+        {"AND probe_cc=%(probe_cc)s" if probe_cc else ""}
+    GROUP BY domain, probe_cc, probe_asn, resolver_asn, ts_hour
+    ORDER BY domain, probe_cc, probe_asn, resolver_asn, ts_hour
+    """
+
+    params = {
+        "domains": domains,
+        "start_time": start_time,
+        "end_time": end_time,
+        "dns_blocked": blocked_ids["dns"],
+        "dns_scored": scored_ids["dns"],
+        "tcp_blocked": blocked_ids["tcp"],
+        "tcp_scored": scored_ids["tcp"],
+        "tls_blocked": blocked_ids["tls"],
+        "tls_scored": scored_ids["tls"],
+    }
+    if probe_cc:
+        params["probe_cc"] = probe_cc
+
+    result = clickhouse.execute_iter(
+        query,
+        params=params,
+        with_column_types=True,
+        chunk_size=1000,
+    )
+    first_chunk = next(result)
+    col_names = [t[0] for t in first_chunk[0]]
+
+    # chunk_size > 1 returns a list per iteration, this iterator flattens
+    # that structure
+    def _iter_rows():
+        # first chunk has column definitions on position 0
+        yield from first_chunk[1:]
+        for chunk in result:
+            yield from chunk
+
+    for r in _iter_rows():
+        yield Cell(**dict(zip(col_names, r)))
+
+
+# TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
+class Detector:
+    def __init__(self, debug: bool = False, gap_halflife: float = 24):
+        self.s_pos = self.s_neg = 0
+        self.state = State.UNKNOWN  # UNK | OK | BLOCK
+        self.debug = debug
+        self.series = []  # List of (s_neg, s_pos) values per step
+        self.gap_halflife = gap_halflife
+
+        # For decay computation
+        self.last_hour: datetime | None = None
+        self.last_state: State = State.UNKNOWN
+
+    def compute_changepoints(
+        self,
+        series: list[Cell],
+        layer: str,
+        p0: float = 0.05,
+        p1: float = 0.50,
+        h: float = 30,
+        warmup: bool = False,
+        gap_halflife: float = 24,
+    ) -> list[ChangePoint]:
+        """
+        Assumes the input list has the following properties:
+            - Sorted by time, one entry per hour
+            - All cells are from the same (probe_cc, probe_asn, resolver_asn, domain)
+
+        p0: Expected k/n in OK state
+        p1: Expected k/n in BLOCK state
+
+        "warmup" runs the detector without generating any new changepoint, it
+        only updates internal state
+        """
+        results = []
+        w_block = math.log(p1 / p0)
+        w_clear = math.log((1.0 - p1) / (1.0 - p0))
+
+        for cell in series:
+            cp = self.step(cell, w_block, w_clear, layer, h, gap_halflife)
+            if cp and not warmup:
+                results.append(cp)
+            if self.debug:
+                self.series.append((self.s_neg, self.s_pos, self.state))
+
+        return results
+
+    def step(
+        self,
+        cell: Cell,
+        w_block: float,
+        w_clear: float,
+        layer: str,
+        h: float,
+        gap_halflife: float,
+    ) -> ChangePoint | None:
+        # original state is unknown, run both series in parallel to discover
+        # current state
+        k = cell.k(layer)
+        n = cell.n(layer)  # total scored firings, ok or not
+        llr = k * w_block + (n - k) * w_clear
+
+        def make_cp(s: State) -> ChangePoint:
+            return ChangePoint(
+                domain=cell.domain,
+                probe_cc=cell.probe_cc,
+                probe_asn=cell.probe_asn,
+                resolver_asn=cell.resolver_asn,
+                s_neg=self.s_neg,
+                s_pos=self.s_pos,
+                state=s,
+                h=h,
+                ts_hour=cell.ts_hour,
+            )
+
+        self.decay(gap_halflife, cell.ts_hour)
+
+        cp = None
+        if self.state == State.UNKNOWN:
+            # s_pos = max(0.0, s_pos + k * w_blocked + (n - k) * w_clear)
+            self.s_pos = max(0, self.s_pos + llr)
+            self.s_neg = max(0, self.s_neg - llr)
+
+            if self.s_pos > h:
+                self.set_state(State.BLOCK)
+                self.s_pos = self.s_neg = 0
+            elif self.s_neg > h:
+                self.set_state(State.OK)
+                self.s_pos = self.s_neg = 0
+            # Don't return a changepoint: this is the initial state
+        elif self.state == State.BLOCK:
+            # Run s_neg accumulator: we wan't to see if the blocking signal
+            # goes down
+            self.s_neg = max(0, self.s_neg - llr)
+            self.s_pos = 0
+            if self.s_neg > h:
+                cp = make_cp(State.OK)
+                self.set_state(State.OK)
+        elif self.state == State.OK:
+            # Run s_pos accumulator: we wan't to see if the blocking signal
+            # goes up
+            self.s_pos = max(0, self.s_pos + llr)
+            self.s_neg = 0
+            if self.s_pos > h:
+                cp = make_cp(State.BLOCK)
+                self.set_state(State.BLOCK)
+
+        # TODO: Reset to unknown after long periouds without data
+        self.last_hour = cell.ts_hour
+        return cp
+
+    def decay(self, gap_halflife: float, ts_hour: datetime):
+        """
+        Every `gap_halflife` hours in silence the accumulators are cut in
+        half of their current value
+
+        With `gap_halflife` = 24, the accumulators are set back to 0 after
+        48 hours of silence
+
+        ts_hour: hour of the current cell
+        """
+        # First iteration: nothing to do
+        if self.last_hour is None:
+            return
+
+        gap_hours = (ts_hour - self.last_hour).total_seconds() / 3600
+        if gap_hours <= 24:
+            return  # not enough gap to decay
+
+        decay = 0.5 ** (gap_hours / gap_halflife)
+        self.s_neg *= decay
+        self.s_pos *= decay
+
+    def set_state(self, new_state: State):
+        self.last_state = self.state
+        self.state = new_state
+
+
+@dataclass
+class ResultEntry:
+    dns: list[ChangePoint]
+    tcp: list[ChangePoint]
+    tls: list[ChangePoint]
+
+
+# A dict from each probe_cc, probe_asn, resolver_asn, domain to the list of
+# changepoints per layer
+DetectorResult = dict[Tuple[str, str, str, str], ResultEntry]
+
+
+def run_detector_full(
+    clickhouse_url: str, start_time: datetime, end_time: datetime
+) -> DetectorResult:
+    clickhouse = ClickhouseClient.from_url(clickhouse_url)
+    domains = clickhouse.execute("""
+        SELECT domain
+        FROM citizenlab
+        WHERE category_code = 'GRP'
+        """)
+    domains = [d[0] for d in domains]
+    grouped = groupby(
+        get_cells(clickhouse, domains, start_time, end_time),
+        key=lambda cell: (
+            cell.probe_cc,
+            cell.probe_asn,
+            cell.resolver_asn,
+            cell.domain,
+        ),
+    )
+    results = dict()
+    for group, cells in grouped:
+        cells_list = list(cells)
+        entry = dict()
+        for layer in LAYERS:
+            detector = Detector()
+            entry[layer] = detector.compute_changepoints(cells_list, layer)
+        results[group] = ResultEntry(**entry)
+
+    return results
+
+
+def compute_llr_series(
+    series: list[Cell],
+    layer: str,
+    p0: float = 0.1,
+    p1: float = 0.9,
+) -> list[float]:
+    """
+    The raw per-cell log-likelihood-ratio (llr = k*w_block + (n-k)*w_clear)
+    for each cell in series.
+
+    Useful for inspecting the evidence a given hour contributed on its own.
+    """
+    w_block = math.log(p1 / p0)
+    w_clear = math.log((1.0 - p1) / (1.0 - p0))
+
+    llrs = []
+    for cell in series:
+        k = cell.k(layer)
+        n = cell.n(layer)  # total scored firings, ok or not
+        llrs.append(k * w_block + (n - k) * w_clear)
+    return llrs
+
+
+# ----< Charts >---------------------------------------------------------------
+OUTCOME_COLORS = {
+    "blocked": "#d62728",  # red
+    "ok": "#2ca02c",  # green
+    "discarded": "#7f7f7f",  # gray
+}
+
+
+def _full_hour_range(cells: list[Cell]):
+    """
+    get_cells only ever returns a row for an hour with >=1 measurement — a
+    silent hour (zero measurements) never appears in `cells` at all. This
+    reconstructs the full hourly index between the first and last observed
+    cell so charts can make those gaps explicit instead of silently
+    stretching/compressing the time axis around them.
+    """
+    import pandas as pd
+
+    hours = [cell.ts_hour for cell in cells]
+    return pd.date_range(min(hours), max(hours), freq="h")
+
+
+def _cusum_overlay_df(cells: list[Cell], detector: "Detector"):
+    """
+    Zips a debug-run Detector's recorded (s_neg, s_pos) steps back onto the
+    same cells list it was run over — Detector.series has no timestamp of
+    its own, it's positional, one entry per cell in the order step() saw
+    them, which is exactly the order/length of the cells list passed to
+    compute_changepoints.
+    """
+    import pandas as pd
+
+    n = min(len(cells), len(detector.series))
+    if n < len(cells) or n < len(detector.series):
+        log.warning(
+            "cells (%d) and detector.series (%d) length mismatch; "
+            "overlay truncated to %d — did you run the detector over a "
+            "different cells list than the one being charted?",
+            len(cells),
+            len(detector.series),
+            n,
+        )
+    return pd.DataFrame(
+        [
+            {
+                "ts_hour": cells[i].ts_hour,
+                "s_neg": detector.series[i][0],
+                "s_pos": detector.series[i][1],
+            }
+            for i in range(n)
+        ]
+    )
+
+
+CUSUM_COLORS = {
+    "s+": "#1f77b4",  # blue
+    "s-": "#f1c40f",  # yellow
+}
+
+STATE_BAND_COLORS = {
+    "UNK": "#ffe066",  # yellow
+    "OK": "#2ca02c",  # green
+    "BLOCK": "#d62728",  # red
+}
+
+
+def _state_bands_df(cells: list[Cell], detector: "Detector"):
+    """
+    Collapses a debug-run Detector's per-step state into contiguous-run
+    bands (state_start, state_end, state), one row per unbroken stretch of
+    the same state — same idea as v1 detector.py's state background bands.
+    """
+    import pandas as pd
+
+    n = min(len(cells), len(detector.series))
+    if n == 0:
+        return pd.DataFrame(columns=["state_start", "state_end", "state"])
+
+    states = [str(detector.series[i][2]) for i in range(n)]
+    hours = [cells[i].ts_hour for i in range(n)]
+
+    bands = []
+    run_start = 0
+    for i in range(1, n + 1):
+        if i == n or states[i] != states[run_start]:
+            bands.append(
+                {
+                    "state_start": hours[run_start],
+                    # extend to the start of the next hour so the band
+                    # covers the full width of the last bar in the run
+                    "state_end": hours[i]
+                    if i < n
+                    else hours[i - 1] + timedelta(hours=1),
+                    "state": states[run_start],
+                }
+            )
+            run_start = i
+    return pd.DataFrame(bands)
+
+
+def _make_state_bands_chart(bands_df):
+    import altair as alt
+
+    return (
+        alt.Chart(bands_df)
+        .mark_rect(opacity=0.25)
+        .encode(
+            x=alt.X("state_start:T"),
+            x2=alt.X2("state_end:T"),
+            color=alt.Color(
+                "state:N",
+                scale=alt.Scale(
+                    domain=list(STATE_BAND_COLORS.keys()),
+                    range=list(STATE_BAND_COLORS.values()),
+                ),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("state:N"),
+                alt.Tooltip("state_start:T"),
+                alt.Tooltip("state_end:T"),
+            ],
+        )
+    )
+
+
+def _make_cusum_overlay_chart(
+    df_overlay, show_legend: bool, selection, h: float | None = None
+):
+    """
+    Melts (s_pos, s_neg) into one color-encoded line series (rather than two
+    statically-colored marks + a fake legend swatch) so the CUSUM legend is
+    real and click-bindable: click "s+"/"s-" to isolate that line, same as
+    the Outcome legend already does for the bars. `selection` is shared
+    across all layer subplots (created once by the caller); the legend (and
+    the click-binding) is only attached on the subplot where show_legend is
+    True.
+
+    h: the detector's threshold — drawn as a green dashed reference line at
+    that value on the CUSUM axis (matching the original detector's chart),
+    since h is a level s_pos/s_neg cross, not a point in time.
+    """
+    import altair as alt
+    import pandas as pd
+
+    long_df = df_overlay.melt(
+        id_vars=["ts_hour"],
+        value_vars=["s_pos", "s_neg"],
+        var_name="component",
+        value_name="value",
+    )
+    long_df["series"] = long_df["component"].map({"s_pos": "s+", "s_neg": "s-"})
+
+    axis = alt.Axis(title="CUSUM statistic", orient="right")
+    line = (
+        alt.Chart(long_df)
+        .mark_line()
+        .encode(
+            x=alt.X("ts_hour:T"),
+            y=alt.Y("value:Q", axis=axis),
+            color=alt.Color(
+                "series:N",
+                scale=alt.Scale(
+                    domain=list(CUSUM_COLORS.keys()),
+                    range=list(CUSUM_COLORS.values()),
+                ),
+                legend=alt.Legend(title="CUSUM") if show_legend else None,
+            ),
+            opacity=alt.condition(selection, alt.value(1.0), alt.value(0.05)),
+            tooltip=[
+                alt.Tooltip("ts_hour:T"),
+                alt.Tooltip("series:N"),
+                alt.Tooltip("value:Q"),
+            ],
+        )
+    )
+    if show_legend:
+        line = line.add_selection(selection)
+
+    if h is None:
+        return line
+
+    threshold = (
+        alt.Chart(pd.DataFrame({"h": [h]}))
+        .mark_rule(color="green", strokeDash=[4, 4])
+        .encode(y=alt.Y("h:Q", axis=axis))
+    )
+    return line + threshold
+
+
+def make_cells_histogram_chart(
+    cells: list[Cell], detectors: Mapping[str, "Detector"] | None = None
+):
+    """
+    One stacked-bar histogram per layer (dns, tcp, tls): x is the cell hour,
+    y is measurement count, stacked by outcome (blocked/ok/discarded). Cells
+    sharing the same hour are summed together, so pass in cells already
+    scoped to whatever series you want plotted (domain/probe_cc/probe_asn).
+
+    detectors: optional {layer: Detector} of debug-run (debug=True) detectors
+    for that same cells list — when given, the layer's s_pos/s_neg series is
+    overlaid as lines on an independent right-hand y-axis.
+    """
+    import altair as alt
+    import pandas as pd
+
+    records = [
+        {
+            "ts_hour": cell.ts_hour,
+            "layer": layer,
+            "outcome": outcome,
+            "count": count,
+        }
+        for cell in cells
+        for layer in LAYERS
+        for outcome, count in (
+            ("blocked", cell.k(layer)),
+            ("ok", cell.n(layer) - cell.k(layer)),
+            ("discarded", cell.n_measurements - cell.n(layer)),
+        )
+    ]
+    df = pd.DataFrame(records)
+    df = df.groupby(["ts_hour", "layer", "outcome"], as_index=False)["count"].sum()
+
+    # Make silent hours (no cell at all, i.e. zero measurements) explicit
+    # zero-height bars instead of missing rows, so the x-axis spacing and
+    # bar width reflect the real hourly cadence rather than compressing
+    # around the gaps.
+    full_hours = _full_hour_range(cells)
+    # A fixed chart width divided across many more hourly bars (now that
+    # silent hours are included) can make bars wider than their per-hour
+    # pixel slot, causing them to visually overlap their neighbors — scale
+    # width with the number of hours instead of leaving it fixed.
+    chart_width = max(900, len(full_hours) * 6)
+    skeleton = pd.DataFrame(
+        [
+            (ts_hour, layer, outcome)
+            for ts_hour in full_hours
+            for layer in LAYERS
+            for outcome in OUTCOME_COLORS
+        ],
+        columns=["ts_hour", "layer", "outcome"],
+    )
+    df = skeleton.merge(df, on=["ts_hour", "layer", "outcome"], how="left")
+    df["count"] = df["count"].fillna(0)
+
+    # Shared across all three layer subplots: click an entry in the Outcome
+    # legend (shown only on the last subplot) to isolate that outcome across
+    # every subplot; shift-click to select more than one. An empty selection
+    # (nothing clicked yet) means "show everything", same as today.
+    outcome_selection = alt.selection_multi(fields=["outcome"], bind="legend")
+    # Same idea for the CUSUM legend: click "s+"/"s-" to isolate that line
+    # across every subplot, and dim the bars too so the line stands out.
+    cusum_selection = alt.selection_multi(fields=["series"], bind="legend")
+
+    def make_layer_chart(layer: str, show_x_axis: bool):
+        bar_chart = (
+            alt.Chart(df[df["layer"] == layer])
+            .mark_bar(stroke="black", strokeWidth=1)
+            .encode(
+                x=alt.X(
+                    "ts_hour:T",
+                    title=None,
+                    axis=alt.Axis(labels=show_x_axis, ticks=show_x_axis),
+                ),
+                y=alt.Y("count:Q", stack="zero", title="count"),
+                color=alt.Color(
+                    "outcome:N",
+                    scale=alt.Scale(
+                        domain=list(OUTCOME_COLORS.keys()),
+                        range=list(OUTCOME_COLORS.values()),
+                    ),
+                    legend=alt.Legend(title="Outcome") if layer == LAYERS[-1] else None,
+                ),
+                opacity=alt.condition(
+                    outcome_selection & cusum_selection, alt.value(0.6), alt.value(0.05)
+                ),
+                tooltip=["ts_hour:T", "outcome:N", "count:Q"],
+            )
+        )
+        if layer == LAYERS[-1]:
+            bar_chart = bar_chart.add_selection(outcome_selection)
+
+        chart = bar_chart
+        if detectors and layer in detectors:
+            detector = detectors[layer]
+            bands_df = _state_bands_df(cells, detector)
+            overlay_df = _cusum_overlay_df(cells, detector)
+            overlay_chart = _make_cusum_overlay_chart(
+                overlay_df,
+                show_legend=(layer == LAYERS[-1]),
+                selection=cusum_selection,
+                h=getattr(detector, "h", None),
+            )
+            layers = []
+            if not bands_df.empty:
+                layers.append(_make_state_bands_chart(bands_df))
+            layers += [bar_chart, overlay_chart]
+            chart = alt.layer(*layers).resolve_scale(
+                y="independent", color="independent", opacity="independent"
+            )
+
+        return chart.properties(
+            width=chart_width,
+            height=150,
+            title=alt.TitleParams(
+                text=layer,
+                fontSize=11,
+                fontWeight="normal",
+                color="gray",
+                anchor="start",
+                dy=-4,
+                offset=2,
+            ),
+        )
+
+    charts = [
+        make_layer_chart(layer, show_x_axis=(layer == LAYERS[-1])) for layer in LAYERS
+    ]
+    return (
+        alt.vconcat(*charts, spacing=10)
+        .resolve_scale(x="shared", color="shared")
+        .properties(title="Cell outcome histogram")
+    )
