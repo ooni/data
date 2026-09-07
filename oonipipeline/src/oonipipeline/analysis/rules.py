@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import List, Tuple
 
-RULES_VERSION = 2
+RULES_VERSION = 3
 
 
 class Evidence(IntEnum):
@@ -60,6 +60,15 @@ class OutcomeClass(IntEnum):
     DOWN = 2 # unavailable, but not due to network interference
     BLOCKED = 3 # unavailable, due not network interference
 
+class RuleLayer(IntEnum):
+    """The layer for which a particular rule applies to
+    """
+
+    UNKNOWN = 0
+    DNS = 1
+    TCP = 2
+    TLS = 3
+
 @dataclass(frozen=True)
 class Rule:
     """One branch of a layer's scoring cascade."""
@@ -76,6 +85,9 @@ class Rule:
     comment: str
     evidence: Evidence = Evidence.SCORED
     outcome_class: OutcomeClass = OutcomeClass.UNKNOWN
+    layer : RuleLayer = RuleLayer.UNKNOWN
+    # used to indicate legacy rule versions
+    version: int = RULES_VERSION
 
     @property
     def outcome(self) -> Tuple[float, float, float]:
@@ -87,14 +99,19 @@ class Rule:
 NO_MATCH_RULE_ID = "none"
 NO_MATCH_EVIDENCE = Evidence.NONE
 
+_TLS_CTRL_OK = (
+    "tls_failure IS NOT NULL AND ctrl_tls_success_rate > 0.5 "
+    "AND ctrl_tls_success_count > 0"
+)
 
-DNS_RULES: List[Rule] = [
+CURRENT_RULES: List[Rule] = [
     Rule(
         rule_id="no_dns_data",
         condition="length(dns_answers) = 0 AND dns_failure IS NULL",
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        layer=RuleLayer.DNS,
         comment=(
             "Row has no DNS data attached, most likely an HTTP(s)-only "
             "observation. Masked out of aggregate analysis."
@@ -107,6 +124,7 @@ DNS_RULES: List[Rule] = [
         blocked=1.0,
         down=0.0,
         ok=0.0,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.BLOCKED,
         comment="Matched a known blockpage fingerprint for this country.",
     ),
@@ -116,6 +134,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=1.0,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.OK,
         comment=(
             "The answer is TLS-consistent, a very strong signal that it is "
@@ -128,6 +147,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.95,
         down=0.05,
         ok=0.0,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.BLOCKED,
         comment="Bogon answer that the control never returned. Likely blocking.",
     ),
@@ -137,6 +157,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.1,
         down=0.9,
         ok=0.0,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.DOWN,
         comment=(
             "Bogon answer that the control also returned — a DNS "
@@ -149,6 +170,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.9,
         down=0.05,
         ok=0.05,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.BLOCKED,
         comment=(
             "Certificates fail for this answer and the control never returned "
@@ -161,6 +183,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.9,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.OK,
         comment="Direct answer match against the control.",
     ),
@@ -170,6 +193,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.2,
         down=0.0,
         ok=0.8,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.OK,
         comment=(
             "Experiment and control answers share an ASN. Usually a valid "
@@ -182,6 +206,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.1,
         down=0.9,
         ok=0.0,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.DOWN,
         comment=(
             "DNS is failing but also fails in the control — likely an issue "
@@ -194,6 +219,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.9,
         down=0.1,
         ok=0.0,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.BLOCKED,
         comment="DNS is failing but succeeds in the control. Likely blocking.",
     ),
@@ -203,6 +229,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.5,
         down=0.5,
         ok=0.0,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.UNKNOWN,
         comment="DNS is failing and we have no usable control to compare to.",
     ),
@@ -212,6 +239,7 @@ DNS_RULES: List[Rule] = [
         blocked=0.75,
         down=0.0,
         ok=0.25,
+        layer=RuleLayer.DNS,
         outcome_class=OutcomeClass.BLOCKED,
         comment=(
             "Catch-all: we got an answer that matched nothing in the control. "
@@ -220,16 +248,13 @@ DNS_RULES: List[Rule] = [
             "and a priority for calibration."
         ),
     ),
-]
-
-
-TCP_RULES: List[Rule] = [
     Rule(
         rule_id="no_tcp_data",
         condition="tcp_success != 1 AND tcp_failure IS NULL",
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        layer=RuleLayer.TCP,
         outcome_class=OutcomeClass.UNKNOWN,
         comment="Row has no TCP data attached. Masked out of aggregate analysis.",
         evidence=Evidence.NONE,
@@ -240,6 +265,7 @@ TCP_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=1.0,
+        layer=RuleLayer.TCP,
         outcome_class=OutcomeClass.OK,
         comment="We can connect, nothing to see here.",
     ),
@@ -249,6 +275,7 @@ TCP_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        layer=RuleLayer.TCP,
         outcome_class=OutcomeClass.UNKNOWN,
         comment=(
             "Failure against an IPv6 target while IPv6 is failing broadly for "
@@ -265,15 +292,17 @@ TCP_RULES: List[Rule] = [
         blocked=0.75,
         down=0.25,
         ok=0.0,
+        layer=RuleLayer.TCP,
         outcome_class=OutcomeClass.BLOCKED,
         comment="Failure against an address that mostly succeeds in the control.",
     ),
     Rule(
-        rule_id="dns_untrusted",
+        rule_id="dns_untrusted_tcp_gate",
         condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        layer=RuleLayer.TCP,
         outcome_class=OutcomeClass.UNKNOWN,
         comment=(
             "DNS was not trustworthy, so the addresses we connected to cannot "
@@ -284,7 +313,7 @@ TCP_RULES: List[Rule] = [
         evidence=Evidence.DISCARDED,
     ),
     Rule(
-        rule_id="failure_ctrl_also_failing",
+        rule_id="tcp_failure_ctrl_also_failing",
         condition=(
             "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate <= 0.5 "
             "AND ctrl_tcp_failing_count > 0"
@@ -292,24 +321,17 @@ TCP_RULES: List[Rule] = [
         blocked=0.25,
         down=0.75,
         ok=0.0,
+        layer=RuleLayer.TCP,
         outcome_class=OutcomeClass.DOWN,
         comment="Failure, but the control is failing a lot too. Likely down.",
     ),
-]
-
-
-_TLS_CTRL_OK = (
-    "tls_failure IS NOT NULL AND ctrl_tls_success_rate > 0.5 "
-    "AND ctrl_tls_success_count > 0"
-)
-
-TLS_RULES: List[Rule] = [
     Rule(
         rule_id="no_tls_data",
         condition="tls_is_certificate_valid IS NULL AND tls_failure IS NULL",
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        layer=RuleLayer.TLS,
         outcome_class=OutcomeClass.UNKNOWN,
         comment="Row has no TLS data attached. Masked out of aggregate analysis.",
         evidence=Evidence.NONE,
@@ -320,6 +342,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=1.0,
+        layer=RuleLayer.TLS,
         outcome_class=OutcomeClass.OK,
         comment="Valid certificate, nothing to see here.",
     ),
@@ -332,6 +355,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.9,
         down=0.1,
         ok=0.0,
+        layer=RuleLayer.TLS,
         outcome_class=OutcomeClass.BLOCKED,
         comment="Failure where the control succeeds; SSL errors are most suspicious.",
     ),
@@ -341,6 +365,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.8,
         down=0.2,
         ok=0.0,
+        layer=RuleLayer.TLS,
         outcome_class=OutcomeClass.BLOCKED,
         comment=(
             "Failure where the control succeeds; connection reset carries more "
@@ -353,15 +378,17 @@ TLS_RULES: List[Rule] = [
         blocked=0.7,
         down=0.3,
         ok=0.0,
+        layer=RuleLayer.TLS,
         outcome_class=OutcomeClass.BLOCKED,
         comment="Failure where the control succeeds, with a less specific error.",
     ),
     Rule(
-        rule_id="dns_untrusted",
+        rule_id="dns_untrusted_tls_gate",
         condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        layer=RuleLayer.TLS,
         outcome_class=OutcomeClass.UNKNOWN,
         comment="DNS was not trustworthy, so this result cannot be either. Masked.",
         evidence=Evidence.DISCARDED,
@@ -372,6 +399,7 @@ TLS_RULES: List[Rule] = [
         blocked=0.0,
         down=0.0,
         ok=0.0,
+        layer=RuleLayer.TLS,
         outcome_class=OutcomeClass.UNKNOWN,
         comment=(
             "TCP analysis says this address is blocked, so the TLS result is "
@@ -380,7 +408,7 @@ TLS_RULES: List[Rule] = [
         evidence=Evidence.DISCARDED,
     ),
     Rule(
-        rule_id="failure_ctrl_also_failing",
+        rule_id="tls_failure_ctrl_also_failing",
         condition=(
             "tls_failure IS NOT NULL AND ctrl_tls_success_rate <= 0.5 "
             "AND ctrl_tls_failing_count > 0"
@@ -388,18 +416,92 @@ TLS_RULES: List[Rule] = [
         blocked=0.2,
         down=0.8,
         ok=0.0,
+        layer=RuleLayer.TLS,
         outcome_class=OutcomeClass.DOWN,
         comment="Failure, but the control is failing a lot too. Likely down.",
     ),
 ]
 
+# this list contains all older rules which have been discontinued
+# whenever an existing rule is changed, the rule_id needs to be modified and added to this list
+LEGACY_RULES = [
+    Rule(
+        rule_id="failure_ctrl_also_failing",
+        condition="dns_engine IN ('system', 'getaddrinfo') AND dns_failure IS NOT NULL AND ctrl_dns_success_rate <= 0.5",
+        blocked=0.1,
+        down=0.9,
+        ok=0.0,
+        version=1,
+        layer=RuleLayer.DNS,
+        outcome_class=OutcomeClass.DOWN,
+        comment=(
+            "DNS is failing but also fails in the control — likely an issue "
+            "with the fqdn itself, e.g. NXDOMAIN."
+        ),
+    ),
+    Rule(
+        rule_id="failure_ctrl_ok",
+        condition="dns_engine IN ('system', 'getaddrinfo') AND dns_failure IS NOT NULL AND ctrl_dns_success_rate > 0.5",
+        blocked=0.9,
+        down=0.1,
+        ok=0.0,
+        version=1,
+        layer=RuleLayer.DNS,
+        outcome_class=OutcomeClass.BLOCKED,
+        comment="DNS is failing but succeeds in the control. Likely blocking.",
+    ),
+    Rule(
+        rule_id="failure_no_ctrl",
+        condition="dns_engine IN ('system', 'getaddrinfo') AND dns_failure IS NOT NULL",
+        blocked=0.5,
+        down=0.5,
+        ok=0.0,
+        version=1,
+        layer=RuleLayer.DNS,
+        outcome_class=OutcomeClass.UNKNOWN,
+        comment="DNS is failing and we have no usable control to compare to.",
+    ),
+    Rule(
+        rule_id="answer_unmatched",
+        condition="dns_engine IN ('system', 'getaddrinfo') AND dns_failure IS NULL",
+        blocked=0.75,
+        down=0.0,
+        ok=0.25,
+        version=1,
+        layer=RuleLayer.DNS,
+        outcome_class=OutcomeClass.BLOCKED,
+        comment=(
+            "Catch-all: we got an answer that matched nothing in the control. "
+            "Fires for legitimately rotating CDN/geo-DNS answers the control "
+            "did not happen to see, so it is a likely false-positive source "
+            "and a priority for calibration."
+        ),
+    ),
+    Rule(
+        rule_id="dns_untrusted",
+        condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
+        blocked=0.0,
+        down=0.0,
+        ok=0.0,
+        version=2,
+        outcome_class=OutcomeClass.UNKNOWN,
+        comment=(
+            "DNS was not trustworthy, so the addresses we connected to cannot "
+            "be trusted either. Masked."
+        ),
+        evidence=Evidence.DISCARDED,
+    ),
+]
+
+DNS_RULES = list(filter(lambda x: x.layer == RuleLayer.DNS, CURRENT_RULES))
+TCP_RULES = list(filter(lambda x: x.layer == RuleLayer.TCP, CURRENT_RULES))
+TLS_RULES = list(filter(lambda x: x.layer == RuleLayer.TLS, CURRENT_RULES))
 
 LAYER_RULES = {
     "dns": DNS_RULES,
     "tcp": TCP_RULES,
     "tls": TLS_RULES,
 }
-
 
 def _indent(s: str, level: int = 8) -> str:
     return " " * level + s
