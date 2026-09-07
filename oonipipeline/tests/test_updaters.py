@@ -57,11 +57,12 @@ def test_unit_asnmeta_updater(mock_clickhouse, mock_urlopen):
 
     qrs = [" ".join(q[0][0].split()) for q in mock_click.execute.call_args_list]
     expected_queries = [
-        "DROP TABLE IF EXISTS asnmeta_tmp",
-        "CREATE TABLE asnmeta_tmp ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = MergeTree() ORDER BY (asn, changed)",
+        "CREATE TABLE IF NOT EXISTS asnmeta ON CLUSTER oonidata_cluster ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = ReplicatedMergeTree('/clickhouse/{cluster}/tables/ooni/asnmeta/{shard}', '{replica}') ORDER BY (asn, changed)",
+        "CREATE TABLE IF NOT EXISTS asnmeta_tmp ON CLUSTER oonidata_cluster ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = ReplicatedMergeTree('/clickhouse/{cluster}/tables/ooni/asnmeta_tmp/{shard}', '{replica}') ORDER BY (asn, changed)",
+        "TRUNCATE TABLE asnmeta_tmp",
         "INSERT INTO asnmeta_tmp (asn, org_name, cc, changed, aut_name, source) VALUES",
         "SELECT count() FROM asnmeta_tmp",
-        "EXCHANGE TABLES asnmeta_tmp AND asnmeta",
+        "EXCHANGE TABLES asnmeta_tmp AND asnmeta ON CLUSTER oonidata_cluster",
     ]
     for qr in expected_queries:
         assert qr in qrs
