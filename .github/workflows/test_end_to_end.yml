@@ -1,0 +1,102 @@
+name: End to End Data Pipeline Test
+
+on:
+  push:
+    branches:
+      - main
+      - add_end_to_end_tests
+
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        description: "Run the build with tmate debugging enabled"
+        required: false
+        default: false
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: cache inputs and outputs
+        uses: actions/cache@v5
+        with:
+          key: data-cache-${{ github.run_id }}
+          restore-keys: |
+            data-cache-
+          path: |
+            tests/integration/data
+            tests/integration/fastpath
+
+      - name: change permission of fastpath cache for container read/write
+        run: |
+          chmod 0777 -R tests/integration/fastpath/lib/cache
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled }}
+        with:
+          limit-access-to-actor: true
+
+      - name: Run Docker Compose (detached)
+        run: |
+          cd tests/integration
+          docker compose up -d
+          docker compose ps --all
+          docker compose logs --no-color --timestamps --tail=200 &
+
+      - name: Wait for verifier to start
+        run: |
+          cd tests/integration
+          for i in $(seq 1 60); do
+            if docker ps --format "{{.Names}}" | grep -q 'integration-verify'; then
+              echo "verifier started"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "verifier did not start within timeout" >&2
+          docker ps -a
+          exit 1
+
+      - name: Stream verifier logs until it exits
+        run: |
+          cd tests/integration
+          # Start streaming logs; docker logs --follow will exit when the container stops.
+          docker logs --follow integration-verify-1 & LOG_PID=$!
+          # Wait for verifier container to stop, with a timeout (360*5s = 30 minutes).
+          for i in $(seq 1 360); do
+            if ! docker ps --format "{{.Names}}" | grep -q 'integration-verify'; then
+              echo "verifier exited"
+              break
+            fi
+            sleep 5
+          done
+          # If still running after timeout, show debugging info and fail.
+          if docker ps --format "{{.Names}}" | grep -q 'integration-verify'; then
+            echo "verifier did not finish within timeout" >&2
+            docker ps -a
+            docker logs integration-verify-1 || true
+            if ps -p $LOG_PID > /dev/null; then
+              kill $LOG_PID || true
+            fi
+            exit 1
+          fi
+          # Wait for the logs follower to finish and show final logs if any.
+          if ps -p $LOG_PID > /dev/null; then
+            wait $LOG_PID || true
+          fi
+          docker ps -a --filter name=verify --format "Container: {{.Names}} Status: {{.Status}}"
+          docker logs integration-verify-1 || true
+          EXIT_CODE=$(docker inspect --format='{{.State.ExitCode}}' integration-verify-1)
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo "Container exited with code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+
+      - name: Shutdown remaining services
+        run: |
+          cd tests/integration
+          docker compose down --remove-orphans

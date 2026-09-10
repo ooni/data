@@ -1,0 +1,94 @@
+import pytest
+
+route = "/api/v1/aggregation/observations"
+
+
+def test_oonidata_aggregation_observations(client):
+    response = client.get(route)
+
+    json = response.json()
+    assert isinstance(json["results"], list), json
+    assert len(json["results"]) == 0
+
+
+def test_oonidata_aggregation_observations_with_since_and_until(
+    client, params_since_and_until_with_two_days
+):
+    response = client.get(route, params=params_since_and_until_with_two_days)
+
+    json = response.json()
+    assert isinstance(json["results"], list), json
+    assert len(json["results"]) > 0
+
+    for result in json["results"]:
+        assert "observation_count" in result, result
+        assert "failure" in result, result
+
+
+@pytest.mark.parametrize(
+    "filter_name, filter_value",
+    [
+        ("probe_cc", "IT"),
+        ("probe_asn", 1267),
+        ("probe_asn", [1267, 5650]),
+        ("test_name", "whatsapp"),
+        ("hostname", "e7.whatsapp.net"),
+        ("ip", "15.197.206.217"),
+    ],
+)
+def test_oonidata_aggregation_observations_with_filters(
+    client, filter_name, filter_value, params_since_and_until_with_three_days
+):
+    params = params_since_and_until_with_three_days
+    params[filter_name] = filter_value
+
+    response = client.get(route, params=params)
+
+    json = response.json()
+    assert isinstance(json["results"], list), json
+    assert len(json["results"]) > 0
+    for result in json["results"]:
+        if isinstance(filter_value, list):
+            assert result[filter_name] in filter_value, result
+        else:
+            assert result[filter_name] == filter_value, result
+
+
+@pytest.mark.parametrize(
+    "time_grain, total",
+    [
+        ("hour", 48),
+        ("day", 2),
+        ("week", 1),
+        ("month", 1),
+        ("year", 1),
+        ("auto", 2),
+    ],
+)
+def test_oonidata_aggregation_observations_time_grain(
+    client, time_grain, total, params_since_and_until_with_three_days
+):
+    params = params_since_and_until_with_three_days
+    params["group_by"] = "timestamp"
+    params["time_grain"] = time_grain
+
+    response = client.get(route, params=params)
+
+    json = response.json()
+    assert len(json["results"]) == total
+
+
+def test_oonidata_aggregation_observations_groupby_failure(
+    client, params_since_and_until_with_two_days
+):
+    params = params_since_and_until_with_two_days
+    params["group_by"] = ["failure", "timestamp"]
+
+    response = client.get(route, params=params)
+
+    json = response.json()
+    assert len(json["results"]) > 10
+    first_result = json["results"][0]
+    assert "failure" in first_result.keys()
+    assert "timestamp" in first_result.keys()
+    assert "observation_count" in first_result.keys()

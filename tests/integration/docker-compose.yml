@@ -1,0 +1,139 @@
+version: '3.8'
+
+services:
+  downloader:
+    build:
+      context: ../../
+      dockerfile: Dockerfile
+    image: oonidata_image
+    volumes:
+      - ./data:/data:Z
+    working_dir: /data
+    command: >
+      bash -c "oonidata sync --output-dir . --probe-cc IT,IR --start-day 2026-01-01 --end-day 2026-01-03 &&
+      oonipipeline run --create-tables --probe-cc IT,IR --workflow-name observations --start-at 2026-01-01 --end-at 2026-01-03"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
+
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:latest
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native interface
+    volumes:
+      - ./clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql:Z
+    environment:
+      CLICKHOUSE_USER: "testuser"
+      CLICKHOUSE_PASSWORD: "testuser"
+      CLICKHOUSE_DB: "ooni"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "-u", "testuser", "--password", "testuser", "-q", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  postgres:
+    image: docker.io/library/postgres:latest
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ooni
+
+  fastpath:
+    image: docker.io/ooni/fastpath:latest
+    volumes:
+      - ./fastpath/etc:/etc/ooni:Z
+      - ./fastpath/lib:/var/lib/fastpath:Z
+    command: [ "./run_fastpath", "--debug", "--clickhouse-url",
+               "clickhouse://testuser:testuser@clickhouse:9000/ooni",
+               "--keep-s3-cache", "--write-to-disk", "--stdout", "--ccs", "IT,IR",
+               "--start-day", "2026-01-01", "--end-day", "2026-01-03", "--noapi" ]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+
+  fastpath2:
+    image: docker.io/ooni/fastpath:latest
+    volumes:
+      - ./fastpath2/data:/data:Z
+      - ./fastpath2/etc:/etc/ooni:Z
+      - ./fastpath2/lib:/var/lib/fastpath:Z
+
+    command: [ "./run_fastpath", "--debug", "--clickhouse-url",
+               "clickhouse://testuser:testuser@clickhouse:9000/ooni",
+               "--keep-s3-cache", "--write-to-disk", "--stdout" ]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+    ports:
+      - "8472:8472"
+
+  valkey:
+    image: docker.io/valkey/valkey:latest
+    ports:
+      - "6379:6379"
+    #volumes:
+    #  - valkey_data:/data
+    command: valkey-server --appendonly yes
+    restart: unless-stopped
+
+  api:
+    image: docker.io/ooni/api-oonimeasurements:latest
+    environment:
+      VALKEY_URL: valkey://valkey:6379
+      POSTGRESQL_URL: "postgresql://postgres:postgres@postgres:5432/ooni"
+      JWT_ENCRYPTION_KEY: "0123456789abcdef"
+      PROMETHEUS_METRICS_PASSWORD: "testme"
+      CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
+      ACCOUNT_ID_HASHING_KEY: "0123456789abcdef"
+      RATE_LIMITS: "1000/minute;400000/day;200000/7day"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+    ports:
+      - "8080:80"
+
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+      valkey:
+        condition: service_started
+      downloader:
+        condition: service_completed_successfully
+      fastpath:
+        condition: service_completed_successfully
+
+  # replace this with a pytest suite that verifies results
+  verify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: verifier
+
+    working_dir: /app
+    volumes:
+      - ./tests:/app:Z
+    environment:
+      API_URL: http://api:80
+    command: >
+      pytest -v
+    depends_on:
+      api:
+        condition: service_healthy
