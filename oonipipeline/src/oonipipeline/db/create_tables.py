@@ -265,7 +265,12 @@ def make_create_queries():
             -- Pseudonymous probe identifier, "" when the measurement predates
             -- the anonymous-credential scheme. Lets consumers count distinct
             -- probes instead of using uniq(report_id) as a proxy.
-            `probe_id` FixedString(64)
+            `probe_id` FixedString(64),
+            -- RULES_VERSION from analysis/rules.py at the time the row was
+            -- written. Rows scored by different rule sets are not comparable,
+            -- and a partially reprocessed range carries a mix; this says which
+            -- is which. 0 on rows written before the column existed.
+            `analysis_rules_version` UInt16
         )
         ENGINE = ReplacingMergeTree
         PRIMARY KEY measurement_uid
