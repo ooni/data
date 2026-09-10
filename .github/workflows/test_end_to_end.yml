@@ -1,0 +1,46 @@
+name: End to End Data Pipeline Test
+
+on:
+  push:
+    branches:
+      - main
+      - add_end_to_end_tests
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: cache inputs and outputs
+        uses: actions/cache@v5
+        with:
+          key: data-cache-${{ github.run_id }}
+          restore-keys: |
+            data-cache-
+          path: |
+            tests/integration/data
+
+      - name: Install Podman
+        run: |
+          sudo apt update
+          sudo apt install -y podman podman-compose podman-docker
+
+      - name: Run Docker Compose with Podman
+        run: |
+          cd tests/integration && podman-compose up -d
+
+      - name: Wait for Downloader Container to Exit
+        run: |
+          # Replace `your_container_name` with the name of your container
+          while [ $(podman ps -q -f name=oonidata-pipeline | wc -l) -gt 0 ]; do
+            echo "Container is still running..."
+            sleep 5 # Wait for 5 seconds before checking again
+          done
+          echo "Container has exited."
+
+      - name: Shutdown
+        run: |
+          cd tests/integration && podman-compose down
