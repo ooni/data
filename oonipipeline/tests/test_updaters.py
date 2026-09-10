@@ -67,6 +67,40 @@ def test_unit_asnmeta_updater(mock_clickhouse, mock_urlopen):
         assert qr in qrs
 
 
+@patch("oonipipeline.tasks.updaters.citizenlab_test_lists_updater.Clickhouse")
+def test_unit_citizenlab_updater(mock_clickhouse):
+    mock_click = MagicMock()
+    citizenlab_test_lists_updater.Clickhouse.from_url.return_value = mock_click
+
+    citizenlab = [
+        {"domain": "example.com", "url": "https://example.com/", "cc": "US", "category_code": "MISC"},
+        {"domain": "example.org", "url": "https://example.org/path", "cc": "ZZ", "category_code": "GRP"},
+    ]
+
+    def mocked_execute(q, data=None, **kw):
+        q = q.strip()
+        if q.startswith("INSERT INTO citizenlab_flip"):
+            assert data == citizenlab
+        return [[]]
+
+    mock_click.execute.side_effect = mocked_execute
+
+    citizenlab_test_lists_updater.update_citizenlab_table(
+        "clickhouse://fake/ooni", citizenlab
+    )
+
+    qrs = [" ".join(q[0][0].split()) for q in mock_click.execute.call_args_list]
+    expected_queries = [
+        "CREATE TABLE IF NOT EXISTS citizenlab_flip ON CLUSTER oonidata_cluster ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/ooni/citizenlab_flip/{shard}', '{replica}') ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
+        "CREATE TABLE IF NOT EXISTS citizenlab ON CLUSTER oonidata_cluster ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/ooni/citizenlab/{shard}', '{replica}') ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
+        "TRUNCATE TABLE citizenlab_flip",
+        "INSERT INTO citizenlab_flip (domain, url, cc, category_code) VALUES",
+        "EXCHANGE TABLES citizenlab_flip AND citizenlab ON CLUSTER oonidata_cluster",
+    ]
+    for qr in expected_queries:
+        assert qr in qrs
+
+
 def test_end_to_end(clickhouse_server):
     asnmeta_updater.update_asnmeta(clickhouse_url=clickhouse_server)
     click = ClickhouseClient.from_url(clickhouse_server)

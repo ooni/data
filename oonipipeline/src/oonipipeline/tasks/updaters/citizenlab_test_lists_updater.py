@@ -25,6 +25,17 @@ from clickhouse_driver import Client as Clickhouse
 
 # from analysis.metrics import setup_metrics
 
+# citizenlab/citizenlab_flip live on the replicated oonidata_cluster, same
+# swap-table pattern as asnmeta/asnmeta_tmp (see asnmeta_updater.py for the
+# full rationale on why CREATE/EXCHANGE need ON CLUSTER here while
+# TRUNCATE/INSERT don't). ooni/devops's own cluster migration schema
+# (scripts/cluster-migration/schema.sql) defines these tables as
+# ReplicatedReplacingMergeTree at this same path -- the CREATE statements
+# below need to match that exactly, since CREATE TABLE IF NOT EXISTS is a
+# no-op whenever the table already exists (regardless of what engine the
+# statement itself specifies), so a genuine from-scratch bootstrap is the
+# only place a mismatch here would actually bite.
+CLUSTER_NAME = "oonidata_cluster"
 
 HTTPS_GIT_URL = "https://github.com/citizenlab/test-lists.git"
 
@@ -100,32 +111,20 @@ def query_c(click, query: str, qparams: dict):
 def update_citizenlab_table(clickhouse_url: str, citizenlab: list) -> None:
     """Overwrite citizenlab_flip and swap tables atomically"""
     click = Clickhouse.from_url(clickhouse_url)
-    click.execute(
-        """CREATE TABLE IF NOT EXISTS citizenlab_flip
+    for table_name in ("citizenlab_flip", "citizenlab"):
+        click.execute(
+            f"""CREATE TABLE IF NOT EXISTS {table_name} ON CLUSTER {CLUSTER_NAME}
 (
     `domain` String,
     `url` String,
     `cc` FixedString(32),
     `category_code` String
 )
-ENGINE = ReplacingMergeTree
+ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{{cluster}}/tables/ooni/{table_name}/{{shard}}', '{{replica}}')
 ORDER BY (domain, url, cc, category_code)
 SETTINGS index_granularity = 4
     """
-    )
-    click.execute(
-        """CREATE TABLE IF NOT EXISTS citizenlab
-(
-    `domain` String,
-    `url` String,
-    `cc` FixedString(32),
-    `category_code` String
-)
-ENGINE = ReplacingMergeTree
-ORDER BY (domain, url, cc, category_code)
-SETTINGS index_granularity = 4
-    """
-    )
+        )
     log.info("Emptying Clickhouse citizenlab_flip table")
     q = "TRUNCATE TABLE citizenlab_flip"
     click.execute(q)
@@ -135,7 +134,7 @@ SETTINGS index_granularity = 4
     click.execute(q, citizenlab, types_check=True)
 
     log.info("Swapping Clickhouse citizenlab tables")
-    q = "EXCHANGE TABLES citizenlab_flip AND citizenlab"
+    q = f"EXCHANGE TABLES citizenlab_flip AND citizenlab ON CLUSTER {CLUSTER_NAME}"
     click.execute(q)
 
 
