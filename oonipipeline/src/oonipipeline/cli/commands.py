@@ -111,7 +111,6 @@ def cli(log_level: int):
 @end_at_option
 @probe_cc_option
 @test_name_option
-@click.option("--workflow-name", type=str, required=True, default="observations")
 @click.option(
     "--only-observations",
     is_flag=True,
@@ -137,7 +136,6 @@ def cli(log_level: int):
 def run(
     probe_cc: List[str],
     test_name: List[str],
-    workflow_name: str,
     start_at: datetime,
     end_at: datetime,
     only_observations: bool,
@@ -148,7 +146,6 @@ def run(
     """
     Process OONI measurements and write them into clickhouse
     """
-    click.echo(f"Runnning workflow {workflow_name}")
 
     maybe_create_delete_tables(
         clickhouse_url=config.clickhouse_url,
@@ -158,8 +155,8 @@ def run(
 
     last_month = None
     for timestamp, current_day in tqdm(build_timestamps(start_at, end_at)):
-        click.echo(f"Processing {timestamp}")
         if not only_analysis:
+            click.echo(f"Runnning make_observations({timestamp})")
             make_observations(
                 MakeObservationsParams(
                     probe_cc=probe_cc,
@@ -173,6 +170,7 @@ def run(
             click.echo("finished running make_observations")
 
         if not only_observations:
+            click.echo(f"Runnning make_analysis({timestamp})")
             make_analysis(
                 MakeAnalysisParams(
                     clickhouse_url=config.clickhouse_url,

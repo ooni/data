@@ -1,4 +1,4 @@
-import re
+import re2
 import csv
 
 from pathlib import Path
@@ -24,8 +24,7 @@ class Fingerprint:
     scope: Optional[str] = ""
     notes: Optional[str] = ""
     expected_countries: Optional[List[str]] = field(default_factory=list)
-
-    regexp: Optional[re.Pattern] = None
+    regexp: Optional[re2._Regexp] = None
 
     def matches_pattern(self, s: str) -> bool:
         if self.pattern_type == "full":
@@ -41,7 +40,7 @@ class Fingerprint:
             assert (
                 self.regexp is not None
             ), "regexp is not set for a regexp type pattern"
-            return self.regexp.search(s) != None
+            return self.regexp.search(s) is not None
 
         raise Exception(
             f"Found unknown fingerprint matching pattern {self.pattern_type}"
@@ -74,7 +73,9 @@ def _load_fingerprints(filepath: Path) -> Dict[str, Fingerprint]:
         for row in csv_reader:
             fp = Fingerprint(**row)
             if fp.pattern_type == "regexp":
-                fp.regexp = re.compile(fp.pattern, re.DOTALL)
+                options = re2.Options()
+                options.dot_nl = True
+                fp.regexp = re2.compile(fp.pattern, options)
             fingerprints[fp.name] = fp
     return fingerprints
 

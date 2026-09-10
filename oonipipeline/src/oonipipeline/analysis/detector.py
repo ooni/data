@@ -511,6 +511,7 @@ def run_detector(
     trace: bool = False,
     slack_webhook: str | None = None,
     explorer_base_url: str = "https://explorer.ooni.org/",
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/",
 ) -> Tuple[List[Changepoint], List[LastCusum], List[CusumStep]]:
     db = ClickhouseClient.from_url(clickhouse_url)
     domains = get_domain_list(db)
@@ -536,7 +537,15 @@ def run_detector(
     update_tables(db, updated_cusums, changepoints)
 
     if slack_webhook is not None:
-        notify_slack(changepoints, slack_webhook, explorer_base_url)
+        notify_slack(
+            changepoints,
+            slack_webhook,
+            explorer_base_url,
+            detector_panel_base_url,
+            edd=edd,
+            gap_halflife=gap_halflife,
+            warmup=warmup,
+        )
 
     return changepoints, updated_cusums, steps
 
@@ -580,11 +589,44 @@ def run_detector_for(
 def plot(steps: List[CusumStep], block_type: str):
     make_cusums_chart(steps, block_type).show()
 
-def make_cusums_chart(steps: List[CusumStep], block_type: str):
+def make_cusums_chart(
+    steps: List[CusumStep],
+    block_type: str,
+    zoom=None,
+    nearest=None,
+    show_legend: bool = True,
+    show_x_axis: bool = True,
+):
+    """
+    zoom: an optional shared alt.selection_interval(bind="scales") to reuse
+    across multiple calls (see make_cusums_chart_grid) so pan/zoom on one
+    chart's time axis applies to all of them. When omitted, a private one is
+    created so this function still works as a standalone chart.
+
+    nearest: an optional shared alt.selection_single(nearest=True, ...) to
+    reuse across multiple calls (see make_cusums_chart_grid), so a single
+    mouseover listener drives the hover crosshair/highlights on every row.
+    When omitted, a private one is created
+
+    show_legend: when False, suppresses this chart's own State/Value/CUSUM
+    legends. Used when stacking several of these charts so only one copy
+    of each legend is shown for the whole stack.
+
+    show_x_axis: when False, hides the time-axis tick labels/ticks (grid
+    lines stay). Used when stacking several of these charts so only the
+    bottom-most one shows the shared time axis.
+    """
     import altair as alt
     import pandas as pd
 
     STATE_COLORS = {"ok": "#d4edda", "blk": "#f8d7da", "unk": "#fff3cd"}
+    x_axis = alt.Axis(
+        format="%b %d, %H:%M",
+        title=None,
+        labels=show_x_axis,
+        ticks=show_x_axis,
+    )
+    ts_tooltip_fmt = "%b %d, %H:%M"
 
     df_steps = pd.DataFrame([s for s in steps if s["block_type"] == block_type])
     df_last = df_steps.loc[[df_steps["ts"].idxmax()]]
@@ -608,7 +650,7 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         alt.Chart(df_bands)
         .mark_rect(opacity=0.25)
         .encode(
-            x=alt.X("state_start:T"),
+            x=alt.X("state_start:T", axis=x_axis),
             x2=alt.X2("state_end:T"),
             color=alt.Color(
                 "current_state:N",
@@ -620,18 +662,30 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
                         STATE_COLORS["unk"],
                     ],
                 ),
-                legend=alt.Legend(title="State"),
+                legend=alt.Legend(title="State") if show_legend else None,
             ),
-            tooltip=["current_state:N", "state_start:T", "state_end:T"],
+            tooltip=[
+                "current_state:N",
+                alt.Tooltip("state_start:T", format=ts_tooltip_fmt),
+                alt.Tooltip("state_end:T", format=ts_tooltip_fmt),
+            ],
         )
     )
 
-    base = alt.Chart(df_steps).encode(x="ts:T")
+    base = alt.Chart(df_steps).encode(x=alt.X("ts:T", axis=x_axis))
+
+    # One tooltip covering all three series at once (rather than trying to
+    # guess which line the cursor is closer to), using a plain x-only
+    # "nearest" selection — cheap, unlike a 2D Voronoi nearest selection.
+    if nearest is None:
+        nearest = alt.selection_single(
+            nearest=True, on="mouseover", fields=["ts"], empty="none", name="nearest"
+        )
 
     def make_label(df, field, label, color):
         return (
             alt.Chart(df)
-            .mark_text(align="left", dx=5, fontSize=11, color=color)
+            .mark_text(align="right", dx=-5, fontSize=11, color=color)
             .encode(
                 x="ts:T",
                 y=alt.Y(f"{field}:Q"),
@@ -639,20 +693,34 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
             )
         )
 
+    def make_highlight(field, color):
+        # transform_filter (rather than an opacity condition over the full
+        # dataset) means only the single matched point is ever rendered, so
+        # this stays O(1) instead of O(n) marks per row.
+        return (
+            base.transform_filter(nearest)
+            .mark_point(color=color, filled=True, size=80)
+            .encode(y=alt.Y(f"{field}:Q"))
+        )
+
+    def make_legend_swatch(labels, colors, title):
+        """A zero-opacity mark whose sole purpose is to render a fixed-domain
+        color legend, since the actual lines it labels use static (not
+        data-driven) mark colors and so don't produce one on their own."""
+        return (
+            alt.Chart(pd.DataFrame({"label": labels}))
+            .mark_point(filled=True, opacity=0)
+            .encode(
+                color=alt.Color(
+                    "label:N",
+                    scale=alt.Scale(domain=labels, range=colors),
+                    legend=alt.Legend(title=title),
+                )
+            )
+        )
+
     obs_line = base.mark_line(color="steelblue", opacity=0.5).encode(
         y=alt.Y("obs_value:Q", title="value"),
-        tooltip=["ts:T", "obs_value:Q", "weight:Q", "current_state:N"],
-    )
-    s_pos_line = base.mark_line(color="red").encode(
-        y=alt.Y("s_pos:Q"),
-        tooltip=["ts:T", "s_pos:Q"],
-    )
-    s_neg_line = base.mark_line(color="orange").encode(
-        y=alt.Y("s_neg:Q"),
-        tooltip=["ts:T", "s_neg:Q"],
-    )
-    threshold = (
-        alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
     )
     cp_points = (
         alt.Chart(df_steps[df_steps["is_changepoint"]])
@@ -660,11 +728,56 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         .encode(
             x="ts:T",
             y=alt.Y("obs_value:Q"),
-            tooltip=["ts:T", "obs_value:Q", "s_pos:Q", "s_neg:Q", "current_state:N"],
+            tooltip=[
+                alt.Tooltip("ts:T", format=ts_tooltip_fmt),
+                "obs_value:Q",
+                "s_pos:Q",
+                "s_neg:Q",
+                "current_state:N",
+            ],
         )
     )
+    obs_last_value = df_last["obs_value"].iloc[0]
+    obs_label_text = (
+        f"observed: {obs_last_value:.2f}" if pd.notna(obs_last_value) else "observed: n/a"
+    )
+    obs_label = make_label(df_last, "obs_value", obs_label_text, "steelblue")
+    obs_legend = make_legend_swatch(["observed"], ["steelblue"], "Value")
 
-    obs_label = make_label(df_last, "obs_value", "observed", "steelblue")
+    s_pos_line = base.mark_line(color="red").encode(
+        y=alt.Y("s_pos:Q", title="CUSUM statistic")
+    )
+    s_neg_line = base.mark_line(color="orange").encode(y=alt.Y("s_neg:Q"))
+
+    selectors = (
+        base.mark_point()
+        .encode(
+            opacity=alt.value(0),
+            tooltip=[
+                alt.Tooltip("ts:T", format=ts_tooltip_fmt),
+                alt.Tooltip("obs_value:Q", title="🔵 observed"),
+                alt.Tooltip("s_pos:Q", title="🔴 S+"),
+                alt.Tooltip("s_neg:Q", title="🟠 S−"),
+            ],
+        )
+        .add_selection(nearest)
+    )
+    hover_rule = (
+        base.transform_filter(nearest).mark_rule(color="gray", opacity=0.3)
+    )
+    obs_highlight = make_highlight("obs_value", "steelblue")
+    s_pos_highlight = make_highlight("s_pos", "red")
+    s_neg_highlight = make_highlight("s_neg", "orange")
+    hover = hover_rule + selectors
+
+    value_group_layers = [obs_line, obs_highlight, cp_points, obs_label]
+    if show_legend:
+        value_group_layers.append(obs_legend)
+    value_group = alt.layer(*value_group_layers)
+
+    threshold = (
+        alt.Chart(df_steps).mark_rule(color="green", strokeDash=[4, 4]).encode(y="h:Q")
+    )
     s_pos_label = make_label(df_last, "s_pos", "S+", "red")
     s_neg_label = make_label(df_last, "s_neg", "S−", "orange")
     df_h = df_last[["ts", "h"]].copy()
@@ -673,33 +786,97 @@ def make_cusums_chart(steps: List[CusumStep], block_type: str):
         .mark_text(align="left", dx=5, fontSize=11, color="green")
         .encode(x="ts:T", y="h:Q", text=alt.value("threshold (h)"))
     )
+    cusum_group_layers = [
+        s_pos_line,
+        s_neg_line,
+        s_pos_highlight,
+        s_neg_highlight,
+        threshold,
+        s_pos_label,
+        s_neg_label,
+        threshold_label,
+    ]
+    if show_legend:
+        cusum_group_layers.append(
+            make_legend_swatch(
+                ["S+", "S−", "threshold (h)"], ["red", "orange", "green"], "CUSUM"
+            )
+        )
+    cusum_group = alt.layer(*cusum_group_layers)
+
+    if zoom is None:
+        zoom = alt.selection_interval(bind="scales", encodings=["x"])
 
     chart = (
-        (
-            state_bands
-            + obs_line
-            + obs_label
-            + s_pos_line
-            + s_pos_label
-            + s_neg_line
-            + s_neg_label
-            + threshold
-            + threshold_label
-            + cp_points
-        )
+        alt.layer(state_bands, value_group, cusum_group, hover)
+        .resolve_scale(y="independent", color="independent")
+        .resolve_legend(color="independent")
         .properties(
             width=900,
-            height=400,
-            title=f"CUSUM Detector: {block_type}",
+            height=100,
+            title=alt.TitleParams(
+                text=block_type,
+                fontSize=11,
+                fontWeight="normal",
+                color="gray",
+                anchor="start",
+                dy=-4,
+                offset=2,
+            ),
         )
-        .interactive()
+        .add_selection(zoom)
     )
     return chart
+
+def make_cusums_chart_grid(steps: List[CusumStep], block_types: List[str]):
+    """
+    One row per block type, stacked vertically in a single chart, so all of
+    an ASN's CUSUM series can be compared at a glance. The State/Value/CUSUM
+    legends (identical across rows) are only shown once, on the last row,
+    and every row shares one time-axis pan/zoom selection.
+    """
+    import altair as alt
+
+    present_block_types = [
+        block_type
+        for block_type in block_types
+        if any(s["block_type"] == block_type for s in steps)
+    ]
+    if not present_block_types:
+        return None
+
+    zoom = alt.selection_interval(bind="scales", encodings=["x"])
+    nearest = alt.selection_single(
+        nearest=True, on="mouseover", fields=["ts"], empty="none", name="nearest"
+    )
+    last_idx = len(present_block_types) - 1
+    charts = [
+        make_cusums_chart(
+            steps,
+            block_type,
+            zoom=zoom,
+            nearest=nearest,
+            show_legend=(i == last_idx),
+            show_x_axis=(i == last_idx),
+        )
+        for i, block_type in enumerate(present_block_types)
+    ]
+    return (
+        alt.vconcat(*charts, spacing=0)
+        .resolve_scale(x="shared")
+        .properties(title="CUSUM Detector", padding=0)
+        .configure_view(strokeWidth=0)
+    )
+
 
 def notify_slack(
     changepoints: list[Changepoint],
     slack_webhook: str,
     explorer_base_url: str = "https://explorer.ooni.org/",
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/",
+    edd: int = 10,
+    gap_halflife: float = 48.0,
+    warmup: bool = False,
 ):
     """
     Sends a message to slack with a list of all changepoints that were detected
@@ -725,10 +902,13 @@ def notify_slack(
         explorer = get_explorer_url(cp, explorer_base_url)
         # Alerts panel not yet deployed to prod, we use the test one for now
         alerts = get_alert_page_url(cp, "https://explorer.test.ooni.org/")
+        panel = get_detector_panel_url(
+            cp, detector_panel_base_url, edd=edd, gap_halflife=gap_halflife, warmup=warmup
+        )
         message += (
             f"• :flag-{cp['probe_cc'].lower()}: [{cp['probe_cc']}/AS{cp['probe_asn']}] "
             f"*{cp['domain']}* {dir_to_str(cp['change_dir'])} - `{cp['block_type']}` "
-            f"| <{explorer}|explorer> | <{alerts}|alerts>\n"
+            f"| <{explorer}|explorer> | <{alerts}|alerts> | <{panel}|detector panel>\n"
         )
 
         # Send messages in 10 entries batches to avoid max message size limit
@@ -785,4 +965,36 @@ def get_alert_page_url(
         "until": to_s(end_time),
     }
     url = f"{base_url}/chart/alerts?{urlencode(params)}"
+    return url
+
+
+def get_detector_panel_url(
+    changepoint: Changepoint,
+    base_url: str = "https://detector-panel.prod.ooni.io/",
+    edd: int = 10,
+    gap_halflife: float = 48.0,
+    warmup: bool = False,
+) -> str:
+    """
+    Builds a link to the events-panel app (see
+    oonipipeline.events_panel.panel), prefilled via query params so the app
+    auto-runs the detector for this changepoint's metadata
+    """
+    start_time = changepoint["ts"] - timedelta(days=13)
+    end_time = changepoint["ts"] + timedelta(days=2)
+
+    def to_iso(dt: datetime) -> str:
+        return dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    params = {
+        "probe_cc": changepoint["probe_cc"],
+        "domain": changepoint["domain"],
+        "probe_asn": changepoint["probe_asn"],
+        "start_time": to_iso(start_time),
+        "end_time": to_iso(end_time),
+        "edd": edd,
+        "gap_halflife": gap_halflife,
+        "warmup": str(warmup).lower(),
+    }
+    url = f"{base_url}?{urlencode(params)}"
     return url
