@@ -79,7 +79,7 @@ def test_unit_citizenlab_updater(mock_clickhouse):
 
     def mocked_execute(q, data=None, **kw):
         q = q.strip()
-        if q.startswith("INSERT INTO citizenlab_flip"):
+        if q.startswith("INSERT INTO citizenlab_tmp"):
             assert data == citizenlab
         return [[]]
 
@@ -91,11 +91,10 @@ def test_unit_citizenlab_updater(mock_clickhouse):
 
     qrs = [" ".join(q[0][0].split()) for q in mock_click.execute.call_args_list]
     expected_queries = [
-        "CREATE TABLE IF NOT EXISTS citizenlab_flip ON CLUSTER oonidata_cluster ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/ooni/citizenlab_flip/{shard}', '{replica}') ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
-        "CREATE TABLE IF NOT EXISTS citizenlab ON CLUSTER oonidata_cluster ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/ooni/citizenlab/{shard}', '{replica}') ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
-        "TRUNCATE TABLE citizenlab_flip",
-        "INSERT INTO citizenlab_flip (domain, url, cc, category_code) VALUES",
-        "EXCHANGE TABLES citizenlab_flip AND citizenlab ON CLUSTER oonidata_cluster",
+        "CREATE TABLE IF NOT EXISTS citizenlab ON CLUSTER oonidata_cluster ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/ooni/citizenlab', '{replica}') ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
+        "CREATE TEMPORARY TABLE IF NOT EXISTS citizenlab_tmp ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplacingMergeTree ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
+        "INSERT INTO citizenlab_tmp (domain, url, cc, category_code) VALUES",
+        "ALTER TABLE citizenlab REPLACE PARTITION tuple() FROM citizenlab_tmp SETTINGS alter_sync = 3",
     ]
     for qr in expected_queries:
         assert qr in qrs

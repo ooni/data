@@ -1,4 +1,6 @@
 import os
+import shutil
+import time
 from datetime import date, datetime, timedelta
 from multiprocessing import Process
 from pathlib import Path
@@ -7,6 +9,7 @@ import orjson
 import pytest
 from click.testing import CliRunner
 from clickhouse_driver import Client as ClickhouseClient
+from pytest_docker.plugin import get_docker_ip, get_docker_services
 
 from oonidata.apiclient import get_measurement_dict_by_uid
 from oonidata.dataclient import sync_measurements
@@ -62,6 +65,111 @@ def clickhouse_server(request):
         timeout=30.0, pause=0.1, check=lambda: is_clickhouse_running(url)
     )
     yield url
+
+
+# --- clickhouse_cluster: a 1 shard / 2 replica ClickHouse cluster used by
+# the citizenlab REPLACE PARTITION integration tests (see
+# tests/test_citizenlab_cluster.py) to verify a swap actually reaches every
+# replica, not just whichever node the client happens to connect to.
+#
+# This brings up a *separate* docker-compose file/stack from the one
+# clickhouse_server uses above (tests/docker-compose.cluster.yml, not
+# tests/docker-compose.yml). pytest-docker's own docker_services/
+# docker_compose_file fixtures are tied to a single compose file for the
+# whole session (the one clickhouse_server already uses above), so we
+# can't get a second, independent stack just by depending on those
+# fixtures again. Instead we call pytest-docker's own
+# get_docker_services()/get_docker_ip() directly -- the same functions
+# docker_services/docker_ip build on -- parameterized with our own compose
+# file and a distinct project name, so we still get pytest-docker's actual
+# compose invocation, port lookup/caching, and readiness-wait helpers,
+# rather than re-implementing them by hand.
+CLUSTER_COMPOSE_FILE = str(
+    Path(os.path.dirname(os.path.realpath(__file__))) / "docker-compose.cluster.yml"
+)
+CLUSTER_PROJECT_NAME = "oonipipeline-citizenlab-cluster-test"
+CLUSTER_NODE_SERVICES = ["clickhouse-01", "clickhouse-02"]
+
+# Point this at an already-running 2-node cluster (comma-separated URLs, one
+# per replica, in the same order as CLUSTER_NODE_SERVICES) to skip the
+# docker-compose fixture entirely -- same escape hatch and rationale as
+# OONIPIPELINE_TEST_CLICKHOUSE_URL above.
+TEST_CLICKHOUSE_CLUSTER_URLS_ENV = "OONIPIPELINE_TEST_CLICKHOUSE_CLUSTER_URLS"
+
+
+@pytest.fixture(scope="session")
+def clickhouse_cluster():
+    """Bring up the 2-replica cluster and yield [node1_url, node2_url]."""
+    env_urls = os.environ.get(TEST_CLICKHOUSE_CLUSTER_URLS_ENV)
+    if env_urls:
+        urls = [u.strip() for u in env_urls.split(",") if u.strip()]
+        for url in urls:
+            if not is_clickhouse_running(url):
+                pytest.fail(
+                    f"{TEST_CLICKHOUSE_CLUSTER_URLS_ENV} includes {url} but "
+                    "nothing is listening there. Unset it to fall back to "
+                    "docker-compose."
+                )
+        yield urls
+        return
+
+    if shutil.which("docker") is None:
+        # Deliberately explicit rather than letting docker_services fail
+        # partway through: we'd rather skip loudly than have this suite
+        # look green while covering nothing.
+        pytest.skip(
+            f"docker is not available and {TEST_CLICKHOUSE_CLUSTER_URLS_ENV} "
+            "is not set; cannot start the cluster fixture."
+        )
+
+    docker_ip = get_docker_ip()
+    # docker_setup="up --build --wait": the clickhouse-01/02 services in
+    # docker-compose.cluster.yml define a healthcheck, so --wait blocks
+    # here until docker itself considers both containers healthy, before
+    # we even start polling ClickHouse ourselves below.
+    with get_docker_services(
+        docker_compose_command="docker compose",
+        docker_compose_file=CLUSTER_COMPOSE_FILE,
+        docker_compose_project_name=CLUSTER_PROJECT_NAME,
+        docker_setup="up --build --wait",
+        docker_cleanup="down -v",
+    ) as docker_services:
+        urls = [
+            "clickhouse://test:test@{}:{}/default".format(
+                docker_ip, docker_services.port_for(service, 9000)
+            )
+            for service in CLUSTER_NODE_SERVICES
+        ]
+
+        for url in urls:
+            docker_services.wait_until_responsive(
+                timeout=60.0,
+                pause=0.5,
+                check=lambda url=url: is_clickhouse_running(url),
+            )
+
+        # Both nodes answering SELECT 1 doesn't yet mean they've finished
+        # forming Keeper quorum with each other or that either one has
+        # registered oonidata_cluster's second replica -- wait for that
+        # explicitly rather than a flat sleep.
+        def _cluster_has_both_replicas(url: str) -> bool:
+            try:
+                with ClickhouseClient.from_url(url) as client:
+                    n = client.execute(
+                        "SELECT count() FROM system.clusters WHERE cluster = 'oonidata_cluster'"
+                    )[0][0]
+                return n >= len(CLUSTER_NODE_SERVICES)
+            except Exception:
+                return False
+
+        for url in urls:
+            docker_services.wait_until_responsive(
+                timeout=30.0,
+                pause=0.5,
+                check=lambda url=url: _cluster_has_both_replicas(url),
+            )
+
+        yield urls
 
 
 @pytest.fixture
