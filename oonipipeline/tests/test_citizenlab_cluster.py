@@ -77,6 +77,24 @@ def _tables_on(url: str) -> set:
     return {row[0] for row in click.execute("SHOW TABLES")}
 
 
+def _assert_rows_eventually(url: str, expected: set, message: str, timeout: float = 10.0):
+    """
+    alter_sync=3 waits for currently-active replicas, but "active" doesn't
+    mean "already caught up" -- there is a small, normal propagation window
+    between the REPLACE PARTITION completing on the write node and the
+    change becoming visible on the other replica, and that window can
+    stretch under CI load. Poll briefly instead of asserting on the very
+    first read, so we only fail on genuine divergence, not on ordinary
+    replication lag.
+    """
+    deadline = time.monotonic() + timeout
+    rows = _citizenlab_rows_on(url)
+    while rows != expected and time.monotonic() < deadline:
+        time.sleep(0.2)
+        rows = _citizenlab_rows_on(url)
+    assert rows == expected, message
+
+
 @pytest.mark.cluster
 def test_citizenlab_replace_partition_reaches_every_replica(clickhouse_cluster):
     node_a_url, node_b_url = clickhouse_cluster
@@ -89,8 +107,10 @@ def test_citizenlab_replace_partition_reaches_every_replica(clickhouse_cluster):
     # a divergence here (one replica silently pointing at stale/wrong data)
     # was exactly the failure mode that raised no error on its own.
     for url in (node_a_url, node_b_url):
-        assert _citizenlab_rows_on(url) == _expected(SAMPLE_ROWS_A), (
-            f"citizenlab on {url} does not match the data just written"
+        _assert_rows_eventually(
+            url,
+            _expected(SAMPLE_ROWS_A),
+            f"citizenlab on {url} does not match the data just written",
         )
 
     # Run it again -- a second scheduled refresh -- against the OTHER node,
@@ -101,8 +121,10 @@ def test_citizenlab_replace_partition_reaches_every_replica(clickhouse_cluster):
     cl_updater.update_citizenlab_table(node_b_url, SAMPLE_ROWS_B)
 
     for url in (node_a_url, node_b_url):
-        assert _citizenlab_rows_on(url) == _expected(SAMPLE_ROWS_B), (
-            f"citizenlab on {url} still has stale data after the second run"
+        _assert_rows_eventually(
+            url,
+            _expected(SAMPLE_ROWS_B),
+            f"citizenlab on {url} still has stale data after the second run",
         )
 
 

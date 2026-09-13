@@ -19,6 +19,18 @@ jobs:
           pip install click==8.1.8
           pip install "hatch>=1.13" "virtualenv<21"
 
+      - name: Verify docker is available
+        run: docker version && docker compose version
+
+      # Run first, in isolation: fast canary feedback, and it must NOT
+      # overlap with the single-node docker-compose stack the rest of the
+      # suite uses below -- the cluster fixture brings up its own 5
+      # containers (2 CH replicas + 3 Keeper) and running both stacks at
+      # once starves the runner and causes unrelated tests to time out.
+      - name: Run cluster tests
+        run: hatch run test tests -m cluster -rs -v
+        working-directory: ./oonipipeline/
+
       - name: Set up datadir cache
         uses: actions/cache@v3
         with:
@@ -47,7 +59,7 @@ jobs:
           sudo apt-get install -y clickhouse-server clickhouse-client
 
       - name: Run all tests
-        run: hatch run cov -vvv
+        run: hatch run cov tests -m "not cluster" -vvv
         working-directory: ./oonipipeline/
 
       - name: Upload coverage to codecov
