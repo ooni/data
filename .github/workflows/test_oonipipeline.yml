@@ -58,6 +58,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clickhouse-server clickhouse-client
 
+      - name: Check whether clickhouse-server is actually running
+        run: |
+          systemctl is-active clickhouse-server || echo "service not active"
+          sudo ss -tlnp | grep 9000 || echo "nothing listening on 9000"
+
       - name: Run all tests
         run: hatch run cov tests -m "not cluster" -vvv
         working-directory: ./oonipipeline/
