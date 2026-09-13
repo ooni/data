@@ -62,6 +62,11 @@ jobs:
         run: hatch run cov tests -m "not cluster" -vvv
         working-directory: ./oonipipeline/
 
+      - name: Dump ClickHouse container logs on failure
+        if: failure()
+        run: docker ps -a && docker compose -f tests/docker-compose.yml logs || true
+        working-directory: ./oonipipeline/
+
       - name: Upload coverage to codecov
         uses: codecov/codecov-action@v6
         with:
