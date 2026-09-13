@@ -61,9 +61,27 @@ def clickhouse_server(request):
     docker_services = request.getfixturevalue("docker_services")
     port = docker_services.port_for("clickhouse", 9000)
     url = "clickhouse://test:test@{}:{}/default".format(docker_ip, port)
-    docker_services.wait_until_responsive(
-        timeout=30.0, pause=0.1, check=lambda: is_clickhouse_running(url)
-    )
+    try:
+        docker_services.wait_until_responsive(
+            timeout=60.0, pause=0.1, check=lambda: is_clickhouse_running(url)
+        )
+    except Exception:
+        # A workflow step added *after* the test run always sees an empty
+        # `docker ps -a`: pytest-docker tears its compose stack down the
+        # moment this pytest process exits, win or lose. This is the only
+        # place that can still see the container, so grab its logs here,
+        # before the timeout exception propagates and teardown happens.
+        compose_file = str(
+            Path(os.path.dirname(os.path.realpath(__file__))) / "docker-compose.yml"
+        )
+        print(f"\n--- docker compose -f {compose_file} ps (on readiness timeout) ---")
+        subprocess.run(
+            ["docker", "compose", "-f", compose_file, "ps", "-a"], check=False
+        )
+        print(f"\n--- docker compose -f {compose_file} logs (on readiness timeout) ---")
+        subprocess.run(["docker", "compose", "-f", compose_file, "logs"], check=False)
+        raise
+
     yield url
 
 
