@@ -10,7 +10,7 @@ services:
     volumes:
       - ./clickhouse-config.d:/etc/clickhouse-server/config.d:ro
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "select 1;"]
+      test: ["CMD", "clickhouse-client", "--user", "test", "--password", "test", "--query", "select 1;"]
       interval: 5s
       retries: 10
       start_period: 30s
