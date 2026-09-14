@@ -623,9 +623,33 @@ def find_relevant_observations(
     tcp_observations: Optional[List[TCPObservation]] = None,
     tls_observations: Optional[List[TLSObservation]] = None,
     http_observations: Optional[List[HTTPObservation]] = None,
+    is_connection_transaction_id: bool = True,
 ) -> Tuple[
     Optional[TCPObservation], Optional[TLSObservation], Optional[HTTPObservation]
 ]:
+    """
+    Finds the TCP, TLS and HTTP observations which belong to the same
+    connection as the observation identified by the given transaction_id and IP
+    address.
+
+    The transaction_id is what identifies a single connection to an endpoint,
+    so when we know it, every observation of that connection shares it.
+    In these cases matching against the IP address is wrong, since an endpoint
+    might be reached on the same IP multiple times (eg. once over port 80 and
+    twice over 443 in the case of web_connectivity 0.5), so matching only on
+    the address will mix together observations that are for different
+    connections.
+
+    DNS queries also carry a transaction_id, but it doesn't necessarily
+    identify the connections which follow.
+    The web_connectivity 0.5 spec says that it SHOULD use a different
+    ID space than connections, while other nettests the whole transaction
+    including the query might share the same ID.
+    Callers mapping a DNS observation onto TCP and TLS should pass
+    is_connection_transaction_id=False, so that the ID is only used when it
+    actually matches, and the connection is identified via the address
+    otherwise.
+    """
     found_tcp_obs = None
     found_tls_obs = None
     found_http_obs = None
@@ -643,12 +667,42 @@ def find_relevant_observations(
             transaction_id, http_observations
         )
 
+    connection_transaction_id = None
+    if transaction_id and (
+        is_connection_transaction_id
+        # the nettest uses the same transaction_id for the DNS query and for
+        # the connections which follow it
+        or found_tcp_obs
+        or found_tls_obs
+        or found_http_obs
+    ):
+        connection_transaction_id = transaction_id
+
     if not found_tcp_obs and tcp_observations and ip:
         found_tcp_obs = find_observation_by_ip(ip, tcp_observations)
-    if not found_tls_obs and tls_observations and ip:
-        found_tls_obs = find_observation_by_ip(ip, tls_observations)
-    if not found_http_obs and http_observations and ip:
-        found_http_obs = find_observation_by_ip(ip, http_observations)
+        if found_tcp_obs and found_tcp_obs.transaction_id:
+            # We had to match on the address, meaning the transaction_id we
+            # were given is not that of a connection. The one of the TCP
+            # observation we just found is.
+            connection_transaction_id = found_tcp_obs.transaction_id
+
+    if connection_transaction_id:
+        if not found_tls_obs and tls_observations:
+            found_tls_obs = find_observation_by_transaction_id(
+                connection_transaction_id, tls_observations
+            )
+        if not found_http_obs and http_observations:
+            found_http_obs = find_observation_by_transaction_id(
+                connection_transaction_id, http_observations
+            )
+    elif ip:
+        # Without a transaction_id to work with (eg. web_connectivity 0.4
+        # measurements, or a DNS resolution we could not attach to any
+        # connection), the address is all we have to go by.
+        if not found_tls_obs and tls_observations:
+            found_tls_obs = find_observation_by_ip(ip, tls_observations)
+        if not found_http_obs and http_observations:
+            found_http_obs = find_observation_by_ip(ip, http_observations)
 
     assert found_tls_obs is None or isinstance(found_tls_obs, TLSObservation)
     assert found_tcp_obs is None or isinstance(found_tcp_obs, TCPObservation)
@@ -923,6 +977,26 @@ class MeasurementTransformer:
         fill in the hostname of observations which could not be attached to any
         DNS resolution done by the probe.
         """
+        # An endpoint may be connected to several times (eg. once over port 80
+        # and twice over port 443), while it's only resolved once, so only one
+        # of the resulting observations gets to carry the DNS resolution. We
+        # keep track of which hostname the probe resolved to each address, so
+        # that we can attribute the other connections to it too.
+        hostname_by_ip: Dict[str, Optional[str]] = {}
+        for dns_o in dns_observations:
+            if not dns_o.answer or not dns_o.hostname:
+                continue
+            answer = fix_address(dns_o.answer)
+            try:
+                ipaddress.ip_address(answer)
+            except ValueError:
+                # the answer is a CNAME
+                continue
+            if hostname_by_ip.setdefault(answer, dns_o.hostname) != dns_o.hostname:
+                # The same address was resolved for more than one hostname,
+                # meaning we can't tell what a connection to it was for.
+                hostname_by_ip[answer] = None
+
         web_obs_list: List[WebObservation] = []
         # TODO: surely there is some way to refactor this into a better pattern
         for dns_o in dns_observations:
@@ -932,6 +1006,7 @@ class MeasurementTransformer:
                 tcp_observations=tcp_observations,
                 tls_observations=tls_observations,
                 http_observations=http_observations,
+                is_connection_transaction_id=False,
             )
             web_obs_list.append(
                 make_web_observation(
@@ -1017,10 +1092,12 @@ class MeasurementTransformer:
             )
             self.observation_idx += 1
 
-        if ip_hostname_hints:
-            for web_obs in web_obs_list:
-                if not web_obs.hostname and web_obs.ip:
-                    web_obs.hostname = ip_hostname_hints.get(web_obs.ip)
+        for web_obs in web_obs_list:
+            if web_obs.hostname or not web_obs.ip:
+                continue
+            web_obs.hostname = hostname_by_ip.get(web_obs.ip) or (
+                ip_hostname_hints or {}
+            ).get(web_obs.ip)
 
         return web_obs_list
 
