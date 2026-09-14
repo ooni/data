@@ -137,3 +137,134 @@ def test_decay_applied_through_step_between_two_silent_cells():
     assert d.s_pos == pytest.approx(5.0)
     assert d.s_neg == pytest.approx(4.0)
     assert d.last_hour == BASE_HOUR + timedelta(hours=48)
+
+H = 10
+P0, P1 = 0.05, 0.5
+
+def blocked_cell(ts_hour: datetime) -> Cell:
+    return make_cell(ts_hour, k_dns=5, n_dns=5)
+
+
+def ok_cell(ts_hour: datetime) -> Cell:
+    return make_cell(ts_hour, k_dns=0, n_dns=5)
+
+
+def hours(n: int) -> list[datetime]:
+    return [BASE_HOUR + timedelta(hours=i) for i in range(n)]
+
+
+def test_unknown_resolves_to_block_silently():
+    """
+    A single strongly-blocked cell is enough to resolve UNKNOWN -> BLOCK,
+    but the initial resolution must not itself be reported as a
+    changepoint, and the accumulators reset once the state is set.
+    """
+    d = Detector()
+    assert d.state == State.UNKNOWN
+
+    cps = d.compute_changepoints([blocked_cell(BASE_HOUR)], "dns", p0=P0, p1=P1, h=H)
+
+    assert cps == []
+    assert d.state == State.BLOCK
+    assert d.s_pos == 0
+    assert d.s_neg == 0
+
+
+def test_unknown_resolves_to_ok_silently():
+    """
+    Same, but resolving to OK. Needs 4 cells here since the ok-side
+    increment per cell is smaller
+    """
+    d = Detector()
+
+    cps = d.compute_changepoints(
+        [ok_cell(h) for h in hours(4)], "dns", p0=P0, p1=P1, h=H
+    )
+
+    assert cps == []
+    assert d.state == State.OK
+    assert d.s_pos == 0
+    assert d.s_neg == 0
+
+
+def test_block_to_ok_transition_emits_one_changepoint():
+    """
+    Starting from BLOCK state, a run of
+    ok evidence crossing h should emit one changepoint, on the cell
+    where the crossing actually happens.
+    """
+    d = Detector()
+    d.state = State.BLOCK
+
+    cells = [ok_cell(h) for h in hours(4)]
+    cps = d.compute_changepoints(cells, "dns", p0=P0, p1=P1, h=H)
+
+    assert len(cps) == 1
+    assert cps[0].state == State.OK
+    assert cps[0].ts_hour == cells[3].ts_hour  # the 4th cell is what crosses h
+    assert d.state == State.OK
+
+
+def test_ok_to_block_transition_emits_one_changepoint():
+    """
+    Symmetric case: manually starting from OK. A single strongly-blocked
+    cell is enough to cross h and flip to BLOCK.
+    """
+    d = Detector()
+    d.state = State.OK
+
+    cells = [blocked_cell(BASE_HOUR)]
+    cps = d.compute_changepoints(cells, "dns", p0=P0, p1=P1, h=H)
+
+    assert len(cps) == 1
+    assert cps[0].state == State.BLOCK
+    assert cps[0].ts_hour == cells[0].ts_hour
+    assert d.state == State.BLOCK
+
+
+def test_no_changepoint_while_evidence_stays_below_threshold():
+    """
+    3 ok cells accumulate to ~9.63 < h=10, not enough to cross, so no
+    changepoint fires and the state doesn't change.
+    """
+    d = Detector()
+    d.state = State.BLOCK
+
+    cells = [ok_cell(h) for h in hours(3)]
+    cps = d.compute_changepoints(cells, "dns", p0=P0, p1=P1, h=H)
+
+    assert cps == []
+    assert d.state == State.BLOCK
+    assert 0 < d.s_neg < H
+
+
+def test_inactive_accumulator_is_pinned_while_confirmed():
+    """
+    While BLOCK is already confirmed, only s_neg is live, s_pos stays
+    pinned at 0 no matter how much more blocked evidence arrives
+    """
+    d = Detector()
+    d.state = State.BLOCK
+
+    cps = d.compute_changepoints([blocked_cell(h) for h in hours(5)], "dns", p0=P0, p1=P1, h=H)
+
+    assert cps == []
+    assert d.state == State.BLOCK
+    assert d.s_pos == 0
+    assert d.s_neg == 0  # blocked evidence only pulls s_neg towards 0
+
+
+def test_warmup_suppresses_changepoints_but_still_updates_state():
+    """
+    warmup=True must still run the state machine. State transitions
+    happen, but never surface a changepoint
+    """
+    d = Detector()
+    d.state = State.OK
+
+    cps = d.compute_changepoints(
+        [blocked_cell(BASE_HOUR)], "dns", p0=P0, p1=P1, h=H, warmup=True
+    )
+
+    assert cps == []
+    assert d.state == State.BLOCK
