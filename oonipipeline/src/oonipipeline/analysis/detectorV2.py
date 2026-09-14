@@ -150,12 +150,13 @@ def get_cells(
 
 # TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
 class Detector:
-    def __init__(self, debug: bool = False, gap_halflife: float = 24):
+    def __init__(self, debug: bool = False):
         self.s_pos = self.s_neg = 0
         self.state = State.UNKNOWN  # UNK | OK | BLOCK
         self.debug = debug
-        self.series = []  # List of (s_neg, s_pos) values per step
-        self.gap_halflife = gap_halflife
+        # List of (s_neg, s_pos) values per step, only collected when
+        # debug = true
+        self.series = []
 
         # For decay computation
         self.last_hour: datetime | None = None
@@ -261,11 +262,12 @@ class Detector:
 
     def decay(self, gap_halflife: float, ts_hour: datetime):
         """
-        Every `gap_halflife` hours in silence the accumulators are cut in
-        half of their current value
+        `gap_halflife` hours in silence the accumulators are cut in half of
+        their current value.
 
-        With `gap_halflife` = 24, the accumulators are set back to 0 after
-        48 hours of silence
+        With `gap_halflife` = 24, a 48-hour gap leaves the
+        accumulators at a quarter of their value, they keep
+        shrinking asymptotically toward 0 the longer the silence continues
 
         ts_hour: hour of the current cell
         """
