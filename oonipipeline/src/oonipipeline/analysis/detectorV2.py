@@ -101,8 +101,8 @@ def iter_cells(
         countIf(top_tcp_rule_id IN %(tcp_scored)s)     AS n_tcp,
         countIf(top_tls_rule_id IN %(tls_blocked)s)    AS k_tls,
         countIf(top_tls_rule_id IN %(tls_scored)s)     AS n_tls,
-        count()                                        AS n_measurements,
-        uniqIf(probe_id, probe_id != '')                AS n_probes
+        count(DISTINCT measurement_uid)                AS n_measurements,
+        uniqIf(probe_id, probe_id != '')               AS n_probes
     FROM analysis_web_measurement
     WHERE
         domain IN %(domains)s
