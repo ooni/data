@@ -1,4 +1,5 @@
 from collections import defaultdict
+from urllib.parse import urlencode
 import streamlit as st
 from oonipipeline.analysis.detector import (
     make_cusums_chart_grid,
@@ -19,6 +20,7 @@ def run_detector_cached(*args, **kwargs):
     return run_detector_for(*args, **kwargs)
 
 st.set_page_config(layout="wide")
+
 
 # When every one of these is present the form auto-runs
 # on first load
@@ -48,9 +50,17 @@ def _parse_query_value(field: str, raw: str):
     return raw
 
 
+def _widget_kwargs(key: str, default):
+    """
+    Return kwargs that supply `value` only when
+    session_state hasn't already set it.
+    """
+    return {} if key in st.session_state else {"value": default}
+
+
 def detector_panel():
     st.write(
-        """
+    """
     # Event Detector
     Run the event detector over the specified input to get a simulation of results
     for the given input
@@ -94,29 +104,57 @@ def detector_panel():
 
         # column 1
         start_time = c1.datetime_input(
-            "**Start date**", now - timedelta(days=30), key="start_time_input"
+            "**Start date**",
+            key="start_time_input",
+            **_widget_kwargs("start_time_input", now - timedelta(days=30)),
         )
         probe_cc = c1.text_input(
-            "**Country code (two chars)**", "VE", key="probe_cc_input"
+            "**Country code (two chars)**",
+            key="probe_cc_input",
+            **_widget_kwargs("probe_cc_input", "VE"),
         )
         edd = c1.number_input(
-            "**Estimated Detection Delay (EDD)**", value=10, key="edd_input"
+            "**Estimated Detection Delay (EDD)**",
+            key="edd_input",
+            **_widget_kwargs("edd_input", 10),
         )
 
         # column2
-        end_time = c2.datetime_input("**End date**", now, key="end_time_input")
-        domain = c2.text_input("**domain**", "x.com", key="domain_input")
+        end_time = c2.datetime_input(
+            "**End date**", key="end_time_input", **_widget_kwargs("end_time_input", now)
+        )
+        domain = c2.text_input(
+            "**domain**", key="domain_input", **_widget_kwargs("domain_input", "x.com")
+        )
         gap_halflife = c2.number_input(
-            "**Gap half life**", value=48.0, key="gap_halflife_input"
+            "**Gap half life**",
+            key="gap_halflife_input",
+            **_widget_kwargs("gap_halflife_input", 48.0),
         )
 
         warmup = st.checkbox(
             "**Warmup**",
-            False,
             help="When enabled, no changepoints will be returned.",
             key="warmup_input",
+            **_widget_kwargs("warmup_input", False),
         )
         submitted = st.form_submit_button("Run detector")
+
+    v2_query_params = {
+        "probe_cc": probe_cc.strip(),
+        "domain": domain.strip(),
+        "start_time": start_time.date().isoformat(),
+        "end_time": end_time.date().isoformat(),
+    }
+    carried_probe_asn = st.session_state.get("asn_select")
+    if carried_probe_asn is not None:
+        v2_query_params["probe_asn"] = str(carried_probe_asn)
+
+    st.link_button(
+        "Try in Detector V2 →",
+        f"/v2?{urlencode(v2_query_params)}",
+        icon="🧪",
+    )
 
     auto_submit = st.session_state.pop("auto_submit_pending", False)
 
@@ -235,6 +273,6 @@ def detector_panel():
 
 pg = st.navigation([
     st.Page(detector_panel, title="Detector V1", icon="📉"),
-    st.Page(detector_v2_panel, title="Detector V2", icon="🧪"),
+    st.Page(detector_v2_panel, title="Detector V2", icon="🧪", url_path="v2"),
 ])
 pg.run()
