@@ -72,7 +72,7 @@ class ChangePoint:
     state: State  # Acquired in this hour
 
 
-def get_cells(
+def iter_cells(
     clickhouse: ClickhouseClient,
     domains: list[str],
     start_time: datetime,
@@ -311,7 +311,7 @@ def run_detector_full(
         """)
     domains = [d[0] for d in domains]
     grouped = groupby(
-        get_cells(clickhouse, domains, start_time, end_time),
+        iter_cells(clickhouse, domains, start_time, end_time),
         key=lambda cell: (
             cell.probe_cc,
             cell.probe_asn,

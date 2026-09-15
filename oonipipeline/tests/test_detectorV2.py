@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from oonipipeline.analysis.detectorV2 import Cell, Detector, State, get_cells
+from oonipipeline.analysis.detectorV2 import Cell, Detector, State, iter_cells
 
 
 def test_detectorV2_venezuela(db, db_analysis_ve):
@@ -13,7 +13,7 @@ def test_detectorV2_venezuela(db, db_analysis_ve):
     start = datetime(2026, 8, 3, tzinfo=timezone.utc)
     end = datetime(2026, 9, 3, tzinfo=timezone.utc)
 
-    cells = list(get_cells(db.client, ["www.caraotadigital.net"], start, end, "VE"))
+    cells = list(iter_cells(db.client, ["www.caraotadigital.net"], start, end, "VE"))
 
     cells_by_series = defaultdict(list)
     for cell in cells:

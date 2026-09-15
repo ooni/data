@@ -8,7 +8,7 @@ from clickhouse_driver import Client as ClickhouseClient
 
 from oonipipeline.analysis.detectorV2 import (
     Cell,
-    get_cells,
+    iter_cells,
     make_cells_histogram_chart,
     Detector, compute_llr_series,
 )
@@ -59,7 +59,7 @@ def get_cells_cached(
     probe_cc: str | None,
 ) -> list[Cell]:
     client = ClickhouseClient.from_url(clickhouse_url)
-    return list(get_cells(client, domains, start_time, end_time, probe_cc))
+    return list(iter_cells(client, domains, start_time, end_time, probe_cc))
 
 
 def detector_v2_panel():
