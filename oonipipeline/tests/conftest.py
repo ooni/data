@@ -161,6 +161,19 @@ def db(clickhouse_server):
 
 
 @pytest.fixture
+def citizenlab_empty(db):
+    """
+    Creates an empty citizenlab table, drops it after the test
+    is finished
+    """
+    db.execute("DROP TABLE IF EXISTS citizenlab")
+    with (FIXTURE_PATH / "citizenlab-schema.sql").open() as in_file:
+        db.execute(in_file.read())
+    yield
+    db.execute("DROP TABLE IF EXISTS citizenlab")
+
+
+@pytest.fixture
 def db_analysis(db):
     for fn in ["ug-analysis.sql", "citizenlab-schema.sql", "citizenlab-inserts.sql"]:
         with (FIXTURE_PATH / fn).open() as in_file:

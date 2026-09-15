@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from oonipipeline.analysis.detectorV2 import Cell, Detector, State, iter_cells
+from oonipipeline.analysis.detectorV2 import Cell, Detector, State, _get_domains, iter_cells
 
 
 def test_detectorV2_venezuela(db, db_analysis_ve):
@@ -268,3 +268,29 @@ def test_warmup_suppresses_changepoints_but_still_updates_state():
 
     assert cps == []
     assert d.state == State.BLOCK
+
+
+def test_get_domains_are_unique(db, db_analysis):
+    """
+    twitter.com is already present in the fixture's citizenlab GRP/ZZ rows,
+    so it must not be duplicated by the unconditional append.
+    """
+    domains = _get_domains(db.client)
+
+    assert len(domains) == len(set(domains))
+
+
+def test_get_domains_always_includes_twitter(db, db_analysis):
+    domains = _get_domains(db.client)
+
+    assert "twitter.com" in domains
+
+
+def test_get_domains_includes_twitter_when_citizenlab_has_none(db, citizenlab_empty):
+    """
+    twitter.com must be included even when it doesn't come from citizenlab
+    at all.
+    """
+    domains = _get_domains(db.client)
+
+    assert domains == ["twitter.com"]
