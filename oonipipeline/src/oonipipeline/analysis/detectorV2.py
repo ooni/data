@@ -327,7 +327,7 @@ def run_detector_full(
 
 def _get_domains(clickhouse: ClickhouseClient) -> list[str]:
     domains = clickhouse.execute("""
-        SELECT domain
+        SELECT DISTINCT domain
         FROM citizenlab
         WHERE category_code = 'GRP'
               AND cc = 'ZZ'
