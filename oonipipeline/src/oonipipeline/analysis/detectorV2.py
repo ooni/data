@@ -333,7 +333,8 @@ def _get_domains(clickhouse: ClickhouseClient) -> list[str]:
               AND cc = 'ZZ'
         """)
     domains = [d[0] for d in domains]
-    domains.append("twitter.com")
+    if "twitter.com" not in domains:
+        domains.append("twitter.com")
     return domains
 
 
