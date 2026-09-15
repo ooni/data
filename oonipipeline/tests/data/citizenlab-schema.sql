@@ -1,4 +1,4 @@
-CREATE TABLE citizenlab
+CREATE TABLE IF NOT EXISTS citizenlab
 (
     `domain` String,
     `url` String,
