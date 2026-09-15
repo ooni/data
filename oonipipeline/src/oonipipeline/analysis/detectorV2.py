@@ -139,7 +139,7 @@ def get_cells(
     # chunk_size > 1 returns a list per iteration, this iterator flattens
     # that structure
     def _iter_rows():
-        # first chunk has column definitions on position 0
+        # first chunk has column definitions on position 0, yet we still need to consume the remaining data rows in the first chunk
         yield from first_chunk[1:]
         for chunk in result:
             yield from chunk
