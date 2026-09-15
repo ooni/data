@@ -304,12 +304,7 @@ def run_detector_full(
     clickhouse_url: str, start_time: datetime, end_time: datetime
 ) -> DetectorResult:
     clickhouse = ClickhouseClient.from_url(clickhouse_url)
-    domains = clickhouse.execute("""
-        SELECT domain
-        FROM citizenlab
-        WHERE category_code = 'GRP'
-        """)
-    domains = [d[0] for d in domains]
+    domains = _get_domains(clickhouse)
     grouped = groupby(
         iter_cells(clickhouse, domains, start_time, end_time),
         key=lambda cell: (
@@ -329,6 +324,17 @@ def run_detector_full(
         results[group] = ResultEntry(**entry)
 
     return results
+
+def _get_domains(clickhouse: ClickhouseClient) -> list[str]:
+    domains = clickhouse.execute("""
+        SELECT domain
+        FROM citizenlab
+        WHERE category_code = 'GRP'
+              AND cc = 'ZZ'
+        """)
+    domains = [d[0] for d in domains]
+    domains.append("twitter.com")
+    return domains
 
 
 def compute_llr_series(
