@@ -1,6 +1,5 @@
 import os
 import shutil
-import subprocess
 import time
 from datetime import date, datetime, timedelta
 from multiprocessing import Process
@@ -72,15 +71,25 @@ def clickhouse_server(request):
         # moment this pytest process exits, win or lose. This is the only
         # place that can still see the container, so grab its logs here,
         # before the timeout exception propagates and teardown happens.
-        compose_file = str(
-            Path(os.path.dirname(os.path.realpath(__file__))) / "docker-compose.yml"
-        )
-        print(f"\n--- docker compose -f {compose_file} ps (on readiness timeout) ---")
-        subprocess.run(
-            ["docker", "compose", "-f", compose_file, "ps", "-a"], check=False
-        )
-        print(f"\n--- docker compose -f {compose_file} logs (on readiness timeout) ---")
-        subprocess.run(["docker", "compose", "-f", compose_file, "logs"], check=False)
+        #
+        # Go through docker_services' own DockerComposeExecutor rather than
+        # shelling out to a bare `docker compose -f docker-compose.yml ...`:
+        # pytest-docker runs its stack under a project name of its own
+        # choosing (default "pytest<pid>", see docker_compose_project_name
+        # in pytest_docker/plugin.py), and `docker compose ps`/`logs` are
+        # scoped per *project*. A bare invocation with no `-p` resolves to a
+        # different, unrelated (and here, empty) project, so it always
+        # prints nothing regardless of what the actual container is doing.
+        print("\n--- docker compose ps (on readiness timeout) ---")
+        try:
+            print(docker_services._docker_compose.execute("ps -a").decode())
+        except Exception as e:
+            print(f"(failed to fetch ps: {e})")
+        print("\n--- docker compose logs (on readiness timeout) ---")
+        try:
+            print(docker_services._docker_compose.execute("logs").decode())
+        except Exception as e:
+            print(f"(failed to fetch logs: {e})")
         raise
 
     yield url
