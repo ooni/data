@@ -1,0 +1,68 @@
+<!--
+Single-node stand-in for the real oonidata_cluster (production: multiple
+ClickHouse replicas). One shard, one replica, pointing at itself, with an
+embedded Keeper for coordination: enough for `ON CLUSTER oonidata_cluster`
+DDL and `ReplicatedMergeTree`/`{cluster}`/`{shard}`/`{replica}` macros to
+behave the same way they do against the real cluster, without needing
+multiple containers for every test that merely needs the DDL to parse and
+run. Compare tests/docker-compose.cluster.yml, which brings up a
+real 2-replica cluster specifically to prove data propagates across nodes
+(see test_citizenlab_cluster.py / test_asnmeta_cluster.py).
+-->
+<clickhouse>
+    <!-- Without this, the server only binds 127.0.0.1: Docker's own
+    healthcheck (run inside the container, over loopback) reports healthy,
+    but any connection through the container's published port, which is
+    how every test actually reaches it, gets accepted at the TCP level
+    and then reset, since nothing is listening on the interface those
+    packets arrive on. Verified directly: removing this line reproduces
+    "Listening for native protocol (tcp): 127.0.0.1:9000" in the server's
+    own log; with it, the same config binds 0.0.0.0:9000. -->
+    <listen_host>0.0.0.0</listen_host>
+
+    <remote_servers>
+        <oonidata_cluster>
+            <shard>
+                <replica>
+                    <host>localhost</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </oonidata_cluster>
+    </remote_servers>
+
+    <macros>
+        <cluster>oonidata_cluster</cluster>
+        <shard>01</shard>
+        <replica>01</replica>
+    </macros>
+
+    <keeper_server>
+        <tcp_port>9181</tcp_port>
+        <server_id>1</server_id>
+        <log_storage_path>/var/lib/clickhouse/coordination/log</log_storage_path>
+        <snapshot_storage_path>/var/lib/clickhouse/coordination/snapshots</snapshot_storage_path>
+        <coordination_settings>
+            <operation_timeout_ms>10000</operation_timeout_ms>
+            <session_timeout_ms>30000</session_timeout_ms>
+        </coordination_settings>
+        <raft_configuration>
+            <server>
+                <id>1</id>
+                <hostname>localhost</hostname>
+                <port>9234</port>
+            </server>
+        </raft_configuration>
+    </keeper_server>
+
+    <zookeeper>
+        <node>
+            <host>localhost</host>
+            <port>9181</port>
+        </node>
+    </zookeeper>
+
+    <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
+</clickhouse>
