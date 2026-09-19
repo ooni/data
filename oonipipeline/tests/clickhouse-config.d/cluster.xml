@@ -10,6 +10,16 @@ real 2-replica cluster specifically to prove data propagates across nodes
 (see test_citizenlab_cluster.py / test_asnmeta_cluster.py).
 -->
 <clickhouse>
+    <!-- Without this, the server only binds 127.0.0.1: Docker's own
+    healthcheck (run inside the container, over loopback) reports healthy,
+    but any connection through the container's published port, which is
+    how every test actually reaches it, gets accepted at the TCP level
+    and then reset, since nothing is listening on the interface those
+    packets arrive on. Verified directly: removing this line reproduces
+    "Listening for native protocol (tcp): 127.0.0.1:9000" in the server's
+    own log; with it, the same config binds 0.0.0.0:9000. -->
+    <listen_host>0.0.0.0</listen_host>
+
     <remote_servers>
         <oonidata_cluster>
             <shard>
