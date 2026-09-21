@@ -276,7 +276,7 @@ class Detector:
             return
 
         gap_hours = (ts_hour - self.last_hour).total_seconds() / 3600
-        if gap_hours <= 24:
+        if gap_hours <= gap_halflife:
             return  # not enough gap to decay
 
         decay = 0.5 ** (gap_hours / gap_halflife)
