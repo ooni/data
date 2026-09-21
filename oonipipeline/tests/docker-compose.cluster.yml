@@ -10,7 +10,7 @@
 version: "3"
 services:
   clickhouse-01:
-    image: "clickhouse/clickhouse-server:25.2"
+    image: "clickhouse/clickhouse-server:24.8.6.70"
     user: "101:101"
     hostname: clickhouse-01
     volumes:
@@ -30,7 +30,7 @@ services:
       - clickhouse-keeper-03
 
   clickhouse-02:
-    image: "clickhouse/clickhouse-server:25.2"
+    image: "clickhouse/clickhouse-server:24.8.6.70"
     user: "101:101"
     hostname: clickhouse-02
     volumes:
@@ -50,21 +50,21 @@ services:
       - clickhouse-keeper-03
 
   clickhouse-keeper-01:
-    image: "clickhouse/clickhouse-keeper:25.2-alpine"
+    image: "clickhouse/clickhouse-keeper:24.8.6.70-alpine"
     user: "101:101"
     hostname: clickhouse-keeper-01
     volumes:
       - ./clickhouse-cluster-config/clickhouse-keeper-01/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml
 
   clickhouse-keeper-02:
-    image: "clickhouse/clickhouse-keeper:25.2-alpine"
+    image: "clickhouse/clickhouse-keeper:24.8.6.70-alpine"
     user: "101:101"
     hostname: clickhouse-keeper-02
     volumes:
       - ./clickhouse-cluster-config/clickhouse-keeper-02/keeper_config.xml:/etc/clickhouse-keeper/keeper_config.xml
 
   clickhouse-keeper-03:
-    image: "clickhouse/clickhouse-keeper:25.2-alpine"
+    image: "clickhouse/clickhouse-keeper:24.8.6.70-alpine"
     user: "101:101"
     hostname: clickhouse-keeper-03
     volumes:
