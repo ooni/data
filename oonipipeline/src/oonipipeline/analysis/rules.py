@@ -29,7 +29,6 @@ do not have to infer it from the numbers. Read the level, never ``blocked == 0``
 TODO(art): the Evidence label carries with it a similar meaning to the Masking rules and should
 eventually be consolidated.
 """
-
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import List, Tuple
