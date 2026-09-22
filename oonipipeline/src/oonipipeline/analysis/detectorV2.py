@@ -300,13 +300,35 @@ class ResultEntry:
 DetectorResult = dict[Tuple[str, str, str, str], ResultEntry]
 
 
-def run_detector_full(
-    clickhouse_url: str, start_time: datetime, end_time: datetime
+def run_detector_hourly(
+    clickhouse_url: str,
+    target_hour: datetime,
+    warmup_days: int = 30,
+    p0: float = 0.05,
+    p1: float = 0.50,
+    h: float = 30,
+    gap_halflife: float = 24,
 ) -> DetectorResult:
+    """
+    This function is stateless: nothing is read from or written to storage.
+    Each call rebuilds a fresh Detector per series and replays
+    `warmup_days` of history immediately before `target_hour`, then
+    evaluates just `target_hour` for real. Only changepoints found at
+    `target_hour` are returned.
+
+    It's meant to be called once per hour, right
+    after that hour has completed.
+
+    target_hour: start-of-hour, tz-aware, the hour to detect on
+    """
     clickhouse = ClickhouseClient.from_url(clickhouse_url)
     domains = _get_domains(clickhouse)
+    warmup_start = target_hour - timedelta(days=warmup_days)
+
     grouped = groupby(
-        iter_cells(clickhouse, domains, start_time, end_time),
+        iter_cells(
+            clickhouse, domains, warmup_start, target_hour + timedelta(hours=1)
+        ),
         key=lambda cell: (
             cell.probe_cc,
             cell.probe_asn,
@@ -316,11 +338,38 @@ def run_detector_full(
     )
     results = dict()
     for group, cells in grouped:
-        cells_list = list(cells)
+        warmup_cells = []
+        target_cells = []
+        for cell in cells:
+            (target_cells if cell.ts_hour == target_hour else warmup_cells).append(
+                cell
+            )
+        if not target_cells:
+            continue
+
         entry = dict()
         for layer in LAYERS:
             detector = Detector()
-            entry[layer] = detector.compute_changepoints(cells_list, layer)
+            # warmup
+            detector.compute_changepoints(
+                warmup_cells,
+                layer,
+                p0=p0,
+                p1=p1,
+                h=h,
+                warmup=True,
+                gap_halflife=gap_halflife,
+            )
+            # Actual detection
+            entry[layer] = detector.compute_changepoints(
+                target_cells,
+                layer,
+                p0=p0,
+                p1=p1,
+                h=h,
+                warmup=False,
+                gap_halflife=gap_halflife,
+            )
         results[group] = ResultEntry(**entry)
 
     return results
