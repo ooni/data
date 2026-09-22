@@ -7,10 +7,9 @@ from itertools import groupby
 from typing import Iterable, Mapping, Tuple
 from urllib.parse import urlencode, urljoin
 
-import requests
 from clickhouse_driver import Client as ClickhouseClient
 
-from .detector import get_explorer_url
+from .detector import get_explorer_url, send_to_slack
 from .rules import Evidence, LAYER_RULES, OutcomeClass
 
 log = logging.getLogger(__name__)
@@ -329,9 +328,10 @@ def run_detector_hourly(
     warmup_start = target_hour - timedelta(days=warmup_days)
 
     grouped = groupby(
-        iter_cells(
-            clickhouse, domains, warmup_start, target_hour + timedelta(hours=1)
-        ),
+        # iter_cells' end_time bound is inclusive (ts_hour <= end_time) on
+        # hour-truncated values, so target_hour itself is the
+        # correct upper bound
+        iter_cells(clickhouse, domains, warmup_start, target_hour),
         key=lambda cell: (
             cell.probe_cc,
             cell.probe_asn,
@@ -452,10 +452,6 @@ def notify_slack(
 
     for msg in messages:
         send_to_slack(slack_webhook, msg)
-
-
-def send_to_slack(webhook: str, message: str):
-    requests.post(webhook, json={"text": message}).raise_for_status()
 
 
 def get_detector_panel_url(
