@@ -36,7 +36,7 @@ def make_detector_v2(params: MakeDetectorV2Params):
         for cps in (entry.dns, entry.tcp, entry.tls)
     )
     log.info(
-        "detectorV2: %d changepoints found at %s across %d series",
+        "detectorV2: %d changepoints found",
         total_changepoints,
         target_hour.isoformat(),
         len(results),
