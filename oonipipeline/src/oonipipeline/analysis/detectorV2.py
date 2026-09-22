@@ -467,11 +467,8 @@ def get_detector_panel_url(
     warmup_days: int = 30,
 ) -> str:
     """
-    Builds a link to detectorV2's events panel (see
-    oonipipeline.events_panel.panel_v2), prefilled via query params so the
-    panel auto-runs the detector for this changepoint's metadata. Points at
-    the "/v2" page — panel.py serves detectorV2's panel there, not at the
-    base_url root (that's the v1 panel).
+    Builds a link to detectorV2's events panel, prefilled via query params.
+    Points at the "/v2" page.
     """
     start_time = (cp.ts_hour - timedelta(days=warmup_days)).date()
     end_time = (cp.ts_hour + timedelta(days=2)).date()
