@@ -91,6 +91,9 @@ def run_make_event_detector_v2(
     timestamp: str = "",
     ts: str = "",
     warmup_days: int = 30,
+    slack_webhook: str | None = None,
+    explorer_base_url: str = "https://explorer.ooni.org/",
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/",
 ):
     from oonipipeline.tasks.detector_v2 import MakeDetectorV2Params, make_detector_v2
 
@@ -101,6 +104,9 @@ def run_make_event_detector_v2(
         clickhouse_url=clickhouse_url,
         timestamp=timestamp,
         warmup_days=warmup_days,
+        slack_webhook=slack_webhook,
+        explorer_base_url=explorer_base_url,
+        detector_panel_base_url=detector_panel_base_url,
     )
 
     make_detector_v2(params)
@@ -285,6 +291,14 @@ with DAG(
             "ts": "{{ ts }}",
             "warmup_days": int(
                 Variable.get("event_detector_v2_warmup_days", default_var="30")
+            ),
+            "slack_webhook": Variable.get("slack_webhook", default_var=None),
+            "explorer_base_url": Variable.get(
+                "explorer_base_url", default_var="https://explorer.ooni.org/"
+            ),
+            "detector_panel_base_url": Variable.get(
+                "detector_panel_base_url",
+                default_var="https://detector-panel.prod.ooni.io/",
             ),
         },
         requirements=REQUIREMENTS,

@@ -5,9 +5,12 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from itertools import groupby
 from typing import Iterable, Mapping, Tuple
+from urllib.parse import urlencode, urljoin
 
+import requests
 from clickhouse_driver import Client as ClickhouseClient
 
+from .detector import get_explorer_url
 from .rules import Evidence, LAYER_RULES, OutcomeClass
 
 log = logging.getLogger(__name__)
@@ -385,6 +388,107 @@ def _get_domains(clickhouse: ClickhouseClient) -> list[str]:
     if "twitter.com" not in domains:
         domains.append("twitter.com")
     return domains
+
+def notify_slack(
+    results: DetectorResult,
+    slack_webhook: str,
+    explorer_base_url: str = "https://explorer.ooni.org/",
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/",
+    p0: float = 0.05,
+    p1: float = 0.50,
+    h: float = 30,
+    warmup_days: int = 30,
+):
+    """
+    Sends a message to slack with every changepoint found in the most
+    recent run.
+    """
+    STATE_TO_SLACK_STR = {
+        State.BLOCK: "is blocked :red_circle:",
+        State.OK: "is unblocked :large_green_circle:",
+    }
+    changepoints = [
+        (cp, layer)
+        for entry in results.values()
+        for layer in LAYERS
+        for cp in getattr(entry, layer)
+    ]
+    if not changepoints:
+        return
+
+    message = (
+        "*NEW EVENTS DETECTED*\n\nWe just detected the following blocking events:\n"
+    )
+
+    messages = []
+    for i, (cp, layer) in enumerate(changepoints):
+        explorer = get_explorer_url(
+            cp.domain, cp.probe_cc, cp.probe_asn, cp.ts_hour, explorer_base_url
+        )
+        panel = get_detector_panel_url(
+            cp,
+            detector_panel_base_url,
+            p0=p0,
+            p1=p1,
+            h=h,
+            warmup_days=warmup_days,
+        )
+        state_str = STATE_TO_SLACK_STR.get(
+            cp.state, f"unknown state: {cp.state} :thinking_face:"
+        )
+        message += (
+            f"• :flag-{cp.probe_cc.lower()}: [{cp.probe_cc}/AS{cp.probe_asn}/"
+            f"RAS{cp.resolver_asn}] *<https://{cp.domain}|{cp.domain}>* (`{layer}`) "
+            f"{state_str} | <{explorer}|explorer> | <{panel}|detector panel>\n"
+        )
+
+        # Send messages in 10 entries batches to avoid max message size limit
+        if (i + 1) % 10 == 0:
+            messages.append(message)
+            message = ""
+
+    if message != "":
+        messages.append(message)
+
+    for msg in messages:
+        send_to_slack(slack_webhook, msg)
+
+
+def send_to_slack(webhook: str, message: str):
+    requests.post(webhook, json={"text": message}).raise_for_status()
+
+
+def get_detector_panel_url(
+    cp: ChangePoint,
+    base_url: str = "https://detector-panel.prod.ooni.io/",
+    p0: float = 0.05,
+    p1: float = 0.50,
+    h: float = 30,
+    warmup_days: int = 30,
+) -> str:
+    """
+    Builds a link to detectorV2's events panel (see
+    oonipipeline.events_panel.panel_v2), prefilled via query params so the
+    panel auto-runs the detector for this changepoint's metadata. Points at
+    the "/v2" page — panel.py serves detectorV2's panel there, not at the
+    base_url root (that's the v1 panel).
+    """
+    start_time = (cp.ts_hour - timedelta(days=warmup_days)).date()
+    end_time = (cp.ts_hour + timedelta(days=2)).date()
+
+    params = {
+        "probe_cc": cp.probe_cc,
+        "domain": cp.domain,
+        "probe_asn": cp.probe_asn,
+        "resolver_asn": cp.resolver_asn,
+        "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+        "p0": p0,
+        "p1": p1,
+        "h": h,
+    }
+    url = urljoin(base_url, "v2")
+    return f"{url}?{urlencode(params)}"
 
 
 def compute_llr_series(

@@ -899,7 +899,9 @@ def notify_slack(
 
     messages = []
     for i, cp in enumerate(changepoints):
-        explorer = get_explorer_url(cp, explorer_base_url)
+        explorer = get_explorer_url(
+            cp["domain"], cp["probe_cc"], cp["probe_asn"], cp["ts"], explorer_base_url
+        )
         # Alerts panel not yet deployed to prod, we use the test one for now
         alerts = get_alert_page_url(cp, "https://explorer.test.ooni.org/")
         panel = get_detector_panel_url(
@@ -929,18 +931,22 @@ def send_to_slack(webhook: str, message: str):
 
 
 def get_explorer_url(
-    changepoint: Changepoint, base_url: str = "https://explorer.ooni.org/"
+    domain: str,
+    probe_cc: str,
+    probe_asn: str,
+    ts: datetime,
+    base_url: str = "https://explorer.ooni.org/",
 ) -> str:
-    start_time = changepoint["ts"] - timedelta(days=13)
-    end_time = changepoint["ts"] + timedelta(days=2)
+    start_time = ts - timedelta(days=13)
+    end_time = ts + timedelta(days=2)
 
     def to_s(dt: datetime):
         return datetime.strftime(dt, "%Y-%m-%d")
 
     params = {
-        "domain": changepoint["domain"],
-        "probe_cc": changepoint["probe_cc"],
-        "probe_asn": changepoint["probe_asn"],
+        "domain": domain,
+        "probe_cc": probe_cc,
+        "probe_asn": probe_asn,
         "since": to_s(start_time),
         "until": to_s(end_time),
         "axis_x": "measurement_start_day",
