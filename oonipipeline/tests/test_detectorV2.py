@@ -60,34 +60,35 @@ def make_cell(ts_hour: datetime, **layer_counts: int) -> Cell:
     )
 
 
-def test_decay_noop_within_24_hours():
+def test_decay_noop_at_gap_halflife_boundary():
     """
-    The gap must exceed 24h before any decay is applied at all,
-    regardless of gap_halflife.
+    The gap must exceed gap_halflife before any decay is
+    applied at all.
     """
     d = Detector()
     d.s_pos, d.s_neg = 10.0, 7.0
     d.last_hour = BASE_HOUR
 
-    d.decay(gap_halflife=1, ts_hour=BASE_HOUR + timedelta(hours=24))
+    d.decay(gap_halflife=24, ts_hour=BASE_HOUR + timedelta(hours=24))
 
     assert d.s_pos == 10.0
     assert d.s_neg == 7.0
 
 
-def test_decay_halves_at_exactly_one_halflife():
+def test_decay_applies_just_past_gap_halflife():
     """
-    A gap equal to gap_halflife (and > 24h) should cut both accumulators
-    exactly in half.
+    Just past the gap_halflife boundary, decay follows the same formula
+    as everywhere else.
     """
     d = Detector()
     d.s_pos, d.s_neg = 10.0, 8.0
     d.last_hour = BASE_HOUR
 
-    d.decay(gap_halflife=25, ts_hour=BASE_HOUR + timedelta(hours=25))
+    d.decay(gap_halflife=24, ts_hour=BASE_HOUR + timedelta(hours=25))
 
-    assert d.s_pos == pytest.approx(5.0)
-    assert d.s_neg == pytest.approx(4.0)
+    expected = 0.5 ** (25 / 24)
+    assert d.s_pos == pytest.approx(10.0 * expected)
+    assert d.s_neg == pytest.approx(8.0 * expected)
 
 
 def test_decay_scales_exponentially_with_gap():
@@ -131,12 +132,12 @@ def test_decay_applied_through_step_between_two_silent_cells():
     assert d.s_neg == pytest.approx(8.0)
     assert d.last_hour == BASE_HOUR
 
-    second_cell = make_cell(BASE_HOUR + timedelta(hours=48))
+    second_cell = make_cell(BASE_HOUR + timedelta(hours=96))
     d.step(second_cell, w_block=1.0, w_clear=-1.0, layer="dns", h=1e9, gap_halflife=48)
 
-    assert d.s_pos == pytest.approx(5.0)
-    assert d.s_neg == pytest.approx(4.0)
-    assert d.last_hour == BASE_HOUR + timedelta(hours=48)
+    assert d.s_pos == pytest.approx(2.5)
+    assert d.s_neg == pytest.approx(2.0)
+    assert d.last_hour == BASE_HOUR + timedelta(hours=96)
 
 H = 10
 P0, P1 = 0.05, 0.5
