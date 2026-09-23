@@ -5,9 +5,11 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from itertools import groupby
 from typing import Iterable, Mapping, Tuple
+from urllib.parse import urlencode, urljoin
 
 from clickhouse_driver import Client as ClickhouseClient
 
+from .detector import get_explorer_url, send_to_slack
 from .rules import Evidence, LAYER_RULES, OutcomeClass
 
 log = logging.getLogger(__name__)
@@ -300,13 +302,36 @@ class ResultEntry:
 DetectorResult = dict[Tuple[str, str, str, str], ResultEntry]
 
 
-def run_detector_full(
-    clickhouse_url: str, start_time: datetime, end_time: datetime
+def run_detector_hourly(
+    clickhouse_url: str,
+    target_hour: datetime,
+    warmup_days: int = 30,
+    p0: float = 0.05,
+    p1: float = 0.50,
+    h: float = 30,
+    gap_halflife: float = 24,
 ) -> DetectorResult:
+    """
+    This function is stateless: nothing is read from or written to storage.
+    Each call rebuilds a fresh Detector per series and replays
+    `warmup_days` of history immediately before `target_hour`, then
+    evaluates just `target_hour` for real. Only changepoints found at
+    `target_hour` are returned.
+
+    It's meant to be called once per hour, right
+    after that hour has completed.
+
+    target_hour: start-of-hour, tz-aware, the hour to detect on
+    """
     clickhouse = ClickhouseClient.from_url(clickhouse_url)
     domains = _get_domains(clickhouse)
+    warmup_start = target_hour - timedelta(days=warmup_days)
+
     grouped = groupby(
-        iter_cells(clickhouse, domains, start_time, end_time),
+        # iter_cells' end_time bound is inclusive (ts_hour <= end_time) on
+        # hour-truncated values, so target_hour itself is the
+        # correct upper bound
+        iter_cells(clickhouse, domains, warmup_start, target_hour),
         key=lambda cell: (
             cell.probe_cc,
             cell.probe_asn,
@@ -316,11 +341,38 @@ def run_detector_full(
     )
     results = dict()
     for group, cells in grouped:
-        cells_list = list(cells)
+        warmup_cells = []
+        target_cells = []
+        for cell in cells:
+            (target_cells if cell.ts_hour == target_hour else warmup_cells).append(
+                cell
+            )
+        if not target_cells:
+            continue
+
         entry = dict()
         for layer in LAYERS:
             detector = Detector()
-            entry[layer] = detector.compute_changepoints(cells_list, layer)
+            # warmup
+            detector.compute_changepoints(
+                warmup_cells,
+                layer,
+                p0=p0,
+                p1=p1,
+                h=h,
+                warmup=True,
+                gap_halflife=gap_halflife,
+            )
+            # Actual detection
+            entry[layer] = detector.compute_changepoints(
+                target_cells,
+                layer,
+                p0=p0,
+                p1=p1,
+                h=h,
+                warmup=False,
+                gap_halflife=gap_halflife,
+            )
         results[group] = ResultEntry(**entry)
 
     return results
@@ -336,6 +388,100 @@ def _get_domains(clickhouse: ClickhouseClient) -> list[str]:
     if "twitter.com" not in domains:
         domains.append("twitter.com")
     return domains
+
+def notify_slack(
+    results: DetectorResult,
+    slack_webhook: str,
+    explorer_base_url: str = "https://explorer.ooni.org/",
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/",
+    p0: float = 0.05,
+    p1: float = 0.50,
+    h: float = 30,
+    warmup_days: int = 30,
+):
+    """
+    Sends a message to slack with every changepoint found in the most
+    recent run.
+    """
+    STATE_TO_SLACK_STR = {
+        State.BLOCK: "is blocked :red_circle:",
+        State.OK: "is unblocked :large_green_circle:",
+    }
+    changepoints = [
+        (cp, layer)
+        for entry in results.values()
+        for layer in LAYERS
+        for cp in getattr(entry, layer)
+    ]
+    if not changepoints:
+        return
+
+    message = (
+        "*NEW EVENTS DETECTED*\n\nWe just detected the following blocking events:\n"
+    )
+
+    messages = []
+    for i, (cp, layer) in enumerate(changepoints):
+        explorer = get_explorer_url(
+            cp.domain, cp.probe_cc, cp.probe_asn, cp.ts_hour, explorer_base_url
+        )
+        panel = get_detector_panel_url(
+            cp,
+            detector_panel_base_url,
+            p0=p0,
+            p1=p1,
+            h=h,
+            warmup_days=warmup_days,
+        )
+        state_str = STATE_TO_SLACK_STR.get(
+            cp.state, f"unknown state: {cp.state} :thinking_face:"
+        )
+        message += (
+            f"• :flag-{cp.probe_cc.lower()}: [{cp.probe_cc}/AS{cp.probe_asn}/"
+            f"RAS{cp.resolver_asn}] *<https://{cp.domain}|{cp.domain}>* (`{layer}`) "
+            f"{state_str} | <{explorer}|explorer> | <{panel}|detector panel>\n"
+        )
+
+        # Send messages in 10 entries batches to avoid max message size limit
+        if (i + 1) % 10 == 0:
+            messages.append(message)
+            message = ""
+
+    if message != "":
+        messages.append(message)
+
+    for msg in messages:
+        send_to_slack(slack_webhook, msg)
+
+
+def get_detector_panel_url(
+    cp: ChangePoint,
+    base_url: str = "https://detector-panel.prod.ooni.io/",
+    p0: float = 0.05,
+    p1: float = 0.50,
+    h: float = 30,
+    warmup_days: int = 30,
+) -> str:
+    """
+    Builds a link to detectorV2's events panel, prefilled via query params.
+    Points at the "/v2" page.
+    """
+    start_time = (cp.ts_hour - timedelta(days=warmup_days)).date()
+    end_time = (cp.ts_hour + timedelta(days=2)).date()
+
+    params = {
+        "probe_cc": cp.probe_cc,
+        "domain": cp.domain,
+        "probe_asn": cp.probe_asn,
+        "resolver_asn": cp.resolver_asn,
+        "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+        "p0": p0,
+        "p1": p1,
+        "h": h,
+    }
+    url = urljoin(base_url, "v2")
+    return f"{url}?{urlencode(params)}"
 
 
 def compute_llr_series(

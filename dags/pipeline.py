@@ -86,6 +86,32 @@ def run_make_event_detector(
     make_detector(params)
 
 
+def run_make_event_detector_v2(
+    clickhouse_url: str,
+    timestamp: str = "",
+    ts: str = "",
+    warmup_days: int = 30,
+    slack_webhook: str | None = None,
+    explorer_base_url: str = "https://explorer.ooni.org/",
+    detector_panel_base_url: str = "https://detector-panel.prod.ooni.io/",
+):
+    from oonipipeline.tasks.detector_v2 import MakeDetectorV2Params, make_detector_v2
+
+    if timestamp == "":
+        timestamp = ts[:13]
+
+    params = MakeDetectorV2Params(
+        clickhouse_url=clickhouse_url,
+        timestamp=timestamp,
+        warmup_days=warmup_days,
+        slack_webhook=slack_webhook,
+        explorer_base_url=explorer_base_url,
+        detector_panel_base_url=detector_panel_base_url,
+    )
+
+    make_detector_v2(params)
+
+
 def run_make_volume_analysis(
     clickhouse_url: str, timestamp: str = "", ts: str = "", threshold: int = 200
 ):
@@ -248,6 +274,37 @@ with DAG(
         system_site_packages=False,
     )
 
+    op_gate_event_detector_v2 = ShortCircuitOperator(
+        task_id="gate_event_detector_v2",
+        python_callable=lambda: Variable.get(
+            "enable_event_detector_v2", default_var="true"
+        )
+        == "true",
+        ignore_downstream_trigger_rules=True,
+    )
+
+    op_make_event_detector_v2_hourly = PythonVirtualenvOperator(
+        task_id="make_event_detector_v2",
+        python_callable=run_make_event_detector_v2,
+        op_kwargs={
+            "clickhouse_url": Variable.get("clickhouse_url", default_var=""),
+            "ts": "{{ ts }}",
+            "warmup_days": int(
+                Variable.get("event_detector_v2_warmup_days", default_var="30")
+            ),
+            "slack_webhook": Variable.get("slack_webhook", default_var=None),
+            "explorer_base_url": Variable.get(
+                "explorer_base_url", default_var="https://explorer.ooni.org/"
+            ),
+            "detector_panel_base_url": Variable.get(
+                "detector_panel_base_url",
+                default_var="https://detector-panel.prod.ooni.io/",
+            ),
+        },
+        requirements=REQUIREMENTS,
+        system_site_packages=False,
+    )
+
     op_make_volume_analysis_hourly = PythonVirtualenvOperator(
         task_id="make_volume_analysis",
         python_callable=run_make_volume_analysis,
@@ -278,4 +335,11 @@ with DAG(
         >> op_make_analysis_hourly
         >> op_gate_event_detector
         >> op_make_event_detector_hourly
+    )
+
+    # detector_v2 needs the analysis web measurement tables to be up to date
+    (
+        op_make_analysis_hourly
+        >> op_gate_event_detector_v2
+        >> op_make_event_detector_v2_hourly
     )
