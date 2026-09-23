@@ -292,7 +292,7 @@ with DAG(
             "warmup_days": int(
                 Variable.get("event_detector_v2_warmup_days", default_var="30")
             ),
-            "slack_webhook": Variable.get("slack_webhook", default_var=None),
+            "slack_webhook": Variable.get("slack_webhook_v2", default_var=None),
             "explorer_base_url": Variable.get(
                 "explorer_base_url", default_var="https://explorer.ooni.org/"
             ),
