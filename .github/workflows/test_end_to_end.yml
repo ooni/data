@@ -16,6 +16,30 @@ jobs:
   build-and-run:
     runs-on: ubuntu-latest
 
+    # Run the whole stack once per ClickHouse version we care about, so a
+    # breaking ClickHouse change (a function rename, a disallowed
+    # operation, a serialization change -- see ooni/devops#477 for the
+    # kind of thing this is meant to catch) shows up here, against the
+    # real pipeline and API, before it reaches production. Keep this list
+    # in sync with ooni/devops's scripts/clickhouse-upgrade-test/harness/
+    # versions.py RECOMMENDED_LTS_HOPS + LATEST_VERSION -- there's no
+    # automated link between the two repos, so it's a manual sync each
+    # time that ladder changes. fail-fast: false so one version's failure
+    # doesn't cancel the others -- we want a full compatibility picture
+    # across the whole matrix, not just the first failure.
+    strategy:
+      fail-fast: false
+      matrix:
+        clickhouse_version:
+          - "24.8.6.70" # current production version (issue #437)
+          - "25.3.14.14" # LTS
+          - "25.8.29.51" # LTS
+          - "26.3.17.110" # LTS
+          - "26.8.9.10" # latest LTS as of 2026-09-21
+
+    env:
+      CLICKHOUSE_VERSION: ${{ matrix.clickhouse_version }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -43,6 +67,7 @@ jobs:
       - name: Run Docker Compose (detached)
         run: |
           cd tests/integration
+          echo "Testing against ClickHouse ${CLICKHOUSE_VERSION}"
           docker compose up -d
           docker compose ps --all
           docker compose logs --no-color --timestamps --tail=200 &

@@ -19,7 +19,7 @@ services:
       CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
 
   clickhouse:
-    image: docker.io/clickhouse/clickhouse-server:latest
+    image: docker.io/clickhouse/clickhouse-server:${CLICKHOUSE_VERSION:-latest}
     ports:
       - "8123:8123"  # HTTP interface
       - "9000:9000"  # Native interface
