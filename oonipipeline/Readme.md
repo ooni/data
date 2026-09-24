@@ -37,7 +37,7 @@ Workflows are started by first scheduling them and then triggering a backfill op
 
 You can then trigger the run operation like so:
 ```
-hatch run oonipipeline run --create-tables --probe-cc US --test-name signal --workflow-name observations --start-at 2024-01-01 --end-at 2024-02-01
+hatch run oonipipeline run --create-tables --probe-cc US --test-name signal --only-observations --start-at 2024-01-01 --end-at 2024-02-01
 ```
 
 ### Production usage
