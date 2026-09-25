@@ -1,4 +1,5 @@
 from base64 import b64decode
+from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
 from pprint import pprint
@@ -638,3 +639,77 @@ def test_website_web_analysis_wc05_qa_corpus(db, netinfodb, case_name):
             assert got == expected, (
                 f"{case_name}: expected {field} == {expected!r}, got {got!r}"
             )
+
+def test_website_web_analysis_probe_id_with_ipv6_blocking(db, netinfodb,
+    measurements,
+):
+    def rewrite_all_ipv6(m, failure):
+        mcopy = deepcopy(m)
+        for tcnt in mcopy.test_keys.tcp_connect:
+            if ":" in tcnt.ip:
+                tcnt.status.success = failure is None
+                tcnt.status.failure = failure
+
+        for tls in mcopy.test_keys.tls_handshakes:
+            if tls.address.startswith("["):
+                tls.failure = failure
+        return mcopy
+
+    measurement_uid = "20260819191120.166951_BR_webconnectivity_83e91bd6e8aab5b5"
+    msmt = load_measurement(msmt_path=measurements[measurement_uid])
+    msmt.probe_id = "00000000000000000000000000aaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbb"
+    ts = datetime.strptime(msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S")
+
+    # This one measurement from the probe has its IPv6 TCP connect + TLS
+    # handshake failing.
+    msmt_blocked = rewrite_all_ipv6(msmt, "generic_timeout_error")
+    write_observations_to_db(
+        db=db,
+        netinfodb=netinfodb,
+        msmt=msmt_blocked,
+        bucket_date="1984-01-01",
+    )
+
+    # Every other measurement from the same probe_id (but with its own fresh
+    # report_id/measurement_uid, as happens since probe-multiplatform) has
+    # IPv6 working fine. Before probe_id-keyed partitioning, the
+    # ipv6_broken_probe rule would see only the single failing measurement's
+    # own report_id and mask the failure above as "this probe's
+    # IPv6 is broken". With probe_id-keyed partitioning it should see IPv6
+    # mostly working for this probe and let the failure read as blocking.
+    for i in range(10):
+        msmt_ok = rewrite_all_ipv6(msmt, None)
+        msmt_ok.report_id = f"20260906221934.815637_BR_webconnectivity_aa3396eeabe4e0a{i}"
+        msmt_ok.measurement_uid = f"20260906221934.815637_BR_webconnectivity_aa3396eeabe4e0a{i}"
+        write_observations_to_db(
+            db=db,
+            netinfodb=netinfodb,
+            msmt=msmt_ok,
+            bucket_date="1984-01-01",
+        )
+    db.flush()
+
+    analysis_list = list(
+        get_analysis_web_fuzzy_logic(
+            db=db,
+            start_time=ts - timedelta(days=1),
+            end_time=ts + timedelta(days=1),
+            probe_cc=[],
+        )
+    )
+    by_uid = {a["measurement_uid"]: a for a in analysis_list}
+    assert len(by_uid) == 11
+
+    analysis = by_uid[measurement_uid]
+    assert analysis["top_tcp_failure"] == "generic_timeout_error"
+    assert analysis["top_tls_failure"] == "generic_timeout_error"
+    assert analysis["top_tcp_rule_id"] != "ipv6_broken_probe"
+    assert analysis["top_tls_rule_id"] != "ipv6_broken_probe"
+    assert analysis["tcp_blocked_max"] > 0.5
+    assert analysis["tls_blocked_max"] > 0.5
+
+    for uid, sibling in by_uid.items():
+        if uid == measurement_uid:
+            continue
+        assert sibling["tcp_ok_max"] == 1.0
+        assert sibling["tls_ok_max"] == 1.0
