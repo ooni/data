@@ -294,7 +294,7 @@ CURRENT_RULES: List[Rule] = [
         ok=0.0,
         layer=RuleLayer.TCP,
         outcome_class=OutcomeClass.BLOCKED,
-        comment="Failure against an address that mostly succeeds in the control.",
+        comment="Failure against an IPv6 address that mostly succeeds in the control.",
     ),
     Rule(
         rule_id="tcp_ipv4_failure_ctrl_ok",
@@ -307,7 +307,7 @@ CURRENT_RULES: List[Rule] = [
         ok=0.0,
         layer=RuleLayer.TCP,
         outcome_class=OutcomeClass.BLOCKED,
-        comment="Failure against an address that mostly succeeds in the control.",
+        comment="Failure against an IPv4 address that mostly succeeds in the control.",
     ),
     Rule(
         rule_id="dns_untrusted_tcp_gate",
@@ -504,6 +504,21 @@ LEGACY_RULES = [
         ),
         evidence=Evidence.DISCARDED,
     ),
+    Rule(
+        rule_id="failure_ctrl_ok",
+        condition=(
+            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 "
+            "AND ctrl_tcp_success_count > 0"
+        ),
+        blocked=0.75,
+        down=0.25,
+        ok=0.0,
+        layer=RuleLayer.TCP,
+        version=3,
+        outcome_class=OutcomeClass.BLOCKED,
+        comment="Failure against an address that mostly succeeds in the control.",
+    ),
+
 ]
 
 DNS_RULES = list(filter(lambda x: x.layer == RuleLayer.DNS, CURRENT_RULES))
