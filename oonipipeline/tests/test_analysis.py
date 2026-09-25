@@ -640,22 +640,22 @@ def test_website_web_analysis_wc05_qa_corpus(db, netinfodb, case_name):
                 f"{case_name}: expected {field} == {expected!r}, got {got!r}"
             )
 
-def test_website_web_analysis_probe_id_with_ipv6_blocking(db, netinfodb,
+def rewrite_all_ipv6(m, failure):
+    mcopy = deepcopy(m)
+    for tcnt in mcopy.test_keys.tcp_connect:
+        if ":" in tcnt.ip:
+            tcnt.status.success = failure is None
+            tcnt.status.failure = failure
+
+    for tls in mcopy.test_keys.tls_handshakes:
+        # if IPv6 is not tcp reachable, there are no tls measurements
+        if failure is not None:
+            mcopy.test_keys.tls_handshakes.remove(tls)
+    return mcopy
+
+def test_website_web_analysis_probe_id_with_ipv6_blocked(db, netinfodb,
     measurements,
 ):
-    def rewrite_all_ipv6(m, failure):
-        mcopy = deepcopy(m)
-        for tcnt in mcopy.test_keys.tcp_connect:
-            if ":" in tcnt.ip:
-                tcnt.status.success = failure is None
-                tcnt.status.failure = failure
-
-        for tls in mcopy.test_keys.tls_handshakes:
-            # if IPv6 is not tcp reachable, there are no tls measurements
-            if failure is not None:
-                mcopy.test_keys.tls_handshakes.remove(tls)
-        return mcopy
-
     measurement_uid = "20260819191120.166951_BR_webconnectivity_83e91bd6e8aab5b5"
     msmt = load_measurement(msmt_path=measurements[measurement_uid])
     msmt.probe_id = "00000000000000000000000000aaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbb"
@@ -680,6 +680,7 @@ def test_website_web_analysis_probe_id_with_ipv6_blocking(db, netinfodb,
     # mostly working for this probe and let the failure read as blocking.
     for i in range(10):
         msmt_ok = rewrite_all_ipv6(msmt, None)
+        msmt_ok.input = f"https://example-{i}.com/"
         msmt_ok.report_id = f"20260906221934.815637_BR_webconnectivity_aa3396eeabe4e0a{i}"
         msmt_ok.measurement_uid = f"20260906221934.815637_BR_webconnectivity_aa3396eeabe4e0a{i}"
         write_observations_to_db(
@@ -711,3 +712,55 @@ def test_website_web_analysis_probe_id_with_ipv6_blocking(db, netinfodb,
             continue
         assert sibling["tcp_ok_max"] == 1.0
         assert sibling["tls_ok_max"] == 1.0
+
+def test_website_web_analysis_probe_id_with_ipv6_broken(db, netinfodb,
+    measurements,
+):
+    measurement_uid = "20260819191120.166951_BR_webconnectivity_83e91bd6e8aab5b5"
+    msmt = load_measurement(msmt_path=measurements[measurement_uid])
+    msmt.probe_id = "00000000000000000000000000aaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbb"
+    ts = datetime.strptime(msmt.measurement_start_time, "%Y-%m-%d %H:%M:%S")
+
+    # This one measurement from the probe has its IPv6 TCP connect + TLS
+    # handshake failing.
+    msmt_broken = rewrite_all_ipv6(msmt, "host_unreachable")
+    write_observations_to_db(
+        db=db,
+        netinfodb=netinfodb,
+        msmt=msmt_broken,
+        bucket_date="1984-01-01",
+    )
+
+    # we are simulating a case where all measurements from this probe show host_unreachable
+    for i in range(10):
+        msmt_broken = rewrite_all_ipv6(msmt, "host_unreachable")
+        msmt_broken.input = f"https://example-{i}.com/"
+        msmt_broken.report_id = f"20260906221934.815637_BR_webconnectivity_aa3396eeabe4e0a{i}"
+        msmt_broken.measurement_uid = f"20260906221934.815637_BR_webconnectivity_aa3396eeabe4e0a{i}"
+        write_observations_to_db(
+            db=db,
+            netinfodb=netinfodb,
+            msmt=msmt_broken,
+            bucket_date="1984-01-01",
+        )
+    db.flush()
+
+    analysis_list = list(
+        get_analysis_web_fuzzy_logic(
+            db=db,
+            start_time=ts - timedelta(days=1),
+            end_time=ts + timedelta(days=1),
+            probe_cc=[],
+        )
+    )
+    by_uid = {a["measurement_uid"]: a for a in analysis_list}
+    assert len(by_uid) == 11
+
+    analysis = by_uid[measurement_uid]
+    assert analysis["top_tcp_failure"] == "host_unreachable"
+    # we assert on connect_ok since the IPv6 broken rule is gated
+    assert analysis["top_tcp_rule_id"] == "connect_ok"
+
+    for msmt in analysis_list:
+        assert msmt["tcp_ok_max"] == 1.0
+        assert msmt["tls_ok_max"] == 1.0
