@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import List, Tuple
 
-RULES_VERSION = 3
+RULES_VERSION = 4
 
 
 class Evidence(IntEnum):
@@ -284,9 +284,22 @@ CURRENT_RULES: List[Rule] = [
         evidence=Evidence.DISCARDED,
     ),
     Rule(
-        rule_id="failure_ctrl_ok",
+        rule_id="tcp_ipv6_failure_ctrl_ok",
         condition=(
-            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 "
+            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 AND ip_is_v6 = 1 "
+            "AND ctrl_tcp_success_count > 0"
+        ),
+        blocked=0.6,
+        down=0.4,
+        ok=0.0,
+        layer=RuleLayer.TCP,
+        outcome_class=OutcomeClass.BLOCKED,
+        comment="Failure against an address that mostly succeeds in the control.",
+    ),
+    Rule(
+        rule_id="tcp_ipv4_failure_ctrl_ok",
+        condition=(
+            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 AND ip_is_v6 = 0 "
             "AND ctrl_tcp_success_count > 0"
         ),
         blocked=0.75,

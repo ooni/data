@@ -651,8 +651,9 @@ def test_website_web_analysis_probe_id_with_ipv6_blocking(db, netinfodb,
                 tcnt.status.failure = failure
 
         for tls in mcopy.test_keys.tls_handshakes:
-            if tls.address.startswith("["):
-                tls.failure = failure
+            # if IPv6 is not tcp reachable, there are no tls measurements
+            if failure is not None:
+                mcopy.test_keys.tls_handshakes.remove(tls)
         return mcopy
 
     measurement_uid = "20260819191120.166951_BR_webconnectivity_83e91bd6e8aab5b5"
@@ -702,11 +703,8 @@ def test_website_web_analysis_probe_id_with_ipv6_blocking(db, netinfodb,
 
     analysis = by_uid[measurement_uid]
     assert analysis["top_tcp_failure"] == "generic_timeout_error"
-    assert analysis["top_tls_failure"] == "generic_timeout_error"
     assert analysis["top_tcp_rule_id"] != "ipv6_broken_probe"
-    assert analysis["top_tls_rule_id"] != "ipv6_broken_probe"
-    assert analysis["tcp_blocked_max"] > 0.5
-    assert analysis["tls_blocked_max"] > 0.5
+    assert analysis["top_tcp_rule_id"] == "tcp_ipv6_failure_ctrl_ok"
 
     for uid, sibling in by_uid.items():
         if uid == measurement_uid:

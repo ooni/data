@@ -7,6 +7,7 @@ the outcome and rule-id cascades agreeing) can be asserted directly.
 """
 from collections import defaultdict
 
+from datetime import datetime
 import re
 
 import pytest
@@ -331,8 +332,8 @@ def test_ipv6_brokenness_windows_partition_by_probe_not_report():
     report_id as the fallback when the probe reports none).
     """
     sql, _ = format_query_analysis_web_fuzzy_logic(
-        start_time=__import__("datetime").datetime(2024, 1, 1),
-        end_time=__import__("datetime").datetime(2024, 1, 2),
+        start_time=datetime(2024, 1, 1),
+        end_time=datetime(2024, 1, 2),
         probe_cc=[],
     )
     body = _strip_sql_comments(sql)
