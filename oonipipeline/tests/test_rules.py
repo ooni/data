@@ -7,6 +7,7 @@ the outcome and rule-id cascades agreeing) can be asserted directly.
 """
 from collections import defaultdict
 
+from datetime import datetime
 import re
 
 import pytest
@@ -319,3 +320,35 @@ def test_layer_list_consistency():
     assert all(rule.layer == RuleLayer.TCP for rule in TCP_RULES)
     assert all(rule.layer == RuleLayer.DNS for rule in DNS_RULES)
     assert all(rule.layer == RuleLayer.TLS for rule in TLS_RULES)
+
+
+def test_ipv6_brokenness_windows_partition_by_probe_not_report():
+    """
+    Since probe-multiplatform a resubmission gets its own report_id rather than
+    sharing the one of its measurement set, so report_id no longer groups a
+    probe's observations — and with anonymous credentials that will hold for
+    every measurement. The tcp_ipv{4,6}_* windows exist to judge whether IPv6 is
+    broken *for a probe*, so they must partition by probe_run_id (probe_id, with
+    report_id as the fallback when the probe reports none).
+    """
+    sql, _ = format_query_analysis_web_fuzzy_logic(
+        start_time=datetime(2024, 1, 1),
+        end_time=datetime(2024, 1, 2),
+        probe_cc=[],
+    )
+    body = _strip_sql_comments(sql)
+
+    assert re.search(
+        r"if\(\s*probe_id = toFixedString\('', 64\),\s*report_id,\s*"
+        r"toString\(probe_id\)\s*\) as probe_run_id",
+        body,
+    ), "probe_run_id must fall back to report_id when probe_id is unset"
+
+    windows = re.findall(r"over \(partition by (\w+)\) as (tcp_ipv\d_\w+)", body)
+    assert sorted(w[1] for w in windows) == [
+        "tcp_ipv4_failure_count",
+        "tcp_ipv4_success_count",
+        "tcp_ipv6_failure_count",
+        "tcp_ipv6_success_count",
+    ]
+    assert {w[0] for w in windows} == {"probe_run_id"}
