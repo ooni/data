@@ -299,7 +299,7 @@ CURRENT_RULES: List[Rule] = [
     Rule(
         rule_id="tcp_ipv4_failure_ctrl_ok",
         condition=(
-            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 AND ip_is_v6 = 0 "
+            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 AND ip_is_v4 = 1 "
             "AND ctrl_tcp_success_count > 0"
         ),
         blocked=0.75,
