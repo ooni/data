@@ -115,6 +115,6 @@ ORDER BY (asn, changed)
     assert 100_000 < row_cnt < 1_000_000
 
     log.info("Swapping asnmeta data")
-    q = "ALTER TABLE asnmeta REPLACE PARTITION tuple() FROM asnmeta_tmp SETTINGS alter_sync = 3"
+    q = "ALTER TABLE asnmeta REPLACE PARTITION tuple() FROM asnmeta_tmp SETTINGS alter_sync = 2"
     click.execute(q)
     progress("asnmeta ready")

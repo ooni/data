@@ -212,7 +212,7 @@ SETTINGS index_granularity = 4
     # reason TRUNCATE/INSERT don't need it -- citizenlab_tmp being local
     # and non-replicated doesn't weaken any of this, since that guarantee
     # comes entirely from citizenlab's own Replicated engine.
-    q = "ALTER TABLE citizenlab REPLACE PARTITION tuple() FROM citizenlab_tmp SETTINGS alter_sync = 3"
+    q = "ALTER TABLE citizenlab REPLACE PARTITION tuple() FROM citizenlab_tmp SETTINGS alter_sync = 2"
     click.execute(q)
 
 
