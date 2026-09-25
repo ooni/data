@@ -188,6 +188,11 @@ def detector_v2_panel():
         h = c5.number_input(
             "**h**", key="v2_h_input", **_widget_kwargs("v2_h_input", 30.0)
         )
+        use_decay = st.checkbox(
+            "**Use decay**",
+            key="v2_use_decay_input",
+            **_widget_kwargs("v2_use_decay_input", True),
+        )
 
         submitted = st.form_submit_button("Run")
 
@@ -261,7 +266,9 @@ def detector_v2_panel():
         changepoints_by_asn[asn] = dict()
         for layer in layers:
             detector = Detector(debug=True)
-            cps = detector.compute_changepoints(asn_cells, layer, p0=p0, p1=p1, h=h)
+            cps = detector.compute_changepoints(
+                asn_cells, layer, p0=p0, p1=p1, h=h, use_decay=use_decay
+            )
             detectors_by_asn[asn][layer] = detector
             changepoints_by_asn[asn][layer] = cps
             if cps:
