@@ -257,6 +257,7 @@ def format_query_analysis_web_fuzzy_logic(
         ip_asn,
         ip_is_bogon,
         ip_is_v6,
+        ip_is_v4,
         dns_failure,
         dns_answer,
         dns_engine,
