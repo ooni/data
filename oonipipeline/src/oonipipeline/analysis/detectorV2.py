@@ -784,7 +784,11 @@ def make_cells_histogram_chart(
                 opacity=alt.condition(
                     outcome_selection & cusum_selection, alt.value(0.6), alt.value(0.05)
                 ),
-                tooltip=["ts_hour:T", "outcome:N", "count:Q"],
+                tooltip=[
+                    alt.Tooltip("ts_hour:T", format="%Y-%m-%d %H:%M"),
+                    "outcome:N",
+                    "count:Q",
+                ],
             )
         )
         if layer == LAYERS[-1]:
