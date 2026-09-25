@@ -310,6 +310,20 @@ CURRENT_RULES: List[Rule] = [
         comment="Failure against an IPv4 address that mostly succeeds in the control.",
     ),
     Rule(
+        rule_id="tcp_ipv_unknown_failure_ctrl_ok",
+        condition=(
+            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 "
+            "AND ctrl_tcp_success_count > 0"
+        ),
+        blocked=0.4,
+        down=0.6,
+        ok=0.0,
+        layer=RuleLayer.TCP,
+        outcome_class=OutcomeClass.DOWN,
+        comment="Failure against an address that is nor v4 nor v4 that mostly succeeds in the control. This should in theory never trigger",
+    ),
+
+    Rule(
         rule_id="dns_untrusted_tcp_gate",
         condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
         blocked=0.0,
