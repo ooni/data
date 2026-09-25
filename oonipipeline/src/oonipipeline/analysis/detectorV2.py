@@ -150,7 +150,6 @@ def iter_cells(
         yield Cell(**dict(zip(col_names, r)))
 
 
-# TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
 class Detector:
     def __init__(self, debug: bool = False):
         self.s_pos = self.s_neg = 0
@@ -173,6 +172,7 @@ class Detector:
         h: float = 30,
         warmup: bool = False,
         gap_halflife: float = 24,
+        use_decay: bool = True,
     ) -> list[ChangePoint]:
         """
         Assumes the input list has the following properties:
@@ -184,13 +184,15 @@ class Detector:
 
         "warmup" runs the detector without generating any new changepoint, it
         only updates internal state
+
+        use_decay: decay the accumulators after long gaps without data
         """
         results = []
         w_block = math.log(p1 / p0)
         w_clear = math.log((1.0 - p1) / (1.0 - p0))
 
         for cell in series:
-            cp = self.step(cell, w_block, w_clear, layer, h, gap_halflife)
+            cp = self.step(cell, w_block, w_clear, layer, h, gap_halflife, use_decay)
             if cp and not warmup:
                 results.append(cp)
             if self.debug:
@@ -206,6 +208,7 @@ class Detector:
         layer: str,
         h: float,
         gap_halflife: float,
+        use_decay: bool = True,
     ) -> ChangePoint | None:
         # original state is unknown, run both series in parallel to discover
         # current state
@@ -226,7 +229,8 @@ class Detector:
                 ts_hour=cell.ts_hour,
             )
 
-        self.decay(gap_halflife, cell.ts_hour)
+        if use_decay:
+            self.decay(gap_halflife, cell.ts_hour)
 
         cp = None
         if self.state == State.UNKNOWN:
@@ -242,7 +246,7 @@ class Detector:
                 self.s_pos = self.s_neg = 0
             # Don't return a changepoint: this is the initial state
         elif self.state == State.BLOCK:
-            # Run s_neg accumulator: we wan't to see if the blocking signal
+            # Run s_neg accumulator: we want to see if the blocking signal
             # goes down
             self.s_neg = max(0, self.s_neg - llr)
             self.s_pos = 0
@@ -250,7 +254,7 @@ class Detector:
                 cp = make_cp(State.OK)
                 self.set_state(State.OK)
         elif self.state == State.OK:
-            # Run s_pos accumulator: we wan't to see if the blocking signal
+            # Run s_pos accumulator: we want to see if the blocking signal
             # goes up
             self.s_pos = max(0, self.s_pos + llr)
             self.s_neg = 0
@@ -310,6 +314,7 @@ def run_detector_hourly(
     p1: float = 0.50,
     h: float = 30,
     gap_halflife: float = 24,
+    use_decay: bool = True,
 ) -> DetectorResult:
     """
     This function is stateless: nothing is read from or written to storage.
@@ -362,6 +367,7 @@ def run_detector_hourly(
                 h=h,
                 warmup=True,
                 gap_halflife=gap_halflife,
+                use_decay=use_decay,
             )
             # Actual detection
             entry[layer] = detector.compute_changepoints(
@@ -372,6 +378,7 @@ def run_detector_hourly(
                 h=h,
                 warmup=False,
                 gap_halflife=gap_halflife,
+                use_decay=use_decay,
             )
         results[group] = ResultEntry(**entry)
 
