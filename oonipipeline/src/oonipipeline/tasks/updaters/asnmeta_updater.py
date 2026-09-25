@@ -54,38 +54,47 @@ def fetch_data() -> List[dict]:
     return rows
 
 
+# Same pattern as citizenlab_test_lists_updater: asnmeta is a single, stable
+# replicated table and each run swaps its data in from a session-scoped
+# TEMPORARY table with REPLACE PARTITION, which replicates through asnmeta's
+# own replication log instead of renaming tables with EXCHANGE on only the
+# node this script is connected to.
+CLUSTER_NAME = "oonidata_cluster"
+
+
 def update_asnmeta(clickhouse_url: str) -> None:
     progress("starting")
     click = Clickhouse.from_url(clickhouse_url)
-    q = """
-    CREATE TABLE IF NOT EXISTS asnmeta (
-        asn UInt32,
-        org_name String,
-        cc String,
-        changed Date,
-        aut_name String,
-        source String
-    ) ENGINE = MergeTree()
-    ORDER BY (asn, changed)
+    click.execute(
+        f"""CREATE TABLE IF NOT EXISTS asnmeta ON CLUSTER {CLUSTER_NAME}
+(
+    asn UInt32,
+    org_name String,
+    cc String,
+    changed Date,
+    aut_name String,
+    source String
+)
+ENGINE = ReplicatedMergeTree('/clickhouse/{{cluster}}/tables/ooni/asnmeta', '{{replica}}')
+ORDER BY (asn, changed)
     """
-    click.execute(q)
+    )
 
-    q = "DROP TABLE IF EXISTS asnmeta_tmp"
-    click.execute(q)
-
-    q = """
-    CREATE TABLE asnmeta_tmp (
-        asn UInt32,
-        org_name String,
-        cc String,
-        changed Date,
-        aut_name String,
-        source String
-    ) ENGINE = MergeTree()
-    ORDER BY (asn, changed)
+    click.execute(
+        """CREATE TEMPORARY TABLE IF NOT EXISTS asnmeta_tmp
+(
+    asn UInt32,
+    org_name String,
+    cc String,
+    changed Date,
+    aut_name String,
+    source String
+)
+ENGINE = MergeTree
+ORDER BY (asn, changed)
     """
-    click.execute(q)
-    progress("asnmeta_tmp recreated")
+    )
+    progress("asnmeta_tmp created")
 
     log.info(f"Ingesting {AS_ORG_MAP_URL}")
     data = fetch_data()
@@ -105,7 +114,7 @@ def update_asnmeta(clickhouse_url: str) -> None:
     # metrics.gauge("asnmeta_tmp_len", row_cnt)
     assert 100_000 < row_cnt < 1_000_000
 
-    log.info("Swapping tables")
-    q = "EXCHANGE TABLES asnmeta_tmp AND asnmeta"
+    log.info("Swapping asnmeta data")
+    q = "ALTER TABLE asnmeta REPLACE PARTITION tuple() FROM asnmeta_tmp SETTINGS alter_sync = 3"
     click.execute(q)
     progress("asnmeta ready")
