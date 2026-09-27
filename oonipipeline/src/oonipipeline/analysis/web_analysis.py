@@ -221,7 +221,26 @@ def format_query_analysis_web_fuzzy_logic(
     FROM (
         WITH
         isIPv4String(ip) as ip_is_v4,
-        isIPv6String(ip) as ip_is_v6
+        isIPv6String(ip) as ip_is_v6,
+
+        -- Key for "all observations produced by the same probe in this run".
+        --
+        -- report_id was once used, however since at least probe-multiplatform a
+        -- resubmission gets a fresh report_id instead of sharing the one of the
+        -- measurement set it belongs to, so it no longer groups a probe's
+        -- observations.
+        --
+        -- probe_id is the pseudonymous probe identifier and is the right key
+        -- for probes that support it. It changes when a probe changes network
+        -- so IPv6 availability should be stable within the time window partition
+        -- and change when the network changes.
+        -- The current implementation uses a window of one hour or 1 day depending
+        -- on airflow scheduling.
+        if(
+            probe_id = toFixedString('', 64),
+            report_id,
+            toString(probe_id)
+        ) as probe_run_id
 
         SELECT
         measurement_uid,
@@ -238,6 +257,7 @@ def format_query_analysis_web_fuzzy_logic(
         ip_asn,
         ip_is_bogon,
         ip_is_v6,
+        ip_is_v4,
         dns_failure,
         dns_answer,
         dns_engine,
@@ -252,15 +272,13 @@ def format_query_analysis_web_fuzzy_logic(
         countIf(ip_asn IN %(cloud_provider_asns)s) over (partition by measurement_uid) as dns_answers_cloud,
 
         -- We use these to get an indication of whether IPv6 is entirely broken in
-        -- this probe.
-        -- TODO: in the future we could use something other than report_id, but
-        -- closer to "run_id" to get all measurements from a particular probe at a
-        -- given time interval
-        countIf(ip_is_v6 AND tcp_failure IS NOT NULL) over (partition by report_id) as tcp_ipv6_failure_count,
-        countIf(ip_is_v6 AND tcp_success = 1) over (partition by report_id) as tcp_ipv6_success_count,
+        -- this probe. Partitioned by probe_run_id (see the WITH above): probe_id
+        -- when the probe reports one, report_id otherwise.
+        countIf(ip_is_v6 AND tcp_failure IS NOT NULL) over (partition by probe_run_id) as tcp_ipv6_failure_count,
+        countIf(ip_is_v6 AND tcp_success = 1) over (partition by probe_run_id) as tcp_ipv6_success_count,
 
-        countIf(ip_is_v4 AND tcp_success = 1) over (partition by report_id) as tcp_ipv4_success_count,
-        countIf(ip_is_v4 AND tcp_failure IS NOT NULL) over (partition by report_id) as tcp_ipv4_failure_count,
+        countIf(ip_is_v4 AND tcp_success = 1) over (partition by probe_run_id) as tcp_ipv4_success_count,
+        countIf(ip_is_v4 AND tcp_failure IS NOT NULL) over (partition by probe_run_id) as tcp_ipv4_failure_count,
 
         tcp_ipv6_failure_count/(tcp_ipv6_success_count+tcp_ipv6_failure_count) as tcp_ipv6_failure_rate,
         tcp_ipv4_failure_count/(tcp_ipv4_success_count+tcp_ipv4_failure_count) as tcp_ipv4_failure_rate,
