@@ -114,7 +114,7 @@ def update_citizenlab_table(clickhouse_url: str, citizenlab: list) -> None:
     `cc` FixedString(32),
     `category_code` String
 )
-ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{{cluster}}/tables/{{database}}/citizenlab/{{shard}}', '{{replica}}')
+ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{{cluster}}/tables/{{database}}/citizenlab', '{{replica}}')
 ORDER BY (domain, url, cc, category_code)
 SETTINGS index_granularity = 4
     """
