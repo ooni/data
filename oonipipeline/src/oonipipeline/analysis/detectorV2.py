@@ -150,6 +150,61 @@ def iter_cells(
         yield Cell(**dict(zip(col_names, r)))
 
 
+def get_rule_counts(
+    clickhouse: ClickhouseClient,
+    domain: str,
+    probe_asn: int,
+    resolver_asn: int,
+    start_time: datetime,
+    end_time: datetime,
+    probe_cc: str | None = None,
+) -> list[dict]:
+    """
+    Debugging helper: for a single (domain, probe_cc, probe_asn, resolver_asn)
+    series, how many measurements had each top rule id, per hour and layer.
+
+    iter_cells only returns the k/n totals per cell, this breaks them down by
+    the rules that produced them.
+    """
+    query = f"""
+    SELECT
+        toStartOfHour(measurement_start_time) AS ts_hour,
+        layer_rule.1                          AS layer,
+        layer_rule.2                          AS rule_id,
+        count()                               AS count
+    FROM analysis_web_measurement
+    ARRAY JOIN [
+        ('dns', toString(top_dns_rule_id)),
+        ('tcp', toString(top_tcp_rule_id)),
+        ('tls', toString(top_tls_rule_id))
+    ] AS layer_rule
+    WHERE
+        domain = %(domain)s
+        AND probe_asn = %(probe_asn)s
+        AND resolver_asn = %(resolver_asn)s
+        AND ts_hour >= %(start_time)s
+        AND ts_hour <= %(end_time)s
+        {"AND probe_cc=%(probe_cc)s" if probe_cc else ""}
+    GROUP BY ts_hour, layer, rule_id
+    ORDER BY ts_hour, layer, rule_id
+    """
+    params = {
+        "domain": domain,
+        "probe_asn": probe_asn,
+        "resolver_asn": resolver_asn,
+        "start_time": start_time,
+        "end_time": end_time,
+    }
+    if probe_cc:
+        params["probe_cc"] = probe_cc
+
+    rows = clickhouse.execute(query, params=params)
+    return [
+        {"ts_hour": ts_hour, "layer": layer, "rule_id": rule_id, "count": count}
+        for ts_hour, layer, rule_id, count in rows
+    ]
+
+
 class Detector:
     def __init__(self, debug: bool = False):
         self.s_pos = self.s_neg = 0
@@ -841,4 +896,155 @@ def make_cells_histogram_chart(
         alt.vconcat(*charts, spacing=10)
         .resolve_scale(x="shared", color="shared")
         .properties(title="Cell outcome histogram")
+    )
+
+
+def _classify_rule_id(layer: str, rule_id: str) -> str:
+    """
+    blocked/ok/discarded, the same way iter_cells counts k and n. Rule ids
+    not in the current rule set (e.g. legacy ones) end up as discarded.
+    """
+    if rule_id in _blocked_rule_ids(layer):
+        return "blocked"
+    if rule_id in _ok_rule_ids(layer):
+        return "ok"
+    return "discarded"
+
+
+def make_rule_histogram_chart(
+    cells: list[Cell],
+    rule_counts: list[dict],
+    detectors: Mapping[str, "Detector"] | None = None,
+):
+    """
+    One stacked-bar histogram per layer, same x/y axes and blocked=red /
+    ok=green / discarded=gray coloring as make_cells_histogram_chart, but
+    each bar is stacked by individual rule id rather than by outcome class.
+
+    rule_counts: rows from get_rule_counts for the same series as `cells`.
+
+    detectors: optional {layer: Detector} of debug-run (debug=True) detectors
+    for that same cells list. When given, the layer's s_pos/s_neg series is
+    overlaid as lines on an independent right-hand y-axis.
+    """
+    import altair as alt
+    import pandas as pd
+
+    df = pd.DataFrame(rule_counts, columns=["ts_hour", "layer", "rule_id", "count"])
+    df["outcome"] = [
+        _classify_rule_id(layer, rule_id)
+        for layer, rule_id in zip(df["layer"], df["rule_id"])
+    ]
+
+    # Make silent hours (no cell at all, i.e. zero measurements) explicit
+    # instead of missing rows, so the x-axis spacing reflects the real
+    # hourly cadence. Unlike the outcome histogram, there's no fixed rule-id
+    # set to cross-join against (that would wrongly claim every rule "fired
+    # 0 times" every hour). Just add one zero-height placeholder row per
+    # (hour, layer) that has no data at all.
+    full_hours = _full_hour_range(cells)
+    existing_hour_layer = set(zip(df["ts_hour"], df["layer"]))
+    missing_rows = [
+        {
+            "ts_hour": ts_hour,
+            "layer": layer,
+            "rule_id": "(no data)",
+            "outcome": "discarded",
+            "count": 0,
+        }
+        for ts_hour in full_hours
+        for layer in LAYERS
+        if (ts_hour, layer) not in existing_hour_layer
+    ]
+    if missing_rows:
+        df = pd.concat([df, pd.DataFrame(missing_rows)], ignore_index=True)
+
+    # Scale width with the number of hours so bars don't overlap, same as
+    # make_cells_histogram_chart.
+    chart_width = max(900, len(full_hours) * 6)
+
+    # Click an entry in the Outcome legend (shown only on the last subplot)
+    # to isolate that outcome across every subplot; shift-click for more.
+    outcome_selection = alt.selection_multi(fields=["outcome"], bind="legend")
+    # Same idea for the CUSUM legend.
+    cusum_selection = alt.selection_multi(fields=["series"], bind="legend")
+
+    def make_layer_chart(layer: str, show_x_axis: bool):
+        bar_chart = (
+            alt.Chart(df[df["layer"] == layer])
+            # A stroke around each stacked segment, since same-outcome rules
+            # share a fill color and would otherwise merge into one blob —
+            # the outline is what makes "how many rules contributed" readable
+            # at a glance.
+            .mark_bar(stroke="black", strokeWidth=1)
+            .encode(
+                x=alt.X(
+                    "ts_hour:T",
+                    title=None,
+                    axis=alt.Axis(labels=show_x_axis, ticks=show_x_axis),
+                ),
+                y=alt.Y("count:Q", stack="zero", title="count"),
+                color=alt.Color(
+                    "outcome:N",
+                    scale=alt.Scale(
+                        domain=list(OUTCOME_COLORS.keys()),
+                        range=list(OUTCOME_COLORS.values()),
+                    ),
+                    legend=alt.Legend(title="Outcome") if layer == LAYERS[-1] else None,
+                ),
+                opacity=alt.condition(
+                    outcome_selection & cusum_selection, alt.value(0.6), alt.value(0.05)
+                ),
+                order=alt.Order("rule_id:N"),
+                tooltip=[
+                    alt.Tooltip("ts_hour:T", format="%Y-%m-%d %H:%M"),
+                    alt.Tooltip("rule_id:N", title="rule"),
+                    alt.Tooltip("outcome:N"),
+                    alt.Tooltip("count:Q"),
+                ],
+            )
+        )
+        if layer == LAYERS[-1]:
+            bar_chart = bar_chart.add_selection(outcome_selection)
+
+        chart = bar_chart
+        if detectors and layer in detectors:
+            detector = detectors[layer]
+            bands_df = _state_bands_df(cells, detector)
+            overlay_df = _cusum_overlay_df(cells, detector)
+            overlay_chart = _make_cusum_overlay_chart(
+                overlay_df,
+                show_legend=(layer == LAYERS[-1]),
+                selection=cusum_selection,
+                h=getattr(detector, "h", None),
+            )
+            layers = []
+            if not bands_df.empty:
+                layers.append(_make_state_bands_chart(bands_df))
+            layers += [bar_chart, overlay_chart]
+            chart = alt.layer(*layers).resolve_scale(
+                y="independent", color="independent", opacity="independent"
+            )
+
+        return chart.properties(
+            width=chart_width,
+            height=150,
+            title=alt.TitleParams(
+                text=layer,
+                fontSize=11,
+                fontWeight="normal",
+                color="gray",
+                anchor="start",
+                dy=-4,
+                offset=2,
+            ),
+        )
+
+    charts = [
+        make_layer_chart(layer, show_x_axis=(layer == LAYERS[-1])) for layer in LAYERS
+    ]
+    return (
+        alt.vconcat(*charts, spacing=10)
+        .resolve_scale(x="shared", color="shared")
+        .properties(title="Rule histogram")
     )

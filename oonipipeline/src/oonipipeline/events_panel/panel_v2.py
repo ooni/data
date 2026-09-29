@@ -9,8 +9,10 @@ from clickhouse_driver import Client as ClickhouseClient
 
 from oonipipeline.analysis.detectorV2 import (
     Cell,
+    get_rule_counts,
     iter_cells,
     make_cells_histogram_chart,
+    make_rule_histogram_chart,
     Detector, compute_llr_series,
 )
 
@@ -90,6 +92,22 @@ def get_cells_cached(
 ) -> list[Cell]:
     client = ClickhouseClient.from_url(clickhouse_url)
     return list(iter_cells(client, domains, start_time, end_time, probe_cc))
+
+
+@st.cache_data(ttl=300)
+def get_rule_counts_cached(
+    clickhouse_url: str,
+    domain: str,
+    probe_asn: int,
+    resolver_asn: int,
+    start_time: datetime,
+    end_time: datetime,
+    probe_cc: str | None,
+) -> list[dict]:
+    client = ClickhouseClient.from_url(clickhouse_url)
+    return get_rule_counts(
+        client, domain, probe_asn, resolver_asn, start_time, end_time, probe_cc
+    )
 
 
 def detector_v2_panel():
@@ -207,10 +225,29 @@ def detector_v2_panel():
         if carried_asn is not None:
             v1_query_params["probe_asn"] = str(carried_asn[0])
 
-        st.link_button(
+        link_c1, link_c2, _ = st.columns([1, 1, 3])
+        link_c1.link_button(
             "Try in Detector V1 →",
             f"/?{urlencode(v1_query_params)}",
             icon="📉",
+        )
+
+        explorer_query_params = {
+            "test_name": "web_connectivity",
+            "domain": domain.strip(),
+            "probe_cc": probe_cc.strip(),
+            "since": date_range[0].isoformat(),
+            # explorer's until is exclusive, include the whole end date
+            "until": (date_range[1] + timedelta(days=1)).isoformat(),
+            "axis_x": "measurement_start_day",
+        }
+        if carried_asn is not None:
+            explorer_query_params["probe_asn"] = f"AS{carried_asn[0]}"
+
+        link_c2.link_button(
+            "Open in Explorer →",
+            f"https://explorer.ooni.org/chart/mat?{urlencode(explorer_query_params)}",
+            icon="🔎",
         )
 
     auto_submit = st.session_state.pop("v2_auto_submit_pending", False)
@@ -335,6 +372,25 @@ def detector_v2_panel():
         st.line_chart(llr_df, x="ts_hour", y="llr")
 
     with st.expander("🔧 Debug"):
+        if st.checkbox(
+            "Show rule histogram (outcome histogram broken down by rule id)",
+            key="v2_debug_show_rule_histogram",
+        ):
+            # Query exactly the series the cells above come from
+            series_ccs = {c.probe_cc for c in series_cells}
+            rule_counts = get_rule_counts_cached(
+                clickhouse_url,
+                series_cells[0].domain,
+                selected_asn[0],
+                selected_asn[1],
+                series_cells[0].ts_hour,
+                series_cells[-1].ts_hour,
+                series_cells[0].probe_cc if len(series_ccs) == 1 else None,
+            )
+            render_scrollable_chart(
+                make_rule_histogram_chart(series_cells, rule_counts, detectors)
+            )
+
         if st.checkbox("Show cells as dataframe", key="v2_debug_show_cells"):
             st.dataframe(pd.DataFrame(series_cells))
 
