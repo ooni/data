@@ -266,9 +266,21 @@ def detector_v2_panel():
             end_time,
             probe_cc.strip() or None,
         )
-        # New results — drop any ASN selection from a previous run so the
-        # default (an anomalous ASN, if any) gets recomputed below.
-        st.session_state.pop("v2_asn_select", None)
+        # Only the inputs that define the set of networks reset the ASN
+        # selection; changing the detector parameters (p0, p1, h, decay)
+        # keeps the user on the network they were looking at.
+        network_query = (
+            clickhouse_url,
+            domain.strip(),
+            probe_cc.strip(),
+            date_range[0],
+            date_range[1],
+        )
+        if st.session_state.get("v2_network_query") != network_query:
+            st.session_state["v2_network_query"] = network_query
+            # New networks — drop any ASN selection from a previous run so the
+            # default (an anomalous ASN, if any) gets recomputed below.
+            st.session_state.pop("v2_asn_select", None)
 
     if "v2_cells" not in st.session_state:
         return
@@ -312,6 +324,11 @@ def detector_v2_panel():
                 asns_with_changepoints.add(asn)
 
     asn_list = sorted(cells_by_asn.keys(), key=lambda a: asn_counts[a], reverse=True)
+
+    # The cached cells can be refreshed with the same inputs, so the kept
+    # selection might no longer be one of the networks
+    if st.session_state.get("v2_asn_select") not in asn_list:
+        st.session_state.pop("v2_asn_select", None)
 
     # Default to an (asn, resolver_asn) with anomalies, same as the original
     # detector panel; fall back to the one with the most cells otherwise.
