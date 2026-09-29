@@ -54,11 +54,8 @@
             <port>9181</port>
         </node>
     </zookeeper>
-    <!-- {cluster} and {replica} are used directly in the ZK path/replica
-         name that citizenlab_test_lists_updater.py's CREATE TABLE
-         statement builds. {shard} isn't referenced by that statement
-         (these tables intentionally don't use a sharding key), but is
-         defined here for clarity/future use. -->
+    <!-- {cluster}, {shard} and {replica} are used in the Keeper path and
+         replica name of the Replicated tables the updaters create. -->
     <macros>
         <shard>01</shard>
         <replica>01</replica>

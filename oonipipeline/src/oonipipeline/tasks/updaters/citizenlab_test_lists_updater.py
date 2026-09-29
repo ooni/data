@@ -55,13 +55,13 @@ from clickhouse_driver import Client as Clickhouse
 # anyway, and this way there's nothing left behind on any node between
 # runs -- it's dropped automatically when this script's connection closes.
 #
-# These tables are small and don't need a sharding key, so citizenlab's ZK
-# path below has no {shard} macro: every replica in the cluster shares one
-# path (single shard, N replicas), which is also what keeps REPLACE
-# PARTITION usable without ON CLUSTER -- there's only one replication
-# domain to reach. ooni/devops's own cluster migration schema
-# (scripts/cluster-migration/schema.sql) defines citizenlab as
-# ReplicatedReplacingMergeTree at this same path -- the CREATE statement
+# The Keeper path uses {database} and {shard}. In production (database
+# ooni, one shard) that expands to /clickhouse/oonidata_cluster/tables/ooni/
+# citizenlab/01, the path every replica already shares, so REPLACE PARTITION
+# still reaches all of them. {database} also keeps test databases on the
+# same server from colliding on one Keeper path. ooni/devops's own cluster
+# migration schema (scripts/cluster-migration/schema.sql) defines citizenlab
+# as ReplicatedReplacingMergeTree at this same path -- the CREATE statement
 # below needs to match that exactly, since CREATE TABLE IF NOT EXISTS is a
 # no-op whenever the table already exists (regardless of what engine the
 # statement itself specifies), so a genuine from-scratch bootstrap is the
@@ -155,7 +155,7 @@ def update_citizenlab_table(clickhouse_url: str, citizenlab: list) -> None:
     `cc` FixedString(32),
     `category_code` String
 )
-ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{{cluster}}/tables/ooni/citizenlab', '{{replica}}')
+ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{{cluster}}/tables/{{database}}/citizenlab/{{shard}}', '{{replica}}')
 ORDER BY (domain, url, cc, category_code)
 SETTINGS index_granularity = 4
     """
@@ -195,12 +195,13 @@ SETTINGS index_granularity = 4
     # REPLACE PARTITION swaps citizenlab_tmp's data into citizenlab
     # atomically -- readers on every replica see either the fully-old or
     # fully-new data, never a mix or a gap, so there's no outage window on
-    # any node. alter_sync=3 waits only for currently *active* citizenlab
-    # replicas to confirm the swap, rather than alter_sync=2's "wait for
-    # everyone" -- so one replica being restarted/offline can't block this
-    # job. That replica still catches up automatically once it reconnects:
-    # this goes through citizenlab's own per-table replication log (the
-    # same one TRUNCATE/INSERT already rely on), not the ON CLUSTER DDL
+    # any node. alter_sync=2 waits for every replica to confirm the swap:
+    # if one is offline the query fails with UNFINISHED after
+    # replication_wait_for_inactive_replica_timeout (120 s by default), so
+    # the job is flagged. The swap is still applied, and the offline replica
+    # still catches up automatically once it reconnects: this goes through
+    # citizenlab's own per-table replication log (the same one
+    # TRUNCATE/INSERT already rely on), not the ON CLUSTER DDL
     # queue's best-effort/retention-limited mechanism EXCHANGE depended on,
     # so a replica that's been down a while either replays the entries it
     # missed or, if too far behind, does a full resync of citizenlab's

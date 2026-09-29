@@ -57,11 +57,11 @@ def test_unit_asnmeta_updater(mock_clickhouse, mock_urlopen):
 
     qrs = [" ".join(q[0][0].split()) for q in mock_click.execute.call_args_list]
     expected_queries = [
-        "CREATE TABLE IF NOT EXISTS asnmeta ON CLUSTER oonidata_cluster ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = ReplicatedMergeTree('/clickhouse/{cluster}/tables/ooni/asnmeta', '{replica}') ORDER BY (asn, changed)",
+        "CREATE TABLE IF NOT EXISTS asnmeta ON CLUSTER oonidata_cluster ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = ReplicatedMergeTree('/clickhouse/{cluster}/tables/{database}/asnmeta/{shard}', '{replica}') ORDER BY (asn, changed)",
         "CREATE TEMPORARY TABLE IF NOT EXISTS asnmeta_tmp ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = MergeTree ORDER BY (asn, changed)",
         "INSERT INTO asnmeta_tmp (asn, org_name, cc, changed, aut_name, source) VALUES",
         "SELECT count() FROM asnmeta_tmp",
-        "ALTER TABLE asnmeta REPLACE PARTITION tuple() FROM asnmeta_tmp SETTINGS alter_sync = 3",
+        "ALTER TABLE asnmeta REPLACE PARTITION tuple() FROM asnmeta_tmp SETTINGS alter_sync = 2",
     ]
     for qr in expected_queries:
         assert qr in qrs
@@ -91,10 +91,10 @@ def test_unit_citizenlab_updater(mock_clickhouse):
 
     qrs = [" ".join(q[0][0].split()) for q in mock_click.execute.call_args_list]
     expected_queries = [
-        "CREATE TABLE IF NOT EXISTS citizenlab ON CLUSTER oonidata_cluster ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/ooni/citizenlab', '{replica}') ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
+        "CREATE TABLE IF NOT EXISTS citizenlab ON CLUSTER oonidata_cluster ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/{database}/citizenlab/{shard}', '{replica}') ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
         "CREATE TEMPORARY TABLE IF NOT EXISTS citizenlab_tmp ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplacingMergeTree ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
         "INSERT INTO citizenlab_tmp (domain, url, cc, category_code) VALUES",
-        "ALTER TABLE citizenlab REPLACE PARTITION tuple() FROM citizenlab_tmp SETTINGS alter_sync = 3",
+        "ALTER TABLE citizenlab REPLACE PARTITION tuple() FROM citizenlab_tmp SETTINGS alter_sync = 2",
     ]
     for qr in expected_queries:
         assert qr in qrs

@@ -75,7 +75,7 @@ def update_asnmeta(clickhouse_url: str) -> None:
     aut_name String,
     source String
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/{{cluster}}/tables/ooni/asnmeta', '{{replica}}')
+ENGINE = ReplicatedMergeTree('/clickhouse/{{cluster}}/tables/{{database}}/asnmeta/{{shard}}', '{{replica}}')
 ORDER BY (asn, changed)
     """
     )
