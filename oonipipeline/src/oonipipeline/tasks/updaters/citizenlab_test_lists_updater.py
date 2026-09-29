@@ -25,47 +25,6 @@ from clickhouse_driver import Client as Clickhouse
 
 # from analysis.metrics import setup_metrics
 
-# citizenlab lives on the replicated oonidata_cluster; citizenlab_tmp is a
-# session-scoped TEMPORARY table that only ever exists on whichever node
-# this script is connected to.
-#
-# We used to repopulate citizenlab by writing into citizenlab_flip and then
-# EXCHANGE-ing the two table names. That relies on ClickHouse keeping every
-# replica's table-name -> ZooKeeper-path binding in sync, which EXCHANGE
-# only does on a best-effort basis (see ClickHouse/ClickHouse#60489): a
-# replica that misses the EXCHANGE (rebuilt from scratch, or offline past
-# the ON CLUSTER DDL queue's retention window) can silently end up pointing
-# "citizenlab" and "citizenlab_flip" at the wrong underlying data, with no
-# error raised.
-#
-# We now instead keep "citizenlab" as a single, stable table and swap in
-# its *data* with REPLACE PARTITION from citizenlab_tmp. This never touches
-# table identity/ZooKeeper-path bindings, so it can't develop the kind of
-# cross-replica divergence EXCHANGE can -- citizenlab replicates the change
-# out to its own replicas the same way it already does for TRUNCATE/INSERT,
-# and the swap is atomic on every replica (readers never see a partial or
-# empty table, on any node, at any point).
-#
-# citizenlab_tmp only needs to match citizenlab's structure/partition
-# key/order-by for REPLACE PARTITION to accept it as a source -- it doesn't
-# need to be replicated itself, since it's only ever read once, locally, to
-# build the parts that citizenlab then replicates out on its own. That
-# makes a plain session-scoped TEMPORARY TABLE a good fit: ClickHouse
-# doesn't allow TEMPORARY tables to use a Replicated engine or ON CLUSTER
-# anyway, and this way there's nothing left behind on any node between
-# runs -- it's dropped automatically when this script's connection closes.
-#
-# The Keeper path uses {database} and {shard}. In production (database
-# ooni, one shard) that expands to /clickhouse/oonidata_cluster/tables/ooni/
-# citizenlab/01, the path every replica already shares, so REPLACE PARTITION
-# still reaches all of them. {database} also keeps test databases on the
-# same server from colliding on one Keeper path. ooni/devops's own cluster
-# migration schema (scripts/cluster-migration/schema.sql) defines citizenlab
-# as ReplicatedReplacingMergeTree at this same path -- the CREATE statement
-# below needs to match that exactly, since CREATE TABLE IF NOT EXISTS is a
-# no-op whenever the table already exists (regardless of what engine the
-# statement itself specifies), so a genuine from-scratch bootstrap is the
-# only place a mismatch here would actually bite.
 CLUSTER_NAME = "oonidata_cluster"
 
 HTTPS_GIT_URL = "https://github.com/citizenlab/test-lists.git"
@@ -163,16 +122,6 @@ SETTINGS index_granularity = 4
 
     log.info("Creating citizenlab_tmp staging table for this run")
     # TEMPORARY TABLE: scoped to this one connection, dropped automatically
-    # once it closes -- nothing persists on any node between runs. No ON
-    # CLUSTER (ClickHouse doesn't allow it for TEMPORARY tables, and we
-    # don't need it: only this session ever touches this table). No
-    # Replicated engine either (also disallowed for TEMPORARY tables) --
-    # REPLACE PARTITION below only requires citizenlab_tmp to share
-    # citizenlab's structure/partition key/order-by, not its replication
-    # status, since citizenlab_tmp is read once, locally, to build the
-    # parts that citizenlab then replicates out on its own. Matching
-    # index_granularity to citizenlab since REPLACE PARTITION requires it
-    # to match whenever granularity is non-adaptive.
     click.execute(
         """CREATE TEMPORARY TABLE IF NOT EXISTS citizenlab_tmp
 (
@@ -192,27 +141,11 @@ SETTINGS index_granularity = 4
     click.execute(q, citizenlab, types_check=True)
 
     log.info("Swapping Clickhouse citizenlab data")
-    # REPLACE PARTITION swaps citizenlab_tmp's data into citizenlab
-    # atomically -- readers on every replica see either the fully-old or
-    # fully-new data, never a mix or a gap, so there's no outage window on
-    # any node. alter_sync=2 waits for every replica to confirm the swap:
+    # alter_sync=2 waits for every replica to confirm the swap:
     # if one is offline the query fails with UNFINISHED after
     # replication_wait_for_inactive_replica_timeout (120 s by default), so
-    # the job is flagged. The swap is still applied, and the offline replica
-    # still catches up automatically once it reconnects: this goes through
-    # citizenlab's own per-table replication log (the same one
-    # TRUNCATE/INSERT already rely on), not the ON CLUSTER DDL
-    # queue's best-effort/retention-limited mechanism EXCHANGE depended on,
-    # so a replica that's been down a while either replays the entries it
-    # missed or, if too far behind, does a full resync of citizenlab's
-    # (small) current data from a healthy replica -- either way it
-    # converges automatically, with no risk of the kind of silent
-    # table-identity divergence EXCHANGE was exposed to. citizenlab has no
-    # PARTITION BY, so the whole table is one implicit partition, addressed
-    # here as tuple(). No ON CLUSTER needed here either, for the same
-    # reason TRUNCATE/INSERT don't need it -- citizenlab_tmp being local
-    # and non-replicated doesn't weaken any of this, since that guarantee
-    # comes entirely from citizenlab's own Replicated engine.
+    # citizenlab has no PARTITION BY, so the whole table is one implicit partition, addressed
+    # here as tuple().
     q = "ALTER TABLE citizenlab REPLACE PARTITION tuple() FROM citizenlab_tmp SETTINGS alter_sync = 2"
     click.execute(q)
 
