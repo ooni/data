@@ -696,7 +696,7 @@ def _make_state_bands_chart(bands_df):
 
 
 def _make_cusum_overlay_chart(
-    df_overlay, show_legend: bool, selection, h: float | None = None
+    df_overlay, show_legend: bool, selection, h: float | None = None, hover=None
 ):
     """
     Melts (s_pos, s_neg) into one color-encoded line series (rather than two
@@ -710,6 +710,10 @@ def _make_cusum_overlay_chart(
     h: the detector's threshold — drawn as a green dashed reference line at
     that value on the CUSUM axis (matching the original detector's chart),
     since h is a level s_pos/s_neg cross, not a point in time.
+
+    hover: optional selection on ts_hour — when given, a dot and the value
+    are drawn where s+/s- are at the selected hour. They have to be part of
+    this chart (not layered by the caller) to share the CUSUM y scale.
     """
     import altair as alt
     import pandas as pd
@@ -748,6 +752,28 @@ def _make_cusum_overlay_chart(
     if show_legend:
         line = line.add_selection(selection)
 
+    if hover is not None:
+        hover_dots = (
+            alt.Chart(long_df)
+            .mark_point(filled=True, size=40)
+            .encode(
+                x=alt.X("ts_hour:T"),
+                y=alt.Y("value:Q", axis=axis),
+                color=alt.Color("series:N", legend=None),
+            )
+            .transform_filter(hover)
+        )
+        # Colored text over a black-stroked copy of itself, since the s-
+        # yellow is hard to read on white. A stroke on the colored text
+        # itself would be drawn over its fill.
+        hover_values = hover_dots.mark_text(
+            align="left", dx=6, dy=-6, fontWeight="bold"
+        ).encode(text=alt.Text("value:Q", format=".2f"))
+        hover_values_outline = hover_values.mark_text(
+            align="left", dx=6, dy=-6, fontWeight="bold", stroke="black", strokeWidth=2
+        )
+        line = line + hover_dots + hover_values_outline + hover_values
+
     if h is None:
         return line
 
@@ -757,6 +783,47 @@ def _make_cusum_overlay_chart(
         .encode(y=alt.Y("h:Q", axis=axis))
     )
     return line + threshold
+
+
+
+def _with_hover_rule(bar_chart, df_overlay, **overlay_kwargs) -> list:
+    """
+    Layers the bars with the CUSUM overlay (see _make_cusum_overlay_chart,
+    which gets `overlay_kwargs`) plus a vertical line that follows the
+    mouse, with a dot and the s+/s- values where it crosses those lines.
+    Returns [hover points, bars, overlay, rule], to be layered in that order.
+
+    The hover points are invisible and only there to pick the hour nearest
+    to the mouse. They go below the bars so they don't steal the bars'
+    tooltips; while over a bar, the bar itself moves the line.
+
+    New selections per call, since each layer subplot has its own series.
+    """
+    import altair as alt
+
+    hover = alt.selection_single(
+        fields=["ts_hour"], nearest=True, on="mouseover", empty="none", clear="mouseout"
+    )
+    bar_hover = alt.selection_single(
+        fields=["ts_hour"], on="mouseover", empty="none", clear="mouseout"
+    )
+    hover_points = (
+        alt.Chart(df_overlay)
+        .mark_point(opacity=0)
+        .encode(x=alt.X("ts_hour:T"))
+        .add_selection(hover)
+    )
+    bars = bar_chart.add_selection(bar_hover)
+    overlay_chart = _make_cusum_overlay_chart(
+        df_overlay, hover=hover | bar_hover, **overlay_kwargs
+    )
+    hover_rule = (
+        alt.Chart(df_overlay)
+        .mark_rule(color="gray")
+        .encode(x=alt.X("ts_hour:T"))
+        .transform_filter(hover | bar_hover)
+    )
+    return [hover_points, bars, overlay_chart, hover_rule]
 
 
 def make_cells_histogram_chart(
@@ -861,16 +928,16 @@ def make_cells_histogram_chart(
             detector = detectors[layer]
             bands_df = _state_bands_df(cells, detector)
             overlay_df = _cusum_overlay_df(cells, detector)
-            overlay_chart = _make_cusum_overlay_chart(
+            layers = []
+            if not bands_df.empty:
+                layers.append(_make_state_bands_chart(bands_df))
+            layers += _with_hover_rule(
+                bar_chart,
                 overlay_df,
                 show_legend=(layer == LAYERS[-1]),
                 selection=cusum_selection,
                 h=getattr(detector, "h", None),
             )
-            layers = []
-            if not bands_df.empty:
-                layers.append(_make_state_bands_chart(bands_df))
-            layers += [bar_chart, overlay_chart]
             chart = alt.layer(*layers).resolve_scale(
                 y="independent", color="independent", opacity="independent"
             )
@@ -1012,16 +1079,16 @@ def make_rule_histogram_chart(
             detector = detectors[layer]
             bands_df = _state_bands_df(cells, detector)
             overlay_df = _cusum_overlay_df(cells, detector)
-            overlay_chart = _make_cusum_overlay_chart(
+            layers = []
+            if not bands_df.empty:
+                layers.append(_make_state_bands_chart(bands_df))
+            layers += _with_hover_rule(
+                bar_chart,
                 overlay_df,
                 show_legend=(layer == LAYERS[-1]),
                 selection=cusum_selection,
                 h=getattr(detector, "h", None),
             )
-            layers = []
-            if not bands_df.empty:
-                layers.append(_make_state_bands_chart(bands_df))
-            layers += [bar_chart, overlay_chart]
             chart = alt.layer(*layers).resolve_scale(
                 y="independent", color="independent", opacity="independent"
             )
