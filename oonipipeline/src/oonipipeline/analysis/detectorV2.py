@@ -834,7 +834,8 @@ def _with_hover_rule(bar_chart, df_overlay, **overlay_kwargs) -> list:
 def _outcome_hover_labels(df_bars, hover) -> list:
     """
     Ok and blocked counts over the bar at the hovered hour, blocked
-    above ok. An outcome with no measurements gets no number.
+    above ok, and the hour itself just below the bars. An outcome with no
+    measurements gets no number.
 
     df_bars: the bar chart's data, one row per (ts_hour, outcome[, rule_id])
     with a count, so the counts are summed per outcome here.
@@ -864,6 +865,23 @@ def _outcome_hover_labels(df_bars, hover) -> list:
             dy=dy, fontWeight="bold", stroke="white", strokeWidth=3
         )
         labels += [outline, text]
+
+    timestamp = (
+        alt.Chart(df_bars)
+        .transform_filter(hover)
+        .transform_aggregate(groupby=["ts_hour"])
+        .transform_calculate(zero="0")
+        .mark_text(dy=10, fontWeight="bold", color="black")
+        .encode(
+            x=alt.X("ts_hour:T"),
+            y=alt.Y("zero:Q"),
+            text=alt.Text("ts_hour:T", format="%Y-%m-%d %H:%M"),
+        )
+    )
+    timestamp_outline = timestamp.mark_text(
+        dy=10, fontWeight="bold", stroke="white", strokeWidth=3
+    )
+    labels += [timestamp_outline, timestamp]
     return labels
 
 
