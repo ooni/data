@@ -763,14 +763,14 @@ def _make_cusum_overlay_chart(
             )
             .transform_filter(hover)
         )
-        # Colored text over a black-stroked copy of itself, since the s-
-        # yellow is hard to read on white. A stroke on the colored text
-        # itself would be drawn over its fill.
+        # Black text over a white-stroked copy of itself, so it stays
+        # readable over the lines and bars. A stroke on the text itself
+        # would be drawn over its fill.
         hover_values = hover_dots.mark_text(
             align="left", dx=6, dy=-6, fontWeight="bold"
-        ).encode(text=alt.Text("value:Q", format=".2f"))
+        ).encode(text=alt.Text("value:Q", format=".2f"), color=alt.value("black"))
         hover_values_outline = hover_values.mark_text(
-            align="left", dx=6, dy=-6, fontWeight="bold", stroke="black", strokeWidth=2
+            align="left", dx=6, dy=-6, fontWeight="bold", stroke="white", strokeWidth=3
         )
         line = line + hover_dots + hover_values_outline + hover_values
 
@@ -833,7 +833,7 @@ def _with_hover_rule(bar_chart, df_overlay, **overlay_kwargs) -> list:
 
 def _outcome_hover_labels(df_bars, hover) -> list:
     """
-    Green ok and red blocked counts over the bar at the hovered hour, blocked
+    Ok and blocked counts over the bar at the hovered hour, blocked
     above ok. An outcome with no measurements gets no number.
 
     df_bars: the bar chart's data, one row per (ts_hour, outcome[, rule_id])
@@ -852,16 +852,16 @@ def _outcome_hover_labels(df_bars, hover) -> list:
                 n="sum(count)", total="max(total)", groupby=["ts_hour"]
             )
             .transform_filter(alt.datum.n > 0)
-            .mark_text(dy=dy, fontWeight="bold", color=OUTCOME_COLORS[outcome])
+            .mark_text(dy=dy, fontWeight="bold", color="black")
             .encode(
                 x=alt.X("ts_hour:T"),
                 y=alt.Y("total:Q"),
                 text=alt.Text("n:Q"),
             )
         )
-        # Same black-stroked copy underneath as the CUSUM values
+        # Same white-stroked copy underneath as the CUSUM values
         outline = text.mark_text(
-            dy=dy, fontWeight="bold", stroke="black", strokeWidth=2
+            dy=dy, fontWeight="bold", stroke="white", strokeWidth=3
         )
         labels += [outline, text]
     return labels
