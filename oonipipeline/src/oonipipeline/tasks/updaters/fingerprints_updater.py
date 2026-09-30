@@ -1,9 +1,8 @@
 """
 Fetch fingerprints from https://github.com/ooni/blocking-fingerprints
-Populate 2 tables atomically using the citizenlab user.
+Populate the fingerprints_dns and fingerprints_http tables atomically.
 
-Local test run:
-    PYTHONPATH=analysis ./run_analysis --update-fingerprints --stdout
+Run by the hourly_updaters Airflow DAG (dags/updaters.py).
 """
 
 from argparse import Namespace

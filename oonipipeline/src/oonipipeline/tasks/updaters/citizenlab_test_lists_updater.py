@@ -1,15 +1,11 @@
 """
 Fetch test lists from https://github.com/citizenlab/test-lists
 
-Populate citizenlab table from the tests lists git repository and the
-url_priorities table
+Populate the replicated citizenlab table. Each run loads a temporary table
+and swaps it in with REPLACE PARTITION, which reaches every replica.
 
-The tables have few constraints on the database side: most of the validation
+The table has few constraints on the database side: most of the validation
 is done here and it is meant to be strict.
-
-Local test run:
-    PYTHONPATH=analysis ./run_analysis --update-citizenlab --dry-run --stdout
-
 """
 
 from argparse import Namespace
@@ -141,11 +137,9 @@ SETTINGS index_granularity = 4
     click.execute(q, citizenlab, types_check=True)
 
     log.info("Swapping Clickhouse citizenlab data")
-    # alter_sync=2 waits for every replica to confirm the swap:
-    # if one is offline the query fails with UNFINISHED after
-    # replication_wait_for_inactive_replica_timeout (120 s by default), so
-    # citizenlab has no PARTITION BY, so the whole table is one implicit partition, addressed
-    # here as tuple().
+    # citizenlab has no PARTITION BY, so the whole table is one partition,
+    # tuple(). alter_sync=2 waits for every replica and fails with UNFINISHED
+    # if one is offline.
     q = "ALTER TABLE citizenlab REPLACE PARTITION tuple() FROM citizenlab_tmp SETTINGS alter_sync = 2"
     click.execute(q)
 
