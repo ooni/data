@@ -25,6 +25,7 @@ from clickhouse_driver import Client as Clickhouse
 
 # from analysis.metrics import setup_metrics
 
+CLUSTER_NAME = "oonidata_cluster"
 
 HTTPS_GIT_URL = "https://github.com/citizenlab/test-lists.git"
 
@@ -98,10 +99,31 @@ def query_c(click, query: str, qparams: dict):
 
 # @metrics.timer("update_citizenlab_table")
 def update_citizenlab_table(clickhouse_url: str, citizenlab: list) -> None:
-    """Overwrite citizenlab_flip and swap tables atomically"""
+    """Reload a session-scoped staging table and atomically swap its data into citizenlab"""
     click = Clickhouse.from_url(clickhouse_url)
+
+    # citizenlab is the one persistent, cluster-wide table. CREATE is DDL
+    # (not table data), so it needs ON CLUSTER to reach every replica; this
+    # only matters on a genuine from-scratch bootstrap, since CREATE IF NOT
+    # EXISTS is a no-op once the table already exists.
     click.execute(
-        """CREATE TABLE IF NOT EXISTS citizenlab_flip
+        f"""CREATE TABLE IF NOT EXISTS citizenlab ON CLUSTER {CLUSTER_NAME}
+(
+    `domain` String,
+    `url` String,
+    `cc` FixedString(32),
+    `category_code` String
+)
+ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{{cluster}}/tables/{{database}}/citizenlab', '{{replica}}')
+ORDER BY (domain, url, cc, category_code)
+SETTINGS index_granularity = 4
+    """
+    )
+
+    log.info("Creating citizenlab_tmp staging table for this run")
+    # TEMPORARY TABLE: scoped to this one connection, dropped automatically
+    click.execute(
+        """CREATE TEMPORARY TABLE IF NOT EXISTS citizenlab_tmp
 (
     `domain` String,
     `url` String,
@@ -113,29 +135,18 @@ ORDER BY (domain, url, cc, category_code)
 SETTINGS index_granularity = 4
     """
     )
-    click.execute(
-        """CREATE TABLE IF NOT EXISTS citizenlab
-(
-    `domain` String,
-    `url` String,
-    `cc` FixedString(32),
-    `category_code` String
-)
-ENGINE = ReplacingMergeTree
-ORDER BY (domain, url, cc, category_code)
-SETTINGS index_granularity = 4
-    """
-    )
-    log.info("Emptying Clickhouse citizenlab_flip table")
-    q = "TRUNCATE TABLE citizenlab_flip"
-    click.execute(q)
 
     log.info("Inserting %d citizenlab table entries", len(citizenlab))
-    q = "INSERT INTO citizenlab_flip (domain, url, cc, category_code) VALUES"
+    q = "INSERT INTO citizenlab_tmp (domain, url, cc, category_code) VALUES"
     click.execute(q, citizenlab, types_check=True)
 
-    log.info("Swapping Clickhouse citizenlab tables")
-    q = "EXCHANGE TABLES citizenlab_flip AND citizenlab"
+    log.info("Swapping Clickhouse citizenlab data")
+    # alter_sync=2 waits for every replica to confirm the swap:
+    # if one is offline the query fails with UNFINISHED after
+    # replication_wait_for_inactive_replica_timeout (120 s by default), so
+    # citizenlab has no PARTITION BY, so the whole table is one implicit partition, addressed
+    # here as tuple().
+    q = "ALTER TABLE citizenlab REPLACE PARTITION tuple() FROM citizenlab_tmp SETTINGS alter_sync = 2"
     click.execute(q)
 
 
