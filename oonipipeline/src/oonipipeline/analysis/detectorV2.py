@@ -790,7 +790,8 @@ def _with_hover_rule(bar_chart, df_overlay, **overlay_kwargs) -> list:
     """
     Layers the bars with the CUSUM overlay (see _make_cusum_overlay_chart,
     which gets `overlay_kwargs`) plus a vertical line that follows the
-    mouse, with a dot and the s+/s- values where it crosses those lines.
+    mouse, with a dot and the s+/s- values where it crosses those lines, and
+    the ok/blocked counts over the bar at that hour.
     Returns [hover points, bars, overlay, rule], to be layered in that order.
 
     The hover points are invisible and only there to pick the hour nearest
@@ -813,7 +814,11 @@ def _with_hover_rule(bar_chart, df_overlay, **overlay_kwargs) -> list:
         .encode(x=alt.X("ts_hour:T"))
         .add_selection(hover)
     )
-    bars = bar_chart.add_selection(bar_hover)
+    # The counts have to be layered with the bars to share their y scale
+    bars = alt.layer(
+        bar_chart.add_selection(bar_hover),
+        *_outcome_hover_labels(bar_chart.data, hover | bar_hover),
+    )
     overlay_chart = _make_cusum_overlay_chart(
         df_overlay, hover=hover | bar_hover, **overlay_kwargs
     )
@@ -824,6 +829,42 @@ def _with_hover_rule(bar_chart, df_overlay, **overlay_kwargs) -> list:
         .transform_filter(hover | bar_hover)
     )
     return [hover_points, bars, overlay_chart, hover_rule]
+
+
+def _outcome_hover_labels(df_bars, hover) -> list:
+    """
+    Green ok and red blocked counts over the bar at the hovered hour, blocked
+    above ok. An outcome with no measurements gets no number.
+
+    df_bars: the bar chart's data, one row per (ts_hour, outcome[, rule_id])
+    with a count, so the counts are summed per outcome here.
+    """
+    import altair as alt
+
+    labels = []
+    for outcome, dy in (("ok", -8), ("blocked", -22)):
+        text = (
+            alt.Chart(df_bars)
+            .transform_filter(hover)
+            .transform_joinaggregate(total="sum(count)", groupby=["ts_hour"])
+            .transform_filter(alt.datum.outcome == outcome)
+            .transform_aggregate(
+                n="sum(count)", total="max(total)", groupby=["ts_hour"]
+            )
+            .transform_filter(alt.datum.n > 0)
+            .mark_text(dy=dy, fontWeight="bold", color=OUTCOME_COLORS[outcome])
+            .encode(
+                x=alt.X("ts_hour:T"),
+                y=alt.Y("total:Q"),
+                text=alt.Text("n:Q"),
+            )
+        )
+        # Same black-stroked copy underneath as the CUSUM values
+        outline = text.mark_text(
+            dy=dy, fontWeight="bold", stroke="black", strokeWidth=2
+        )
+        labels += [outline, text]
+    return labels
 
 
 def make_cells_histogram_chart(
