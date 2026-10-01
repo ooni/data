@@ -9,8 +9,10 @@ from clickhouse_driver import Client as ClickhouseClient
 
 from oonipipeline.analysis.detectorV2 import (
     Cell,
+    get_rule_counts,
     iter_cells,
     make_cells_histogram_chart,
+    make_rule_histogram_chart,
     Detector, compute_llr_series,
 )
 
@@ -90,6 +92,22 @@ def get_cells_cached(
 ) -> list[Cell]:
     client = ClickhouseClient.from_url(clickhouse_url)
     return list(iter_cells(client, domains, start_time, end_time, probe_cc))
+
+
+@st.cache_data(ttl=300)
+def get_rule_counts_cached(
+    clickhouse_url: str,
+    domain: str,
+    probe_asn: int,
+    resolver_asn: int,
+    start_time: datetime,
+    end_time: datetime,
+    probe_cc: str,
+) -> list[dict]:
+    client = ClickhouseClient.from_url(clickhouse_url)
+    return get_rule_counts(
+        client, domain, probe_asn, resolver_asn, start_time, end_time, probe_cc
+    )
 
 
 def detector_v2_panel():
@@ -188,6 +206,11 @@ def detector_v2_panel():
         h = c5.number_input(
             "**h**", key="v2_h_input", **_widget_kwargs("v2_h_input", 30.0)
         )
+        use_decay = st.checkbox(
+            "**Use decay**",
+            key="v2_use_decay_input",
+            **_widget_kwargs("v2_use_decay_input", True),
+        )
 
         submitted = st.form_submit_button("Run")
 
@@ -202,10 +225,29 @@ def detector_v2_panel():
         if carried_asn is not None:
             v1_query_params["probe_asn"] = str(carried_asn[0])
 
-        st.link_button(
+        link_c1, link_c2, _ = st.columns([1, 1, 3])
+        link_c1.link_button(
             "Try in Detector V1 →",
             f"/?{urlencode(v1_query_params)}",
             icon="📉",
+        )
+
+        explorer_query_params = {
+            "test_name": "web_connectivity",
+            "domain": domain.strip(),
+            "probe_cc": probe_cc.strip(),
+            "since": date_range[0].isoformat(),
+            # explorer's until is exclusive, include the whole end date
+            "until": (date_range[1] + timedelta(days=1)).isoformat(),
+            "axis_x": "measurement_start_day",
+        }
+        if carried_asn is not None:
+            explorer_query_params["probe_asn"] = f"AS{carried_asn[0]}"
+
+        link_c2.link_button(
+            "Open in Explorer →",
+            f"https://explorer.ooni.org/chart/mat?{urlencode(explorer_query_params)}",
+            icon="🔎",
         )
 
     auto_submit = st.session_state.pop("v2_auto_submit_pending", False)
@@ -224,9 +266,21 @@ def detector_v2_panel():
             end_time,
             probe_cc.strip() or None,
         )
-        # New results — drop any ASN selection from a previous run so the
-        # default (an anomalous ASN, if any) gets recomputed below.
-        st.session_state.pop("v2_asn_select", None)
+        # Only the inputs that define the set of networks reset the ASN
+        # selection; changing the detector parameters (p0, p1, h, decay)
+        # keeps the user on the network they were looking at.
+        network_query = (
+            clickhouse_url,
+            domain.strip(),
+            probe_cc.strip(),
+            date_range[0],
+            date_range[1],
+        )
+        if st.session_state.get("v2_network_query") != network_query:
+            st.session_state["v2_network_query"] = network_query
+            # New networks — drop any ASN selection from a previous run so the
+            # default (an anomalous ASN, if any) gets recomputed below.
+            st.session_state.pop("v2_asn_select", None)
 
     if "v2_cells" not in st.session_state:
         return
@@ -261,13 +315,20 @@ def detector_v2_panel():
         changepoints_by_asn[asn] = dict()
         for layer in layers:
             detector = Detector(debug=True)
-            cps = detector.compute_changepoints(asn_cells, layer, p0=p0, p1=p1, h=h)
+            cps = detector.compute_changepoints(
+                asn_cells, layer, p0=p0, p1=p1, h=h, use_decay=use_decay
+            )
             detectors_by_asn[asn][layer] = detector
             changepoints_by_asn[asn][layer] = cps
             if cps:
                 asns_with_changepoints.add(asn)
 
     asn_list = sorted(cells_by_asn.keys(), key=lambda a: asn_counts[a], reverse=True)
+
+    # The cached cells can be refreshed with the same inputs, so the kept
+    # selection might no longer be one of the networks
+    if st.session_state.get("v2_asn_select") not in asn_list:
+        st.session_state.pop("v2_asn_select", None)
 
     # Default to an (asn, resolver_asn) with anomalies, same as the original
     # detector panel; fall back to the one with the most cells otherwise.
@@ -328,6 +389,24 @@ def detector_v2_panel():
         st.line_chart(llr_df, x="ts_hour", y="llr")
 
     with st.expander("🔧 Debug"):
+        if st.checkbox(
+            "Show rule histogram (outcome histogram broken down by rule id)",
+            key="v2_debug_show_rule_histogram",
+        ):
+            # Query exactly the series the cells above come from
+            rule_counts = get_rule_counts_cached(
+                clickhouse_url,
+                series_cells[0].domain,
+                selected_asn[0],
+                selected_asn[1],
+                series_cells[0].ts_hour,
+                series_cells[-1].ts_hour,
+                series_cells[0].probe_cc,
+            )
+            render_scrollable_chart(
+                make_rule_histogram_chart(series_cells, rule_counts, detectors)
+            )
+
         if st.checkbox("Show cells as dataframe", key="v2_debug_show_cells"):
             st.dataframe(pd.DataFrame(series_cells))
 

@@ -150,7 +150,60 @@ def iter_cells(
         yield Cell(**dict(zip(col_names, r)))
 
 
-# TODO warmup and run it for every relevant (domain,probe_cc,probe_asn, resolver_asn)
+def get_rule_counts(
+    clickhouse: ClickhouseClient,
+    domain: str,
+    probe_asn: int,
+    resolver_asn: int,
+    start_time: datetime,
+    end_time: datetime,
+    probe_cc: str,
+) -> list[dict]:
+    """
+    Debugging helper: for a single (domain, probe_cc, probe_asn, resolver_asn)
+    series, how many measurements had each top rule id, per hour and layer.
+
+    iter_cells only returns the k/n totals per cell, this breaks them down by
+    the rules that produced them.
+    """
+    query = """
+    SELECT
+        toStartOfHour(measurement_start_time) AS ts_hour,
+        layer_rule.1                          AS layer,
+        layer_rule.2                          AS rule_id,
+        count()                               AS count
+    FROM analysis_web_measurement
+    ARRAY JOIN [
+        ('dns', toString(top_dns_rule_id)),
+        ('tcp', toString(top_tcp_rule_id)),
+        ('tls', toString(top_tls_rule_id))
+    ] AS layer_rule
+    WHERE
+        domain = %(domain)s
+        AND probe_asn = %(probe_asn)s
+        AND resolver_asn = %(resolver_asn)s
+        AND ts_hour >= %(start_time)s
+        AND ts_hour <= %(end_time)s
+        AND probe_cc=%(probe_cc)s
+    GROUP BY ts_hour, layer, rule_id
+    ORDER BY ts_hour, layer, rule_id
+    """
+    params = {
+        "domain": domain,
+        "probe_asn": probe_asn,
+        "resolver_asn": resolver_asn,
+        "start_time": start_time,
+        "end_time": end_time,
+        "probe_cc": probe_cc
+    }
+
+    rows = clickhouse.execute(query, params=params)
+    return [
+        {"ts_hour": ts_hour, "layer": layer, "rule_id": rule_id, "count": count}
+        for ts_hour, layer, rule_id, count in rows
+    ]
+
+
 class Detector:
     def __init__(self, debug: bool = False):
         self.s_pos = self.s_neg = 0
@@ -173,6 +226,7 @@ class Detector:
         h: float = 30,
         warmup: bool = False,
         gap_halflife: float = 24,
+        use_decay: bool = True,
     ) -> list[ChangePoint]:
         """
         Assumes the input list has the following properties:
@@ -184,13 +238,15 @@ class Detector:
 
         "warmup" runs the detector without generating any new changepoint, it
         only updates internal state
+
+        use_decay: decay the accumulators after long gaps without data
         """
         results = []
         w_block = math.log(p1 / p0)
         w_clear = math.log((1.0 - p1) / (1.0 - p0))
 
         for cell in series:
-            cp = self.step(cell, w_block, w_clear, layer, h, gap_halflife)
+            cp = self.step(cell, w_block, w_clear, layer, h, gap_halflife, use_decay)
             if cp and not warmup:
                 results.append(cp)
             if self.debug:
@@ -206,6 +262,7 @@ class Detector:
         layer: str,
         h: float,
         gap_halflife: float,
+        use_decay: bool = True,
     ) -> ChangePoint | None:
         # original state is unknown, run both series in parallel to discover
         # current state
@@ -226,7 +283,8 @@ class Detector:
                 ts_hour=cell.ts_hour,
             )
 
-        self.decay(gap_halflife, cell.ts_hour)
+        if use_decay:
+            self.decay(gap_halflife, cell.ts_hour)
 
         cp = None
         if self.state == State.UNKNOWN:
@@ -242,7 +300,7 @@ class Detector:
                 self.s_pos = self.s_neg = 0
             # Don't return a changepoint: this is the initial state
         elif self.state == State.BLOCK:
-            # Run s_neg accumulator: we wan't to see if the blocking signal
+            # Run s_neg accumulator: we want to see if the blocking signal
             # goes down
             self.s_neg = max(0, self.s_neg - llr)
             self.s_pos = 0
@@ -250,7 +308,7 @@ class Detector:
                 cp = make_cp(State.OK)
                 self.set_state(State.OK)
         elif self.state == State.OK:
-            # Run s_pos accumulator: we wan't to see if the blocking signal
+            # Run s_pos accumulator: we want to see if the blocking signal
             # goes up
             self.s_pos = max(0, self.s_pos + llr)
             self.s_neg = 0
@@ -310,6 +368,7 @@ def run_detector_hourly(
     p1: float = 0.50,
     h: float = 30,
     gap_halflife: float = 24,
+    use_decay: bool = True,
 ) -> DetectorResult:
     """
     This function is stateless: nothing is read from or written to storage.
@@ -362,6 +421,7 @@ def run_detector_hourly(
                 h=h,
                 warmup=True,
                 gap_halflife=gap_halflife,
+                use_decay=use_decay,
             )
             # Actual detection
             entry[layer] = detector.compute_changepoints(
@@ -372,6 +432,7 @@ def run_detector_hourly(
                 h=h,
                 warmup=False,
                 gap_halflife=gap_halflife,
+                use_decay=use_decay,
             )
         results[group] = ResultEntry(**entry)
 
@@ -634,7 +695,7 @@ def _make_state_bands_chart(bands_df):
 
 
 def _make_cusum_overlay_chart(
-    df_overlay, show_legend: bool, selection, h: float | None = None
+    df_overlay, show_legend: bool, selection, h: float | None = None, hover=None
 ):
     """
     Melts (s_pos, s_neg) into one color-encoded line series (rather than two
@@ -648,6 +709,10 @@ def _make_cusum_overlay_chart(
     h: the detector's threshold — drawn as a green dashed reference line at
     that value on the CUSUM axis (matching the original detector's chart),
     since h is a level s_pos/s_neg cross, not a point in time.
+
+    hover: optional selection on ts_hour — when given, a dot and the value
+    are drawn where s+/s- are at the selected hour. They have to be part of
+    this chart (not layered by the caller) to share the CUSUM y scale.
     """
     import altair as alt
     import pandas as pd
@@ -686,6 +751,28 @@ def _make_cusum_overlay_chart(
     if show_legend:
         line = line.add_selection(selection)
 
+    if hover is not None:
+        hover_dots = (
+            alt.Chart(long_df)
+            .mark_point(filled=True, size=40)
+            .encode(
+                x=alt.X("ts_hour:T"),
+                y=alt.Y("value:Q", axis=axis),
+                color=alt.Color("series:N", legend=None),
+            )
+            .transform_filter(hover)
+        )
+        # Black text over a white-stroked copy of itself, so it stays
+        # readable over the lines and bars. A stroke on the text itself
+        # would be drawn over its fill.
+        hover_values = hover_dots.mark_text(
+            align="left", dx=6, dy=-6, fontWeight="bold"
+        ).encode(text=alt.Text("value:Q", format=".2f"), color=alt.value("black"))
+        hover_values_outline = hover_values.mark_text(
+            align="left", dx=6, dy=-6, fontWeight="bold", stroke="white", strokeWidth=3
+        )
+        line = line + hover_dots + hover_values_outline + hover_values
+
     if h is None:
         return line
 
@@ -695,6 +782,106 @@ def _make_cusum_overlay_chart(
         .encode(y=alt.Y("h:Q", axis=axis))
     )
     return line + threshold
+
+
+
+def _with_hover_rule(bar_chart, df_overlay, **overlay_kwargs) -> list:
+    """
+    Layers the bars with the CUSUM overlay (see _make_cusum_overlay_chart,
+    which gets `overlay_kwargs`) plus a vertical line that follows the
+    mouse, with a dot and the s+/s- values where it crosses those lines, and
+    the ok/blocked counts over the bar at that hour.
+    Returns [hover points, bars, overlay, rule], to be layered in that order.
+
+    The hover points are invisible and only there to pick the hour nearest
+    to the mouse. They go below the bars so they don't steal the bars'
+    tooltips; while over a bar, the bar itself moves the line.
+
+    New selections per call, since each layer subplot has its own series.
+    """
+    import altair as alt
+
+    hover = alt.selection_single(
+        fields=["ts_hour"], nearest=True, on="mouseover", empty="none", clear="mouseout"
+    )
+    bar_hover = alt.selection_single(
+        fields=["ts_hour"], on="mouseover", empty="none", clear="mouseout"
+    )
+    hover_points = (
+        alt.Chart(df_overlay)
+        .mark_point(opacity=0)
+        .encode(x=alt.X("ts_hour:T"))
+        .add_selection(hover)
+    )
+    # The counts have to be layered with the bars to share their y scale
+    bars = alt.layer(
+        bar_chart.add_selection(bar_hover),
+        *_outcome_hover_labels(bar_chart.data, hover | bar_hover),
+    )
+    overlay_chart = _make_cusum_overlay_chart(
+        df_overlay, hover=hover | bar_hover, **overlay_kwargs
+    )
+    hover_rule = (
+        alt.Chart(df_overlay)
+        .mark_rule(color="gray")
+        .encode(x=alt.X("ts_hour:T"))
+        .transform_filter(hover | bar_hover)
+    )
+    return [hover_points, bars, overlay_chart, hover_rule]
+
+
+def _outcome_hover_labels(df_bars, hover) -> list:
+    """
+    Ok and blocked counts over the bar at the hovered hour, blocked
+    above ok, and the hour itself just below the bars. An outcome with no
+    measurements gets no number.
+
+    df_bars: the bar chart's data, one row per (ts_hour, outcome[, rule_id])
+    with a count, so the counts are summed per outcome here.
+    """
+    import altair as alt
+
+    labels = []
+    for outcome, dy in (("ok", -8), ("blocked", -22)):
+        text = (
+            alt.Chart(df_bars)
+            .transform_filter(hover)
+            .transform_joinaggregate(total="sum(count)", groupby=["ts_hour"])
+            .transform_filter(alt.datum.outcome == outcome)
+            .transform_aggregate(
+                n="sum(count)", total="max(total)", groupby=["ts_hour"]
+            )
+            .transform_filter(alt.datum.n > 0)
+            .mark_text(dy=dy, fontWeight="bold", color="black")
+            .encode(
+                x=alt.X("ts_hour:T"),
+                y=alt.Y("total:Q"),
+                text=alt.Text("n:Q"),
+            )
+        )
+        # Same white-stroked copy underneath as the CUSUM values
+        outline = text.mark_text(
+            dy=dy, fontWeight="bold", stroke="white", strokeWidth=3
+        )
+        labels += [outline, text]
+
+    timestamp = (
+        alt.Chart(df_bars)
+        .transform_filter(hover)
+        .transform_aggregate(groupby=["ts_hour"])
+        .transform_calculate(zero="0")
+        .mark_text(dy=10, fontWeight="bold", color="black")
+        .encode(
+            x=alt.X("ts_hour:T"),
+            y=alt.Y("zero:Q"),
+            text=alt.Text("ts_hour:T", format="%Y-%m-%d %H:%M"),
+        )
+    )
+    timestamp_outline = timestamp.mark_text(
+        dy=10, fontWeight="bold", stroke="white", strokeWidth=3
+    )
+    labels += [timestamp_outline, timestamp]
+    return labels
 
 
 def make_cells_histogram_chart(
@@ -784,7 +971,11 @@ def make_cells_histogram_chart(
                 opacity=alt.condition(
                     outcome_selection & cusum_selection, alt.value(0.6), alt.value(0.05)
                 ),
-                tooltip=["ts_hour:T", "outcome:N", "count:Q"],
+                tooltip=[
+                    alt.Tooltip("ts_hour:T", format="%Y-%m-%d %H:%M"),
+                    "outcome:N",
+                    "count:Q",
+                ],
             )
         )
         if layer == LAYERS[-1]:
@@ -795,16 +986,16 @@ def make_cells_histogram_chart(
             detector = detectors[layer]
             bands_df = _state_bands_df(cells, detector)
             overlay_df = _cusum_overlay_df(cells, detector)
-            overlay_chart = _make_cusum_overlay_chart(
+            layers = []
+            if not bands_df.empty:
+                layers.append(_make_state_bands_chart(bands_df))
+            layers += _with_hover_rule(
+                bar_chart,
                 overlay_df,
                 show_legend=(layer == LAYERS[-1]),
                 selection=cusum_selection,
                 h=getattr(detector, "h", None),
             )
-            layers = []
-            if not bands_df.empty:
-                layers.append(_make_state_bands_chart(bands_df))
-            layers += [bar_chart, overlay_chart]
             chart = alt.layer(*layers).resolve_scale(
                 y="independent", color="independent", opacity="independent"
             )
@@ -830,4 +1021,155 @@ def make_cells_histogram_chart(
         alt.vconcat(*charts, spacing=10)
         .resolve_scale(x="shared", color="shared")
         .properties(title="Cell outcome histogram")
+    )
+
+
+def _classify_rule_id(layer: str, rule_id: str) -> str:
+    """
+    blocked/ok/discarded, the same way iter_cells counts k and n. Rule ids
+    not in the current rule set (e.g. legacy ones) end up as discarded.
+    """
+    if rule_id in _blocked_rule_ids(layer):
+        return "blocked"
+    if rule_id in _ok_rule_ids(layer):
+        return "ok"
+    return "discarded"
+
+
+def make_rule_histogram_chart(
+    cells: list[Cell],
+    rule_counts: list[dict],
+    detectors: Mapping[str, "Detector"] | None = None,
+):
+    """
+    One stacked-bar histogram per layer, same x/y axes and blocked=red /
+    ok=green / discarded=gray coloring as make_cells_histogram_chart, but
+    each bar is stacked by individual rule id rather than by outcome class.
+
+    rule_counts: rows from get_rule_counts for the same series as `cells`.
+
+    detectors: optional {layer: Detector} of debug-run (debug=True) detectors
+    for that same cells list. When given, the layer's s_pos/s_neg series is
+    overlaid as lines on an independent right-hand y-axis.
+    """
+    import altair as alt
+    import pandas as pd
+
+    df = pd.DataFrame(rule_counts, columns=["ts_hour", "layer", "rule_id", "count"])
+    df["outcome"] = [
+        _classify_rule_id(layer, rule_id)
+        for layer, rule_id in zip(df["layer"], df["rule_id"])
+    ]
+
+    # Make silent hours (no cell at all, i.e. zero measurements) explicit
+    # instead of missing rows, so the x-axis spacing reflects the real
+    # hourly cadence. Unlike the outcome histogram, there's no fixed rule-id
+    # set to cross-join against (that would wrongly claim every rule "fired
+    # 0 times" every hour). Just add one zero-height placeholder row per
+    # (hour, layer) that has no data at all.
+    full_hours = _full_hour_range(cells)
+    existing_hour_layer = set(zip(df["ts_hour"], df["layer"]))
+    missing_rows = [
+        {
+            "ts_hour": ts_hour,
+            "layer": layer,
+            "rule_id": "(no data)",
+            "outcome": "discarded",
+            "count": 0,
+        }
+        for ts_hour in full_hours
+        for layer in LAYERS
+        if (ts_hour, layer) not in existing_hour_layer
+    ]
+    if missing_rows:
+        df = pd.concat([df, pd.DataFrame(missing_rows)], ignore_index=True)
+
+    # Scale width with the number of hours so bars don't overlap, same as
+    # make_cells_histogram_chart.
+    chart_width = max(900, len(full_hours) * 6)
+
+    # Click an entry in the Outcome legend (shown only on the last subplot)
+    # to isolate that outcome across every subplot; shift-click for more.
+    outcome_selection = alt.selection_multi(fields=["outcome"], bind="legend")
+    # Same idea for the CUSUM legend.
+    cusum_selection = alt.selection_multi(fields=["series"], bind="legend")
+
+    def make_layer_chart(layer: str, show_x_axis: bool):
+        bar_chart = (
+            alt.Chart(df[df["layer"] == layer])
+            # A stroke around each stacked segment, since same-outcome rules
+            # share a fill color and would otherwise merge into one blob —
+            # the outline is what makes "how many rules contributed" readable
+            # at a glance.
+            .mark_bar(stroke="black", strokeWidth=1)
+            .encode(
+                x=alt.X(
+                    "ts_hour:T",
+                    title=None,
+                    axis=alt.Axis(labels=show_x_axis, ticks=show_x_axis),
+                ),
+                y=alt.Y("count:Q", stack="zero", title="count"),
+                color=alt.Color(
+                    "outcome:N",
+                    scale=alt.Scale(
+                        domain=list(OUTCOME_COLORS.keys()),
+                        range=list(OUTCOME_COLORS.values()),
+                    ),
+                    legend=alt.Legend(title="Outcome") if layer == LAYERS[-1] else None,
+                ),
+                opacity=alt.condition(
+                    outcome_selection & cusum_selection, alt.value(0.6), alt.value(0.05)
+                ),
+                order=alt.Order("rule_id:N"),
+                tooltip=[
+                    alt.Tooltip("ts_hour:T", format="%Y-%m-%d %H:%M"),
+                    alt.Tooltip("rule_id:N", title="rule"),
+                    alt.Tooltip("outcome:N"),
+                    alt.Tooltip("count:Q"),
+                ],
+            )
+        )
+        if layer == LAYERS[-1]:
+            bar_chart = bar_chart.add_selection(outcome_selection)
+
+        chart = bar_chart
+        if detectors and layer in detectors:
+            detector = detectors[layer]
+            bands_df = _state_bands_df(cells, detector)
+            overlay_df = _cusum_overlay_df(cells, detector)
+            layers = []
+            if not bands_df.empty:
+                layers.append(_make_state_bands_chart(bands_df))
+            layers += _with_hover_rule(
+                bar_chart,
+                overlay_df,
+                show_legend=(layer == LAYERS[-1]),
+                selection=cusum_selection,
+                h=getattr(detector, "h", None),
+            )
+            chart = alt.layer(*layers).resolve_scale(
+                y="independent", color="independent", opacity="independent"
+            )
+
+        return chart.properties(
+            width=chart_width,
+            height=150,
+            title=alt.TitleParams(
+                text=layer,
+                fontSize=11,
+                fontWeight="normal",
+                color="gray",
+                anchor="start",
+                dy=-4,
+                offset=2,
+            ),
+        )
+
+    charts = [
+        make_layer_chart(layer, show_x_axis=(layer == LAYERS[-1])) for layer in LAYERS
+    ]
+    return (
+        alt.vconcat(*charts, spacing=10)
+        .resolve_scale(x="shared", color="shared")
+        .properties(title="Rule histogram")
     )
