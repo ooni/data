@@ -102,7 +102,7 @@ def get_rule_counts_cached(
     resolver_asn: int,
     start_time: datetime,
     end_time: datetime,
-    probe_cc: str | None,
+    probe_cc: str,
 ) -> list[dict]:
     client = ClickhouseClient.from_url(clickhouse_url)
     return get_rule_counts(
@@ -394,7 +394,6 @@ def detector_v2_panel():
             key="v2_debug_show_rule_histogram",
         ):
             # Query exactly the series the cells above come from
-            series_ccs = {c.probe_cc for c in series_cells}
             rule_counts = get_rule_counts_cached(
                 clickhouse_url,
                 series_cells[0].domain,
@@ -402,7 +401,7 @@ def detector_v2_panel():
                 selected_asn[1],
                 series_cells[0].ts_hour,
                 series_cells[-1].ts_hour,
-                series_cells[0].probe_cc if len(series_ccs) == 1 else None,
+                series_cells[0].probe_cc,
             )
             render_scrollable_chart(
                 make_rule_histogram_chart(series_cells, rule_counts, detectors)

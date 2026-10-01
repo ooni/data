@@ -157,7 +157,7 @@ def get_rule_counts(
     resolver_asn: int,
     start_time: datetime,
     end_time: datetime,
-    probe_cc: str | None = None,
+    probe_cc: str,
 ) -> list[dict]:
     """
     Debugging helper: for a single (domain, probe_cc, probe_asn, resolver_asn)
@@ -166,7 +166,7 @@ def get_rule_counts(
     iter_cells only returns the k/n totals per cell, this breaks them down by
     the rules that produced them.
     """
-    query = f"""
+    query = """
     SELECT
         toStartOfHour(measurement_start_time) AS ts_hour,
         layer_rule.1                          AS layer,
@@ -184,7 +184,7 @@ def get_rule_counts(
         AND resolver_asn = %(resolver_asn)s
         AND ts_hour >= %(start_time)s
         AND ts_hour <= %(end_time)s
-        {"AND probe_cc=%(probe_cc)s" if probe_cc else ""}
+        AND probe_cc=%(probe_cc)s
     GROUP BY ts_hour, layer, rule_id
     ORDER BY ts_hour, layer, rule_id
     """
@@ -194,9 +194,8 @@ def get_rule_counts(
         "resolver_asn": resolver_asn,
         "start_time": start_time,
         "end_time": end_time,
+        "probe_cc": probe_cc
     }
-    if probe_cc:
-        params["probe_cc"] = probe_cc
 
     rows = clickhouse.execute(query, params=params)
     return [
