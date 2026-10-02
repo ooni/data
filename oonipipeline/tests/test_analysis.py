@@ -764,3 +764,14 @@ def test_website_web_analysis_probe_id_with_ipv6_broken(db, netinfodb,
     for msmt in analysis_list:
         assert msmt["tcp_ok_max"] == 1.0
         assert msmt["tls_ok_max"] == 1.0
+
+
+def test_dns_tls_consistency_bug(db, netinfodb, measurements):
+    measurement_uid = "20260919060442.293245_BE_webconnectivity_ddb9b10861cb8ccf"
+    analysis = perform_analysis(
+        db=db,
+        netinfodb=netinfodb,
+        measurements=measurements,
+        measurement_uid=measurement_uid,
+    )
+    assert analysis['top_dns_rule_id'] == 'tls_consistent_answer'

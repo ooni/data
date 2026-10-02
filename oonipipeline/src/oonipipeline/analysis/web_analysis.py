@@ -1,6 +1,6 @@
 import logging
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from ..db.connections import ClickhouseConnection
@@ -45,6 +45,7 @@ def format_query_analysis_web_fuzzy_logic(
     q_params: Dict[str, Any] = {
         "start_time": start_time,
         "end_time": end_time,
+        "ctrl_start_time": start_time - timedelta(hours=1),
         "cloud_provider_asns": CLOUD_PROVIDERS_ASNS,
     }
     and_where = [
@@ -332,6 +333,8 @@ def format_query_analysis_web_fuzzy_logic(
     -- CTRL subquery
     LEFT OUTER JOIN (
         SELECT
+        IF(ctrl.hostname = '', other.hostname, ctrl.hostname) as ctrl_key_hostname,
+        IF(ctrl.hostname = '', other.measurement_day, ctrl.measurement_day) as ctrl_key_day,
         hostname,
         measurement_day,
         cloud_provider_ips_count,
@@ -427,28 +430,28 @@ def format_query_analysis_web_fuzzy_logic(
 
             FROM
             obs_web_ctrl
-            WHERE measurement_start_time > %(start_time)s
+            WHERE measurement_start_time >= %(ctrl_start_time)s
             AND measurement_start_time <= %(end_time)s
             GROUP BY hostname, measurement_day
         ) AS ctrl
 
-        LEFT OUTER JOIN
+        FULL OUTER JOIN
         (
             SELECT
-            hostname,
+            coalesce(nullIf(tls_server_name, ''), hostname) as hostname,
             toStartOfDay(measurement_start_time) as measurement_day,
             groupArrayIf(ip, tls_is_certificate_valid = 1) as other_tls_consistent_ips
 
             FROM
             obs_web
-            WHERE measurement_start_time > %(start_time)s
+            WHERE measurement_start_time >= %(ctrl_start_time)s
             AND measurement_start_time <= %(end_time)s
             GROUP BY hostname, measurement_day
         ) as other
         ON ctrl.hostname = other.hostname AND ctrl.measurement_day = other.measurement_day
         SETTINGS join_algorithm = 'grace_hash', grace_hash_join_initial_buckets = 8
     ) as full_ctrl
-    ON full_ctrl.hostname = experiment.hostname AND full_ctrl.measurement_day = experiment.measurement_day
+    ON full_ctrl.ctrl_key_hostname = experiment.hostname AND full_ctrl.ctrl_key_day = experiment.measurement_day
     GROUP BY domain,
     input,
     probe_asn, probe_as_org_name, probe_cc,
