@@ -121,6 +121,7 @@ quality jobs read it; nothing else in v5 depends on it.
 | **FastAPI** | Read API over tiers 1–2 | `ooni/backend/ooniapi/services/oonimeasuremen/`. Deployed separately from the pipeline. |
 | **GitHub** (`ooni/blocking-fingerprints`) | Blockpage fingerprint source | Fetched hourly as CSV. |
 | **GitHub** (`citizenlab/test-lists`) | Domain categorisation, detector watchlist | Cloned every 30 min. |
+| **archive.org** (`ip2country-as`) | ASN metadata (`asnmeta`) | Fetched weekly as JSON. |
 | **Slack webhook** | Changepoint alerting | Optional; gated by an Airflow Variable. Fire-and-forget: no delivery monitoring, so "no events" and "no delivery" look identical (O3; plan §3.11). |
 | **OpenTelemetry / Prometheus** | Telemetry | Optional, via `telemetry_endpoint` / `prometheus_bind_address` in settings. |
 
@@ -183,9 +184,10 @@ an oversight.
 - `event_detector_changepoints`: emitted transitions.
 
 **Reference data**: externally maintained, refreshed by updater DAGs:
-`fingerprints_dns`, `fingerprints_http`, `citizenlab`, `citizenlab_flip`,
-`asnmeta`. The fingerprint tables are `EmbeddedRocksDB` and are swapped in
-atomically via `EXCHANGE TABLES`.
+`fingerprints_dns`, `fingerprints_http`, `citizenlab`, `asnmeta`. `citizenlab`
+and `asnmeta` are replicated on every node and refreshed via `ALTER TABLE ...
+REPLACE PARTITION`. The fingerprint tables are `EmbeddedRocksDB` and are
+swapped in atomically via `EXCHANGE TABLES`.
 
 **Data quality**: `faulty_measurements`, written by the volume and
 time-inconsistency jobs.
