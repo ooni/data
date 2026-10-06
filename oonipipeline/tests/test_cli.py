@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 
 from oonipipeline.cli.commands import cli
+from oonipipeline.settings import config
 from oonipipeline.cli.utils import build_timestamps, build_date_range
 import pytest
 
@@ -31,7 +32,16 @@ def test_full_workflow(
     list_all_table_diffs,
     make_create_queries_mock,
     cli_runner,
+    clickhouse_server,
+    db,
+    monkeypatch,
 ):
+    # the CLI reads its database from settings: point it at the test
+    # database the db fixture creates the tables in, instead of whatever
+    # listens on the host's localhost:9000
+    monkeypatch.setattr(
+        config, "clickhouse_url", clickhouse_server.replace("default", "testing_oonidata")
+    )
     result = cli_runner.invoke(
         cli,
         [
