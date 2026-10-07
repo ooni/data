@@ -1,8 +1,8 @@
 """
 Fetch asn metadata from https://archive.org/download/ip2country-as (generated via: https://github.com/ooni/historical-geoip)
 
-Local test run:
-    PYTHONPATH=analysis ./run_analysis --update-asnmeta --stdout
+Populate the replicated asnmeta table. Each run loads a temporary table and
+swaps it in with REPLACE PARTITION, which reaches every replica.
 """
 
 from datetime import datetime
@@ -54,11 +54,6 @@ def fetch_data() -> List[dict]:
     return rows
 
 
-# Same pattern as citizenlab_test_lists_updater: asnmeta is a single, stable
-# replicated table and each run swaps its data in from a session-scoped
-# TEMPORARY table with REPLACE PARTITION, which replicates through asnmeta's
-# own replication log instead of renaming tables with EXCHANGE on only the
-# node this script is connected to.
 CLUSTER_NAME = "oonidata_cluster"
 
 

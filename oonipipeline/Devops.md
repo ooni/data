@@ -5,6 +5,39 @@ Run the ansible command:
 ./play -i inventory -l data1.htz-fsn.prod.ooni.nu deploy-airflow.yml -t oonipipeline --diff
 ```
 
+## Reference tables (citizenlab, asnmeta)
+
+`citizenlab` and `asnmeta` are replicated on every node, at
+`/clickhouse/oonidata_cluster/tables/ooni/citizenlab` and
+`/clickhouse/oonidata_cluster/tables/ooni/asnmeta`. The `halfhour_updaters` and
+`weekly_updaters` DAGs refresh them with `REPLACE PARTITION ... SETTINGS
+alter_sync = 2`, so a run fails if any replica is offline. Rerun it once all
+nodes are up.
+
+To check that the last run replaced the data on every node (`oldest_part`
+should be after the run, and `total_rows` the same on every node):
+```
+SELECT hostName() AS host, `table`, sum(rows) AS total_rows, min(modification_time) AS oldest_part
+FROM clusterAllReplicas('oonidata_cluster', system.parts)
+WHERE database = 'ooni' AND `table` IN ('citizenlab', 'asnmeta') AND active
+GROUP BY host, `table`
+ORDER BY `table`, host;
+```
+
+To check the Keeper paths:
+```
+SELECT hostName() AS host, `table`, zookeeper_path
+FROM clusterAllReplicas('oonidata_cluster', system.replicas)
+WHERE database = 'ooni' AND `table` IN ('citizenlab', 'asnmeta')
+ORDER BY `table`, host;
+```
+
+To recreate one of these tables, drop every replica with `SYNC`, then remove
+the empty node left at its Keeper path, otherwise the new `CREATE` fails:
+```
+clickhouse-keeper-client -q "rm '/clickhouse/oonidata_cluster/tables/ooni/citizenlab'"
+```
+
 ## Run commands
 
 ```

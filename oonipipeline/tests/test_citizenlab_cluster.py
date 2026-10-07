@@ -2,9 +2,8 @@
 Integration tests that exercise citizenlab_test_lists_updater.update_citizenlab_table
 against a real multi-replica ClickHouse cluster (see docker-compose.cluster.yml).
 
-These specifically check the thing that's easy to get wrong with the
-EXCHANGE -> REPLACE PARTITION change: that a swap issued against one replica
-actually reaches every other replica in the cluster, rather than only
+These specifically check that a REPLACE PARTITION swap issued against one
+replica actually reaches every other replica in the cluster, rather than only
 appearing to work because the test happened to read back from the same node
 it wrote to.
 
@@ -103,9 +102,8 @@ def test_citizenlab_replace_partition_reaches_every_replica(clickhouse_cluster):
     cl_updater.update_citizenlab_table(node_a_url, SAMPLE_ROWS_A)
 
     # ...and confirm the swap is visible from BOTH replicas, not just the
-    # one the client happened to talk to. With the old EXCHANGE-based swap,
-    # a divergence here (one replica silently pointing at stale/wrong data)
-    # was exactly the failure mode that raised no error on its own.
+    # one the client happened to talk to. A divergence here (one replica
+    # silently serving stale data) raises no error on its own.
     for url in (node_a_url, node_b_url):
         _assert_rows_eventually(
             url,
