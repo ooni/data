@@ -62,9 +62,10 @@ sudo -u airflow CONFIG_FILE=/etc/ooni/pipeline/oonipipeline-config.toml /opt/min
 ## Backfilling the analysis
 
 If you make updates to the rules and need to re-run them, you should clear the
-task state inside of airflowas follows:
+task state inside of airflow follows:
 
 ```
+sudo -u airflow bash
 airflow tasks clear hourly_batch_measurement_processing --task-regex make_analysis --start-date 2026-08-16 --end-date 2026-08-22 --yes
 ```
 
