@@ -369,6 +369,32 @@ def make_create_queries():
         ),
         (
             """
+        CREATE TABLE IF NOT EXISTS changepoint_label
+        (
+            -- Ground truth, set by a person. Represents the network state for
+            -- the (probe_cc, probe_asn, resolver_asn, domain) series of the
+            -- changepoint it labels
+            `id` UUID,
+            -- UUID in event_detector_v2_changepoints (foreign key)
+            `changepoint_id` UUID,
+            `created_at` DateTime64(3, 'UTC') DEFAULT now64(),
+            `author` String,
+            -- blocked, ok or undecided
+            `verdict` LowCardinality(String),
+            -- Additional context the author might share
+            `notes` String,
+            `last_ok_time` Nullable(DateTime64(3, 'UTC')),
+            `first_block_time` Nullable(DateTime64(3, 'UTC')),
+            `last_block_time` Nullable(DateTime64(3, 'UTC')),
+            `first_ok_time` Nullable(DateTime64(3, 'UTC'))
+        )
+        ENGINE = MergeTree
+        ORDER BY (changepoint_id, created_at, id);
+            """,
+            "changepoint_label",
+        ),
+        (
+            """
         CREATE TABLE IF NOT EXISTS faulty_measurements
         (
             `ts` DateTime64(3, 'UTC') DEFAULT now64(),
