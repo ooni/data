@@ -1,5 +1,7 @@
 import pytest
 
+from helpers import DATASET_PROBE_CC, assert_in_window
+
 route = "/api/v1/analysis"
 since = "2026-01-01"
 until = "2026-01-10"
@@ -23,7 +25,8 @@ def test_oonidata_list_analysis_with_since_and_until(
     assert len(json["results"]) > 0
     for result in json["results"]:
         assert "test_name" in result, result
-        assert "probe_cc" in result, result
+        assert result["probe_cc"] in DATASET_PROBE_CC, result
+        assert_in_window(result["measurement_start_time"], params_since_and_until_with_two_days)
 
 
 @pytest.mark.parametrize(

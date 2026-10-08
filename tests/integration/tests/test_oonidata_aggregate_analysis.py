@@ -1,6 +1,8 @@
 import pytest
 import os
 
+from helpers import DATASET_PROBE_CC, assert_in_window
+
 route = "/api/v1/aggregation/analysis"
 since = "2026-01-01"
 until = "2026-01-10"
@@ -25,6 +27,11 @@ def test_oonidata_aggregation_analysis_with_since_and_until(
 
     for result in json["results"]:
         assert "domain" in result, result
+        assert result["count"] > 0, result
+        for outcome in ("dns", "tcp", "tls"):
+            for state in ("blocked", "down", "ok"):
+                value = result["loni"][f"{outcome}_{state}"]
+                assert value is None or 0 <= value <= 1, result
 
 
 @pytest.mark.parametrize(
@@ -92,6 +99,11 @@ def test_oonidata_aggregation_analysis_with_axis_x(
     assert len(json["results"]) > 0
     for result in json["results"]:
         assert result[field] is not None, result
+        if field == "measurement_start_day":
+            assert_in_window(result[field], params)
+
+    if field == "probe_cc":
+        assert {r["probe_cc"] for r in json["results"]} == DATASET_PROBE_CC
 
 
 @pytest.mark.parametrize(

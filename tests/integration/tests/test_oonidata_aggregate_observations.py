@@ -1,5 +1,7 @@
 import pytest
 
+from helpers import DATASET_PROBE_CC
+
 route = "/api/v1/aggregation/observations"
 
 
@@ -23,6 +25,24 @@ def test_oonidata_aggregation_observations_with_since_and_until(
     for result in json["results"]:
         assert "observation_count" in result, result
         assert "failure" in result, result
+        assert result["observation_count"] > 0, result
+
+
+def test_oonidata_aggregation_observations_totals_match_across_groupings(
+    client, params_since_and_until_with_two_days
+):
+    # grouping by country or by test name splits the same observations, so
+    # both must add up to the same total, from both countries the pipeline loaded
+    totals = {}
+    for key in ("probe_cc", "test_name"):
+        params = dict(params_since_and_until_with_two_days, group_by=[key])
+        results = client.get(route, params=params).json()["results"]
+        assert len(results) > 0
+        totals[key] = sum(r["observation_count"] for r in results)
+        if key == "probe_cc":
+            assert {r["probe_cc"] for r in results} == DATASET_PROBE_CC, results
+
+    assert totals["probe_cc"] == totals["test_name"], totals
 
 
 @pytest.mark.parametrize(
