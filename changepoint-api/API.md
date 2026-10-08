@@ -7,6 +7,10 @@ from OK to blocked (`BLOCK`), or from blocked back to `OK`, at one network layer
 A second endpoint, `/rule_counts`, shows the raw evidence behind a changepoint: which scoring rules
 fired for each measurement of one network.
 
+`/stored_changepoints` lists changepoints already found by the scheduled detector run (stored in
+ClickHouse), across all domains and countries. It is fast and is the way to answer "what new
+blocking was detected recently?" without knowing the domain in advance.
+
 Base URL: `http://127.0.0.1:8000` (the machine-readable schema is at `/openapi.json`).
 
 ## GET /changepoints
@@ -212,4 +216,76 @@ The stored label, with the server-generated `id` and `created_at`:
 ```
 POST /changepoint_labels
 {"changepoint_id": "26660500-5ea1-47f7-a7bf-36aa18c46197", "author": "luis", "verdict": "blocked", "first_block_time": "2026-09-01T09:00:00Z"}
+```
+
+## GET /stored_changepoints
+
+Lists changepoints the hourly detector job has already stored in the
+`event_detector_v2_changepoints` table, newest first. Every filter is optional; with none it
+returns the most recent changepoints anywhere.
+
+Use `/stored_changepoints` to discover events (which countries, domains and networks changed).
+Use `/changepoints` to recompute a specific domain and country over any range or with different
+detector parameters.
+
+### Query parameters
+
+| name | type | default | meaning |
+|---|---|---|---|
+| `probe_cc` | string | | Two-letter country code (case insensitive). |
+| `domain` | string | | Exact hostname. |
+| `probe_asn` | int | | Probe network, number only. |
+| `resolver_asn` | int | | Resolver network, number only. |
+| `layer` | `dns` \| `tcp` \| `tls` | | Only this layer. |
+| `state` | `BLOCK` \| `OK` | | `BLOCK` for blocking that started, `OK` for blocking that ended. |
+| `start_date` | date `YYYY-MM-DD` | | Only changepoints with `ts_hour` on or after this day (UTC). |
+| `end_date` | date `YYYY-MM-DD` | | Only changepoints with `ts_hour` on or before this day, inclusive. |
+| `limit` | int 1–1000 | 100 | Maximum number of rows to return. |
+| `offset` | int ≥ 0 | 0 | Rows to skip, for paging. |
+
+### Response 200
+
+```json
+{
+  "query": { "probe_cc": "RU", "state": "BLOCK", "start_date": null, "end_date": null, "limit": 100, "offset": 0 },
+  "changepoints": [
+    {
+      "uuid": "ef9f7f66-af02-4a66-82f2-e570a5586c56",
+      "domain": "pixelfed.social",
+      "probe_cc": "RU",
+      "probe_asn": 8402,
+      "resolver_asn": 8402,
+      "layer": "tcp",
+      "ts_hour": "2026-10-03T11:00:00+00:00",
+      "s_neg": 0.0,
+      "s_pos": 31.71,
+      "h": 30.0,
+      "state": "BLOCK",
+      "run_parameters": { "p0": 0.05, "p1": 0.5, "h_threshold": 30, "gap_halflife": 24, "use_decay": true, "warmup_days": 30 },
+      "created_at": "2026-10-08T16:53:46.712000+00:00"
+    }
+  ]
+}
+```
+
+- Fields mean the same as in `/changepoints`. Sorted by `ts_hour` newest first, then by domain,
+  country, networks and layer.
+- `uuid`: unique id of the stored row.
+- `run_parameters`: the detector settings the job used (`h_threshold` is `h`). To reproduce a
+  row with `/changepoints`, pass these values and a range that covers `ts_hour`.
+- `created_at`: when the job wrote the row, which can be well after `ts_hour`.
+- `query` echoes only the filters that were set.
+- Fewer rows than `limit` means there are no more results. Otherwise request the next page with
+  `offset` increased by `limit`.
+
+### Errors
+
+- `422`: malformed parameter, e.g. a `state` other than `BLOCK` or `OK`.
+
+### Examples
+
+```
+GET /stored_changepoints?start_date=2026-10-01
+GET /stored_changepoints?probe_cc=RU&state=BLOCK&limit=50
+GET /stored_changepoints?domain=twitter.com&layer=tls&start_date=2026-10-01&end_date=2026-10-07
 ```

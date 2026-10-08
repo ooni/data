@@ -7,6 +7,7 @@ Minimal HTTP API around oonipipeline.analysis.detectorV2.
 
 Needs oonipipeline's `src` dir on PYTHONPATH (see Readme.md).
 """
+import json
 import os
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
@@ -180,6 +181,59 @@ def create_changepoint_label(label: CreateChangepointRequest):
         [row],
     )
     return row
+
+
+@app.get("/stored_changepoints")
+def stored_changepoints(
+    probe_cc: str | None = Query(None, min_length=2, max_length=2),
+    domain: str | None = None,
+    probe_asn: int | None = None,
+    resolver_asn: int | None = None,
+    layer: Literal["dns", "tcp", "tls"] | None = None,
+    state: Literal["BLOCK", "OK"] | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    filters = {
+        "probe_cc": probe_cc and probe_cc.upper(),
+        "domain": domain,
+        "probe_asn": probe_asn,
+        "resolver_asn": resolver_asn,
+        "layer": layer,
+        "state": state,
+    }
+    filters = {k: v for k, v in filters.items() if v is not None}
+    where = [f"{k} = %({k})s" for k in filters]
+    params = dict(filters, limit=limit, offset=offset)
+    if start_date:
+        where.append("ts_hour >= %(start)s")
+        params["start"] = datetime.combine(start_date, time(), timezone.utc)
+    if end_date:
+        where.append("ts_hour < %(end)s")
+        params["end"] = datetime.combine(end_date + timedelta(days=1), time(), timezone.utc)
+
+    rows, cols = Client.from_url(CLICKHOUSE_URL).execute(
+        f"""
+        SELECT uuid, domain, probe_cc, probe_asn, resolver_asn, layer, ts_hour,
+               s_neg, s_pos, h, state, run_parameters, created_at
+        FROM event_detector_v2_changepoints
+        {"WHERE " + " AND ".join(where) if where else ""}
+        ORDER BY ts_hour DESC, domain, probe_cc, probe_asn, resolver_asn, layer
+        LIMIT %(limit)s OFFSET %(offset)s
+        """,
+        params,
+        with_column_types=True,
+    )
+    changepoints = [dict(zip([c[0] for c in cols], r)) for r in rows]
+    for cp in changepoints:
+        cp["run_parameters"] = json.loads(cp["run_parameters"] or "{}")
+
+    return {
+        "query": dict(filters, start_date=start_date, end_date=end_date, limit=limit, offset=offset),
+        "changepoints": changepoints,
+    }
 
 
 if __name__ == "__main__":
