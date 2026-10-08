@@ -1,5 +1,6 @@
 import logging
 import math
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -449,6 +450,39 @@ def _get_domains(clickhouse: ClickhouseClient) -> list[str]:
     if "twitter.com" not in domains:
         domains.append("twitter.com")
     return domains
+
+def store_changepoints(clickhouse_url: str, results: DetectorResult):
+    """
+    Stores every changepoint in `results` into event_detector_v2_changepoints,
+    each one with a random uuid.
+    """
+    rows = [
+        {
+            "uuid": uuid.uuid4(),
+            "domain": cp.domain,
+            "probe_cc": cp.probe_cc,
+            "probe_asn": cp.probe_asn,
+            "resolver_asn": cp.resolver_asn,
+            "layer": layer,
+            "ts_hour": cp.ts_hour,
+            "s_neg": cp.s_neg,
+            "s_pos": cp.s_pos,
+            "h": cp.h,
+            "state": str(cp.state),
+        }
+        for entry in results.values()
+        for layer in LAYERS
+        for cp in getattr(entry, layer)
+    ]
+    if not rows:
+        return
+
+    clickhouse = ClickhouseClient.from_url(clickhouse_url)
+    clickhouse.execute(
+        f"INSERT INTO event_detector_v2_changepoints ({', '.join(rows[0])}) VALUES",
+        rows,
+    )
+
 
 def notify_slack(
     results: DetectorResult,

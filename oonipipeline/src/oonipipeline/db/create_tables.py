@@ -345,6 +345,27 @@ def make_create_queries():
         ),
         (
             """
+        CREATE TABLE IF NOT EXISTS event_detector_v2_changepoints
+        (
+            `uuid` UUID,
+            `domain` String,
+            `probe_cc` String,
+            `probe_asn` UInt32,
+            `resolver_asn` UInt32,
+            `layer` LowCardinality(String),
+            `ts_hour` DateTime64(3, 'UTC'),
+            `s_neg` Float64,
+            `s_pos` Float64,
+            `h` Float64,
+            `state` LowCardinality(String)
+        )
+        ENGINE = ReplacingMergeTree
+        ORDER BY (ts_hour, domain, layer, probe_cc, probe_asn, resolver_asn, state, uuid);
+            """,
+            "event_detector_v2_changepoints",
+        ),
+        (
+            """
         CREATE TABLE IF NOT EXISTS faulty_measurements
         (
             `ts` DateTime64(3, 'UTC') DEFAULT now64(),

@@ -2,7 +2,11 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from ..analysis.detectorV2 import notify_slack, run_detector_hourly
+from ..analysis.detectorV2 import (
+    notify_slack,
+    run_detector_hourly,
+    store_changepoints,
+)
 
 log = logging.getLogger()
 
@@ -43,6 +47,8 @@ def make_detector_v2(params: MakeDetectorV2Params):
         target_hour.isoformat(),
         len(results),
     )
+
+    store_changepoints(params.clickhouse_url, results)
 
     if params.slack_webhook is not None:
         notify_slack(
