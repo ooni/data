@@ -3,7 +3,16 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from oonipipeline.analysis.detectorV2 import Cell, Detector, State, _get_domains, iter_cells
+from oonipipeline.analysis.detectorV2 import (
+    Cell,
+    ChangePoint,
+    Detector,
+    ResultEntry,
+    State,
+    _get_domains,
+    iter_cells,
+    store_changepoints,
+)
 
 
 def test_detectorV2_venezuela(db, db_analysis_ve):
@@ -295,3 +304,42 @@ def test_get_domains_includes_twitter_when_citizenlab_has_none(db, citizenlab_em
     domains = _get_domains(db.client)
 
     assert domains == ["twitter.com"]
+
+
+def test_store_changepoints(db):
+    ts_hour = datetime(2026, 9, 1, 10, tzinfo=timezone.utc)
+
+    def make_cp(state: State) -> ChangePoint:
+        return ChangePoint(
+            domain="twitter.com",
+            probe_cc="VE",
+            probe_asn=8048,
+            resolver_asn=8048,
+            ts_hour=ts_hour,
+            s_neg=1.0,
+            s_pos=31.0,
+            h=30,
+            state=state,
+        )
+
+    results = {
+        ("VE", 8048, 8048, "twitter.com"): ResultEntry(
+            dns=[make_cp(State.BLOCK)], tcp=[], tls=[make_cp(State.OK)]
+        )
+    }
+    store_changepoints(db.clickhouse_url, results)
+
+    rows = db.execute(
+        """
+        SELECT layer, state, domain, probe_cc, probe_asn, resolver_asn,
+               ts_hour, s_neg, s_pos, h
+        FROM event_detector_v2_changepoints
+        ORDER BY layer
+        """
+    )
+    assert rows == [
+        ("dns", "BLOCK", "twitter.com", "VE", 8048, 8048, ts_hour, 1.0, 31.0, 30.0),
+        ("tls", "OK", "twitter.com", "VE", 8048, 8048, ts_hour, 1.0, 31.0, 30.0),
+    ]
+    uuids = db.execute("SELECT DISTINCT uuid FROM event_detector_v2_changepoints")
+    assert len(uuids) == 2
