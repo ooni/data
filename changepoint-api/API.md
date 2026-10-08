@@ -160,3 +160,56 @@ Empty `totals` and `hourly` mean no measurements for that exact combination; che
 ```
 GET /rule_counts?probe_cc=RU&probe_asn=56377&resolver_asn=56377&domain=twitter.com&start_date=2026-09-09&end_date=2026-09-10
 ```
+
+## POST /changepoint_labels
+
+Stores a person's verdict on a changepoint from `event_detector_v2_changepoints`: the ground truth
+of whether that network (`probe_cc`, `probe_asn`, `resolver_asn`) was blocking the domain around the
+changepoint. A changepoint can be labelled more than once; every label is kept, and the most recent
+`created_at` is the current one.
+
+### Request body (JSON)
+
+| name | type | required | default | meaning |
+|---|---|---|---|---|
+| `changepoint_id` | uuid | yes | | `uuid` of the changepoint in `event_detector_v2_changepoints`. |
+| `author` | string, non-empty | yes | | Name of the person labelling. |
+| `verdict` | `blocked` \| `ok` \| `undecided` | yes | | The network's actual state. |
+| `notes` | string | no | `""` | Free-form text. |
+| `last_ok_time` | datetime | no | null | Last time the domain was seen accessible before the block. |
+| `first_block_time` | datetime | no | null | First time the domain was seen blocked. |
+| `last_block_time` | datetime | no | null | Last time the domain was seen blocked. |
+| `first_ok_time` | datetime | no | null | First time the domain was seen accessible after the block. |
+
+Datetimes are ISO 8601, e.g. `2026-09-01T09:00:00Z`. Ones without a timezone are taken as UTC.
+
+### Response 201
+
+The stored label, with the server-generated `id` and `created_at`:
+
+```json
+{
+  "id": "e3b28905-2e25-49d2-8d63-5cdfad3d729c",
+  "created_at": "2026-10-08T16:32:08.134796+00:00",
+  "changepoint_id": "26660500-5ea1-47f7-a7bf-36aa18c46197",
+  "author": "luis",
+  "verdict": "blocked",
+  "notes": "confirmed",
+  "last_ok_time": null,
+  "first_block_time": "2026-09-01T09:00:00+00:00",
+  "last_block_time": null,
+  "first_ok_time": null
+}
+```
+
+### Errors
+
+- `404` `{"detail": "changepoint_id not found"}`: no changepoint with that uuid.
+- `422`: missing or malformed field, e.g. a `verdict` other than `blocked`, `ok` or `undecided`.
+
+### Example
+
+```
+POST /changepoint_labels
+{"changepoint_id": "26660500-5ea1-47f7-a7bf-36aa18c46197", "author": "luis", "verdict": "blocked", "first_block_time": "2026-09-01T09:00:00Z"}
+```

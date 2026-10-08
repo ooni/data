@@ -8,12 +8,14 @@ Minimal HTTP API around oonipipeline.analysis.detectorV2.
 Needs oonipipeline's `src` dir on PYTHONPATH (see Readme.md).
 """
 import os
+import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from itertools import groupby
 from typing import Literal
 
 from clickhouse_driver import Client
 from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from oonipipeline.analysis.detectorV2 import (
     LAYERS,
@@ -145,6 +147,39 @@ def rule_counts(
         ],
         "hourly": rows,
     }
+
+
+class CreateChangepointRequest(BaseModel):
+    changepoint_id: uuid.UUID
+    author: str = Field(..., min_length=1)
+    verdict: Literal["blocked", "ok", "undecided"]
+    notes: str = ""
+    last_ok_time: datetime | None = None
+    first_block_time: datetime | None = None
+    last_block_time: datetime | None = None
+    first_ok_time: datetime | None = None
+
+
+@app.post("/changepoint_labels", status_code=201)
+def create_changepoint_label(label: CreateChangepointRequest):
+    client = Client.from_url(CLICKHOUSE_URL)
+    exists = client.execute(
+        "SELECT 1 FROM event_detector_v2_changepoints WHERE uuid = %(uuid)s LIMIT 1",
+        {"uuid": label.changepoint_id},
+    )
+    if not exists:
+        raise HTTPException(404, "changepoint_id not found")
+
+    row = {
+        "id": uuid.uuid4(),
+        "created_at": datetime.now(timezone.utc),
+        **label.model_dump(),
+    }
+    client.execute(
+        f"INSERT INTO changepoint_label ({', '.join(row)}) VALUES",
+        [row],
+    )
+    return row
 
 
 if __name__ == "__main__":
