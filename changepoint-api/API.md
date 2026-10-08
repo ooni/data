@@ -4,6 +4,9 @@ HTTP API that detects when a website started or stopped being blocked in a count
 measurement data. Each changepoint is a moment when a CUSUM detector decided that a network moved
 from OK to blocked (`BLOCK`), or from blocked back to `OK`, at one network layer.
 
+A second endpoint, `/rule_counts`, shows the raw evidence behind a changepoint: which scoring rules
+fired for each measurement of one network.
+
 Base URL: `http://127.0.0.1:8000` (the machine-readable schema is at `/openapi.json`).
 
 ## GET /changepoints
@@ -93,3 +96,67 @@ GET /changepoints?probe_cc=TZ&domain=x.com&start_date=2026-06-01&end_date=2026-0
 - Ranges of months on a popular domain can take tens of seconds.
 - To give a person a chart to check a changepoint against, link to OONI Explorer (same format as `detector.get_explorer_url`):
   `https://explorer.ooni.org/chart/mat?domain=<domain>&probe_cc=<cc>&probe_asn=<asn>&since=<YYYY-MM-DD>&until=<YYYY-MM-DD>&axis_x=measurement_start_day`
+
+## GET /rule_counts
+
+For one network (`probe_cc`, `probe_asn`, `resolver_asn`) and one domain, counts how many
+measurements were assigned each rule, per hour and per layer. Every measurement is scored at each
+layer by a rule (e.g. `country_consistent_blockpage` for DNS, `failure_ctrl_ok_reset` for TLS), and
+the rule names say *how* the site was blocked or why it was considered OK. Use it to explain or
+double check a changepoint: take `probe_asn` and `resolver_asn` from a `/changepoints` result and
+query the days around its `ts_hour`.
+
+### Query parameters
+
+| name | type | required | default | meaning |
+|---|---|---|---|---|
+| `probe_cc` | string | yes | | Two-letter ISO country code. |
+| `probe_asn` | int | yes | | Network of the probe, number only (`56377`, not `AS56377`). |
+| `resolver_asn` | int | yes | | Network of the DNS resolver, number only. |
+| `domain` | string | yes | | Hostname, exact match as in `/changepoints`. |
+| `start_date` | date `YYYY-MM-DD` | yes | | First day (UTC). |
+| `end_date` | date `YYYY-MM-DD` | no | `start_date` | Last day, inclusive. |
+
+### Response 200
+
+```json
+{
+  "query": { "probe_cc": "RU", "probe_asn": 56377, "resolver_asn": 56377, "domain": "twitter.com", "start_date": "2026-09-09", "end_date": "2026-09-10" },
+  "totals": [
+    { "layer": "dns", "rule_id": "country_consistent_blockpage", "class": "blocked", "count": 32 },
+    { "layer": "tcp", "rule_id": "connect_ok", "class": "ok", "count": 32 },
+    { "layer": "tls", "rule_id": "certificate_valid", "class": "ok", "count": 15 },
+    { "layer": "tls", "rule_id": "failure_ctrl_ok_reset", "class": "blocked", "count": 17 }
+  ],
+  "hourly": [
+    { "ts_hour": "2026-09-09T00:00:00+00:00", "layer": "dns", "rule_id": "country_consistent_blockpage", "class": "blocked", "count": 1 }
+  ]
+}
+```
+
+- `totals`: counts per (`layer`, `rule_id`) summed over the whole range, sorted by layer then
+  rule. Start here; `hourly` can be long.
+- `hourly`: the same counts broken down by `ts_hour` (start of the hour, UTC), sorted by hour,
+  layer and rule. Hours with no measurements are absent.
+- `rule_id`: the rule that scored the layer for that measurement. Its name describes what was seen.
+- `class`: how the changepoint detector counts the rule:
+  - `blocked`: evidence of blocking (counted towards both `k` and `n`).
+  - `ok`: evidence the layer worked (counted towards `n` only).
+  - `discarded`: ignored by the detector, e.g. the layer was not reached, the result is not
+    trustworthy, or the site looked down rather than blocked, or the rule id is a legacy one.
+- Within one layer and hour, the blocked share the detector sees is
+  `blocked / (blocked + ok)`; it compares this against `p0` and `p1`.
+
+### Errors
+
+- `400`: `end_date` before `start_date`.
+- `422`: missing or malformed parameter.
+
+Empty `totals` and `hourly` mean no measurements for that exact combination; check the
+`series` of `/changepoints` for the `probe_asn`/`resolver_asn` pairs that have data.
+
+### Example
+
+```
+GET /rule_counts?probe_cc=RU&probe_asn=56377&resolver_asn=56377&domain=twitter.com&start_date=2026-09-09&end_date=2026-09-10
+```

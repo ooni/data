@@ -15,7 +15,13 @@ from typing import Literal
 from clickhouse_driver import Client
 from fastapi import FastAPI, HTTPException, Query
 
-from oonipipeline.analysis.detectorV2 import LAYERS, Detector, iter_cells
+from oonipipeline.analysis.detectorV2 import (
+    LAYERS,
+    Detector,
+    _classify_rule_id,
+    get_rule_counts,
+    iter_cells,
+)
 
 CLICKHOUSE_URL = os.environ.get("CLICKHOUSE_URL", "clickhouse://localhost:9000/ooni")
 
@@ -93,6 +99,51 @@ def changepoints(
         },
         "changepoints": sorted(events, key=lambda e: e["ts_hour"]),
         "series": series,
+    }
+
+
+@app.get("/rule_counts")
+def rule_counts(
+    probe_cc: str = Query(..., min_length=2, max_length=2),
+    probe_asn: int = Query(...),
+    resolver_asn: int = Query(...),
+    domain: str = Query(...),
+    start_date: date = Query(...),
+    end_date: date | None = Query(None),
+):
+    end_date = end_date or start_date
+    if end_date < start_date:
+        raise HTTPException(400, "end_date must be >= start_date")
+
+    rows = get_rule_counts(
+        Client.from_url(CLICKHOUSE_URL),
+        domain=domain,
+        probe_asn=probe_asn,
+        resolver_asn=resolver_asn,
+        start_time=datetime.combine(start_date, time(), timezone.utc),
+        end_time=datetime.combine(end_date, time(23), timezone.utc),
+        probe_cc=probe_cc.upper(),
+    )
+    totals = {}
+    for r in rows:
+        r["class"] = _classify_rule_id(r["layer"], r["rule_id"])
+        key = (r["layer"], r["rule_id"], r["class"])
+        totals[key] = totals.get(key, 0) + r["count"]
+
+    return {
+        "query": {
+            "probe_cc": probe_cc.upper(),
+            "probe_asn": probe_asn,
+            "resolver_asn": resolver_asn,
+            "domain": domain,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+        "totals": [
+            {"layer": layer, "rule_id": rule_id, "class": cls, "count": count}
+            for (layer, rule_id, cls), count in sorted(totals.items())
+        ],
+        "hourly": rows,
     }
 
 
