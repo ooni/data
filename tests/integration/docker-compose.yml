@@ -1,20 +1,31 @@
 version: '3.8'
 
 services:
-  downloader:
+  # the pipeline's tables, from oonipipeline's own definitions; fastpath reads
+  # the fingerprints tables, so this runs before it
+  create_tables:
     build:
       context: ../../
       dockerfile: Dockerfile
+    image: oonidata_image
+    command: oonipipeline checkdb --create-tables --no-print-create
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
+
+  downloader:
     image: oonidata_image
     volumes:
       - ./data:/data:Z
     working_dir: /data
     command: >
       bash -c "oonidata sync --output-dir . --probe-cc IT,IR --start-day 2026-01-01 --end-day 2026-01-03 &&
-      oonipipeline run --create-tables --probe-cc IT,IR --start-at 2026-01-01 --end-at 2026-01-03"
+      oonipipeline run --probe-cc IT,IR --start-at 2026-01-01 --end-at 2026-01-03"
     depends_on:
-      clickhouse:
-        condition: service_healthy
+      create_tables:
+        condition: service_completed_successfully
     environment:
       CLICKHOUSE_URL: "http://testuser:testuser@clickhouse:9000/ooni"
 
@@ -55,8 +66,8 @@ services:
                "--keep-s3-cache", "--write-to-disk", "--stdout", "--ccs", "IT,IR",
                "--start-day", "2026-01-01", "--end-day", "2026-01-03", "--noapi" ]
     depends_on:
-      clickhouse:
-        condition: service_healthy
+      create_tables:
+        condition: service_completed_successfully
       postgres:
         condition: service_started
 
@@ -71,8 +82,8 @@ services:
                "clickhouse://testuser:testuser@clickhouse:9000/ooni",
                "--keep-s3-cache", "--write-to-disk", "--stdout" ]
     depends_on:
-      clickhouse:
-        condition: service_healthy
+      create_tables:
+        condition: service_completed_successfully
       postgres:
         condition: service_started
     ports:
