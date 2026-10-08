@@ -359,9 +359,10 @@ def make_create_queries():
             `h` Float64,
             `state` LowCardinality(String),
             -- JSON-encoded parameters the detector was run with
-            `run_parameters` String
+            `run_parameters` String,
+            `created_at` DateTime64(3, 'UTC') DEFAULT now64()
         )
-        ENGINE = ReplacingMergeTree
+        ENGINE = MergeTree
         ORDER BY (ts_hour, domain, layer, probe_cc, probe_asn, resolver_asn, state, uuid);
             """,
             "event_detector_v2_changepoints",

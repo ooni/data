@@ -474,7 +474,7 @@ def store_changepoints(
             "h_threshold": h,
             "gap_halflife": gap_halflife,
             "use_decay": use_decay,
-        }
+        }, sort_keys=True, separators=(",", ":")
     )
     rows = [
         {
