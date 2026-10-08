@@ -357,7 +357,9 @@ def make_create_queries():
             `s_neg` Float64,
             `s_pos` Float64,
             `h` Float64,
-            `state` LowCardinality(String)
+            `state` LowCardinality(String),
+            -- JSON-encoded parameters the detector was run with
+            `run_parameters` String
         )
         ENGINE = ReplacingMergeTree
         ORDER BY (ts_hour, domain, layer, probe_cc, probe_asn, resolver_asn, state, uuid);

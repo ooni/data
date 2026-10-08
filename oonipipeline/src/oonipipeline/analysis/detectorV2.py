@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 import uuid
@@ -451,11 +452,30 @@ def _get_domains(clickhouse: ClickhouseClient) -> list[str]:
         domains.append("twitter.com")
     return domains
 
-def store_changepoints(clickhouse_url: str, results: DetectorResult):
+def store_changepoints(
+    clickhouse_url: str,
+    results: DetectorResult,
+    warmup_days: int,
+    p0: float,
+    p1: float,
+    h: float,
+    gap_halflife: float,
+    use_decay: bool,
+):
     """
     Stores every changepoint in `results` into event_detector_v2_changepoints,
     each one with a random uuid.
     """
+    run_parameters = json.dumps(
+        {
+            "warmup_days": warmup_days,
+            "p0": p0,
+            "p1": p1,
+            "h": h,
+            "gap_halflife": gap_halflife,
+            "use_decay": use_decay,
+        }
+    )
     rows = [
         {
             "uuid": uuid.uuid4(),
@@ -469,6 +489,7 @@ def store_changepoints(clickhouse_url: str, results: DetectorResult):
             "s_pos": cp.s_pos,
             "h": cp.h,
             "state": str(cp.state),
+            "run_parameters": run_parameters,
         }
         for entry in results.values()
         for layer in LAYERS

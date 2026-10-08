@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -327,7 +328,16 @@ def test_store_changepoints(db):
             dns=[make_cp(State.BLOCK)], tcp=[], tls=[make_cp(State.OK)]
         )
     }
-    store_changepoints(db.clickhouse_url, results)
+    store_changepoints(
+        db.clickhouse_url,
+        results,
+        warmup_days=30,
+        p0=0.05,
+        p1=0.50,
+        h=30,
+        gap_halflife=24,
+        use_decay=True,
+    )
 
     rows = db.execute(
         """
@@ -343,3 +353,17 @@ def test_store_changepoints(db):
     ]
     uuids = db.execute("SELECT DISTINCT uuid FROM event_detector_v2_changepoints")
     assert len(uuids) == 2
+
+    run_parameters = db.execute(
+        "SELECT DISTINCT run_parameters FROM event_detector_v2_changepoints"
+    )
+    assert [json.loads(r[0]) for r in run_parameters] == [
+        {
+            "warmup_days": 30,
+            "p0": 0.05,
+            "p1": 0.50,
+            "h": 30,
+            "gap_halflife": 24,
+            "use_decay": True,
+        }
+    ]
