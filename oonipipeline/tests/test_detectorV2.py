@@ -362,7 +362,7 @@ def test_store_changepoints(db):
             "warmup_days": 30,
             "p0": 0.05,
             "p1": 0.50,
-            "h": 30,
+            "h_threshold": 30,
             "gap_halflife": 24,
             "use_decay": True,
         }

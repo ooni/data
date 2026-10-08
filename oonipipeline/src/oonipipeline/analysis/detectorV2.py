@@ -471,7 +471,7 @@ def store_changepoints(
             "warmup_days": warmup_days,
             "p0": p0,
             "p1": p1,
-            "h": h,
+            "h_threshold": h,
             "gap_halflife": gap_halflife,
             "use_decay": use_decay,
         }
