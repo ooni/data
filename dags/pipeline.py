@@ -164,11 +164,11 @@ with DAG(
         "probe_cc": Param(default=[], type=["null", "array"]),
         "test_name": Param(default=[], type=["null", "array"]),
     },
-    start_date=datetime.datetime(2012, 12, 4),
+    start_date=datetime.datetime(2025, 1, 24),
     # We offset the schedule by 30 minutes so that we give time for the uploader
     # to finish
     schedule="30 0 * * *",
-    catchup=False,
+    catchup=True,
     max_active_tasks=2,
     max_active_runs=2,
 ) as dag_full:
