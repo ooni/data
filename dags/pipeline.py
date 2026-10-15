@@ -164,6 +164,7 @@ with DAG(
         "probe_cc": Param(default=[], type=["null", "array"]),
         "test_name": Param(default=[], type=["null", "array"]),
     },
+    # Day of the first run of this dag
     start_date=datetime.datetime(2025, 1, 24),
     # We offset the schedule by 30 minutes so that we give time for the uploader
     # to finish
