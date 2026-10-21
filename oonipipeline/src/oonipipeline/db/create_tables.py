@@ -282,7 +282,7 @@ def make_create_queries():
         ),
         (
             """
-        CREATE TABLE IF NOT EXISTS event_detector_changepoints (
+        CREATE TABLE IF NOT EXISTS event_detector_changepoints ON CLUSTER oonidata_cluster (
             `probe_asn` UInt32,
             `probe_cc` String,
             `domain` String,
@@ -302,7 +302,9 @@ def make_create_queries():
             `h` Nullable(float),
             `block_type` String
         )
-        ENGINE = ReplacingMergeTree
+        -- replicated so the API, which reads another replica than the
+        -- detector writes to, sees the changepoints
+        ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/{database}/event_detector_changepoints/{shard}', '{replica}')
         ORDER BY (probe_asn, probe_cc, ts, domain);
 
             """,
