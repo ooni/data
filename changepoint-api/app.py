@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["fastapi", "uvicorn", "clickhouse-driver", "requests"]
+# dependencies = ["fastapi", "uvicorn", "clickhouse-driver", "requests", "pyjwt"]
 # ///
 """
 Minimal HTTP API around oonipipeline.analysis.detectorV2.
@@ -14,8 +14,9 @@ from datetime import date, datetime, time, timedelta, timezone
 from itertools import groupby
 from typing import Literal
 
+import jwt
 from clickhouse_driver import Client
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from oonipipeline.analysis.detectorV2 import (
@@ -27,6 +28,33 @@ from oonipipeline.analysis.detectorV2 import (
 )
 
 CLICKHOUSE_URL = os.environ.get("CLICKHOUSE_URL", "clickhouse://localhost:9000/ooni")
+# Shared with ooniauth, which signs the tokens
+JWT_ENCRYPTION_KEY = os.environ["JWT_ENCRYPTION_KEY"]
+
+
+def role_required(roles: list[str]):
+    """Copy of ooniapi's common.dependencies.role_required:
+    https://github.com/ooni/backend/blob/f02b3f5553c53db78100c77d1e6b3ae259a0d1ca/ooniapi/common/src/common/dependencies.py#L27
+    Tokens are created by ooniauth's create_session_token:
+    https://github.com/ooni/backend/blob/f02b3f5553c53db78100c77d1e6b3ae259a0d1ca/ooniapi/services/ooniauth/src/ooniauth/utils.py#L35
+    """
+
+    def verify_jwt(authorization: str = Header("")):
+        try:
+            assert authorization.startswith("Bearer ")
+            tok = jwt.decode(
+                authorization[7:],
+                JWT_ENCRYPTION_KEY,
+                algorithms=["HS256"],
+                audience="user_auth",
+            )
+        except Exception:
+            raise HTTPException(401, "Authentication required")
+        if tok.get("role") not in roles:
+            raise HTTPException(401, "Role not authorized")
+        return tok
+
+    return verify_jwt
 
 app = FastAPI(title="OONI changepoint API")
 
@@ -44,6 +72,7 @@ def changepoints(
     h: float = Query(30, gt=0),
     gap_halflife: float = Query(24, gt=0),
     use_decay: bool = True,
+    token=Depends(role_required(["admin"])),
 ):
     end_date = end_date or start_date
     if end_date < start_date:
@@ -162,7 +191,9 @@ class CreateChangepointRequest(BaseModel):
 
 
 @app.post("/changepoint_labels", status_code=201)
-def create_changepoint_label(label: CreateChangepointRequest):
+def create_changepoint_label(
+    label: CreateChangepointRequest, token=Depends(role_required(["admin"]))
+):
     client = Client.from_url(CLICKHOUSE_URL)
     exists = client.execute(
         "SELECT 1 FROM event_detector_v2_changepoints WHERE uuid = %(uuid)s LIMIT 1",
@@ -175,6 +206,7 @@ def create_changepoint_label(label: CreateChangepointRequest):
         "id": uuid.uuid4(),
         "created_at": datetime.now(timezone.utc),
         **label.model_dump(),
+        "account_id": token["account_id"],
     }
     client.execute(
         f"INSERT INTO changepoint_label ({', '.join(row)}) VALUES",

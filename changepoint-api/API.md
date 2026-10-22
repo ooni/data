@@ -17,6 +17,8 @@ Base URL: `http://127.0.0.1:8000` (the machine-readable schema is at `/openapi.j
 
 Returns changepoints for one domain in one country over a date range (all times UTC).
 
+Requires an ooniauth `admin` token: `Authorization: Bearer <jwt>`.
+
 ### Query parameters
 
 | name | type | required | default | meaning |
@@ -83,6 +85,7 @@ detector parameters at their defaults unless asked otherwise.
 ### Errors
 
 - `400` `{"detail": "..."}`: `end_date` before `start_date`, or `p1 <= p0`.
+- `401`: missing or invalid token, or the role is not `admin`.
 - `422`: missing or malformed parameter (FastAPI validation error).
 
 ### Examples
@@ -167,6 +170,8 @@ GET /rule_counts?probe_cc=RU&probe_asn=56377&resolver_asn=56377&domain=twitter.c
 
 ## POST /changepoint_labels
 
+Requires an ooniauth `admin` token: `Authorization: Bearer <jwt>`.
+
 Stores a person's verdict on a changepoint from `event_detector_v2_changepoints`: the ground truth
 of whether that network (`probe_cc`, `probe_asn`, `resolver_asn`) was blocking the domain around the
 changepoint. A changepoint can be labelled more than once; every label is kept, and the most recent
@@ -189,7 +194,8 @@ Datetimes are ISO 8601, e.g. `2026-09-01T09:00:00Z`. Ones without a timezone are
 
 ### Response 201
 
-The stored label, with the server-generated `id` and `created_at`:
+The stored label, with the server-generated `id`, `created_at` and `account_id` (ooniauth account
+of the token used):
 
 ```json
 {
@@ -202,12 +208,14 @@ The stored label, with the server-generated `id` and `created_at`:
   "last_ok_time": null,
   "first_block_time": "2026-09-01T09:00:00+00:00",
   "last_block_time": null,
-  "first_ok_time": null
+  "first_ok_time": null,
+  "account_id": "c5a3f1d0e2b4a6c8d0e2f4a6b8c0d2e4"
 }
 ```
 
 ### Errors
 
+- `401`: missing or invalid token, or the role is not `admin`.
 - `404` `{"detail": "changepoint_id not found"}`: no changepoint with that uuid.
 - `422`: missing or malformed field, e.g. a `verdict` other than `blocked`, `ok` or `undecided`.
 

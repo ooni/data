@@ -379,6 +379,8 @@ def make_create_queries():
             `changepoint_id` UUID,
             `created_at` DateTime64(3, 'UTC') DEFAULT now64(),
             `author` String,
+            -- ooniauth account_id (hashed email) of who created the label
+            `account_id` String,
             -- blocked, ok or undecided
             `verdict` LowCardinality(String),
             -- Additional context the author might share
