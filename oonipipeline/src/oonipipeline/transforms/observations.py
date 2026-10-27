@@ -55,6 +55,7 @@ NETTEST_TRANSFORMERS = {
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
     "echcheck": ECHCheckTransformer,
+    "tlsmiddlebox": TLSMiddleboxTransformer,
 }
 
 TypeWebConnectivityObservations = Tuple[
