@@ -394,3 +394,97 @@ class HTTPMiddleboxObservation:
     hfm_diff: Optional[str] = None
     hfm_failure: Optional[str] = None
     hfm_success: Optional[bool] = None
+
+@dataclass
+class TLSMiddleboxObservation:
+    measurement_meta: MeasurementMeta
+    probe_meta: ProbeMeta
+
+    observation_idx: int = 0
+    created_at: Optional[datetime] = None
+
+    target_id: Optional[str] = None
+    hostname: Optional[str] = None
+
+    transaction_id: Optional[int] = None
+
+    ip: Optional[str] = None
+    port: Optional[int] = None
+
+    ip_asn: Optional[int] = None
+    ip_as_org_name: Optional[str] = None
+    ip_as_cc: Optional[str] = None
+    ip_cc: Optional[str] = None
+    ip_is_bogon: Optional[bool] = None
+
+    # DNS related observation
+    dns_query_type: Optional[str] = None
+    dns_failure: Failure = None
+    dns_engine: Optional[str] = None
+    dns_engine_resolver_address: Optional[str] = None
+
+    dns_answer_type: Optional[str] = None
+    dns_answer: Optional[str] = None
+    # These should match those in the IP field, but are the annotations coming
+    # from the probe
+    dns_answer_asn: Optional[int] = None
+    dns_answer_as_org_name: Optional[str] = None
+    dns_t: Optional[float] = None
+
+    # TCP related observation
+    tcp_failure: Optional[Failure] = None
+    tcp_success: Optional[bool] = None
+    tcp_t: Optional[float] = None
+
+    # ICMP related observation
+    icmp_timeout: Optional[bool]: None
+    icmp_connected: Optional[bool]: None
+    icmp_error: Optional[str]: None
+    icmp_source_ip: Optional[str]: None
+    icmp_source_ip_country_code: Optional[str]: None
+    icmp_source_ip_asn: Optional[str]: None
+    icmp_source_ip_asn_org: Optional[str]: None
+    icmp_type: Optional[int]: None
+    icmp_code: Optional[int]: None
+    icmp_t0: Optional[float]: None
+    icmp_t: Optional[float]: None
+
+    icmp_quote_protocol: Optional[str]: None
+    icmp_quote_source_port: Optional[int]: None
+    icmp_quote_destination_port: Optional[int]: None
+    icmp_quote_tcp_sequence_number: Optional[int]: None
+    icmp_quote_udp_length: Optional[int]: None
+    icmp_quote_udp_checksum: Optional[int]: None
+    icmp_quote_remaining_payload: Optional[str]: None
+
+    # TLS related observation
+    tls_failure: Optional[Failure] = None
+
+    tls_server_name: Optional[str] = None
+    tls_outer_server_name: Optional[str] = None
+    tls_echconfig: Optional[str] = None
+    tls_version: Optional[str] = None
+    tls_cipher_suite: Optional[str] = None
+    tls_is_certificate_valid: Optional[bool] = None
+
+    tls_end_entity_certificate_fingerprint: Optional[str] = None
+    tls_end_entity_certificate_subject: Optional[str] = None
+    tls_end_entity_certificate_subject_common_name: Optional[str] = None
+    tls_end_entity_certificate_issuer: Optional[str] = None
+    tls_end_entity_certificate_issuer_common_name: Optional[str] = None
+    tls_end_entity_certificate_san_list: List[str] = field(default_factory=list)
+    tls_end_entity_certificate_not_valid_after: Optional[datetime] = None
+    tls_end_entity_certificate_not_valid_before: Optional[datetime] = None
+    tls_certificate_chain_length: Optional[int] = None
+    tls_certificate_chain_fingerprints: List[str] = field(default_factory=list)
+
+    tls_handshake_read_count: Optional[int] = None
+    tls_handshake_write_count: Optional[int] = None
+    tls_handshake_read_bytes: Optional[float] = None
+    tls_handshake_write_bytes: Optional[float] = None
+    tls_handshake_last_operation: Optional[str] = None
+    tls_handshake_time: Optional[float] = None
+    tls_t: Optional[float] = None
+
+    # probe level analysis
+    probe_analysis: Optional[str] = None

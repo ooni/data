@@ -55,7 +55,7 @@ class TCPTraceroute(BaseModel):
 
 @add_slots
 @dataclass
-class TLSMiddlebox(BaseModel):
+class Trace(BaseModel):
     address: Optional[str] = None
     tcp_traceroute: Optional[boo] = None
     control_trace[bool] = None
@@ -67,7 +67,7 @@ class TLSMiddlebox(BaseModel):
 class TLSMiddleboxTestKeys(BaseTestKeys):
     queries: Optional[List[DNSQuery]] = None
     tcp_connect: Optional[List[TCPConnect]] = None
-    iterative_trace: Optional[TLSMiddlebox] = None
+    iterative_trace: Optional[Trace] = None
 
 
 @add_slots

@@ -63,6 +63,7 @@ TypeWebConnectivityObservations = Tuple[
 ]
 TypeWebObservations = Tuple[List[WebObservation]]
 TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
+TypeTLSMiddleboxObservations = Tuple[List[TLSMiddleboxObservation]]
 
 
 @overload
@@ -97,6 +98,13 @@ def measurement_to_observations(
     netinfodb: NetinfoDB,
     bucket_date: str = "1984-01-01",
 ) -> TypeWebObservations: ...
+
+@overload
+def measurement_to_observations(
+    msmt: TLSMiddlebox,
+    netinfodb: NetinfoDB,
+    bucket_date: str = "1984-01-01",
+) -> TypeTLSMiddleboxObservations: ...
 
 
 def measurement_to_observations(
