@@ -1,6 +1,32 @@
 name: test oonidata
 on: push
 jobs:
+  # Install as users do, with pip and without hatch, and run the command it
+  # installs (#149, #195)
+  install:
+    name: pip install / ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install oonidata
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install ./oonidata
+
+      - name: Run the oonidata command
+        run: |
+          "$RUNNER_TEMP/venv/bin/oonidata" --version
+          "$RUNNER_TEMP/venv/bin/oonidata" sync --help
+
   run_tests:
     name: ${{ matrix.os }} / ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}-latest
