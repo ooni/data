@@ -8,10 +8,13 @@ on:
 
 permissions:
   contents: write
+  # OIDC for PyPI trusted publishing
+  id-token: write
 
 jobs:
   release:
     runs-on: ubuntu-24.04
+    environment: pypi
     steps:
       - uses: actions/checkout@v6
 
@@ -66,5 +69,4 @@ jobs:
         if: steps.pkg.outputs.package == 'oonidata'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
           packages-dir: oonidata/dist
