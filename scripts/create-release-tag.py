@@ -66,6 +66,13 @@ def fetch_pypi_version(package: str) -> str:
 
 
 def max_tag_version(package: str) -> tuple[int, ...]:
+    # Make sure we compare against releases pushed by others
+    refspec = f"refs/tags/{package}-v*:refs/tags/{package}-v*"
+    fetch = git("fetch", "origin", refspec, check=False)
+    if fetch.returncode != 0:
+        eprint(f"{RED}ERROR{RESET}: could not fetch tags from origin:")
+        eprint(fetch.stderr.strip())
+        sys.exit(1)
     tags_out = git("tag", "--list", f"{package}-v*").stdout
     best: tuple[int, ...] = (0,)
     for line in tags_out.splitlines():
