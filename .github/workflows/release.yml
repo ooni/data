@@ -67,8 +67,14 @@ jobs:
       # oonipipeline bundles oonidata in its wheel, so only oonidata goes to PyPI.
       # This might fail with status code 400 if the version already exists,
       # remember to bump it
+      # To test against test.pypi.org instead:
+      #   - uncomment repository-url below
+      #   - tag with create-release-tag.py
+      #   - afterwards delete the test release and tag:
+      #     gh release delete <tag> --cleanup-tag
       - name: Publish to PyPI
         if: steps.pkg.outputs.package == 'oonidata'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: oonidata/dist
+          # repository-url: https://test.pypi.org/legacy/
