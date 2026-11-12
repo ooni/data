@@ -5,8 +5,19 @@ build-backend = "hatchling.build"
 [project]
 name = "oonipipeline"
 dynamic = ["version"]
-description = ""
+description = "Tools for downloading and analysing OONI network measurement data"
+readme = "Readme.md"
+requires-python = ">=3.10"
 authors = [{ name = "OONI", email = "contact@ooni.org" }]
+keywords = ["ooni", "censorship", "network measurement", "internet"]
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Internet",
+]
 
 dependencies = [
   "boto3 ~= 1.24",
@@ -45,6 +56,12 @@ analysis = [
   "vl-convert-python>=1.9.0.post1",
   "apache-airflow == 2.10.4"
 ]
+
+[project.urls]
+Homepage = "https://ooni.org"
+Documentation = "https://docs.ooni.org/data"
+Source = "https://github.com/ooni/data"
+Issues = "https://github.com/ooni/data/issues"
 
 [tool.hatch.build.targets.sdist]
 
