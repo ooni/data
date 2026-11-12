@@ -14,7 +14,21 @@ permissions:
   id-token: write
 
 jobs:
+  # Run the released package's test suite on the tagged commit first
+  test-oonidata:
+    if: startsWith(github.ref_name, 'oonidata')
+    uses: ./.github/workflows/test_oonidata.yml
+    secrets: inherit
+
+  test-oonipipeline:
+    if: startsWith(github.ref_name, 'oonipipeline')
+    uses: ./.github/workflows/test_oonipipeline.yml
+    secrets: inherit
+
   release:
+    needs: [test-oonidata, test-oonipipeline]
+    # one of the test jobs is always skipped, so only stop on failure
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-24.04
     # env: set of rules applied to this workflow file, defined on a per repo
     # basis.

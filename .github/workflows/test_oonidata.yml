@@ -1,5 +1,9 @@
 name: test oonidata
-on: push
+on:
+  push:
+    # tag pushes run these through release.yml before releasing
+    branches: ["**"]
+  workflow_call:
 jobs:
   run_tests:
     name: ${{ matrix.os }} / ${{ matrix.python-version }}
