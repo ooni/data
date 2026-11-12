@@ -41,11 +41,12 @@ def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def version_tuple(v: str) -> tuple[int, ...]:
-    """Numeric dotted version -> tuple for lexicographic compare"""
-    parts = v.strip().strip("v").split(".")
-    if not parts or any(not p.isdigit() for p in parts):
-        raise ValueError(f"expected dotted numeric version, got {v}")
-    return tuple(int(p) for p in parts)
+    """Leading numeric dotted version -> tuple for lexicographic compare,
+    anything after it is ignored"""
+    m = re.match(r"(\d+(?:\.\d+)*)", v.strip().strip("v"))
+    if not m:
+        raise ValueError(f"expected a dotted numeric version, got {v}")
+    return tuple(int(p) for p in m.group(1).split("."))
 
 
 def parse_about_version(about_py: Path) -> str:
@@ -105,12 +106,13 @@ def main():
         sys.exit(1)
 
     try:
-        local_version = version_tuple(parse_about_version(about_py))
+        local_version_str = parse_about_version(about_py)
+        local_version = version_tuple(local_version_str)
     except ValueError as e:
         eprint(f"Error: {e}")
         sys.exit(1)
 
-    tag_name = f"{package}-v{vstr(local_version)}"
+    tag_name = f"{package}-v{local_version_str}"
 
     # returns err if tag is unknown, which is what we want
     tag_exists = git("rev-parse", tag_name, check=False).returncode == 0
@@ -140,7 +142,7 @@ def main():
             f"{RED}ERROR{RESET}: Local {package} version must be greater than the "
             f"latest release, bump {about_py.relative_to(REPO_ROOT)} before releasing.",
         )
-        eprint(f"  Local:    {vstr(local_version)}")
+        eprint(f"  Local:    {local_version_str}")
         eprint(f"  Released: {vstr(released_version)} ({released_source})")
         sys.exit(1)
 
@@ -155,7 +157,7 @@ def main():
         print(f"  Branch:         {RED}{current_branch} (WARNING: not main){RESET}")
     print(f"  Commit:         {commit_sha}")
     print(
-        f"  {package}: {vstr(local_version)} "
+        f"  {package}: {local_version_str} "
         f"(released: {vstr(released_version)} from {released_source})"
     )
     print()
