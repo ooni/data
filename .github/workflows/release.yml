@@ -1,0 +1,96 @@
+# The name of this file must match the
+# one configured in PyPi in the OIDC settings
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "oonidata-v*"
+      - "oonipipeline-v*"
+
+permissions:
+  contents: write
+  # OIDC for PyPI trusted publishing
+  id-token: write
+
+jobs:
+  # Run the released package's test suite on the tagged commit first
+  test-oonidata:
+    if: startsWith(github.ref_name, 'oonidata')
+    uses: ./.github/workflows/test_oonidata.yml
+    secrets: inherit
+
+  test-oonipipeline:
+    if: startsWith(github.ref_name, 'oonipipeline')
+    uses: ./.github/workflows/test_oonipipeline.yml
+    secrets: inherit
+
+  release:
+    needs: [test-oonidata, test-oonipipeline]
+    # one of the test jobs is always skipped, so only stop on failure
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    # env: set of rules applied to this workflow file, defined on a per repo
+    # basis.
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: 3.11
+
+      - name: Install hatch
+        run: |
+          pip install click==8.1.8
+          pip install "hatch>=1.13" "virtualenv<21"
+
+      # Tags are <package>-v<version>, created by scripts/create-release-tag.py
+      - name: Resolve package from tag
+        id: pkg
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          package="${tag%%-v*}"
+          version="${tag#*-v}"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check tag matches package version
+        working-directory: ./${{ steps.pkg.outputs.package }}
+        run: |
+          local_version="$(hatch version)"
+          if [ "$local_version" != "${{ steps.pkg.outputs.version }}" ]; then
+            echo "Tag version ${{ steps.pkg.outputs.version }} != $local_version in __about__.py"
+            exit 1
+          fi
+
+      - name: Build package
+        working-directory: ./${{ steps.pkg.outputs.package }}
+        run: hatch build
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          make_latest: false
+          files: |
+            ${{ steps.pkg.outputs.package }}/dist/*
+
+      # oonipipeline bundles oonidata in its wheel, so only oonidata goes to PyPI.
+      # This might fail with status code 400 if the version already exists,
+      # remember to bump it
+      # To test against test.pypi.org instead:
+      #   - uncomment repository-url below
+      #   - tag with create-release-tag.py
+      #   - afterwards delete the test release and tag:
+      #     gh release delete <tag> --cleanup-tag
+      - name: Publish to PyPI
+        if: steps.pkg.outputs.package == 'oonidata'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: oonidata/dist
+          # repository-url: https://test.pypi.org/legacy/
