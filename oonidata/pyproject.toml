@@ -8,6 +8,8 @@ dynamic = ["version"]
 description = "Tools for downloading and analysing OONI network measurement data"
 readme = "Readme.md"
 requires-python = ">=3.10"
+license = "BSD-3-Clause"
+license-files = ["LICENSE.md"]
 authors = [{ name = "OONI", email = "contact@ooni.org" }]
 keywords = ["ooni", "censorship", "network measurement", "internet"]
 classifiers = [

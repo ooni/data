@@ -8,6 +8,8 @@ dynamic = ["version"]
 description = "Ooni data processing pipeline"
 readme = "Readme.md"
 requires-python = ">=3.10"
+license = "BSD-3-Clause"
+license-files = ["LICENSE.md"]
 authors = [{ name = "OONI", email = "contact@ooni.org" }]
 keywords = ["ooni", "censorship", "network measurement", "internet"]
 classifiers = [
@@ -64,6 +66,9 @@ Source = "https://github.com/ooni/data"
 Issues = "https://github.com/ooni/data/issues"
 
 [tool.hatch.build.targets.sdist]
+# tests/data/datadir holds GBs of downloaded test data, it would end up in the
+# sdist
+exclude = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oonipipeline", "src/oonidata"]
