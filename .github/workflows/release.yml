@@ -1,3 +1,5 @@
+# The name of this file must match the
+# one configured in PyPi in the OIDC settings
 name: Build and Release
 
 on:
