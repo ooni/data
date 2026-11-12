@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "oonipipeline"
 dynamic = ["version"]
-description = "Tools for downloading and analysing OONI network measurement data"
+description = "Ooni data processing pipeline"
 readme = "Readme.md"
 requires-python = ">=3.10"
 authors = [{ name = "OONI", email = "contact@ooni.org" }]
