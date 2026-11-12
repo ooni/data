@@ -16,6 +16,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    # env: set of rules applied to this workflow file, defined on a per repo
+    # basis.
     environment: pypi
     steps:
       - uses: actions/checkout@v6
