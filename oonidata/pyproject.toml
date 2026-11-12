@@ -29,7 +29,6 @@ dependencies = [
   "requests ~= 2.27",
   "cryptography ~= 38.0.3",
   "click ~= 8.0.0",
-  "lxml ~= 4.9",
   "orjson ~= 3.8",
   "mashumaro ~= 3.0",
   "pyOpenSSL ~= 22.1",
