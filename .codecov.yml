@@ -6,3 +6,5 @@ coverage:
     patch:
       default:
         target: 80
+ignore:
+  - "scripts/create-release-tag.py"
