@@ -7,7 +7,7 @@ name = "oonipipeline"
 dynamic = ["version"]
 description = "Ooni data processing pipeline"
 readme = "Readme.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = "BSD-3-Clause"
 license-files = ["LICENSE.md"]
 authors = [{ name = "OONI", email = "contact@ooni.org" }]
@@ -15,6 +15,7 @@ keywords = ["ooni", "censorship", "network measurement", "internet"]
 classifiers = [
   "Intended Audience :: Science/Research",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Topic :: Internet",
 ]
@@ -85,7 +86,7 @@ dependencies = [
   "pytest-asyncio",
   "ipdb",
 ]
-python = "3.12"
+python = "3.11"
 path = ".venv/"
 
 [tool.hatch.version]
