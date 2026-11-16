@@ -5,21 +5,30 @@ build-backend = "hatchling.build"
 [project]
 name = "oonipipeline"
 dynamic = ["version"]
-description = ""
+description = "Ooni data processing pipeline"
+readme = "Readme.md"
+requires-python = ">=3.12"
+license = "BSD-3-Clause"
+license-files = ["LICENSE.md"]
 authors = [{ name = "OONI", email = "contact@ooni.org" }]
+keywords = ["ooni", "censorship", "network measurement", "internet"]
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Internet",
+]
 
 dependencies = [
   "boto3 ~= 1.24",
   "PyYAML ~= 6.0",
   "pandas ~= 2.0",
-  "numpy < 2",
   "tqdm ~= 4.64",
   "lz4 ~= 4.0",
   "requests ~= 2.27",
   "cryptography ~= 41.0.0",
   "clickhouse-driver ~= 0.2",
   "click ~= 8.0.0",
-  "lxml ~= 4.9",
   "maxminddb ~= 2.2",
   "orjson ~= 3.8",
   "mashumaro ~= 3.0",
@@ -46,7 +55,16 @@ analysis = [
   "apache-airflow == 2.10.4"
 ]
 
+[project.urls]
+Homepage = "https://ooni.org"
+Documentation = "https://docs.ooni.org/data"
+Source = "https://github.com/ooni/data"
+Issues = "https://github.com/ooni/data/issues"
+
 [tool.hatch.build.targets.sdist]
+# tests/data/datadir holds GBs of downloaded test data, it would end up in the
+# sdist
+exclude = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oonipipeline", "src/oonidata"]
@@ -67,7 +85,7 @@ dependencies = [
   "pytest-asyncio",
   "ipdb",
 ]
-python = "3.11"
+python = "3.12"
 path = ".venv/"
 
 [tool.hatch.version]
