@@ -188,6 +188,27 @@ class TCPObservation:
     transaction_id: Optional[int] = None
 
 
+@dataclass
+class ICMPObservation:
+    timeout: Optional[bool] = None
+    connected: Optional[bool] = None
+    error: Optional[str] = None
+    source_ip: Optional[str] = None
+    source_ip_country_code: Optional[str] = None
+    source_ip_asn: Optional[str] = None
+    source_ip_asn_org: Optional[str] = None
+    icmp_type: Optional[int] = None
+    icmp_code: Optional[int] = None
+    quote_protocol: Optional[str] = None
+    quote_source_port: Optional[int] = None
+    quote_destination_port: Optional[int] = None
+    quote_tcp_sequence_number: Optional[int] = None
+    quote_udp_length: Optional[int] = None
+    quote_udp_checksum: Optional[int] = None
+    quote_remaining_payload: Optional[str] = None
+    t0: Optional[float]= None
+    t: Optional[float] = None
+
 @table_model(
     table_name="obs_web_ctrl",
     table_index=(
@@ -396,7 +417,7 @@ class HTTPMiddleboxObservation:
     hfm_success: Optional[bool] = None
 
 @dataclass
-class TLSMiddleboxObservation:
+class MiddleboxObservation:
     measurement_meta: MeasurementMeta
     probe_meta: ProbeMeta
 
@@ -416,6 +437,13 @@ class TLSMiddleboxObservation:
     ip_as_cc: Optional[str] = None
     ip_cc: Optional[str] = None
     ip_is_bogon: Optional[bool] = None
+
+    # Middlebox related observation
+    trace_idx: Optional[int] = None
+    iteration_idx: Optional[int] = None
+    trace_type: Optional[str] = None
+    ttl: Optional[int] = None
+    iteration: Optional[int] = None
 
     # DNS related observation
     dns_query_type: Optional[str] = None
@@ -437,25 +465,25 @@ class TLSMiddleboxObservation:
     tcp_t: Optional[float] = None
 
     # ICMP related observation
-    icmp_timeout: Optional[bool]: None
-    icmp_connected: Optional[bool]: None
-    icmp_error: Optional[str]: None
-    icmp_source_ip: Optional[str]: None
-    icmp_source_ip_country_code: Optional[str]: None
-    icmp_source_ip_asn: Optional[str]: None
-    icmp_source_ip_asn_org: Optional[str]: None
-    icmp_type: Optional[int]: None
-    icmp_code: Optional[int]: None
-    icmp_t0: Optional[float]: None
-    icmp_t: Optional[float]: None
+    icmp_timeout: Optional[bool] = None
+    icmp_connected: Optional[bool] = None
+    icmp_error: Optional[str] = None
+    icmp_source_ip: Optional[str] = None
+    icmp_source_ip_country_code: Optional[str] = None
+    icmp_source_ip_asn: Optional[str] = None
+    icmp_source_ip_asn_org: Optional[str] = None
+    icmp_type: Optional[int] = None
+    icmp_code: Optional[int] = None
+    icmp_t0: Optional[float] = None
+    icmp_t: Optional[float] = None
 
-    icmp_quote_protocol: Optional[str]: None
-    icmp_quote_source_port: Optional[int]: None
-    icmp_quote_destination_port: Optional[int]: None
-    icmp_quote_tcp_sequence_number: Optional[int]: None
-    icmp_quote_udp_length: Optional[int]: None
-    icmp_quote_udp_checksum: Optional[int]: None
-    icmp_quote_remaining_payload: Optional[str]: None
+    icmp_quote_protocol: Optional[str] = None
+    icmp_quote_source_port: Optional[int] = None
+    icmp_quote_destination_port: Optional[int] = None
+    icmp_quote_tcp_sequence_number: Optional[int] = None
+    icmp_quote_udp_length: Optional[int] = None
+    icmp_quote_udp_checksum: Optional[int] = None
+    icmp_quote_remaining_payload: Optional[str] = None
 
     # TLS related observation
     tls_failure: Optional[Failure] = None

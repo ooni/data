@@ -23,6 +23,7 @@ from oonidata.models.dataformats import (
     NetworkEvent,
     TCPConnect,
     TLSHandshake,
+    ICMPError,
     maybe_binary_data_to_bytes,
 )
 from oonidata.models.nettests.base_measurement import BaseMeasurement
@@ -33,7 +34,9 @@ from oonidata.models.observations import (
     ProbeMeta,
     TCPObservation,
     TLSObservation,
+    ICMPObservation,
     WebObservation,
+    MiddleboxObservation,
 )
 from oonidata.datautils import (
     InvalidCertificateChain,
@@ -287,6 +290,34 @@ def measurement_to_tcp_observation(
 
     return tcpo
 
+def measurement_to_icmp_observation(
+    msmt_meta: MeasurementMeta,
+    icmp_error: ICMPError,
+) -> ICMPObservation:
+    quote = icmp_error.quote
+
+    icmpo = ICMPObservation(
+        timeout=icmp_error.timeout,
+        connected=icmp_error.connected,
+        error=icmp_error.error,
+        source_ip=icmp_error.source_ip,
+        source_ip_country_code=icmp_error.source_ip_country_code,
+        source_ip_asn=icmp_error.source_ip_asn,
+        source_ip_asn_org=icmp_error.source_ip_asn_org,
+        icmp_type=icmp_error.icmp_type,
+        icmp_code=icmp_error.icmp_code,
+
+        quote_protocol=icmp_error.quote.protocol if quote else None,
+        quote_source_port =icmp_error.quote.source_port if quote else None,
+        quote_destination_port=icmp_error.quote.destination_port if quote else None,
+        quote_tcp_sequence_number=icmp_error.quote.tcp_sequence_number if quote else None,
+        quote_udp_length=icmp_error.quote.udp_length if quote else None,
+        quote_udp_checksum=icmp_error.quote.udp_checksum if quote else None,
+        quote_remaining_payload=icmp_error.quote.remaining_payload if quote else None,
+        t0=icmp_error.t0,
+        t=icmp_error.t,
+    )
+    return icmpo
 
 def find_tls_handshake_events_without_transaction_id(
     tls_handshake: TLSHandshake,
@@ -489,6 +520,45 @@ def measurement_to_tls_observation(
             tlso.is_certificate_valid = True
 
     return tlso
+
+def copy_icmp_fields(
+    src_obs: ICMPObservation,
+    dst_obs: MiddleboxObservation,
+):
+    dst_obs.icmp_timeout = src_obs.timeout
+    dst_obs.icmp_connected = src_obs.connected
+    dst_obs.icmp_error = src_obs.error
+    dst_obs.icmp_source_ip = src_obs.source_ip
+    dst_obs.icmp_source_ip_country_code = src_obs.source_ip_country_code
+    dst_obs.icmp_source_ip_asn = src_obs.source_ip_asn
+    dst_obs.icmp_source_ip_asn_org = src_obs.source_ip_asn_org
+    dst_obs.icmp_type = src_obs.icmp_type
+
+    dst_obs.icmp_quote_protocol = src_obs.quote_protocol
+    dst_obs.icmp_quote_source_port = src_obs.quote_source_port
+    dst_obs.icmp_quote_destination_port = src_obs.quote_destination_port
+    dst_obs.icmp_quote_tcp_sequence_number = src_obs.quote_tcp_sequence_number
+    dst_obs.icmp_quote_udp_length = src_obs.quote_udp_length
+    dst_obs.icmp_quote_udp_checksum = src_obs.quote_udp_checksum
+    dst_obs.icmp_quote_remaining_payload = src_obs.quote_remaining_payload
+    dst_obs.icmp_t0 = src_obs.t0
+    dst_obs.icmp_t = src_obs.t
+
+def maybe_set_middlebox_fields(
+        src_obs,
+        middlebox_obs: MiddleboxObservation,
+        prefix: str,
+        field_names: Tuple[str, ...],
+):
+    if not src_obs:
+        return
+
+    for fname in field_names:
+        if fname.startswith(prefix):
+            src_field_name = removeprefix(fname, prefix)
+            setattr(middlebox_obs, fname, getattr(src_obs, src_field_name))
+
+MIDDLEBOX_OBS_FIELDS = tuple(f.name for f in dataclasses.fields(MiddleboxObservation))
 
 
 def maybe_set_web_fields(
@@ -949,6 +1019,26 @@ class MeasurementTransformer:
 
         return obs_dns
 
+    def make_icmp_observations(
+        self,
+        icmp_errors: Optional[List[ICMPError]],
+    ) -> List[ICMPObservation]:
+        """
+        Returns a list of ICMPObservations usually found under the `icmp_error` test_key in the tlsmiddlebox experiment
+        """
+        obs_icmp = []
+        if not icmp_errors:
+            return obs_icmp
+
+        for icmp_error in icmp_errors:
+            obs_icmp.append(
+                measurement_to_icmp_observation(
+                    msmt_meta=self.measurement_meta, icmp_error=icmp_error,
+                )
+            )
+
+        return obs_icmp
+
     def consume_web_observations(
         self,
         dns_observations: List[DNSObservation] = [],
@@ -1103,3 +1193,29 @@ class MeasurementTransformer:
 
     def make_observations(self, measurement):
         assert RuntimeError("make_observations is not implemented")
+
+    def consume_middlebox_observations(
+        self,
+        middlebox_observations: List[MiddleboxObservation],
+        icmp_observations: List[Tuple[int, int, str, ICMPObservation]],
+        tls_observations: List[Tuple[int, int, str, TLSObservation]],
+    ) -> List[MiddleboxObservation]:
+
+        icmp_by_hop = {(trace_idx, iteration_idx, trace_type): icmp_o for trace_idx, iteration_idx, trace_type, icmp_o in icmp_observations}
+        tls_by_hop = {(trace_idx, iteration_idx, trace_type): tls_o for trace_idx, iteration_idx, trace_type, tls_o in tls_observations}
+
+        for obs in middlebox_observations:
+            key = (obs.trace_idx, obs.iteration_idx, obs.trace_type)
+
+            icmp_o = icmp_by_hop.get(key)
+            if icmp_o is not None:
+                copy_icmp_fields(icmp_o, obs)
+
+            maybe_set_middlebox_fields(
+                tls_by_hop.get(key),
+                obs,
+                "tls_",
+                MIDDLEBOX_OBS_FIELDS
+            )
+
+        return middlebox_observations
