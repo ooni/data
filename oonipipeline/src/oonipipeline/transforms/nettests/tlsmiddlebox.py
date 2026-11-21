@@ -14,7 +14,7 @@ log = logging.getLogger("oonidata.transforms.tlsmiddlebox")
 class MiddleboxTransformer(MeasurementTransformer):
     def make_observations(
         self, msmt: TLSMiddlebox
-    ) -> Tuple[List[MiddleboxObservation]]:
+    ) -> List[MiddleboxObservation]:
 
         middlebox_observations: List[MiddleboxObservation] = []
 
@@ -48,7 +48,7 @@ class MiddleboxTransformer(MeasurementTransformer):
                     )
 
                     for icmp_o in icmp_obs:
-                        icmp_observations.append((trace_idx, iteration_idx, icmp_o))
+                        icmp_observations.append((trace_idx, iteration_idx, icmp_o, "tcp"))
 
             # Control Trace
             if trace.control_trace is not None:
@@ -70,7 +70,7 @@ class MiddleboxTransformer(MeasurementTransformer):
                     )
 
                     for tls_o in tls_obs:
-                        tls_observations.append((trace_idx, iteration_idx, tls_o))
+                        tls_observations.append((trace_idx, iteration_idx, tls_o, "control"))
 
             # Target Trace
             if trace.target_trace is not None:
@@ -92,7 +92,7 @@ class MiddleboxTransformer(MeasurementTransformer):
                     )
 
                     for tls_o in tls_obs:
-                        tls_observations.append((trace_idx, iteration_idx, tls_o))
+                        tls_observations.append((trace_idx, iteration_idx, tls_o, "target"))
 
 
         observations = self.consume_middlebox_observations(

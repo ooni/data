@@ -1197,12 +1197,12 @@ class MeasurementTransformer:
     def consume_middlebox_observations(
         self,
         middlebox_observations: List[MiddleboxObservation],
-        icmp_observations: List[Tuple[int, int, str, ICMPObservation]],
-        tls_observations: List[Tuple[int, int, str, TLSObservation]],
+        icmp_observations: List[Tuple[int, int, ICMPObservation, str]],
+        tls_observations: List[Tuple[int, int, TLSObservation, str]],
     ) -> List[MiddleboxObservation]:
 
-        icmp_by_hop = {(trace_idx, iteration_idx, trace_type): icmp_o for trace_idx, iteration_idx, trace_type, icmp_o in icmp_observations}
-        tls_by_hop = {(trace_idx, iteration_idx, trace_type): tls_o for trace_idx, iteration_idx, trace_type, tls_o in tls_observations}
+        icmp_by_hop = {(trace_idx, iteration_idx, trace_type): icmp_o for trace_idx, iteration_idx, icmp_o, trace_type in icmp_observations}
+        tls_by_hop = {(trace_idx, iteration_idx, trace_type): tls_o for trace_idx, iteration_idx, tls_o, trace_type in tls_observations}
 
         for obs in middlebox_observations:
             key = (obs.trace_idx, obs.iteration_idx, obs.trace_type)

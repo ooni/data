@@ -11,6 +11,7 @@ from oonidata.models.nettests.signal import Signal
 from oonidata.models.nettests.facebook_messenger import FacebookMessenger
 from oonidata.models.nettests.whatsapp import Whatsapp
 from oonidata.models.nettests.web_connectivity import WebConnectivity
+from oonidata.models.nettests.tlsmiddlebox import TLSMiddlebox
 from oonidata.models.nettests.stun_reachability import StunReachability
 from oonidata.models.nettests.urlgetter import UrlGetter
 from oonidata.models.nettests.browser_web import BrowserWeb
@@ -244,6 +245,26 @@ def test_wc_v5_shared_dns_and_connection_transaction_id(netinfodb, measurements)
     assert resolved[0].port == 443
     assert resolved[0].tls_server_name == "www.mtv.com"
 
+ 
+def test_tls_middlebox_observations(measurements, netinfodb):
+    print("BEFORE LOAD")
+    msmt = load_measurement(
+        msmt_path=measurements[
+            "20261027114035.310824_HR_tlsmiddlebox_6a2c3061d5e3db18"
+        ]
+    )
+
+    assert isinstance(msmt, TLSMiddlebox)
+
+    middlebox_obs = measurement_to_observations(
+        msmt=msmt,
+        netinfodb=netinfodb,
+        bucket_date="2026-10-27",
+    )
+
+    print(middlebox_obs)
+
+    assert len(middlebox_obs) > 0
 
 def test_http_observations(measurements, netinfodb):
     msmt = load_measurement(
