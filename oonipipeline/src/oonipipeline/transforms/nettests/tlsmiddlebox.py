@@ -33,6 +33,7 @@ class MiddleboxTransformer(MeasurementTransformer):
                 for iteration_idx, hop in enumerate(trace.tcp_traceroute.iterations or []):
                     obs = MiddleboxObservation(
                         measurement_meta=self.measurement_meta,
+                        observation_idx=len(middlebox_observations),
                         probe_meta=self.probe_meta,
                         created_at=created_at,
                         trace_idx=trace_idx,
@@ -55,6 +56,7 @@ class MiddleboxTransformer(MeasurementTransformer):
                 for iteration_idx, hop in enumerate(trace.control_trace.iterations or []):
                     obs = MiddleboxObservation(
                         measurement_meta=self.measurement_meta,
+                        observation_idx=len(middlebox_observations),
                         probe_meta=self.probe_meta,
                         created_at=created_at,
                         trace_idx=trace_idx,
@@ -77,6 +79,7 @@ class MiddleboxTransformer(MeasurementTransformer):
                 for iteration_idx, hop in enumerate(trace.target_trace.iterations or []):
                     obs = MiddleboxObservation(
                         measurement_meta=self.measurement_meta,
+                        observation_idx=len(middlebox_observations),
                         probe_meta=self.probe_meta,
                         created_at=created_at,
                         trace_idx=trace_idx,
@@ -99,6 +102,8 @@ class MiddleboxTransformer(MeasurementTransformer):
                         middlebox_observations=middlebox_observations,
                         icmp_observations=icmp_observations,
                         tls_observations=tls_observations,
+                        dns_observations=dns_observations,
+                        tcp_observations=tcp_observations,
                     )
 
         return observations

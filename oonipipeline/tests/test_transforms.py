@@ -247,7 +247,6 @@ def test_wc_v5_shared_dns_and_connection_transaction_id(netinfodb, measurements)
 
  
 def test_tls_middlebox_observations(measurements, netinfodb):
-    print("BEFORE LOAD")
     msmt = load_measurement(
         msmt_path=measurements[
             "20261027114035.310824_HR_tlsmiddlebox_6a2c3061d5e3db18"
@@ -261,8 +260,6 @@ def test_tls_middlebox_observations(measurements, netinfodb):
         netinfodb=netinfodb,
         bucket_date="2026-10-27",
     )
-
-    print(middlebox_obs)
 
     assert len(middlebox_obs) > 0
 

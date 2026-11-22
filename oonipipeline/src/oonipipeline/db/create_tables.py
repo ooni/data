@@ -220,6 +220,7 @@ table_models = [
     WebObservation,
     WebControlObservation,
     HTTPMiddleboxObservation,
+    MiddleboxObservation,
 ]
 
 

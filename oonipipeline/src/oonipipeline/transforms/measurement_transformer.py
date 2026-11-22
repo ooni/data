@@ -1199,6 +1199,8 @@ class MeasurementTransformer:
         middlebox_observations: List[MiddleboxObservation],
         icmp_observations: List[Tuple[int, int, ICMPObservation, str]],
         tls_observations: List[Tuple[int, int, TLSObservation, str]],
+        dns_observations: List[DNSObservation],
+        tcp_observations: List[TCPObservation],
     ) -> List[MiddleboxObservation]:
 
         icmp_by_hop = {(trace_idx, iteration_idx, trace_type): icmp_o for trace_idx, iteration_idx, icmp_o, trace_type in icmp_observations}
@@ -1217,5 +1219,37 @@ class MeasurementTransformer:
                 "tls_",
                 MIDDLEBOX_OBS_FIELDS
             )
+
+        for dns_o in dns_observations:
+            obs = MiddleboxObservation(
+                measurement_meta=self.measurement_meta,
+                probe_meta=self.probe_meta,
+                observation_idx=len(middlebox_observations),
+            )
+
+            maybe_set_middlebox_fields(
+                dns_o,
+                obs,
+                "dns_",
+                MIDDLEBOX_OBS_FIELDS
+            )
+
+            middlebox_observations.append(obs)
+
+        for tcp_o in tcp_observations:
+            obs = MiddleboxObservation(
+                measurement_meta=self.measurement_meta,
+                probe_meta=self.probe_meta,
+                observation_idx=len(middlebox_observations),
+            )
+
+            maybe_set_middlebox_fields(
+                tcp_o,
+                obs,
+                "tcp_",
+                MIDDLEBOX_OBS_FIELDS
+            )
+
+            middlebox_observations.append(obs)
 
         return middlebox_observations

@@ -416,6 +416,17 @@ class HTTPMiddleboxObservation:
     hfm_failure: Optional[str] = None
     hfm_success: Optional[bool] = None
 
+@table_model(
+    table_name="obs_middlebox",
+    table_index=(
+        "measurement_start_time",
+        "probe_cc",
+        "probe_asn",
+        "measurement_uid",
+        "observation_idx",
+    ),
+    partition_key="concat(substring(bucket_date, 1, 4), substring(bucket_date, 6, 2))",
+)
 @dataclass
 class MiddleboxObservation:
     measurement_meta: MeasurementMeta
