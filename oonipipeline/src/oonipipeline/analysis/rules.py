@@ -29,12 +29,11 @@ do not have to infer it from the numbers. Read the level, never ``blocked == 0``
 TODO(art): the Evidence label carries with it a similar meaning to the Masking rules and should
 eventually be consolidated.
 """
-
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import List, Tuple
 
-RULES_VERSION = 3
+RULES_VERSION = 4
 
 
 class Evidence(IntEnum):
@@ -284,9 +283,22 @@ CURRENT_RULES: List[Rule] = [
         evidence=Evidence.DISCARDED,
     ),
     Rule(
-        rule_id="failure_ctrl_ok",
+        rule_id="tcp_ipv6_failure_ctrl_ok",
         condition=(
-            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 "
+            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 AND ip_is_v6 = 1 "
+            "AND ctrl_tcp_success_count > 0"
+        ),
+        blocked=0.6,
+        down=0.4,
+        ok=0.0,
+        layer=RuleLayer.TCP,
+        outcome_class=OutcomeClass.BLOCKED,
+        comment="Failure against an IPv6 address that mostly succeeds in the control.",
+    ),
+    Rule(
+        rule_id="tcp_ipv4_failure_ctrl_ok",
+        condition=(
+            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 AND ip_is_v4 = 1 "
             "AND ctrl_tcp_success_count > 0"
         ),
         blocked=0.75,
@@ -294,8 +306,22 @@ CURRENT_RULES: List[Rule] = [
         ok=0.0,
         layer=RuleLayer.TCP,
         outcome_class=OutcomeClass.BLOCKED,
-        comment="Failure against an address that mostly succeeds in the control.",
+        comment="Failure against an IPv4 address that mostly succeeds in the control.",
     ),
+    Rule(
+        rule_id="tcp_ipv_unknown_failure_ctrl_ok",
+        condition=(
+            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 "
+            "AND ctrl_tcp_success_count > 0"
+        ),
+        blocked=0.4,
+        down=0.6,
+        ok=0.0,
+        layer=RuleLayer.TCP,
+        outcome_class=OutcomeClass.DOWN,
+        comment="Failure against an address that is nor v4 nor v4 that mostly succeeds in the control. This should in theory never trigger",
+    ),
+
     Rule(
         rule_id="dns_untrusted_tcp_gate",
         condition="dns_blocked > 0 AND dns_ok <= (dns_blocked + dns_down)",
@@ -491,6 +517,21 @@ LEGACY_RULES = [
         ),
         evidence=Evidence.DISCARDED,
     ),
+    Rule(
+        rule_id="failure_ctrl_ok",
+        condition=(
+            "tcp_failure IS NOT NULL AND ctrl_tcp_success_rate > 0.5 "
+            "AND ctrl_tcp_success_count > 0"
+        ),
+        blocked=0.75,
+        down=0.25,
+        ok=0.0,
+        layer=RuleLayer.TCP,
+        version=3,
+        outcome_class=OutcomeClass.BLOCKED,
+        comment="Failure against an address that mostly succeeds in the control.",
+    ),
+
 ]
 
 DNS_RULES = list(filter(lambda x: x.layer == RuleLayer.DNS, CURRENT_RULES))

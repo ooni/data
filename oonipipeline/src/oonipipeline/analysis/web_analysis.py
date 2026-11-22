@@ -1,6 +1,6 @@
 import logging
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from ..db.connections import ClickhouseConnection
@@ -45,6 +45,7 @@ def format_query_analysis_web_fuzzy_logic(
     q_params: Dict[str, Any] = {
         "start_time": start_time,
         "end_time": end_time,
+        "ctrl_start_time": start_time - timedelta(hours=1),
         "cloud_provider_asns": CLOUD_PROVIDERS_ASNS,
     }
     and_where = [
@@ -221,7 +222,26 @@ def format_query_analysis_web_fuzzy_logic(
     FROM (
         WITH
         isIPv4String(ip) as ip_is_v4,
-        isIPv6String(ip) as ip_is_v6
+        isIPv6String(ip) as ip_is_v6,
+
+        -- Key for "all observations produced by the same probe in this run".
+        --
+        -- report_id was once used, however since at least probe-multiplatform a
+        -- resubmission gets a fresh report_id instead of sharing the one of the
+        -- measurement set it belongs to, so it no longer groups a probe's
+        -- observations.
+        --
+        -- probe_id is the pseudonymous probe identifier and is the right key
+        -- for probes that support it. It changes when a probe changes network
+        -- so IPv6 availability should be stable within the time window partition
+        -- and change when the network changes.
+        -- The current implementation uses a window of one hour or 1 day depending
+        -- on airflow scheduling.
+        if(
+            probe_id = toFixedString('', 64),
+            report_id,
+            toString(probe_id)
+        ) as probe_run_id
 
         SELECT
         measurement_uid,
@@ -238,6 +258,7 @@ def format_query_analysis_web_fuzzy_logic(
         ip_asn,
         ip_is_bogon,
         ip_is_v6,
+        ip_is_v4,
         dns_failure,
         dns_answer,
         dns_engine,
@@ -252,15 +273,13 @@ def format_query_analysis_web_fuzzy_logic(
         countIf(ip_asn IN %(cloud_provider_asns)s) over (partition by measurement_uid) as dns_answers_cloud,
 
         -- We use these to get an indication of whether IPv6 is entirely broken in
-        -- this probe.
-        -- TODO: in the future we could use something other than report_id, but
-        -- closer to "run_id" to get all measurements from a particular probe at a
-        -- given time interval
-        countIf(ip_is_v6 AND tcp_failure IS NOT NULL) over (partition by report_id) as tcp_ipv6_failure_count,
-        countIf(ip_is_v6 AND tcp_success = 1) over (partition by report_id) as tcp_ipv6_success_count,
+        -- this probe. Partitioned by probe_run_id (see the WITH above): probe_id
+        -- when the probe reports one, report_id otherwise.
+        countIf(ip_is_v6 AND tcp_failure IS NOT NULL) over (partition by probe_run_id) as tcp_ipv6_failure_count,
+        countIf(ip_is_v6 AND tcp_success = 1) over (partition by probe_run_id) as tcp_ipv6_success_count,
 
-        countIf(ip_is_v4 AND tcp_success = 1) over (partition by report_id) as tcp_ipv4_success_count,
-        countIf(ip_is_v4 AND tcp_failure IS NOT NULL) over (partition by report_id) as tcp_ipv4_failure_count,
+        countIf(ip_is_v4 AND tcp_success = 1) over (partition by probe_run_id) as tcp_ipv4_success_count,
+        countIf(ip_is_v4 AND tcp_failure IS NOT NULL) over (partition by probe_run_id) as tcp_ipv4_failure_count,
 
         tcp_ipv6_failure_count/(tcp_ipv6_success_count+tcp_ipv6_failure_count) as tcp_ipv6_failure_rate,
         tcp_ipv4_failure_count/(tcp_ipv4_success_count+tcp_ipv4_failure_count) as tcp_ipv4_failure_rate,
@@ -314,6 +333,8 @@ def format_query_analysis_web_fuzzy_logic(
     -- CTRL subquery
     LEFT OUTER JOIN (
         SELECT
+        IF(ctrl.hostname = '', other.hostname, ctrl.hostname) as ctrl_key_hostname,
+        IF(ctrl.hostname = '', other.measurement_day, ctrl.measurement_day) as ctrl_key_day,
         hostname,
         measurement_day,
         cloud_provider_ips_count,
@@ -409,28 +430,28 @@ def format_query_analysis_web_fuzzy_logic(
 
             FROM
             obs_web_ctrl
-            WHERE measurement_start_time > %(start_time)s
+            WHERE measurement_start_time >= %(ctrl_start_time)s
             AND measurement_start_time <= %(end_time)s
             GROUP BY hostname, measurement_day
         ) AS ctrl
 
-        LEFT OUTER JOIN
+        FULL OUTER JOIN
         (
             SELECT
-            hostname,
+            coalesce(nullIf(tls_server_name, ''), hostname) as hostname,
             toStartOfDay(measurement_start_time) as measurement_day,
             groupArrayIf(ip, tls_is_certificate_valid = 1) as other_tls_consistent_ips
 
             FROM
             obs_web
-            WHERE measurement_start_time > %(start_time)s
+            WHERE measurement_start_time >= %(ctrl_start_time)s
             AND measurement_start_time <= %(end_time)s
             GROUP BY hostname, measurement_day
         ) as other
         ON ctrl.hostname = other.hostname AND ctrl.measurement_day = other.measurement_day
         SETTINGS join_algorithm = 'grace_hash', grace_hash_join_initial_buckets = 8
     ) as full_ctrl
-    ON full_ctrl.hostname = experiment.hostname AND full_ctrl.measurement_day = experiment.measurement_day
+    ON full_ctrl.ctrl_key_hostname = experiment.hostname AND full_ctrl.ctrl_key_day = experiment.measurement_day
     GROUP BY domain,
     input,
     probe_asn, probe_as_org_name, probe_cc,

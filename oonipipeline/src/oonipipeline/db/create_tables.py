@@ -284,7 +284,7 @@ def make_create_queries():
         ),
         (
             """
-        CREATE TABLE IF NOT EXISTS event_detector_changepoints (
+        CREATE TABLE IF NOT EXISTS event_detector_changepoints ON CLUSTER oonidata_cluster (
             `probe_asn` UInt32,
             `probe_cc` String,
             `domain` String,
@@ -304,7 +304,9 @@ def make_create_queries():
             `h` Nullable(float),
             `block_type` String
         )
-        ENGINE = ReplacingMergeTree
+        -- replicated so the API, which reads another replica than the
+        -- detector writes to, sees the changepoints
+        ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/{database}/event_detector_changepoints/{shard}', '{replica}')
         ORDER BY (probe_asn, probe_cc, ts, domain);
 
             """,
@@ -344,6 +346,30 @@ def make_create_queries():
         ORDER BY (probe_asn, probe_cc, domain);
             """,
             "event_detector_cusums",
+        ),
+        (
+            """
+        CREATE TABLE IF NOT EXISTS event_detector_v2_changepoints
+        (
+            `uuid` UUID,
+            `domain` String,
+            `probe_cc` String,
+            `probe_asn` UInt32,
+            `resolver_asn` UInt32,
+            `layer` LowCardinality(String),
+            `ts_hour` DateTime64(3, 'UTC'),
+            `s_neg` Float64,
+            `s_pos` Float64,
+            `h` Float64,
+            `state` LowCardinality(String),
+            -- JSON-encoded parameters the detector was run with
+            `run_parameters` String,
+            `created_at` DateTime64(3, 'UTC') DEFAULT now64()
+        )
+        ENGINE = MergeTree
+        ORDER BY (ts_hour, domain, layer, probe_cc, probe_asn, resolver_asn, state, uuid);
+            """,
+            "event_detector_v2_changepoints",
         ),
         (
             """

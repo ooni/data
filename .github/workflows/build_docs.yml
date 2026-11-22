@@ -1,5 +1,8 @@
 name: build docs
-on: push
+on:
+  push:
+    branches:
+      - main
 
 jobs:
   build_docs:
@@ -47,8 +50,6 @@ jobs:
         run: find ooni-docs/src/content/docs/data/ -name "*.md" -exec wc -l {} +
 
       - name: Commit changes
-        # Only push the docs update when we are in master
-        # if: github.ref == 'refs/heads/master'
         run: |
           cd ooni-docs
           git config --global user.email "github+backend@ooni.org"

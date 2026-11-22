@@ -57,11 +57,44 @@ def test_unit_asnmeta_updater(mock_clickhouse, mock_urlopen):
 
     qrs = [" ".join(q[0][0].split()) for q in mock_click.execute.call_args_list]
     expected_queries = [
-        "DROP TABLE IF EXISTS asnmeta_tmp",
-        "CREATE TABLE asnmeta_tmp ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = MergeTree() ORDER BY (asn, changed)",
+        "CREATE TABLE IF NOT EXISTS asnmeta ON CLUSTER oonidata_cluster ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = ReplicatedMergeTree('/clickhouse/{cluster}/tables/{database}/asnmeta', '{replica}') ORDER BY (asn, changed)",
+        "CREATE TEMPORARY TABLE IF NOT EXISTS asnmeta_tmp ( asn UInt32, org_name String, cc String, changed Date, aut_name String, source String ) ENGINE = MergeTree ORDER BY (asn, changed)",
         "INSERT INTO asnmeta_tmp (asn, org_name, cc, changed, aut_name, source) VALUES",
         "SELECT count() FROM asnmeta_tmp",
-        "EXCHANGE TABLES asnmeta_tmp AND asnmeta",
+        "ALTER TABLE asnmeta REPLACE PARTITION tuple() FROM asnmeta_tmp SETTINGS alter_sync = 2",
+    ]
+    for qr in expected_queries:
+        assert qr in qrs
+
+
+@patch("oonipipeline.tasks.updaters.citizenlab_test_lists_updater.Clickhouse")
+def test_unit_citizenlab_updater(mock_clickhouse):
+    mock_click = MagicMock()
+    citizenlab_test_lists_updater.Clickhouse.from_url.return_value = mock_click
+
+    citizenlab = [
+        {"domain": "example.com", "url": "https://example.com/", "cc": "US", "category_code": "MISC"},
+        {"domain": "example.org", "url": "https://example.org/path", "cc": "ZZ", "category_code": "GRP"},
+    ]
+
+    def mocked_execute(q, data=None, **kw):
+        q = q.strip()
+        if q.startswith("INSERT INTO citizenlab_tmp"):
+            assert data == citizenlab
+        return [[]]
+
+    mock_click.execute.side_effect = mocked_execute
+
+    citizenlab_test_lists_updater.update_citizenlab_table(
+        "clickhouse://fake/ooni", citizenlab
+    )
+
+    qrs = [" ".join(q[0][0].split()) for q in mock_click.execute.call_args_list]
+    expected_queries = [
+        "CREATE TABLE IF NOT EXISTS citizenlab ON CLUSTER oonidata_cluster ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplicatedReplacingMergeTree('/clickhouse/{cluster}/tables/{database}/citizenlab', '{replica}') ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
+        "CREATE TEMPORARY TABLE IF NOT EXISTS citizenlab_tmp ( `domain` String, `url` String, `cc` FixedString(32), `category_code` String ) ENGINE = ReplacingMergeTree ORDER BY (domain, url, cc, category_code) SETTINGS index_granularity = 4",
+        "INSERT INTO citizenlab_tmp (domain, url, cc, category_code) VALUES",
+        "ALTER TABLE citizenlab REPLACE PARTITION tuple() FROM citizenlab_tmp SETTINGS alter_sync = 2",
     ]
     for qr in expected_queries:
         assert qr in qrs

@@ -1,8 +1,8 @@
 """
 Fetch asn metadata from https://archive.org/download/ip2country-as (generated via: https://github.com/ooni/historical-geoip)
 
-Local test run:
-    PYTHONPATH=analysis ./run_analysis --update-asnmeta --stdout
+Populate the replicated asnmeta table. Each run loads a temporary table and
+swaps it in with REPLACE PARTITION, which reaches every replica.
 """
 
 from datetime import datetime
@@ -54,38 +54,42 @@ def fetch_data() -> List[dict]:
     return rows
 
 
+CLUSTER_NAME = "oonidata_cluster"
+
+
 def update_asnmeta(clickhouse_url: str) -> None:
     progress("starting")
     click = Clickhouse.from_url(clickhouse_url)
-    q = """
-    CREATE TABLE IF NOT EXISTS asnmeta (
-        asn UInt32,
-        org_name String,
-        cc String,
-        changed Date,
-        aut_name String,
-        source String
-    ) ENGINE = MergeTree()
-    ORDER BY (asn, changed)
+    click.execute(
+        f"""CREATE TABLE IF NOT EXISTS asnmeta ON CLUSTER {CLUSTER_NAME}
+(
+    asn UInt32,
+    org_name String,
+    cc String,
+    changed Date,
+    aut_name String,
+    source String
+)
+ENGINE = ReplicatedMergeTree('/clickhouse/{{cluster}}/tables/{{database}}/asnmeta', '{{replica}}')
+ORDER BY (asn, changed)
     """
-    click.execute(q)
+    )
 
-    q = "DROP TABLE IF EXISTS asnmeta_tmp"
-    click.execute(q)
-
-    q = """
-    CREATE TABLE asnmeta_tmp (
-        asn UInt32,
-        org_name String,
-        cc String,
-        changed Date,
-        aut_name String,
-        source String
-    ) ENGINE = MergeTree()
-    ORDER BY (asn, changed)
+    click.execute(
+        """CREATE TEMPORARY TABLE IF NOT EXISTS asnmeta_tmp
+(
+    asn UInt32,
+    org_name String,
+    cc String,
+    changed Date,
+    aut_name String,
+    source String
+)
+ENGINE = MergeTree
+ORDER BY (asn, changed)
     """
-    click.execute(q)
-    progress("asnmeta_tmp recreated")
+    )
+    progress("asnmeta_tmp created")
 
     log.info(f"Ingesting {AS_ORG_MAP_URL}")
     data = fetch_data()
@@ -105,7 +109,7 @@ def update_asnmeta(clickhouse_url: str) -> None:
     # metrics.gauge("asnmeta_tmp_len", row_cnt)
     assert 100_000 < row_cnt < 1_000_000
 
-    log.info("Swapping tables")
-    q = "EXCHANGE TABLES asnmeta_tmp AND asnmeta"
+    log.info("Swapping asnmeta data")
+    q = "ALTER TABLE asnmeta REPLACE PARTITION tuple() FROM asnmeta_tmp SETTINGS alter_sync = 2"
     click.execute(q)
     progress("asnmeta ready")
