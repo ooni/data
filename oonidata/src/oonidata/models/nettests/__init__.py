@@ -14,6 +14,7 @@ from .whatsapp import Whatsapp
 from .http_invalid_request_line import HTTPInvalidRequestLine
 from .http_header_field_manipulation import HTTPHeaderFieldManipulation
 from .echcheck import ECHCheck
+from .tlsmiddlebox import TLSMiddlebox
 
 SUPPORTED_CLASSES = [
     HTTPHeaderFieldManipulation,
@@ -30,6 +31,7 @@ SUPPORTED_CLASSES = [
     Whatsapp,
     BaseMeasurement,
     ECHCheck,
+    TLSMiddlebox,
 ]
 SupportedDataformats = Union[
     HTTPHeaderFieldManipulation,
@@ -45,6 +47,7 @@ SupportedDataformats = Union[
     FacebookMessenger,
     Whatsapp,
     BaseMeasurement,
+    TLSMiddlebox,
 ]
 
 NETTEST_MODELS = {

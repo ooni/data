@@ -5,6 +5,7 @@ from oonidata.models.observations import (
     HTTPMiddleboxObservation,
     WebControlObservation,
     WebObservation,
+    MiddleboxObservation
 )
 
 from oonidata.models.nettests import (
@@ -19,6 +20,7 @@ from oonidata.models.nettests import (
     UrlGetter,
     WebConnectivity,
     HTTPInvalidRequestLine,
+    TLSMiddlebox,
 )
 
 from .nettests.dnscheck import DNSCheckTransformer
@@ -37,6 +39,7 @@ from .nettests.web_connectivity import WebConnectivityTransformer
 from .nettests.http_invalid_request_line import (
     HTTPInvalidRequestLineTransformer,
 )
+from .nettests.tlsmiddlebox import MiddleboxTransformer
 from .nettests.echcheck import ECHCheckTransformer
 
 from ..netinfo import NetinfoDB
@@ -55,6 +58,7 @@ NETTEST_TRANSFORMERS = {
     "http_invalid_request_line": HTTPInvalidRequestLineTransformer,
     "web_connectivity": WebConnectivityTransformer,
     "echcheck": ECHCheckTransformer,
+    "tlsmiddlebox": MiddleboxTransformer,
 }
 
 TypeWebConnectivityObservations = Tuple[
@@ -62,6 +66,7 @@ TypeWebConnectivityObservations = Tuple[
 ]
 TypeWebObservations = Tuple[List[WebObservation]]
 TypeHTTPMiddleboxObservations = Tuple[List[HTTPMiddleboxObservation]]
+TypeTLSMiddleboxObservations = Tuple[List[MiddleboxObservation]]
 
 
 @overload
@@ -96,6 +101,13 @@ def measurement_to_observations(
     netinfodb: NetinfoDB,
     bucket_date: str = "1984-01-01",
 ) -> TypeWebObservations: ...
+
+@overload
+def measurement_to_observations(
+    msmt: TLSMiddlebox,
+    netinfodb: NetinfoDB,
+    bucket_date: str = "1984-01-01",
+) -> TypeTLSMiddleboxObservations: ...
 
 
 def measurement_to_observations(

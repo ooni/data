@@ -10,6 +10,7 @@ import pytest
 from oonipipeline.db.connections import ClickhouseConnection
 from oonidata.dataclient import stream_jsonl, load_measurement
 from oonidata.models.nettests.dnscheck import DNSCheck
+from oonidata.models.nettests.tlsmiddlebox import TLSMiddlebox
 from oonidata.models.nettests.web_connectivity import WebConnectivity
 from oonidata.models.nettests.http_invalid_request_line import HTTPInvalidRequestLine
 from oonidata.models.observations import HTTPMiddleboxObservation
@@ -120,6 +121,32 @@ def test_write_observations(measurements, netinfodb, db):
     assert cnt_by_cc["US"] == 3
     assert cnt_by_cc["RU"] == 47
 
+def test_write_middlebox_observations(measurements, netinfodb, db):
+    msmt_uids = [
+        (
+            "20261027114035.310824_HR_tlsmiddlebox_6a2c3061d5e3db18",
+            "2026-10-27",
+        ),
+    ]
+
+    for msmt_uid, bucket_date in msmt_uids:
+        msmt = load_measurement(msmt_path=measurements[msmt_uid])
+        obs_list = measurement_to_observations(msmt=msmt, netinfodb=netinfodb, bucket_date=bucket_date)
+        # Ensure observation IDS do not clash
+        obs_idxs = list(map(lambda x: x.observation_idx, obs_list))
+        assert len(obs_idxs) == len(set(obs_idxs))
+        db.write_table_model_rows(obs_list)
+    db.close()
+
+    cnt_by_cc = get_metric_count_by_cc(
+        clickhouse_url=db.clickhouse_url,
+        start_day="2026-10-27",
+        end_day="2026-10-28",
+        table_name="obs_middlebox",
+    )
+
+    print("Counts by country:", cnt_by_cc)
+    assert cnt_by_cc["HR"] > 0
 
 def test_hirl_observations(measurements, netinfodb):
     msmt = load_measurement(

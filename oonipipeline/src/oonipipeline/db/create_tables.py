@@ -22,6 +22,7 @@ from oonidata.models.observations import (
     ProbeMeta,
     WebControlObservation,
     WebObservation,
+    MiddleboxObservation,
 )
 
 from .connections import ClickhouseConnection
@@ -219,6 +220,7 @@ table_models = [
     WebObservation,
     WebControlObservation,
     HTTPMiddleboxObservation,
+    MiddleboxObservation,
 ]
 
 
