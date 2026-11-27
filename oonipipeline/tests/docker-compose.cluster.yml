@@ -19,7 +19,7 @@ services:
     ports:
       - "9000"
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "select 1;"]
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
       interval: 5s
       retries: 20
       start_period: 30s
@@ -39,7 +39,7 @@ services:
     ports:
       - "9000"
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "select 1;"]
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
       interval: 5s
       retries: 20
       start_period: 30s
